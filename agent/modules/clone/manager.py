@@ -21,6 +21,7 @@ import logging
 from dataclasses import replace
 from typing import Callable
 
+from . import profiles
 from .store import Clone, CloneStore
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,12 @@ class CloneManager:
 
     # -- settings ---------------------------------------------------------
     def settings_for(self, clone: Clone):
-        """The settings a clone runs with: its token, its own directories."""
+        """The settings a clone runs with: its token, directories and profile.
+
+        The profile is what makes a clone small: ``files`` registers the file
+        machinery and nothing else, so a pasted token cannot reach moderation,
+        music or this deployment's controls.
+        """
         return replace(
             self._settings,
             bot_token=clone.token,
@@ -61,6 +67,7 @@ class CloneManager:
             # the same ``runtime``/``premium``/``chats`` documents as the main
             # bot and the last writer would silently win.
             db_scope=f"clone:{clone.bot_id}",
+            plugins=profiles.plugins_for(clone.profile, self._settings),
         )
 
     # -- lifecycle --------------------------------------------------------
@@ -73,6 +80,23 @@ class CloneManager:
     def username(self, bot_id: int) -> str:
         entry = self._running.get(int(bot_id))
         return entry[2] if entry else ""
+
+    def profile(self, bot_id: int) -> str:
+        """The profile a running clone actually started with."""
+        entry = self._running.get(int(bot_id))
+        settings = getattr(entry[0], "settings", None) if entry else None
+        if settings is None:
+            clone = self._store.get(bot_id)
+            return profiles.clean(getattr(clone, "profile", None))
+        plugins = tuple(getattr(settings, "plugins", ()) or ())
+        for name in profiles.ORDER:
+            if plugins == tuple(profiles.plugins_for(name, self._settings)):
+                return name
+        return "custom"
+
+    def record(self, bot_id: int) -> Clone | None:
+        """The stored record for a clone, running or not."""
+        return self._store.get(bot_id)
 
     def current(self) -> tuple[Clone, ...]:
         return self._store.all()

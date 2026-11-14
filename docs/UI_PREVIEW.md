@@ -151,7 +151,7 @@ Anyone with this link can fetch the file until it expires or runs out of uses.
 │ Uses    │ 5 of 5 left    │
 └─────────┴────────────────┘
 
-https://t.me/agent_bot?start=link_f658345a2856005d.11.1794739847.XrE5JRbz_wYJkcXdJwRUdw
+https://t.me/agent_bot?start=link_f658345a2856005d.11.1794741223.16WkPgtvm2IVcgN9ricQfw
 Opening the link sends the file straight to that chat — no command to type.
 
 ─────
@@ -285,9 +285,9 @@ Owner only.
 ┌──────────┬────────┬────────────────────────────┐
 │ Time     │ Kind   │ Detail                     │
 ├──────────┼────────┼────────────────────────────┤
-│ 10:50:47 │ link   │ owner=11 uses=5            │
-│ 10:50:47 │ plugin │ slug=group action=on by=11 │
-│ 10:50:47 │ start  │ version=0.1.0              │
+│ 11:13:43 │ link   │ owner=11 uses=5            │
+│ 11:13:43 │ plugin │ slug=group action=on by=11 │
+│ 11:13:43 │ start  │ version=0.1.0              │
 └──────────┴────────┴────────────────────────────┘
 
 Every entry is written when the action happened — none are simulated.
@@ -304,8 +304,8 @@ Owner only. Times are UTC.
 ┌─────┬──────────────────────┬─────┬──────────────┐
 │   # │ Reason               │  By │ When         │
 ├─────┼──────────────────────┼─────┼──────────────┤
-│   1 │ ignoring staff       │  11 │ 14 Nov 10:50 │
-│   2 │ posting invite links │  11 │ 14 Nov 10:50 │
+│   1 │ ignoring staff       │  11 │ 14 Nov 11:13 │
+│   2 │ posting invite links │  11 │ 14 Nov 11:13 │
 └─────┴──────────────────────┴─────┴──────────────┘
 
 Member: Meiko — 2 active warning(s).
@@ -325,8 +325,8 @@ Newest first.
 ┌────────┬────────┬─────────────────────┬──────────────┐
 │ Action │ Target │ Reason              │ When         │
 ├────────┼────────┼─────────────────────┼──────────────┤
-│ MUTE   │     22 │ flood               │ 14 Nov 10:50 │
-│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:50 │
+│ MUTE   │     22 │ flood               │ 14 Nov 11:13 │
+│ WARN   │     22 │ posting invite lin… │ 14 Nov 11:13 │
 └────────┴────────┴─────────────────────┴──────────────┘
 
 ─────

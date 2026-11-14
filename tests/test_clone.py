@@ -251,11 +251,13 @@ def test_mybots_lists_the_clones_with_start_stop_and_delete(tmp_path):
     run(handlers["mybots"], ctx, message)
 
     row = buttons(message.markups[0])
-    assert [b.callback_data for b in row[:2]] == [
+    assert [b.callback_data for b in row[:3]] == [
         "clone:111111111:stop",
+        "clone:111111111:profile",
         "clone:111111111:delete",
     ]
-    assert row[1].style is ButtonStyle.DANGER
+    assert row[2].style is ButtonStyle.DANGER
+    assert "Profile" in message.replies[0]
 
 
 def test_an_owner_press_stops_and_restarts_the_clone(tmp_path):
@@ -350,3 +352,98 @@ def test_a_record_survives_a_reload(tmp_path):
     assert again.by_owner(2)[0].bot_id == 1
     assert again.remove(1) is True
     assert CloneStore(tmp_path).count() == 0
+
+
+# --- profiles --------------------------------------------------------------
+
+
+def test_the_default_profile_runs_the_deployments_plugins(tmp_path):
+    from agent.modules.clone import profiles
+
+    settings = Settings.from_env(ENV)
+
+    assert profiles.clean(None) == profiles.STANDARD
+    assert profiles.plugins_for(profiles.STANDARD, settings) == settings.plugins
+
+
+def test_a_restricted_profile_never_gets_ops_or_clone():
+    from agent.modules.clone import profiles
+
+    for name in (profiles.FILES, profiles.TINY):
+        plugins = set(profiles.plugins_for(name, Settings.from_env(ENV)))
+        assert not (plugins & {"ops", "clone"}), name
+
+
+def test_the_files_profile_is_the_file_machinery(tmp_path):
+    from agent.modules.clone import profiles
+
+    plugins = set(profiles.plugins_for("files", Settings.from_env(ENV)))
+
+    assert {"filestore", "leech", "linkshare", "renamer"} <= plugins
+    assert not plugins & {"moderation", "music", "premium"}
+
+
+def test_a_clone_starts_with_the_plugins_its_profile_names(tmp_path):
+    ctx, _manifest, handlers = build(tmp_path)
+    run(handlers["clone"], ctx, FakeMessage(f"/clone {TOKEN_A} files"))
+
+    settings = FakeBot.made[0].settings
+
+    assert settings.plugins == ("filestore", "leech", "linkshare", "renamer", "postmaker")
+    assert settings.db_scope == "clone:111111111"
+
+
+def test_an_unknown_profile_is_refused_and_nothing_is_created(tmp_path):
+    ctx, _manifest, handlers = build(tmp_path)
+    message = FakeMessage(f"/clone {TOKEN_A} turbo")
+
+    run(handlers["clone"], ctx, message)
+
+    assert "Unknown profile" in message.replies[0]
+    assert ctx.clones.current() == ()
+
+
+def test_the_panel_shows_the_profile_and_offers_one(tmp_path):
+    ctx, _manifest, handlers = build(tmp_path)
+    run(handlers["clone"], ctx, FakeMessage(f"/clone {TOKEN_A} files"))
+    message = FakeMessage("/mybots")
+
+    run(handlers["mybots"], ctx, message)
+
+    assert "files" in message.replies[0]
+    assert "clone:111111111:profile" in [b.callback_data for b in buttons(message.markups[0])]
+
+
+def test_choosing_a_profile_restarts_the_clone_with_it(tmp_path):
+    ctx, _manifest, handlers = build(tmp_path)
+    run(handlers["clone"], ctx, FakeMessage(f"/clone {TOKEN_A}"))
+    FakeBot.made.clear()
+
+    query = press(ctx, "111111111:p:tiny")
+
+    assert "restarted on tiny" in query.answers[0][0]
+    assert ctx.clones.record(111111111).profile == "tiny"
+    assert FakeBot.made[-1].settings.plugins == ()
+    assert ctx.clones.profile(111111111) == "tiny"
+
+
+def test_the_profile_picker_lists_every_profile(tmp_path):
+    ctx, _manifest, handlers = build(tmp_path)
+    run(handlers["clone"], ctx, FakeMessage(f"/clone {TOKEN_A}"))
+
+    query = press(ctx, "111111111:profile")
+
+    data = [button.callback_data for button in buttons(query.edits[0][1])]
+    assert "clone:111111111:p:files" in data
+    assert "clone:111111111:p:tiny" in data
+    assert "clone:111111111:back" in data
+
+
+def test_an_unknown_profile_button_is_refused(tmp_path):
+    ctx, _manifest, handlers = build(tmp_path)
+    run(handlers["clone"], ctx, FakeMessage(f"/clone {TOKEN_A}"))
+
+    query = press(ctx, "111111111:p:everything")
+
+    assert query.answers[0][1] is True          # an alert, not a silent no-op
+    assert ctx.clones.record(111111111).profile == "standard"

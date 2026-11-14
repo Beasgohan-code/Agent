@@ -93,12 +93,22 @@ why — `music` without `SESSION_STRING`, `encoder` without ffmpeg.
 
 ## Clones
 
-`/clone <bot token>` runs this bot on another token: its own client, its own
-session name, its own data directory (`data/clones/<bot_id>`), built from the
-same code. It behaves like this bot, because it *is* this bot.
+`/clone <bot token> [profile]` runs this bot on another token: its own client,
+its own session name, its own data directory (`data/clones/<bot_id>`), its own
+database rows, built from the same code — with the plugins its **profile** names.
 
-* `/mybots` is the control panel — every clone you own, with Start, Stop and
-  Delete buttons; a press edits the panel in place.
+| Profile | What it registers |
+| --- | --- |
+| `standard` (default) | this deployment's `PLUGINS` — the clone behaves like the bot |
+| `files` | file store, leech, links, rename, post only |
+| `tiny` | `/start`, `/help`, `/menu` and nothing that touches files |
+
+`ops` and `clone` are stripped from every restricted profile: a clone must not
+reach this deployment's controls, and a clone must never mint another clone.
+
+* `/mybots` is the control panel — every clone you own, with Start, Stop, Profile
+  and Delete buttons; a press edits the panel in place. Choosing a profile
+  restarts a running clone so it takes effect.
 * `/delclone <bot id | @username>` removes the record and stops the client.
 * `/clonestats` is the owner's view: how many clones exist, how many are running,
   and what the deployment's ceiling is.
@@ -260,7 +270,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 482 tests
+pytest -q                      # 491 tests
 python -m pyflakes agent tests # no unused names
 ```
 

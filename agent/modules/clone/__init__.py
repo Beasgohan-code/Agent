@@ -28,6 +28,7 @@ from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
 from ...platform.manifest import PluginManifest
 from ...platform.secrets import SecretError, box_from
+from . import profiles
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils import rich as rich_ui
@@ -88,8 +89,8 @@ def build(ctx):
         rows = tuple(
             (
                 clone.handle,
+                profiles.label(clone.profile),
                 "running" if manager.is_running(clone.bot_id) else "stopped",
-                _when(clone.created_at),
             )
             for clone in mine
         )
@@ -99,11 +100,14 @@ def build(ctx):
             icon=ctx.theme.emoji("bot"),
             subtitle=(
                 f"<b>{len(mine)}</b> clone(s), <b>{running}</b> running. "
-                "A clone is a full copy of this bot on its own token."
+                "A clone runs the plugins its profile names, not always the whole bot."
             ),
-            table=Table(headers=("Bot", "State", "Since"), rows=rows),
+            table=Table(headers=("Bot", "Profile", "State"), rows=rows),
             note=pitch(),
-            footer="Stopping a clone detaches it from Telegram; the record stays here.",
+            footer=(
+                "<b>Profile</b> chooses how much of this bot a clone runs; stopping "
+                "detaches it from Telegram and keeps the record."
+            ),
         )
         buttons: list[list[Button]] = []
         for clone in mine:
@@ -114,6 +118,10 @@ def build(ctx):
                         "\u23f8 Stop" if live else "\u25b6\ufe0f Start",
                         callback_data=f"{PREFIX}:{clone.bot_id}:{'stop' if live else 'start'}",
                         style=ButtonStyle.PRIMARY if not live else ButtonStyle.DEFAULT,
+                    ),
+                    Button(
+                        "\U0001f9ed Profile",
+                        callback_data=f"{PREFIX}:{clone.bot_id}:profile",
                     ),
                     Button(
                         "\U0001f5d1 Delete",
@@ -127,6 +135,58 @@ def build(ctx):
                 Button("\u21a9\ufe0f Menu", callback_data="menu:home", style=ButtonStyle.PRIMARY),
                 Button("\U0001f4a1 Help", callback_data="menu:help"),
             ]
+        )
+        return body, Keyboard(buttons)
+
+    def _profile_panel(clone: Clone) -> tuple[object, Keyboard]:
+        """What a clone may run, and the two clicks that change it."""
+        current = profiles.clean(clone.profile)
+        rows = tuple(
+            (
+                name,
+                "on" if name == current else "",
+                profiles.summary(name, ctx.settings),
+                profiles.describe(name),
+            )
+            for name in profiles.ORDER
+        )
+        body = panel(
+            f"Profile · {clone.handle}",
+            icon=ctx.theme.emoji("gear"),
+            subtitle=(
+                f"Running <b>{profiles.label(current)}</b> "
+                f"({profiles.summary(current, ctx.settings)}), "
+                + ("started." if manager.is_running(clone.bot_id) else "stopped.")
+            ),
+            table=Table(
+                headers=("Profile", "On", "Size", "What it runs"),
+                rows=rows,
+                aligns=("left", "left", "left", "left"),
+                max_column=28,
+                total_width=56,
+            ),
+            note=(
+                "A restricted profile never gets <code>ops</code> or "
+                "<code>clone</code>: no deployment controls, and no clone of a clone."
+            ),
+            footer="Choosing a profile restarts a running clone so it takes effect.",
+        )
+        buttons: list[list[Button]] = []
+        for name in profiles.ORDER:
+            mark = "\u2705" if name == current else "\u25cb"
+            buttons.append(
+                [
+                    Button(
+                        f"{mark} {name}",
+                        callback_data=f"{PREFIX}:{clone.bot_id}:p:{name}",
+                        style=ButtonStyle.SUCCESS
+                        if name == current
+                        else ButtonStyle.DEFAULT,
+                    )
+                ]
+            )
+        buttons.append(
+            [Button("\u21a9\ufe0f Clones", callback_data=f"{PREFIX}:{clone.bot_id}:back")]
         )
         return body, Keyboard(buttons)
 
@@ -154,14 +214,46 @@ def build(ctx):
         user = getattr(message, "from_user", None)
         if user is None:
             return
-        parts = (getattr(message, "text", "") or "").split(maxsplit=1)
+        parts = (getattr(message, "text", "") or "").split()
         if len(parts) < 2:
             await reply(
                 message,
-                "Send <code>/clone &lt;bot token&gt;</code>. Get the token from "
-                "@BotFather; the clone starts as soon as it is accepted.",
+                panel(
+                    "Start a clone",
+                    icon=ctx.theme.emoji("bot"),
+                    subtitle=(
+                        "Send <code>/clone &lt;bot token&gt;</code> — the token from "
+                        "@BotFather; it starts as soon as Telegram accepts it."
+                    ),
+                    table=Table(
+                        headers=("Profile", "It runs"),
+                        rows=tuple(
+                            (name, profiles.describe(name)) for name in profiles.ORDER
+                        ),
+                        aligns=("left", "left"),
+                        max_column=36,
+                        total_width=56,
+                    ),
+                    note=(
+                        "Add the profile to choose: "
+                        "<code>/clone &lt;token&gt; files</code>. Without one it is "
+                        f"<b>{profiles.label(ctx.settings.plugins and profiles.STANDARD)}</b>."
+                    ),
+                    footer="<code>/mybots</code> changes the profile later, by button.",
+                ),
             )
             return
+        profile = profiles.STANDARD
+        if len(parts) > 2:
+            if profiles.clean(parts[2]) != parts[2].strip().lower():
+                await reply(
+                    message,
+                    "Unknown profile. Pick one of: "
+                    + ", ".join(f"<code>{name}</code>" for name in profiles.ORDER)
+                    + ".",
+                )
+                return
+            profile = profiles.clean(parts[2])
         ok, reason, bot_id = parse_token(parts[1])
         if not ok:
             await reply(message, f"<b>Cannot use that token</b>\n{reason}")
@@ -196,7 +288,14 @@ def build(ctx):
             )
             return
 
-        record = store.add(Clone(bot_id=bot_id, owner_id=user.id, token=parts[1].strip()))
+        record = store.add(
+            Clone(
+                bot_id=bot_id,
+                owner_id=user.id,
+                token=parts[1].strip(),
+                profile=profile,
+            )
+        )
         try:
             username = await manager.start(record)
         except CloneError as exc:
@@ -217,12 +316,15 @@ def build(ctx):
                     [
                         ("Owner", f"<code>{user.id}</code>"),
                         ("Token", f"<code>{record.masked}</code>"),
+                        ("Profile", profiles.label(profile)),
+                        ("Runs", profiles.summary(profile, ctx.settings)),
                         ("Data", f"<code>data/clones/{bot_id}</code>"),
                     ]
                 ),
                 note=(
-                    "It has its own vault and its own premium ledger, and it does "
-                    "<b>not</b> inherit <code>OWNER_ID</code>."
+                    "It has its own vault, its own premium ledger and its own "
+                    "database rows, and it does <b>not</b> inherit "
+                    "<code>OWNER_ID</code>."
                 ),
                 footer="<code>/mybots</code> controls it; <code>/delclone</code> removes it.",
             ),
@@ -290,13 +392,59 @@ def build(ctx):
         )
 
     # -- the panel buttons -------------------------------------------------
+    async def _profile_press(client, query, target: Clone, action: str, extra: str, presser) -> None:
+        """Pick a profile; a running clone is restarted so it takes effect."""
+        if action == "back":
+            text, keyboard = _panel(target.owner_id)
+            await _redraw(query, client, text, keyboard)
+            await query.answer("Back to your clones.")
+            return
+        if action != "p" or not extra:
+            text, keyboard = _profile_panel(target)
+            await _redraw(query, client, text, keyboard)
+            await query.answer("Choose a profile.")
+            return
+        if profiles.clean(extra) != extra or extra not in profiles.ORDER:
+            await query.answer("That profile does not exist.", show_alert=True)
+            return
+        store.update(target.bot_id, profile=extra)
+        said = f"{target.handle} is on {extra}."
+        if manager.is_running(target.bot_id):
+            try:
+                username = await manager.restart(store.get(target.bot_id) or target)
+            except CloneError as exc:
+                await query.answer(str(exc), show_alert=True)
+                return
+            store.update(target.bot_id, username=username or target.username)
+            said = f"{target.handle} restarted on {extra}."
+        if events is not None:
+            events.emit("clone:profile", bot_id=target.bot_id, by=presser)
+        logger.info(
+            "clone %s profile set to %s by %s (plugins: %s)",
+            target.bot_id, extra, presser,
+            ",".join(profiles.plugins_for(extra, ctx.settings)) or "shell only",
+        )
+        text, keyboard = _profile_panel(store.get(target.bot_id) or target)
+        await _redraw(query, client, text, keyboard)
+        await query.answer(said)
+
+    async def _redraw(query, client, text, keyboard) -> None:
+        """Draw a panel in place; a message that is gone is not a failed click."""
+        try:
+            await rich_ui.edit(query, text, reply_markup=keyboard)
+        except Exception:  # noqa: BLE001 - a stale panel is not a failed control
+            chat_id = getattr(getattr(query.message, "chat", None), "id", None)
+            if chat_id is not None:
+                await rich_ui.send(client, chat_id, text, reply_markup=keyboard)
+
     async def on_clone_press(client, query, rest: str):
-        """``<bot_id>:<start|stop|delete>`` from the /mybots panel."""
+        """``<bot_id>:<start|stop|delete|profile|p|back>[:<profile>]``."""
         parts = (rest or "").split(":")
-        if len(parts) != 2 or not parts[0].isdigit():
+        if len(parts) < 2 or not parts[0].isdigit():
             await query.answer("That button is stale.", show_alert=True)
             return
         bot_id, action = int(parts[0]), parts[1].strip().lower()
+        extra = parts[2].strip().lower() if len(parts) > 2 else ""
         target = store.get(bot_id)
         presser = getattr(getattr(query, "from_user", None), "id", None)
         if target is None:
@@ -304,6 +452,9 @@ def build(ctx):
             return
         if not _may_manage(presser, target):
             await query.answer("Only its owner can control this clone.", show_alert=True)
+            return
+        if action in ("profile", "p", "back"):
+            await _profile_press(client, query, target, action, extra, presser)
             return
         if action == "start":
             try:
@@ -332,12 +483,7 @@ def build(ctx):
             events.emit(f"clone:{action}", bot_id=bot_id, by=presser)
         logger.info("clone %s %s by %s from the panel", bot_id, action, presser)
         text, keyboard = _panel(target.owner_id)
-        try:
-            await rich_ui.edit(query, text, reply_markup=keyboard)
-        except Exception:  # noqa: BLE001 - a stale panel is not a failed control
-            chat_id = getattr(getattr(query.message, "chat", None), "id", None)
-            if chat_id is not None:
-                await rich_ui.send(client, chat_id, text, reply_markup=keyboard)
+        await _redraw(query, client, text, keyboard)
         await query.answer(said)
 
     router = getattr(ctx, "actions", None)

@@ -62,6 +62,9 @@ class Clone:
     created_at: float = field(default_factory=time.time)
     #: Set when an owner parks a clone; it stays in the list but is not started.
     disabled: bool = False
+    #: How much of this bot the clone runs: ``standard``, ``files`` or ``tiny``
+    #: (see :mod:`agent.modules.clone.profiles`). Empty means ``standard``.
+    profile: str = "standard"
 
     @property
     def handle(self) -> str:
@@ -129,6 +132,7 @@ class CloneStore:
                     name=str(entry.get("name") or ""),
                     created_at=float(entry.get("created_at") or 0.0),
                     disabled=bool(entry.get("disabled")),
+                    profile=str(entry.get("profile") or "standard"),
                 )
             except (KeyError, TypeError, ValueError):
                 logger.warning("skipping a malformed clone record: %r", entry)
