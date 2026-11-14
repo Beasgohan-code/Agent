@@ -109,7 +109,8 @@ def build(ctx):
                 icon=ctx.theme.emoji("bot"),
                 lines=[
                     "You have not cloned this bot yet.",
-                    "Send <code>/clone &lt;bot token&gt;</code> with a token from @BotFather.",
+                    "Open this bot privately and send <code>/clone</code> for guided setup.",
+                    "The studio checks encryption before requesting any credentials.",
                 ],
                 note=pitch(),
             )

@@ -132,7 +132,10 @@ class CloneSetup:
         await reply(message, body, reply_markup=self.keyboard(state, options))
 
     async def begin(self, message):
-        user_id = message.from_user.id
+        user_id = getattr(getattr(message, 'from_user', None), 'id', None)
+        if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+            await reply(message, 'Use your personal Telegram identity in private chat to set up a clone.')
+            return
         if message.chat.id != user_id:
             await reply(message, 'Open this bot privately and send /clone. Never send tokens in groups.')
             return
@@ -147,7 +150,15 @@ class CloneSetup:
             await reply(message, 'Clone capacity is reached. No token is needed; use /mybots to manage existing clones.')
             return
         if not self.store.encrypted():
-            await reply(message, 'Secure setup is unavailable until the Owner configures TOKEN_KEY. Do not send a token yet.')
+            await reply(message, panel('Clone encryption needs setup', icon=self.ctx.theme.emoji('lock'),
+                table=kv_table([('Status', 'No encryption key configured'),
+                                ('Who sets it', 'Deployment Owner only'),
+                                ('Other commands', 'No TOKEN_KEY needed unless storing clone credentials')]),
+                lines=['<code>TOKEN_KEY</code> encrypts stored clone bot tokens, AI keys and assistant sessions.',
+                       'It is not your BotFather token, Telegram password or OTP. Clone users do not supply this key.'],
+                note='Owner: configure a stable random TOKEN_KEY in the hosting environment and keep a secure backup. '
+                     'Do not send it in Telegram or chat. Do not replace an existing key without a migration plan.',
+                footer='No credentials requested · no draft created · /mybots manages existing clones'))
             return
         # Bound abandoned secrets in memory; restarting cancels all setup drafts.
         for uid in tuple(self.sessions):

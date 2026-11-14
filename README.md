@@ -270,9 +270,8 @@ only in SQL. `clone:…` is applied by `CloneManager.settings_for`, so a clone's
 vault, premium ledger and plugin state are its own *and* survive a redeploy on
 any instance.
 
-`DB_REQUIRED=1` turns "the URL is set but unreachable" into a startup failure
-instead of a silent fall back to files — two competing sources of truth are worse
-than a bot that refuses to start.
+Normal bot startup always requires PostgreSQL. The legacy `DB_REQUIRED=0`
+flag does not enable local JSON fallback.
 
 **Clone tokens are encrypted at rest.** With `TOKEN_KEY` set, records are written
 as Fernet ciphertext (`v1:` prefix, AES-CBC + HMAC) and decrypted only in memory;
@@ -280,7 +279,10 @@ masking a token in a panel was never protection for the database. A key that
 cannot be used is an error rather than a quiet downgrade, a record written before
 encryption existed is rewritten as ciphertext on the next save, and a record this
 key cannot read is skipped with a logged reason instead of taking the bot down.
-Without a key the store still works in plaintext and says so once at startup.
+Guided clone setup requires this key before asking for credentials. Legacy
+low-level stores support plaintext compatibility, but that is not a recommended
+clone workflow. Ordinary non-clone commands do not require `TOKEN_KEY`. See
+[Encryption setup](docs/ENCRYPTION_SETUP.md).
 
 ### The vault survives a redeploy
 

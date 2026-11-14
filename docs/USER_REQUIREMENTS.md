@@ -241,3 +241,12 @@ semantics. A starting draft is protected against lazy expiry/replacement while
 manager startup owns it; explicit lifecycle completion still clears secrets.
 Broader clone persistence/rollback/recovery work remains pending; no full workflow
 redesign or live assistant validation is claimed.
+
+### Encryption clarification and clone onboarding
+
+User questioned whether TOKEN_KEY is needed. Explained its role and preserved
+secure clone encryption rather than silently disabling it. Clone setup now
+explains deployment-Owner responsibility, distinguishes the key from user bot
+credentials and requests no secrets while encryption is missing. Empty clone
+management directs users to guided private setup. Ordinary non-clone commands
+do not require the key. No production secret was generated/changed or requested.

@@ -451,3 +451,23 @@ def test_starting_draft_is_not_expired_or_replaced(tmp_path):
         wizard.cancel(MEMBER)
         assert wizard.active(MEMBER) is None and state.token == ''
     asyncio.run(scenario())
+
+
+def test_encryption_guidance_explains_owner_key_without_collecting_secrets(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        wizard.store._box = SimpleNamespace(enabled=False)
+        request = FakeMessage('/clone')
+        await wizard.begin(request)
+        body = str(request.replies)
+        assert 'Deployment Owner only' in body
+        assert 'not your BotFather token' in body
+        assert 'Do not send it in Telegram' in body
+        assert wizard.active(MEMBER) is None
+        assert TOKEN_A not in body
+        request = FakeMessage('/clone')
+        request.from_user = None
+        await wizard.begin(request)
+        assert 'personal Telegram identity' in str(request.replies)
+    asyncio.run(scenario())
