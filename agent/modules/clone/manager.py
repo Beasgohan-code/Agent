@@ -197,17 +197,7 @@ class CloneManager:
                 reason = f"Clone {clone.bot_id} could not start ({category})."
                 self._states.move(clone.bot_id, State.FAILED, error=reason)
                 logger.warning("clone %s failed to start (%s)", clone.bot_id, type(exc).__name__)
-                voice = getattr(bot, "voice", None)
-                if voice is not None:
-                    try:
-                        await voice.shutdown()
-                    except Exception:
-                        pass
-                if client is not None:
-                    try:
-                        await client.stop()
-                    except Exception:
-                        pass
+                await self._cleanup_worker(bot, client)
                 await self._release_worker(bot)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
@@ -251,14 +241,7 @@ class CloneManager:
             if monitor is not None and monitor is not asyncio.current_task():
                 monitor.cancel()
                 await asyncio.gather(monitor, return_exceptions=True)
-            try:
-                cleanup = getattr(bot, "_cleanup_services", None)
-                if cleanup is not None:
-                    await cleanup(client)
-                else:
-                    await client.stop()
-            except Exception:  # noqa: BLE001 - a dead client is still stopped
-                logger.warning("clone %s did not stop cleanly", bot_id)
+            await self._cleanup_worker(bot, client)
             await self._release_worker(bot)
             self._states.move(int(bot_id), State.STOPPED)
             return True
@@ -268,18 +251,44 @@ class CloneManager:
         await self.stop(bot_id)
 
     @staticmethod
+    async def _cleanup_worker(bot, client):
+        """Partial starts and custom factories need the same resource cleanup.
+
+        A broken aggregate cleanup must not skip Telegram disconnection. Each
+        fallback service is isolated; failed diagnostics never include secrets.
+        """
+        cleanup = getattr(bot, "_cleanup_services", None)
+        if cleanup is not None and client is not None:
+            try:
+                await cleanup(client)
+                return
+            except Exception as error:
+                logger.warning("Clone aggregate cleanup failed (%s); using fallback", type(error).__name__)
+        modules = getattr(bot, "modules", None)
+        services = [(getattr(bot, "voice", None), "shutdown"),
+                    (getattr(modules, "jobs", None), "shutdown"),
+                    (getattr(modules, "storage", None), "shutdown"),
+                    (getattr(modules, "verifier", None), "shutdown"),
+                    (client, "stop")]
+        for service, method in services:
+            callback = getattr(service, method, None)
+            if callback is not None:
+                try:
+                    await callback()
+                except Exception as error:
+                    logger.warning("Clone service cleanup failed (%s)", type(error).__name__)
+
+    @staticmethod
     async def _release_worker(bot):
         lease = getattr(bot, "lease", None)
-        try:
-            if lease is not None:
+        database = getattr(bot, "database", None)
+        for service, method in ((lease, "stop_heartbeat"), (lease, "release_async"), (database, "close")):
+            callback = getattr(service, method, None)
+            if callback is not None:
                 try:
-                    await lease.stop_heartbeat()
-                finally:
-                    await lease.release_async()
-        finally:
-            database = getattr(bot, "database", None)
-            if database is not None:
-                await database.close()
+                    await callback()
+                except Exception as error:
+                    logger.warning("Clone resource release failed (%s: %s)", method, type(error).__name__)
 
     async def restart(self, clone: Clone) -> str:
         await self.stop(clone.bot_id)
