@@ -30,3 +30,22 @@ chat before retrying. Audit failure after acknowledged delivery explicitly says
 not to republish. No automatic retry, background posting or live Telegram call
 is part of this increment. The UI uses existing premium theme icons with plain
 Unicode fallback through the standard rich sender.
+
+## Confirmed template persistence (supersedes template-write notes above)
+
+Normal runtime now stores explicitly saved/reset layouts in
+`agent_post_templates`, keyed by tenant and chat. `/posttemplate` awaits the SQL
+upsert before confirmation. Display, preview and publication read the table on
+each command; database read failures refuse to send rather than use a stale
+cached layout. Existing PostgreSQL document templates are used only when no
+dedicated row exists, preserving older settings until the first explicit save.
+No local JSON import is performed. Reset writes the default layout explicitly,
+so an old document value cannot reappear after restart.
+
+Standalone db=None helpers retain their test compatibility behavior, clearly
+labelled in responses. There is no configured-database fallback. Writes are
+last-committed-wins, not compare-and-swap editor sessions; a transport timeout
+can leave the commit outcome ambiguous, so inspect `/posttemplate` before
+retrying. Other ChatStore settings and post audit writes are not migrated by
+this change. Existing old document keys remain but cannot override a dedicated
+row. No live production schema/deployment was modified from the sandbox.

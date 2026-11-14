@@ -213,3 +213,12 @@ Existing substring/first-stored-match semantics remain intentionally unchanged.
 Management responses are group-visible and persistence still background-flushes.
 Prioritized design suggestions are recorded in NEXT_IMPROVEMENTS.md, not claimed
 as delivered features. Full-reference audit and complete parity remain pending.
+
+### Confirmed Post Maker template persistence
+
+Dedicated tenant/group SQL template rows now provide awaited saves/resets and
+fresh reads for display/preview/publication, refusing configured-DB failures
+without stale or file fallback. Existing PostgreSQL document values remain a
+read-only compatibility source only until a dedicated row is explicitly saved.
+Reset durably overrides old document values. Remaining greetings, filters,
+reports and audit settings still need their own durability upgrades.

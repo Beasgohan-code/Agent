@@ -6,6 +6,7 @@ import logging
 
 from pyrogram.enums import ParseMode
 
+from ...platform.post_templates import PostTemplates
 from ...platform.manifest import PluginManifest
 from ...ui.tables import kv_table, panel
 from ..moderation import is_moderator
@@ -27,6 +28,13 @@ MANIFEST = PluginManifest(
 
 
 def build(ctx):
+    database = getattr(ctx, 'db', None)
+    templates = PostTemplates(database) if database is not None else None
+
+    async def get_template(chat_id):
+        legacy = ctx.chats.get(chat_id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
+        return await templates.get(chat_id, legacy) if templates is not None else legacy
+
     def feedback(title, text, icon='info'):
         return panel(title, icon=ctx.theme.emoji(icon), lines=[text],
                      footer='/postpreview Title | body · /posttemplate')
@@ -43,14 +51,18 @@ def build(ctx):
         rest = _args(message)
         candidate = rest[1].strip() if len(rest) > 1 else ''
         if not candidate:
-            current = ctx.chats.get(message.chat.id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
+            try:
+                current = await get_template(message.chat.id)
+            except Exception:
+                await reply(message, feedback('Template unavailable', 'Could not read current PostgreSQL settings. No stale layout was displayed.', 'warn'))
+                return
             await reply(message, panel('Post studio', icon=ctx.theme.emoji('diamond'),
                 subtitle=f"{ctx.theme.emoji('gear')} This group's layout",
                 table=kv_table([('Template limit', str(MAX_TEMPLATE)), ('Title limit', str(MAX_TITLE)), ('Body limit', str(MAX_BODY))]),
                 lines=['<b>Current template</b>\n<code>' + html.escape(current) + '</code>'],
                 note='Use <code>{title}</code> and <code>{body}</code>. HTML is trusted administrator input. '
                      '<code>/posttemplate reset</code> restores the default.',
-                footer='Group-local settings · older settings writes are background-flushed'))
+                footer='Group-local settings · PostgreSQL reads' if templates is not None else 'Standalone settings compatibility mode'))
             return
         if candidate.lower() == 'reset':
             candidate = DEFAULT_TEMPLATE
@@ -59,7 +71,10 @@ def build(ctx):
             return
         try:
             example = _post_text(candidate, 'Example title', 'Example body')
-            ctx.chats.put(message.chat.id, TEMPLATE_KEY, candidate)
+            if templates is not None:
+                await templates.set(message.chat.id, candidate)
+            else:
+                ctx.chats.put(message.chat.id, TEMPLATE_KEY, candidate)
         except PostError as error:
             await reply(message, feedback('Check template', html.escape(str(error)), 'warn'))
             return
@@ -67,7 +82,8 @@ def build(ctx):
             await reply(message, feedback('Template not confirmed', 'The settings write could not be confirmed. Check /posttemplate before retrying.', 'warn'))
             return
         await reply(message, feedback('Template updated',
-            f"{ctx.theme.emoji('check')} Applied in this process; persistence uses the existing background settings flush.\n\nExample:\n" + example, 'gear'))
+            f"{ctx.theme.emoji('check')} " + ('PostgreSQL confirmed the template write.' if templates is not None else
+                'Applied in standalone compatibility mode.') + '\n\nExample:\n' + example, 'gear'))
 
     async def compose(client, message, *, publish):
         if not await guard(client, message):
@@ -79,7 +95,11 @@ def build(ctx):
                 f'Usage: <code>/{command} Title | body</code>, or reply to a message. '
                 'A title can be supplied while replying to text or a media caption.', 'sparkles'))
             return
-        template = ctx.chats.get(message.chat.id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
+        try:
+            template = await get_template(message.chat.id)
+        except Exception:
+            await reply(message, feedback('Template unavailable', 'Could not read current PostgreSQL settings. No preview or post was sent.', 'warn'))
+            return
         try:
             text = _post_text(template, title, body)
             if not text.strip():

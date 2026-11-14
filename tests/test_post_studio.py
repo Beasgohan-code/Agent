@@ -88,5 +88,5 @@ def test_template_reset_and_readable_untruncated_layout(tmp_path):
         request = FakeMessage('/posttemplate')
         await handlers['posttemplate'](client, request)
         assert '&lt;b&gt;{title}&lt;/b&gt;' in request.replies[-1]
-        assert 'background' in request.replies[-1]
+        assert 'Standalone settings' in request.replies[-1]
     asyncio.run(scenario())

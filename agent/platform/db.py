@@ -21,9 +21,8 @@ PostgreSQL transaction, not by rewriting a whole JSON settings document. Log
 destinations also use a dedicated table so /setlog confirms an awaited write.
 
 Writes are batched: a mutation queues the document and one background task
-flushes the queue, so a handler never waits on the network. A database that is
-missing or unreachable is logged once and the bot keeps running on its files —
-losing the database must not take the bot down with it.
+flushes the queue, so a handler never waits on the network. Normal runtime requires PostgreSQL; a configured database never falls back to
+local files. Dedicated feature tables use awaited writes where documented.
 
 **Every row is scoped to one bot.** The main bot and each clone connect to the
 same database, and they all keep a document called ``runtime``, ``premium`` or
@@ -47,6 +46,7 @@ from typing import Any
 from .plugin_access import SCHEMA as PLUGIN_SCHEMA
 from .music_lists import SCHEMA as MUSIC_SCHEMA
 from .incidents import SCHEMA as INCIDENT_SCHEMA
+from .post_templates import SCHEMA as POST_TEMPLATE_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ SCHEMA: tuple[str, ...] = (
     """,
 )
 
-SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + (
+SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + POST_TEMPLATE_SCHEMA + (
     """CREATE TABLE IF NOT EXISTS agent_log_settings (
         tenant TEXT PRIMARY KEY,
         channel_id BIGINT CHECK (channel_id IS NULL OR channel_id < 0),
