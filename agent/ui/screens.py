@@ -78,8 +78,9 @@ def welcome_screen(user, theme: Theme) -> Screen:
         + "\n\n"
         + rich_kv_table(
             [
-                ("Status", f"{theme.emoji('check')} Online"),
-                ("Version", "Phase 1"),
+                (f"{theme.emoji('check')} Status", "Online"),
+                (f"{theme.emoji('stats')} Version", "Phase 1"),
+                (f"{theme.emoji('shield')} Privacy", "no message text stored"),
             ]
         )
         + "\n"
@@ -95,39 +96,39 @@ def help_screen(user, theme: Theme) -> Screen:
         + "\n"
         + rich_list(
             [
-                "<code>/start</code> — open the main menu",
-                "<code>/help</code> — show this help",
-                "<code>/menu</code> — open the menu · <code>/about</code> — what this is",
-                "<code>/status</code> — live runtime status · <code>/cancel</code> — stop your jobs",
-                "<code>/ping</code> — live health of this instance",
+                f"{theme.emoji('sparkles')} <code>/start</code> — open the main menu",
+                f"{theme.emoji('help')} <code>/help</code> — show this help",
+                f"{theme.emoji('stats')} <code>/menu</code> · <code>/about</code> · <code>/status</code>",
+                f"{theme.emoji('bolt')} <code>/ping</code> — live health · <code>/cancel</code> — stop jobs",
             ]
         )
         + "\n"
         + rich_list(
             [
-                "<code>/encinfo</code> — probe a replied video",
-                "<code>/encode</code> — encode it (fast · balanced · quality)",
-                "<code>/encpreset</code> — list presets",
-                "<code>/enccancel</code> — stop your jobs",
+                f"{theme.emoji('gear')} <code>/encinfo</code> — probe a replied video",
+                f"{theme.emoji('fire')} <code>/encode</code> — encode (fast · balanced · quality)",
+                f"{theme.emoji('stats')} <code>/encpreset</code> — list presets",
+                f"{theme.emoji('cross')} <code>/enccancel</code> — stop your jobs",
+                f"{theme.emoji('arrow')} <code>/autorename</code> · <code>/rename</code> · <code>/testrename</code> · <code>/clean</code>",
             ]
         )
         + "\n"
         + rich_list(
             [
-                "<code>/genlink</code> — share a replied file",
-                "<code>/links</code> — list your links",
-                "<code>/revoke</code> — revoke one",
+                f"{theme.emoji('link')} <code>/genlink</code> — share a replied file",
+                f"{theme.emoji('search')} <code>/links</code> — list your links",
+                f"{theme.emoji('cross')} <code>/revoke</code> — revoke one",
             ]
         )
         + "\n"
         + rich_list(
             [
                 "<b>Group moderation</b>",
-                "<code>/warn</code> <code>/warnings</code> <code>/unwarn</code> — warnings",
-                "<code>/mute</code> <code>/unmute</code> <code>/kick</code> — restrict",
-                "<code>/ban</code> <code>/unban</code> <code>/purge</code> — remove",
-                "<code>/note</code> <code>/trust</code> — member metadata",
-                "<code>/antispam</code> <code>/modlog</code> — policy and audit trail",
+                f"{theme.emoji('warn')} <code>/warn</code> <code>/warnings</code> <code>/unwarn</code>",
+                f"{theme.emoji('lock')} <code>/mute</code> <code>/unmute</code> <code>/kick</code>",
+                f"{theme.emoji('ban')} <code>/ban</code> <code>/unban</code> <code>/purge</code>",
+                f"{theme.emoji('pin')} <code>/note</code> <code>/trust</code> <code>/info</code>",
+                f"{theme.emoji('shield')} <code>/antispam</code> <code>/modlog</code>",
             ]
         )
         + "\n"

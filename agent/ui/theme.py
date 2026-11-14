@@ -9,27 +9,13 @@ CUSTOM_EMOJI_RE = re.compile(
     r'<tg-emoji\s+emoji-id="[^"]*"\s*>(.*?)</tg-emoji>', re.IGNORECASE | re.DOTALL
 )
 
-# Verified premium (custom) emoji IDs may be added here, e.g.
-#   "sparkles": 1234567890123456789,
-# No IDs are shipped because inventing one renders a broken glyph. Anything
-# mapped here is upgraded to a custom emoji; everything else keeps the plain
-# unicode fallback below and keeps working.
-CUSTOM_EMOJI_IDS: dict[str, int] = {}
+# Real IDs, sourced from Beasgohan-code/Videl0's curated map (see
+# agent/ui/premium.py for packs and attribution). Inventing an id renders a
+# broken glyph, so unknown names stay unicode.
+from .premium import emoji_table
 
-EMOJI_FALLBACKS: dict[str, str] = {
-    "sparkles": "\u2728",
-    "wave": "\U0001f44b",
-    "rocket": "\U0001f680",
-    "bolt": "\u26a1",
-    "info": "\u2139\ufe0f",
-    "help": "\U0001f4a1",
-    "user": "\U0001f464",
-    "id": "\U0001f194",
-    "globe": "\U0001f310",
-    "check": "\u2705",
-    "back": "\u21a9\ufe0f",
-    "bot": "\U0001f916",
-}
+EMOJI_FALLBACKS, CUSTOM_EMOJI_IDS = emoji_table()
+
 
 
 class Theme:

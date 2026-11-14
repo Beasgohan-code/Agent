@@ -118,6 +118,7 @@ Every one is wired to something real — none is a stub.
 | Filters (groups) | `/filter` `/filters` `/stopfilter` |
 | Welcome (groups) | `/setwelcome` `/welcome` `/goodbye` |
 | Utilities | `/id` `/info` `/time` |
+| Renamer | `/autorename` `/rename` `/testrename` `/clean` |
 | Operations (owner) | `/restart` `/watchdog` `/plugins` `/plugin` `/events` `/setlog` `/unsetlog` `/log` |
 | Encoding | `/encode` `/encinfo` `/encpreset` `/enccancel` |
 | Sharing | `/genlink` `/links` `/revoke` |
@@ -173,6 +174,23 @@ old one — so "we deploy carefully" is not protection.
   an unsupervised process will simply stay down.
 * **`/health`** now carries the lease state, disabled plugins and event count,
   so a platform health check can see what the bot sees.
+
+## Premium emoji and the UI layer
+
+Screens are rich markup composed with **richgram**'s block builders and delivered
+through its rich→HTML normaliser. Glyphs upgrade to custom emoji when a vetted id
+exists:
+
+* Ids come from **Videl0**'s curated map (`agent/ui/premium.py` documents the
+  four packs: NewsEmoji, Telegram iOS Icons, @rijif, SoLo_HaMiD). None are
+  invented — a fabricated id renders a broken glyph, which is worse than plain
+  unicode.
+* Videl0's own caveat holds: *ids alone do not grant Premium rendering*. If
+  Telegram rejects the entity, the sender retries once with plain unicode and
+  keeps working.
+* `USE_PREMIUM_EMOJI=0` disables the layer entirely, as in Videl0.
+* Glyphs with no vetted id (wave, rocket, user, id, help, trash, clock) stay
+  unicode on purpose.
 
 ## The log channel (Videl1's botlog)
 

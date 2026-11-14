@@ -194,6 +194,15 @@ class ChatStore:
         self._save()
         return self.greeting(chat_id, kind)
 
+    # -- generic per-chat settings -----------------------------------------
+
+    def get(self, chat_id: int, key: str, default=None):
+        return self._chat(chat_id)["settings"].get(key, default)
+
+    def put(self, chat_id: int, key: str, value) -> None:
+        self._chat(chat_id)["settings"][key] = value
+        self._save()
+
     # -- audit trail -------------------------------------------------------
 
     def log(

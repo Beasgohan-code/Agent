@@ -83,13 +83,13 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    # 3 built-in commands + 43 module commands + callback + error handler,
+    # 3 built-in commands + 47 module commands + callback + error handler,
     # plus four watchers (anti-spam, filters, joins/leaves, new-group log),
     # each in its own group.
-    assert bot.handler_count == 52
+    assert bot.handler_count == 56
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 46
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 50
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -119,7 +119,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 46
+    assert len(messages) == 50
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -179,11 +179,14 @@ def test_sender_retries_without_custom_emoji_when_rejected():
 
 
 def test_sender_reraises_when_nothing_can_be_retried():
+    # No custom emoji in this theme, so there is nothing to retry without and
+    # the transport error must surface instead of being swallowed.
+    theme = Theme({})
     client = FakeClient(fail_sends=1)
-    sender = ScreenSender(client, Theme())
+    sender = ScreenSender(client, theme)
 
     with pytest.raises(RuntimeError):
-        run_send(sender, welcome_screen(SimpleNamespace(first_name="Ada"), Theme()))
+        run_send(sender, welcome_screen(SimpleNamespace(first_name="Ada"), theme))
 
 
 def test_sender_keeps_custom_emoji_when_accepted():

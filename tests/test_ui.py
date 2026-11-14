@@ -102,11 +102,36 @@ def test_every_screen_fits_a_telegram_message():
 
 
 def test_theme_uses_unicode_when_no_custom_ids_are_configured():
-    theme = Theme()
+    theme = Theme({})
 
     assert theme.emoji("wave") == "\U0001f44b"
     assert "<tg-emoji" not in theme.emoji("wave")
     assert theme.custom_emoji_enabled is False
+
+
+def test_the_shipped_theme_carries_real_premium_ids():
+    theme = Theme()
+
+    assert theme.custom_emoji_enabled is True
+    # A vetted id from Videl0's packs, never an invented number.
+    assert 'emoji-id="5084979757905347540"' in theme.emoji("check")
+    # Glyphs without a vetted id stay unicode rather than render broken.
+    assert "<tg-emoji" not in theme.emoji("wave")
+
+
+def test_premium_can_be_switched_off_like_videl(monkeypatch):
+    import importlib
+
+    from agent.ui import premium
+
+    monkeypatch.setenv("USE_PREMIUM_EMOJI", "0")
+    try:
+        importlib.reload(premium)
+        assert premium.premium_enabled() is False
+        assert premium.emoji_table()[1] == {}
+    finally:
+        monkeypatch.delenv("USE_PREMIUM_EMOJI", raising=False)
+        importlib.reload(premium)
 
 
 def test_theme_upgrades_known_names_to_custom_emoji():
