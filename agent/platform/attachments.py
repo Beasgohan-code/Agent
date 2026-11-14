@@ -16,6 +16,8 @@ should be.
 
 from __future__ import annotations
 
+from .media_rules import transform
+
 #: Chat setting: a Telegram file id of the thumbnail to attach.
 THUMB_KEY = "thumb_file"
 
@@ -35,18 +37,18 @@ def render_caption(template: str | None, *, name: str, size: str) -> str | None:
     if not template:
         return None
     stem = name.rsplit(".", 1)[0] if "." in name else name
-    values = {"name": name, "size": size, "stem": stem}
+    values = {"name": name, "filename": name, "size": size, "stem": stem}
     text = template
     for key, value in values.items():
         text = text.replace("{" + key + "}", value)
     return text[:MAX_CAPTION]
 
 
-def caption_for(chats, chat_id: int, *, name: str, size: str) -> str | None:
+def caption_for(chats, chat_id: int, *, name: str, size: str, apply_rules: bool = True) -> str | None:
     """The caption this chat wants on *name*, or ``None``."""
     if chats is None:
         return None
-    return render_caption(chats.get(chat_id, CAPTION_KEY), name=name, size=size)
+    return render_caption(chats.get(chat_id, CAPTION_KEY), name=transform(chats, chat_id, name) if apply_rules else name, size=size)
 
 
 def thumb_for(chats, chat_id: int) -> str | None:
@@ -56,10 +58,10 @@ def thumb_for(chats, chat_id: int) -> str | None:
     return chats.get(chat_id, THUMB_KEY) or None
 
 
-def attachment_kwargs(chats, chat_id: int, *, name: str, size: str) -> dict:
+def attachment_kwargs(chats, chat_id: int, *, name: str, size: str, apply_rules: bool = True) -> dict:
     """``{"caption": ..., "thumb": ...}`` for ``send_document``, minus the empties."""
     payload: dict = {}
-    caption = caption_for(chats, chat_id, name=name, size=size)
+    caption = caption_for(chats, chat_id, name=name, size=size, apply_rules=apply_rules)
     if caption:
         payload["caption"] = caption
     thumb = thumb_for(chats, chat_id)

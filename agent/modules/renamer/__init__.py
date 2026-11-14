@@ -15,6 +15,9 @@ import html
 import re
 
 from ...platform.manifest import PluginManifest
+from ...platform.media_rules import transform
+from ...platform.attachments import attachment_kwargs
+from .rules import COMMANDS as RULE_COMMANDS, build_rules
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
 from ...platform.attachments import CAPTION_KEY, MAX_CAPTION, THUMB_KEY, render_caption
@@ -34,6 +37,7 @@ MANIFEST = PluginManifest(
         "viewthumb",
         "setcaption",
         "viewcaption",
+        *RULE_COMMANDS,
     ),
     permissions=("messages.read", "messages.send"),
     scope="all",
@@ -224,6 +228,7 @@ def build(ctx):
             return
         template = ctx.chats.get(message.chat.id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
         planned, warnings = plan_name(filename, template)
+        planned = UNSAFE_RE.sub("_", transform(ctx.chats, message.chat.id, planned)).strip(" .")[:MAX_NAME] or "file.bin"
         body = (
             "<b>Rename preview</b>\n"
             f"From: <code>{html.escape(filename)}</code>\n"
@@ -241,6 +246,7 @@ def build(ctx):
         original = getattr(media, "file_name", None) or "file"
         template = ctx.chats.get(message.chat.id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
         planned, warnings = plan_name(original, template)
+        planned = UNSAFE_RE.sub("_", transform(ctx.chats, message.chat.id, planned)).strip(" .")[:MAX_NAME] or "file.bin"
         file_id = getattr(media, "file_id", None)
         if not file_id:
             await reply(message, "Telegram did not send a file id for that file.")
@@ -250,7 +256,9 @@ def build(ctx):
                 message.chat.id,
                 file_id,
                 file_name=planned,
-                caption=getattr(media, "caption", None) or "",
+                **({"caption": getattr(media, "caption", None) or ""} |
+                   attachment_kwargs(ctx.chats, message.chat.id, name=planned,
+                                     size=str(getattr(media, "file_size", 0) or 0) + " bytes", apply_rules=False)),
             )
         except Exception as exc:  # noqa: BLE001 - reported to the user
             await reply(message, f"Rename failed: {type(exc).__name__}")
@@ -391,6 +399,7 @@ def build(ctx):
         )
 
     return MANIFEST, {
+        **build_rules(ctx),
         "setthumb": setthumb,
         "delthumb": delthumb,
         "viewthumb": viewthumb,

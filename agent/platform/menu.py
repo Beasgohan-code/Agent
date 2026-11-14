@@ -165,6 +165,10 @@ DESCRIPTIONS: dict[str, str] = {
     "setthumb": "Use a replied image as this chat's thumbnail",
     "delthumb": "Stop attaching a thumbnail",
     "viewthumb": "Show the thumbnail this chat uses",
+    "set_del_word": "Add literal words to remove from media names",
+    "rem_del_word": "Remove media-name deletion rules",
+    "set_repl_word": "Set a literal media-name replacement",
+    "rem_repl_word": "Remove a media-name replacement",
     "setcaption": "Set the caption files are sent with",
 
     "viewcaption": "Show the caption with an example",
