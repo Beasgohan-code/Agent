@@ -195,6 +195,7 @@ def test_a_file_that_vanished_is_reported_not_crashed(ctx, media):
 
     assert opened.files == []
     assert "no longer stored" in opened.replies[0]
+    assert record.uses == 0  # Missing metadata must not spend a redemption.
 
 
 def test_a_vault_file_is_shared_without_storing_it_twice(ctx, media):

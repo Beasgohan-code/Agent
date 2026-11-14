@@ -1,8 +1,9 @@
 """Agent — signed share links (linkshare / filestore).
 
-Tokens are HMAC-signed and carry their own expiry, so validation needs no
-database lookups. Revocation is the one thing that needs state, kept in a
-small JSON file.
+Tokens are HMAC-signed opaque handles. Expiry, revocation and use caps require
+an existing persisted record; a signature alone never reconstructs a grant.
+New handles are compact URL-safe random values suitable for Telegram deep links
+and callback buttons. Existing indexed legacy handles remain supported.
 
 Nothing here exposes storage identifiers to the user: the token *is* the
 handle, and it is opaque.
@@ -20,6 +21,7 @@ import binascii
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 import time
 from dataclasses import asdict, dataclass
@@ -115,8 +117,10 @@ class LinkStore:
         # ``ttl_hours=0`` means "expires now"; only None falls back to the default.
         hours = self.default_ttl // 3600 if ttl_hours is None else ttl_hours
         ttl = hours * 3600
-        payload = f"{file_id}.{int(owner_id)}.{int(time.time() + ttl)}"
-        token = f"{payload}.{self._sign(payload)}"
+        # Independent grants must never overwrite each other's caps/revocation.
+        # 48 ASCII bytes; link_ payload=53 and link:revoke: callback=60.
+        payload = f"v2_{secrets.token_urlsafe(16)}"
+        token = f"{payload}_{self._sign(payload)}"
         record = LinkRecord(
             token=token,
             file_id=file_id,
@@ -126,7 +130,11 @@ class LinkStore:
             max_uses=max(0, int(max_uses or 0)),
         )
         self._links[token] = record
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            self._links.pop(token, None)
+            raise
         return record
 
     def resolve(self, token: str) -> LinkRecord:
@@ -141,24 +149,12 @@ class LinkStore:
                 raise LinkError("link used up")
             return record
 
-        # Not in the index: still verify the signature so a forged token of the
-        # right shape cannot be mistaken for an unknown-but-valid one.
-        parts = (token or "").split(".")
-        if len(parts) != 4:
+        # Signature validity cannot restore lost revocation or use-limit state.
+        if not isinstance(token, str) or (not token.startswith("v2_") and len(token.split(".")) != 4):
             raise LinkError("malformed link")
-        payload, signature = ".".join(parts[:3]), parts[3]
-        if not hmac.compare_digest(self._sign(payload), signature):
+        if not self.verify_signature(token):
             raise LinkError("bad signature")
-        file_id, owner, expiry = parts[0], parts[1], parts[2]
-        if not expiry.isdigit() or int(expiry) <= time.time():
-            raise LinkError("link expired")
-        return LinkRecord(
-            token=token,
-            file_id=file_id,
-            owner_id=int(owner) if owner.lstrip("-").isdigit() else 0,
-            created_at=0.0,
-            expires_at=float(expiry),
-        )
+        raise LinkError("link unavailable")
 
     def consume(self, token: str) -> LinkRecord:
         """Like :meth:`resolve`, incrementing the use counter.
@@ -170,7 +166,11 @@ class LinkStore:
         stored = self._links.get(token)
         if stored is not None:
             stored.uses += 1
-            self._save()
+            try:
+                self._save()
+            except Exception:
+                stored.uses -= 1
+                raise
         return record
 
     def get(self, token: str) -> LinkRecord | None:
@@ -184,7 +184,11 @@ class LinkStore:
         if owner_id is not None and record.owner_id != owner_id:
             return False
         record.revoked = True
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            record.revoked = False
+            raise
         return True
 
     def owned(self, owner_id: int) -> list[LinkRecord]:
@@ -195,10 +199,16 @@ class LinkStore:
         )
 
     def verify_signature(self, token: str) -> bool:
-        parts = (token or "").split(".")
-        if len(parts) != 4:
+        if not isinstance(token, str) or len(token) > 512 or not token.isascii():
             return False
-        payload, signature = ".".join(parts[:3]), parts[3]
+        if token.startswith("v2_") and re.fullmatch(r"v2_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{22}", token):
+            payload, signature = token[:25], token[26:]
+        else:
+            # Legacy tokens are accepted only with their persisted grant record.
+            parts = token.split(".")
+            if len(parts) != 4:
+                return False
+            payload, signature = ".".join(parts[:3]), parts[3]
         try:
             _unb64(signature)
         except (binascii.Error, ValueError):

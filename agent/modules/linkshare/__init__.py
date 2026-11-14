@@ -352,7 +352,7 @@ def build(ctx):
     async def redeem(client, message, token: str):
         """Send the file behind *token*, or say precisely why it cannot be sent."""
         try:
-            record = ctx.links.consume(token)
+            record = ctx.links.resolve(token)
         except LinkError as exc:
             reason = {
                 "link revoked": "The owner revoked this link.",
@@ -368,6 +368,14 @@ def build(ctx):
         if stored is None:
             logger.warning("link %s… points at a missing file", record.token[:12])
             await _refused(message, "The file behind this link is no longer stored.")
+            return
+
+        # No use is spent for a missing metadata entry. Consume immediately
+        # before delivery, with a second expiry/revocation/cap check.
+        try:
+            record = ctx.links.consume(token)
+        except LinkError:
+            await _refused(message, "This link is no longer available.")
             return
 
         caption = (
