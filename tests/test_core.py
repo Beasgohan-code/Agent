@@ -191,3 +191,38 @@ def test_owner_panel_for_the_owner(tmp_path):
     assert "Owner panel" in body
     assert "Uptime" in body
     assert "Commands" in body
+
+
+class KeyboardMessage(FakeMessage):
+    """Keeps the markup, so a test can see the way out of a panel."""
+
+    def __init__(self, text="", *, uid=11):
+        super().__init__(text, uid=uid)
+        self.markups = []
+
+    async def reply(self, text, **kwargs):
+        self.markups.append(kwargs.get("reply_markup"))
+        return await super().reply(text, **kwargs)
+
+
+def test_about_offers_a_way_back_to_the_menu(tmp_path):
+    from agent.ui.keyboards import CB_HELP, CB_HOME
+
+    ctx = make_ctx(tmp_path)
+    message = KeyboardMessage("/about")
+
+    run(handlers(ctx)["about"], ctx, message)
+
+    markup = message.markups[0]
+    row = [button for line in markup.inline_keyboard for button in line]
+    assert [button.callback_data for button in row] == [CB_HOME, CB_HELP]
+    assert "Menu" in row[0].text
+
+
+def test_status_and_the_owner_panel_both_carry_it(tmp_path):
+    ctx = make_ctx(tmp_path, owner_id=11)
+
+    for name in ("status", "owner"):
+        message = KeyboardMessage(f"/{name}")
+        run(handlers(ctx)[name], ctx, message)
+        assert message.markups[-1] is not None, name

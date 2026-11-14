@@ -45,6 +45,22 @@ def help_keyboard() -> Keyboard:
     )
 
 
+def nav_keyboard() -> Keyboard:
+    """One row for a panel that is not the menu: the two ways back.
+
+    A panel answers a question ("what is my tier?", "is it healthy?") and then
+    leaves the user on a dead end; this is the second half of that sentence.
+    """
+    return Keyboard(
+        [
+            [
+                Button("\U0001f3e0 Menu", callback_data=CB_HOME, style=ButtonStyle.PRIMARY),
+                Button("\U0001f4a1 Help", callback_data=CB_HELP),
+            ]
+        ]
+    )
+
+
 def info_keyboard(user_id: int | None = None) -> Keyboard:
     """Includes a copy button when the id is known, so it can be pasted."""
     rows = []

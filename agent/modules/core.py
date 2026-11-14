@@ -19,6 +19,7 @@ import logging
 
 from .. import __version__
 from ..platform.manifest import PluginManifest
+from ..ui.keyboards import nav_keyboard
 from ..ui.screens import format_uptime, welcome_screen
 from ..platform.credits import NOTICE, rows
 from ..ui.tables import Table, kv_table, panel
@@ -90,6 +91,7 @@ def build(ctx):
                     "runtime: wzgram + richgram"
                 ),
             ),
+            reply_markup=nav_keyboard(),
         )
 
     async def status(_client, message):
@@ -124,7 +126,8 @@ def build(ctx):
                 subtitle="Read from this process, not from a cache.",
                 table=kv_table(rows),
                 footer="<code>/ping</code> checks the link, <code>/owner</code> shows the owner panel.",
-            )
+            ),
+            reply_markup=nav_keyboard(),
         )
 
     async def cancel(_client, message):
@@ -178,7 +181,8 @@ def build(ctx):
                     "<code>/events</code> · <code>/watchdog</code> · <code>/restart</code>"
                 ),
                 footer="Owner only.",
-            )
+            ),
+            reply_markup=nav_keyboard(),
         )
 
     return MANIFEST, {

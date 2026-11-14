@@ -16,6 +16,7 @@ import time
 
 from ...platform.manifest import PluginManifest
 from ...platform.premium import TIERS
+from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
 from .limits import pitch, rows, until_text, usage_rows
@@ -91,6 +92,7 @@ def build(ctx):
                 note=pitch(),
                 footer="Counters reset at midnight UTC.",
             ),
+            reply_markup=nav_keyboard(),
         )
         logger.info("premium status user=%s premium=%s", user.id, book.is_premium(user.id))
 
@@ -195,6 +197,7 @@ def build(ctx):
                 table=Table(headers=("User", "Until", "State"), rows=table_rows),
                 footer="Expiry is checked on use, not on a timer.",
             ),
+            reply_markup=nav_keyboard(),
         )
 
     logger.info("premium plugin wired with %d tier(s), %d premium user(s)", len(TIERS), book.count())
