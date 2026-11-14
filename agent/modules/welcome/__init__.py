@@ -9,6 +9,7 @@ import re
 from pyrogram.enums import ChatMemberStatus, ChatType, ParseMode
 from pyrogram.handlers import ChatMemberUpdatedHandler
 
+from ...platform.greetings import Greetings
 from ...platform.manifest import PluginManifest
 from ...utils.rich import reply
 from ...ui.tables import kv_table, panel
@@ -78,6 +79,27 @@ async def _count(client, chat_id: int) -> int | None:
         return None
 
 
+async def read_greeting(ctx, chat_id, kind):
+    legacy = ctx.chats.greeting(chat_id, kind)
+    db = getattr(ctx, 'db', None)
+    return await Greetings(db).get(chat_id, kind, legacy) if db is not None else legacy
+
+
+async def save_greeting(ctx, chat_id, kind, text):
+    db = getattr(ctx, 'db', None)
+    if db is not None:
+        await Greetings(db).set(chat_id, kind, text)
+    else:
+        ctx.chats.set_greeting(chat_id, kind, text)
+
+
+async def toggle_greeting(ctx, chat_id, kind, enabled):
+    db = getattr(ctx, 'db', None)
+    if db is not None:
+        return await Greetings(db).toggle(chat_id, kind, enabled, ctx.chats.greeting(chat_id, kind))
+    return ctx.chats.toggle_greeting(chat_id, kind, enabled)
+
+
 def watch(ctx):
     """React to real join/leave events."""
 
@@ -104,7 +126,7 @@ def watch(ctx):
             if kind is None:
                 return
 
-            greeting = ctx.chats.greeting(chat.id, kind)
+            greeting = await read_greeting(ctx, chat.id, kind)
             if not greeting["enabled"] or not greeting["text"]:
                 return
             count = await _count(client, chat.id) if "{count}" in greeting["text"] else None
@@ -122,6 +144,8 @@ def extra_handlers(ctx):
 
 
 def build(ctx):
+    persistence = ('PostgreSQL confirmed the write.' if getattr(ctx, 'db', None) is not None
+                   else 'Standalone settings compatibility mode.')
     async def _guard(client, message) -> bool:
         from ..moderation import is_moderator
         user_id = getattr(getattr(message, 'from_user', None), 'id', None)
@@ -149,10 +173,10 @@ def build(ctx):
         if len(text) > 1500:
             await reply(message, 'Greeting text is limited to 1500 characters; nothing was changed.')
             return
-        ctx.chats.set_greeting(message.chat.id, "welcome", text)
+        await save_greeting(ctx, message.chat.id, "welcome", text)
         await reply(message, panel("Welcome updated", icon=ctx.theme.emoji("check"),
             lines=["Welcome message applied and enabled."],
-            note="Group-local settings use background persistence. /welcome shows the current layout."))
+            note=persistence + " /welcome shows the current layout."))
 
     async def welcome(client, message):
         if not await _guard(client, message):
@@ -162,14 +186,14 @@ def build(ctx):
             await reply(message, 'Usage: <code>/welcome [on|off]</code>. Set text with /setwelcome.')
             return
         if len(args) == 2:
-            state = ctx.chats.toggle_greeting(
+            state = await toggle_greeting(ctx,
                 message.chat.id, "welcome", args[1].lower() == "on"
             )
             await reply(message, 
-                f"Welcome messages are now {'on' if state['enabled'] else 'off'}."
+                f"Welcome messages are now {'on' if state['enabled'] else 'off'}. " + persistence
             )
             return
-        current = ctx.chats.greeting(message.chat.id, "welcome")
+        current = await read_greeting(ctx, message.chat.id, "welcome")
         await reply(message, panel('Welcome studio', icon=ctx.theme.emoji('sparkles'),
             table=kv_table([('Status', 'on' if current['enabled'] else 'off'), ('Limit', '1500 characters')]),
             lines=['<b>Template</b>\n<code>' + html.escape(current['text']) + '</code>' if current['text'] else 'No greeting text set.'],
@@ -184,17 +208,17 @@ def build(ctx):
             await reply(message, 'Usage: <code>/goodbye on|off</code> without extra arguments.')
             return
         if len(args) == 2 and args[1].lower() in ("on", "off"):
-            state = ctx.chats.toggle_greeting(
+            state = await toggle_greeting(ctx,
                 message.chat.id, "goodbye", args[1].lower() == "on"
             )
             await reply(message, 
-                f"Goodbye messages are now {'on' if state['enabled'] else 'off'}."
+                f"Goodbye messages are now {'on' if state['enabled'] else 'off'}. " + persistence
             )
             return
         parts = (getattr(message, "text", "") or "").split(maxsplit=1)
         text = parts[1].strip() if len(parts) == 2 else ""
         if not text:
-            current = ctx.chats.greeting(message.chat.id, "goodbye")
+            current = await read_greeting(ctx, message.chat.id, "goodbye")
             await reply(message, 
                 "<b>Goodbye message</b>\n"
                 f"Status: {'on' if current['enabled'] else 'off'}\n"
@@ -205,8 +229,20 @@ def build(ctx):
         if len(text) > 1500:
             await reply(message, 'Greeting text is limited to 1500 characters; nothing was changed.')
             return
-        ctx.chats.set_greeting(message.chat.id, "goodbye", text)
+        await save_greeting(ctx, message.chat.id, "goodbye", text)
         await reply(message, panel("Goodbye updated", icon=ctx.theme.emoji("check"),
-            lines=["Goodbye message applied and enabled."], note="Group-local settings use background persistence."))
+            lines=["Goodbye message applied and enabled."], note=persistence))
 
-    return MANIFEST, {"setwelcome": setwelcome, "welcome": welcome, "goodbye": goodbye}
+    def guarded(handler):
+        async def wrapped(client, message):
+            try:
+                return await handler(client, message)
+            except Exception as error:
+                logger.warning('greeting settings unconfirmed (%s)', type(error).__name__)
+                await reply(message, panel('Greeting settings unconfirmed', icon=ctx.theme.emoji('warn'),
+                    lines=['Could not confirm the settings operation. Check /welcome or /goodbye before retrying.'],
+                    note='No configured-database file or stale-settings fallback is used.'))
+        return wrapped
+
+    return MANIFEST, {name: guarded(handler) for name, handler in
+                      {"setwelcome": setwelcome, "welcome": welcome, "goodbye": goodbye}.items()}

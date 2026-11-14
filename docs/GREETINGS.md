@@ -25,3 +25,19 @@ confirmed SQL-write upgrade. A valid stored template can still expand beyond
 the send limit depending on member/chat names, and Telegram can refuse delivery.
 No failed-send retry, deduplication across replicas, automatic default greeting,
 24/7 guarantee or live Telegram validation was added.
+
+## Confirmed PostgreSQL settings (supersedes persistence notes above)
+
+Normal runtime now uses `agent_greetings`, keyed by tenant/group/kind. Text saves
+and toggles await SQL before success. Toggle upserts only enabled state for an
+existing row, so stale legacy text cannot overwrite a newer layout. A first
+toggle seeds text from existing PostgreSQL document settings; explicit saves
+replace text and enable that greeting. Display and membership events read the
+row each time. Missing dedicated rows retain legacy document behavior until
+first save/toggle; configured-database failures do not fall back to that data.
+
+Database outages suppress event delivery and return unconfirmed command panels.
+Timeouts can have ambiguous commit outcomes: inspect settings before retrying.
+Standalone db=None compatibility helpers remain for tests, not normal runtime.
+No local JSON migration or changes to production were performed. There is still
+no guaranteed send/retry, event deduplication or immutable settings history.

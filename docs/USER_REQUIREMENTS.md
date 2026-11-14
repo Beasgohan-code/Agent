@@ -222,3 +222,11 @@ without stale or file fallback. Existing PostgreSQL document values remain a
 read-only compatibility source only until a dedicated row is explicitly saved.
 Reset durably overrides old document values. Remaining greetings, filters,
 reports and audit settings still need their own durability upgrades.
+
+### Confirmed greeting settings
+
+Dedicated SQL welcome/goodbye rows now support awaited saves/toggles and fresh
+command/event reads. Atomic enabled-only updates preserve newer text against
+stale caller state; explicit off survives reconnect. Legacy PostgreSQL document
+layouts remain only until first explicit row creation, never as outage fallback.
+Filters/reports/audits still need their own confirmed-write upgrades.

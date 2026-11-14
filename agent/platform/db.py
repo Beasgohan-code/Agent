@@ -47,6 +47,7 @@ from .plugin_access import SCHEMA as PLUGIN_SCHEMA
 from .music_lists import SCHEMA as MUSIC_SCHEMA
 from .incidents import SCHEMA as INCIDENT_SCHEMA
 from .post_templates import SCHEMA as POST_TEMPLATE_SCHEMA
+from .greetings import SCHEMA as GREETING_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ SCHEMA: tuple[str, ...] = (
     """,
 )
 
-SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + POST_TEMPLATE_SCHEMA + (
+SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + POST_TEMPLATE_SCHEMA + GREETING_SCHEMA + (
     """CREATE TABLE IF NOT EXISTS agent_log_settings (
         tenant TEXT PRIMARY KEY,
         channel_id BIGINT CHECK (channel_id IS NULL OR channel_id < 0),
