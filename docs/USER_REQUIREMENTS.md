@@ -171,3 +171,15 @@ status and sanitized failure feedback. Fixed the `/storestats` tier helper crash
 No changes to live plugin activation or persistence semantics. A user-requested
 one-shot GET of the deployment's `/health` returned healthy at that instant;
 it is not proof of historical uptime or end-to-end feature readiness.
+
+### Linkshare command increment
+
+`/links [page]` now browses all of the caller's records without displaying bearer
+tokens, with current owner isolation and page checks. Creation arguments now
+reject malformed/oversized values rather than silently clamping expiry/uses.
+Personal-identity guards, safe genlink error categories, corrected filename
+escaping and clearer revocation/copy warnings were added. Existing link storage
+still background-flushes, and redemption caps are not newly made cross-process
+atomic. Current token construction can reuse the same token for same file/owner
+and expiry second; unique-grant token design remains a separate compatibility
+upgrade, not solved by this UI increment.

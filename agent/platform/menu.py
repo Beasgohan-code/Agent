@@ -159,7 +159,7 @@ DESCRIPTIONS: dict[str, str] = {
     # linkshare
     "genlink": "Create a signed link for a file",
     "share": "Link a file already in your vault",
-    "links": "List your links",
+    "links": "Browse your links: /links [page]",
     "revoke": "Revoke one of your links",
     # renamer
     "autorename": "Set the filename template",
