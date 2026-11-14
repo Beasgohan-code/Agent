@@ -370,3 +370,67 @@ def test_modlog_lists_recent_actions(ctx):
 
     assert "WARN" in message.replies[0]
     assert "noisy" in message.replies[0]
+
+
+# Recovery commands must respect group defaults, not a generic open policy.
+def test_unmute_uses_current_group_permissions(ctx):
+    from pyrogram.types import ChatPermissions
+    baseline = ChatPermissions(can_send_messages=True, can_send_photos=False,
+                               can_invite_users=False)
+    class Client(FakeClient):
+        async def get_chat(self, chat_id):
+            return SimpleNamespace(permissions=baseline)
+    client = Client()
+    run(handlers(ctx)['unmute'], client, FakeMessage('/unmute', reply=True))
+    assert client.calls[0][2] is baseline
+    assert client.calls[0][2].can_send_photos is False
+
+
+def test_unmute_refuses_when_group_permissions_are_unknown(ctx):
+    class Client(FakeClient):
+        async def get_chat(self, chat_id):
+            return SimpleNamespace(permissions=None)
+    client = Client()
+    message = FakeMessage('/unmute', reply=True)
+    run(handlers(ctx)['unmute'], client, message)
+    assert not client.calls
+    assert 'Cannot read' in message.replies[0]
+
+
+def test_unmute_protects_administrators(ctx):
+    client = FakeClient(target=ADMIN)
+    message = FakeMessage('/unmute', reply=True)
+    run(handlers(ctx)['unmute'], client, message)
+    assert not client.calls
+    assert 'administrator' in message.replies[0]
+
+
+@pytest.mark.parametrize('command', ['mute', 'unmute', 'kick', 'ban', 'unban'])
+def test_restriction_commands_report_api_permission_failures(ctx, command):
+    from pyrogram.errors import ChatAdminRequired
+    class Refusing(FakeClient):
+        async def restrict_chat_member(self, *args, **kwargs):
+            raise ChatAdminRequired()
+        async def ban_chat_member(self, *args, **kwargs):
+            raise ChatAdminRequired()
+        async def unban_chat_member(self, *args, **kwargs):
+            raise ChatAdminRequired()
+        async def get_chat(self, chat_id):
+            raise ChatAdminRequired()
+    message = FakeMessage('/' + command, reply=True)
+    run(handlers(ctx)[command], Refusing(), message)
+    assert 'ChatAdminRequired' in message.replies[-1]
+    assert 'not confirmed' in message.replies[-1]
+    assert not ctx.chats.history(-100500)
+
+
+def test_ban_reports_flood_wait_without_blocking_or_retry(ctx):
+    from pyrogram.errors import FloodWait
+    class Limited(FakeClient):
+        async def ban_chat_member(self, *args, **kwargs):
+            raise FloodWait(42)
+    client = Limited()
+    message = FakeMessage('/ban', reply=True)
+    run(handlers(ctx)['ban'], client, message)
+    assert '42 seconds' in message.replies[-1]
+    assert not client.calls

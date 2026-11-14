@@ -15,11 +15,13 @@ import html
 import logging
 import re
 import time
+from functools import wraps
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 
 from pyrogram import filters as tg_filters
 from pyrogram.enums import ChatMemberStatus, ChatType
+from pyrogram.errors import RPCError, FloodWait
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
@@ -58,14 +60,6 @@ MUTE_PERMISSIONS = ChatPermissions(
     can_send_media_messages=False,
     can_send_other_messages=False,
     can_add_web_page_previews=False,
-)
-
-#: Everything allowed again, used by ``/unmute``.
-UNMUTE_PERMISSIONS = ChatPermissions(
-    can_send_messages=True,
-    can_send_media_messages=True,
-    can_send_other_messages=True,
-    can_add_web_page_previews=True,
 )
 
 _ADMIN_STATUSES = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
@@ -488,7 +482,14 @@ def build(ctx):
             await reply(message, "Reply to a member to unmute them.")
             return
         target_id, mention = target
-        await client.restrict_chat_member(message.chat.id, target_id, UNMUTE_PERMISSIONS)
+        if await _protected(client, message, target_id):
+            return
+        chat = await client.get_chat(message.chat.id)
+        permissions = getattr(chat, "permissions", None)
+        if permissions is None:
+            await reply(message, "Cannot read the group's current permissions; no member permissions were changed.")
+            return
+        await client.restrict_chat_member(message.chat.id, target_id, permissions)
         ctx.chats.log(
             message.chat.id, "unmute", actor_id=message.from_user.id, target_id=target_id
         )
@@ -717,16 +718,28 @@ def build(ctx):
             )
         )
 
+    def report_api_failure(handler):
+        @wraps(handler)
+        async def guarded(client, message):
+            try:
+                return await handler(client, message)
+            except FloodWait as exc:
+                await reply(message, f"Telegram rate limit: try again in {int(exc.value)} seconds. The action was not confirmed.")
+            except RPCError as exc:
+                logger.warning("Moderation action %s failed: %s", handler.__name__, type(exc).__name__)
+                await reply(message, f"Telegram could not complete this action ({type(exc).__name__}). Check my administrator rights and the target member. The action was not confirmed.")
+        return guarded
+
     return MANIFEST, {
         "warn": warn,
         "warnings": warnings,
         "warns": warnings,
         "unwarn": unwarn,
-        "mute": mute,
-        "unmute": unmute,
-        "kick": kick,
-        "ban": ban,
-        "unban": unban,
+        "mute": report_api_failure(mute),
+        "unmute": report_api_failure(unmute),
+        "kick": report_api_failure(kick),
+        "ban": report_api_failure(ban),
+        "unban": report_api_failure(unban),
         "purge": purge,
         "note": note,
         "trust": trust,

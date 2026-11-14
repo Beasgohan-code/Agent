@@ -106,3 +106,17 @@ Typos in the mode are rejected. Failed unlocks preserve recovery state. Local
 concurrent requests are serialized per group; cross-process transactional group
 state and crash-atomic Telegram/database updates are not implemented by this fix.
 The existing document store's asynchronous persistence limitations still apply.
+
+### Recovery-command review
+
+`refs/Videl1/modules/commands/admin.py` restores Telegram's current group default
+permissions during unmute recovery. Agent now uses that behavior for `/unmute`
+instead of generic send/media permissions, refuses when defaults are unreadable,
+and protects administrator targets. This restores current group defaults, not
+any older per-member custom restriction; it is not a historical rollback.
+
+Mute, unmute, kick, ban and unban now report Telegram RPC failures to the caller.
+Flood waits are reported without blocking the update handler for a long sleep or
+automatically replaying a destructive action. Tests verify failed requests do
+not create success log entries. A kick remains two Telegram requests: if unban
+fails after ban succeeds, the operation is partial, not transactional.
