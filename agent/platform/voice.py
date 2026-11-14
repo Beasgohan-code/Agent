@@ -80,7 +80,9 @@ class VoiceEngine:
         api_id: int,
         api_hash: str,
         on_stream_end=None,
+        assistant_lease=None,
     ) -> None:
+        self._assistant_lease = assistant_lease
         self._lifecycle_lock = asyncio.Lock()
         self._session_string = session_string
         self._api_id = api_id
@@ -141,6 +143,8 @@ class VoiceEngine:
         identity = await client.get_me()
         if identity is None or getattr(identity, "bot", False):
             raise VoiceUnavailable("the assistant must be an authorized user account, not a bot")
+        if self._assistant_lease is not None:
+            await self._assistant_lease.acquire(getattr(identity, "id", None))
         call = PyTgCalls(client)
         self._call = call
 
@@ -160,6 +164,8 @@ class VoiceEngine:
         self._client = client
         self._call = call
         self._connected = True
+        if self._assistant_lease is not None:
+            self._assistant_lease.watch(self.shutdown)
         logger.info("Voice chat engine connected (telethon + py-tgcalls)")
 
     async def stop(self) -> None:
@@ -179,14 +185,22 @@ class VoiceEngine:
                 except Exception:  # shutdown continues after timeout/failure
                     logger.debug("py-tgcalls stop failed")
         finally:
-            if client is not None:
-                try:
-                    await asyncio.wait_for(client.disconnect(), timeout=STOP_TIMEOUT)
-                except Exception:
-                    logger.debug("telethon disconnect failed")
+            try:
+                if client is not None:
+                    try:
+                        await asyncio.wait_for(client.disconnect(), timeout=STOP_TIMEOUT)
+                    except Exception:
+                        logger.debug("telethon disconnect failed")
+            finally:
+                if self._assistant_lease is not None:
+                    try:
+                        await self._assistant_lease.release()
+                    except Exception:
+                        logger.warning("assistant ownership release failed")
 
     def _require(self):
-        if not self._connected or self._call is None:
+        if (not self._connected or self._call is None
+                or (self._assistant_lease is not None and not self._assistant_lease.held)):
             raise VoiceUnavailable("the voice engine is not running")
         return self._call
 
@@ -234,6 +248,6 @@ class VoiceEngine:
     async def shutdown(self) -> None:
         """Stop without letting a wedged library hold the process open."""
         try:
-            await asyncio.wait_for(self.stop(), timeout=START_TIMEOUT + 2 * STOP_TIMEOUT + 1)
+            await asyncio.wait_for(self.stop(), timeout=START_TIMEOUT + 2 * STOP_TIMEOUT + 16)
         except Exception:  # noqa: BLE001 - shutdown continues regardless
             logger.warning("voice engine did not stop cleanly")

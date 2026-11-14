@@ -111,3 +111,37 @@ def test_wedged_call_shutdown_still_disconnects_telegram(clients, monkeypatch):
         await worker.shutdown()
         client.disconnect.assert_awaited_once()
     asyncio.run(scenario())
+
+
+def test_voice_uses_verified_account_for_guard_and_releases_it(clients):
+    async def scenario():
+        client, _ = clients
+        client.get_me.return_value = SimpleNamespace(bot=False, id=456)
+        guard = SimpleNamespace(acquire=AsyncMock(), release=AsyncMock(),
+                                watch=lambda callback: None, held=True)
+        worker = voice.VoiceEngine(session_string='private-session', api_id=1,
+                                   api_hash='hash', assistant_lease=guard)
+        await worker.start()
+        guard.acquire.assert_awaited_once_with(456)
+        guard.held = False
+        with pytest.raises(voice.VoiceUnavailable):
+            worker._require()
+        await worker.shutdown()
+        guard.release.assert_awaited_once()
+    asyncio.run(scenario())
+
+
+def test_busy_account_never_starts_voice_call(clients):
+    async def scenario():
+        client, call = clients
+        client.get_me.return_value = SimpleNamespace(bot=False, id=456)
+        guard = SimpleNamespace(acquire=AsyncMock(side_effect=RuntimeError('busy')),
+                                release=AsyncMock(), held=False)
+        worker = voice.VoiceEngine(session_string='private-session', api_id=1,
+                                   api_hash='hash', assistant_lease=guard)
+        with pytest.raises(voice.VoiceUnavailable):
+            await worker.start()
+        call.start.assert_not_awaited()
+        client.disconnect.assert_awaited_once()
+        guard.release.assert_awaited_once()
+    asyncio.run(scenario())

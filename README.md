@@ -379,3 +379,15 @@ clone to a legacy profile removes its stored AI credentials.
 Every clone uses its recorded token sender as its own tenant Owner, including
 legacy records. This does not grant ownership of the parent bot. Telegram token
 validation confirms a bot identity, not the human BotFather account owner.
+
+### Music assistant isolation
+
+When PostgreSQL is configured, voice engines reserve their verified Telegram
+assistant account across bot tenants before starting calls. The same account
+cannot be acquired twice in that database, even with different session strings.
+Connection loss triggers shutdown and blocks new voice operations. Each active
+assistant uses one database pool connection. This does not fence external
+Telegram clients or deployments using another database, and failure detection
+is not instantaneous. Use a dedicated account. Database-free legacy deployments
+do not have distributed assistant exclusivity. Music clone onboarding remains
+gated; no session-string collection is exposed yet.

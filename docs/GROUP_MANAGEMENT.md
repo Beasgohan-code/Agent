@@ -419,3 +419,30 @@ Music template; no assistant credentials are being accepted prematurely.
 Validation: **741 tests passed** with disposable PostgreSQL; compileall, pyflakes
 and whitespace checks passed. Voice-library lifecycle tests use mock clients,
 not live Telegram calls. No real assistant account was connected.
+
+### Assistant account ownership
+
+Database-backed voice engines now use a session-level PostgreSQL advisory lock
+keyed by the **verified Telegram user ID**, not the session string or bot tenant.
+The main bot and future Music clones therefore contend for the same account
+across scopes. Different accounts remain independent. Lock acquisition occurs
+after user authorization/identity checks and before the call engine starts.
+PostgreSQL being configured but unavailable fails closed for this guard; no
+file fallback is used. A database-free legacy deployment retains its existing
+single-process behavior and does not gain distributed account exclusivity.
+
+Each active guarded engine retains one pool connection until shutdown. A
+five-second health check with a five-second query timeout triggers shutdown on
+connection loss; new voice operations also check ownership. This is a bounded
+best-effort stop, not instantaneous fencing of third-party Telegram software.
+Locks coordinate bots sharing this PostgreSQL database, not different databases
+or external Telegram clients. A database disconnect can release a lock before
+the old assistant finishes shutdown; no perfect split-brain guarantee is made.
+Use a dedicated assistant account. Logs and lock keys contain no session string.
+
+Validation: **747 passed** with disposable PostgreSQL, including a real three-way
+cross-tenant account-lock race, independent-account concurrency and release/reuse.
+Voice tests cover refusal before call startup, lost ownership and shutdown
+without monitor self-cancellation. No live assistant account was connected.
+The private Music template still needs encrypted session onboarding and a
+verified consent/identity workflow before it can be enabled.

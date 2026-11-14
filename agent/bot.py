@@ -26,6 +26,7 @@ from .platform.audience import UserIndex
 from .platform.db import Database
 from .platform.events import EventLog
 from .platform.instance import InstanceLease
+from .platform.assistant import AssistantLease
 from .platform.logbook import LogBook, subscribe
 from .platform.menu import publish as publish_menu, reset_menu_button
 from .platform.premium import PremiumBook
@@ -102,6 +103,7 @@ class AgentBot:
                 session_string=settings.session_string or "",
                 api_id=settings.api_id,
                 api_hash=settings.api_hash,
+                assistant_lease=AssistantLease(db) if db is not None else None,
             )
         else:
             self.voice = None
