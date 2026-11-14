@@ -16,7 +16,7 @@ from . import __version__
 from .config import Settings
 from .handlers import CallbackHandlers, CommandHandlers
 from .health import HealthMonitor
-from .modules import MODULES
+from .modules import not_selected, select, unknown
 from .platform.context import ModuleContext
 from .platform.manifest import PluginRegistry
 from .health_server import start_health_server, stop_health_server
@@ -180,7 +180,13 @@ class AgentBot:
         self.modules.logbook = self.logbook
         self.modules.client = client
 
-        for module in MODULES:
+        self._modules = select(self.settings.plugins)
+        for slug in unknown(self.settings.plugins):
+            logger.warning("PLUGINS names %r, which is not a module here; ignoring it", slug)
+        skipped = not_selected(self.settings.plugins)
+        if skipped:
+            logger.info("Plugins not selected (compile in, register nothing): %s", ", ".join(skipped))
+        for module in self._modules:
             manifest, handlers = module.build(self.modules)
             self.registry.register(manifest, handlers)
 
@@ -206,7 +212,7 @@ class AgentBot:
         # filters, joins/leaves). Each gets its own handler group: pyrogram runs
         # at most one handler per group per update, so sharing a group would let
         # one watcher swallow another's updates.
-        for module in MODULES:
+        for module in self._modules:
             factory = getattr(module, "extra_handlers", None)
             slug = module.MANIFEST.slug
             if factory is None or not self.registry.is_enabled(slug):

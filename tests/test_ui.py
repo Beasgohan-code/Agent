@@ -49,7 +49,23 @@ def test_welcome_screen_greets_the_user_and_shows_the_menu():
 
     assert "Ada Lovelace" in screen.rich_text
     assert "Agent" in screen.rich_text
-    assert callbacks(screen.keyboard) == [CB_HELP, CB_INFO]
+    assert "Try" in screen.rich_text                 # three commands to start from
+    # The menu buttons plus the source link; the callbacks are the first two.
+    assert callbacks(screen.keyboard)[:2] == [CB_HELP, CB_INFO]
+    assert None in callbacks(screen.keyboard)        # the url button has no callback
+
+
+def test_the_start_screen_fits_a_caption():
+    """It is sent as the caption of the /start picture, capped at 1024."""
+    from agent.utils.sender import _visible_text, to_safe_html
+
+    active = {"start", "help", "ping", "fsave", "leech"}
+    screen = welcome_screen(make_user(), Theme(), active=active)
+    text = to_safe_html(screen.rich_text)
+
+    assert len(_visible_text(text)) < 1024
+    assert "Commands" in text             # counted from the live registry
+    assert "5" in text
 
 
 def test_welcome_screen_without_a_first_name_still_greets():

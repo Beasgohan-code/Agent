@@ -24,6 +24,26 @@ class ConfigError(RuntimeError):
     """Raised when the environment does not describe a runnable bot."""
 
 
+#: Which plugins register at startup. ``("*",)`` means every module compiled in,
+#: which is the default: the plugins are the product, not a build matrix. Set
+#: ``PLUGINS=leech,filestore`` to ship a narrower bot — an unselected plugin
+#: registers nothing at all, it does not half-work.
+DEFAULT_PLUGINS: tuple[str, ...] = ("*",)
+
+
+def _plugins(raw: str | None) -> tuple[str, ...]:
+    """``PLUGINS=a,b`` narrows the build; ``*`` registers everything compiled."""
+    text = (raw or "").strip()
+    if not text:
+        return DEFAULT_PLUGINS
+    if text == "*":
+        return ("*",)
+    names = tuple(
+        dict.fromkeys(part.strip().lower() for part in text.split(",") if part.strip())
+    )
+    return names or DEFAULT_PLUGINS
+
+
 @dataclass(frozen=True)
 class Settings:
     """Validated runtime settings."""
@@ -52,6 +72,8 @@ class Settings:
     #: START_IMAGE=0 removes it. Nothing depends on it: an unreachable image
     #: falls back to the plain text screen.
     start_image: str | None = None
+    #: Which plugins register at startup (PLUGINS=..., or * for every module).
+    plugins: tuple[str, ...] = DEFAULT_PLUGINS
     health_port: int | None = None
     watchdog_interval: float = 30.0
     watchdog_timeout: float = 20.0
@@ -117,6 +139,7 @@ class Settings:
             not in ("0", "false", "no", "off"),
             start_image=_optional_image(source.get("START_IMAGE")),
             session_string=(source.get("SESSION_STRING") or "").strip() or None,
+            plugins=_plugins(source.get("PLUGINS")),
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),

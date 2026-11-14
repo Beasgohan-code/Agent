@@ -60,7 +60,12 @@ def build(ctx):
 
     async def menu(_client, message):
         user = getattr(message, "from_user", None)
-        await ctx.sender.send(message.chat.id, welcome_screen(user, ctx.theme))
+        active = (
+            set(ctx.registry.active_commands()) if ctx.registry is not None else None
+        )
+        await ctx.sender.send(
+            message.chat.id, welcome_screen(user, ctx.theme, active=active)
+        )
 
     async def about(_client, message):
         modules, commands = _registry_summary()

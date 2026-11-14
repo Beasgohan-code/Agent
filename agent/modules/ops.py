@@ -18,8 +18,10 @@ import tempfile
 import time
 from pathlib import Path
 
-from pyrogram.enums import ChatMemberStatus, ChatType
+from pyrogram.enums import ButtonStyle, ChatMemberStatus, ChatType
 from pyrogram.handlers import ChatMemberUpdatedHandler
+from pyrogram.types import InlineKeyboardButton as Button
+from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
 from ..platform.logbook import tag_for
 from ..platform.manifest import PluginManifest
@@ -28,6 +30,9 @@ from ..ui.tables import Table, kv_table, panel
 from ..utils.rich import reply
 
 logger = logging.getLogger(__name__)
+
+#: Callback prefix owned by this module, registered through ctx.actions.
+PLUGIN_PREFIX = "plugin"
 
 MANIFEST = PluginManifest(
     slug="ops",
@@ -236,56 +241,108 @@ def build(ctx):
             return description.split(marker, 1)[1].rstrip(".")
         return "registers no commands in this deployment"
 
+    def _state_text(row: dict) -> str:
+        if not row["enabled"]:
+            return "off"
+        if not row["commands"]:
+            return "idle"
+        return "on (locked)" if row["protected"] else "on"
+
+    def _plugin_panel() -> tuple[str, Keyboard]:
+        """The runtime panel plus one button per plugin.
+
+        Rendered in the classic form on purpose: a button press edits this
+        message in place, and Telegram cannot edit a rich message.
+        """
+        state = runtime.state()
+        idle = [row for row in state if row["enabled"] and not row["commands"]]
+        rows = tuple(
+            (row["slug"], _state_text(row), str(len(row["commands"])))
+            for row in state
+        )
+        enabled = sum(1 for row in state if row["enabled"])
+        body = panel(
+            "Plugin runtime",
+            icon=ctx.theme.emoji("gear"),
+            subtitle=(
+                f"<b>{enabled}</b> of <b>{len(state)}</b> plugins enabled. "
+                "A disabled plugin registers nothing at all."
+            ),
+            table=Table(headers=("Plugin", "State", "Cmds"), rows=rows, aligns=("left", "left", "right")),
+            lines=(["Idle (enabled, no commands):"] + [f"<code>{row['slug']}</code> — {_idle_reason(row)}" for row in idle] if idle else []),
+            note=(
+                "Tap a plugin to switch it on or off, or use "
+                "<code>/plugin &lt;slug&gt; on|off</code>. <code>ops</code> is locked "
+                "so the bot cannot lose its own controls."
+            ),
+            footer="Counts come from the live registry, not a stored copy.",
+        )
+        buttons: list[list[Button]] = []
+        row_buttons: list[Button] = []
+        for entry in state:
+            locked = entry["protected"]
+            row_buttons.append(
+                Button(
+                    text=f"{'🔒' if locked else ('✅' if entry['enabled'] else '⛔')} {entry['slug']}",
+                    callback_data=f"{PLUGIN_PREFIX}:{entry['slug']}",
+                    style=(ButtonStyle.SUCCESS if entry["enabled"] else ButtonStyle.DEFAULT),
+                    disabled=locked,
+                )
+            )
+            if len(row_buttons) == 2:
+                buttons.append(row_buttons)
+                row_buttons = []
+        if row_buttons:
+            buttons.append(row_buttons)
+        return str(body.classic), Keyboard(buttons)
+
+    async def on_plugin_press(client, query, rest: str) -> None:
+        """A button pressed on the runtime panel."""
+        owner_id = ctx.settings.owner_id
+        presser = getattr(getattr(query, "from_user", None), "id", None)
+        if owner_id is None or presser is None or int(presser) != int(owner_id):
+            await query.answer("Only the owner can switch plugins.", show_alert=True)
+            return
+        slug = (rest or "").strip().lower()
+        state = {row["slug"]: row for row in runtime.state()}
+        entry = state.get(slug)
+        if entry is None:
+            await query.answer("No such plugin.", show_alert=True)
+            return
+        if entry["protected"]:
+            await query.answer(f"{slug} is locked: the bot needs its own controls.", show_alert=True)
+            return
+        if entry["enabled"]:
+            try:
+                runtime.disable(slug)
+                message = f"{slug} is off — its handlers are detached."
+            except ValueError as exc:
+                await query.answer(str(exc), show_alert=True)
+                return
+        else:
+            runtime.enable(slug)
+            message = f"{slug} is on."
+        if events is not None:
+            events.emit("plugin", slug=slug, action="off" if entry["enabled"] else "on", by=presser)
+        logger.info("plugin %s toggled by %s from the panel", slug, presser)
+        text, keyboard = _plugin_panel()
+        try:
+            await query.message.edit_text(text=text, reply_markup=keyboard)
+        except Exception:  # noqa: BLE001 - an old message is not a failed toggle
+            chat_id = getattr(getattr(query.message, "chat", None), "id", None)
+            if chat_id is not None:
+                await client.send_message(chat_id, text, reply_markup=keyboard)
+        await query.answer(message)
+
     async def plugins(_client, message):
         if not await _owner_gate(message):
             return
         if runtime is None:  # pragma: no cover - always wired
             await reply(message, "Plugin runtime is unavailable.")
             return
-        state = runtime.state()
-        # Three columns only: a fourth would squeeze every cell to an ellipsis on
-        # a phone. The display name lives in the note below, the slug (the thing
-        # ``/plugin`` actually needs) keeps the room.
-        # "on" with no commands would be a half-truth: music is enabled and
-        # registered nothing because the deployment has no session string. The
-        # state column says "idle" and the panel explains why underneath.
-        idle = [
-            row for row in state if row["enabled"] and not row["commands"]
-        ]
-        rows = tuple(
-            (
-                row["slug"],
-                ("off" if not row["enabled"] else ("idle" if not row["commands"] else "on"))
-                + (" (locked)" if row["protected"] else ""),
-                str(len(row["commands"])),
-            )
-            for row in state
-        )
-        enabled = sum(1 for row in state if row["enabled"])
-        idle_lines = [f"<code>{row['slug']}</code> — {_idle_reason(row)}" for row in idle]
-        await reply(message, 
-            panel(
-                "Plugin runtime",
-                icon=ctx.theme.emoji("gear"),
-                subtitle=(
-                    f"<b>{enabled}</b> of <b>{len(state)}</b> plugins enabled. "
-                    "A disabled plugin registers nothing at all."
-                ),
-                table=Table(
-                    headers=("Plugin", "State", "Cmds"),
-                    rows=rows,
-                    aligns=("left", "left", "right"),
-                ),
-                lines=(
-                    ["Idle (enabled, no commands):"] + idle_lines if idle_lines else []
-                ),
-                note=(
-                    "Toggle with <code>/plugin &lt;slug&gt; on|off</code>. "
-                    "<code>ops</code> is locked so the bot cannot lose its own controls."
-                ),
-                footer="Counts come from the live registry, not a stored copy.",
-            )
-        )
+        text, keyboard = _plugin_panel()
+        await message.reply(text, reply_markup=keyboard)
+        logger.info("plugin panel opened by %s", getattr(message.from_user, "id", None))
 
     async def plugin(_client, message):
         if not await _owner_gate(message):
@@ -446,6 +503,12 @@ def build(ctx):
         lines.append("")
         lines.append("Set one with <code>/setlog &lt;channel id&gt;</code>.")
         await reply(message, "\n".join(lines))
+
+    # The panel's buttons are module-owned: the UI layer never learns what a
+    # plugin slug is. A second build on the same context re-uses the route.
+    router = getattr(ctx, "actions", None)
+    if router is not None and not router.handles(f"{PLUGIN_PREFIX}:x"):
+        router.register(PLUGIN_PREFIX, on_plugin_press)
 
     return MANIFEST, {
         "restart": restart,

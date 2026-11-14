@@ -69,38 +69,59 @@ def _username(user) -> str:
 
 
 def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+    """The first thing a user sees — and the caption of the /start picture.
+
+    It has to survive the 1024-character caption cap and still say what the bot
+    is, so it is three parts: a greeting, a small table of facts, and three
+    commands worth trying. Nothing here is decoration that costs a line.
+    """
     name = display_name(user)
     greeting = (
-        f"{theme.emoji('wave')} Hello, <b>{rich_esc(name)}</b>!" if name else f"{theme.emoji('wave')} Hello!"
+        f"{theme.emoji('wave')} Hello, <b>{rich_esc(name)}</b>!"
+        if name
+        else f"{theme.emoji('wave')} Hello!"
     )
 
     # No emoji inside a table: their rendered width is the client's choice, so a
     # glyph in a cell is what makes a monospace grid drift. Glyphs stay in the
     # prose around it.
-    table = kv_table(
-        [
-            ("Status", "online"),
-            ("Version", __version__),
-            ("Privacy", "no message text stored"),
-        ]
-    )
+    rows = [
+        ("Version", __version__),
+        ("Status", "online"),
+        ("Privacy", "no message text stored"),
+    ]
+    if active:
+        rows.insert(1, ("Commands", str(len(active))))
+    table = kv_table(rows)
+
     text = (
         rich_heading("Agent", 2)
         + "\n"
         + greeting
         + "\n"
         + rich_note(
-            f"{theme.emoji('sparkles')} Your always-on Telegram assistant. "
-            "Use the buttons below to look around."
+            f"{theme.emoji('sparkles')} One bot for files, moderation and music — "
+            "one job queue, one store, one link signer underneath."
         )
         + "\n"
         # Classic grid on purpose: this screen is *edited* when the user taps a
         # button, and Telegram cannot edit a rich message.
         + table.classic_block()
         + "\n"
+        + f"<b>{theme.emoji('bolt')} Try</b>"
+        + "\n"
+        + rich_list(
+            [
+                "<code>/help</code> — every command, one screen per section",
+                "<code>/fsave</code> — reply to a file to keep it in your vault",
+                "<code>/leech</code> — fetch a link and get the file back",
+            ]
+        )
+        + "\n"
         + rich_hr()
         + rich_footer(
-            f"{theme.emoji('bot')} Agent · wzgram + richgram · credits in /about"
+            f"{theme.emoji('bot')} wzgram + richgram · "
+            "everything credited in <code>/about</code>"
         )
     )
     return Screen(text, keyboards.home_keyboard())
@@ -309,7 +330,7 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
         + rich_hr()
         + rich_footer(f"{theme.emoji('id')} Nothing is stored — details are read live.")
     )
-    return Screen(text, keyboards.info_keyboard())
+    return Screen(text, keyboards.info_keyboard(user_id if isinstance(user_id, int) else None))
 
 
 # Callback data -> screen builder, used by the callback router.

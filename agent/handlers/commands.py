@@ -41,7 +41,10 @@ class CommandHandlers:
                 uid=user_id,
                 username=getattr(message.from_user, "username", None),
             )
-        await self._greet(client, message, welcome_screen(message.from_user, self._theme))
+        active = set(self._active_commands()) if self._active_commands is not None else None
+        await self._greet(
+            client, message, welcome_screen(message.from_user, self._theme, active=active)
+        )
 
     async def _greet(self, client, message, screen) -> None:
         """``/start`` gets the picture; everything else gets plain text."""

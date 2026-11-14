@@ -88,6 +88,19 @@ allowances and nothing else:
 They are enforced in `filestore` and `leech` before anything is written or
 fetched, the counters reset at midnight UTC, and the state is `data/premium.json`.
 
+## Plugin runtime, by button
+
+`/plugins` is a panel you can press: one styled button per plugin (green when it
+is on, grey when it is off, disabled for `ops`), and pressing one detaches or
+re-attaches that plugin's handlers in place, then redraws the panel. `/plugin
+<slug> on|off` still exists for scripts. `PLUGINS=leech,filestore` narrows a
+build — an unselected plugin registers nothing at all, it does not half-work,
+and `PLUGINS=*` (the default) registers everything compiled in.
+
+Buttons use the Bot API 10.3 `style` field (primary / success / danger) and the
+info screen carries a `copy_text` button, so the user id can be pasted without
+selecting text on a phone.
+
 ## Layout
 
 Every ported plugin is a package, not a single file: `MANIFEST` and the handlers
@@ -392,6 +405,19 @@ that cannot do its job is worse than a missing one.
   `degraded` when that happens.
 * Logs carry the token prefix and a mask, never the secret, and never the
   `api_id`.
+
+## Plugin runtime, by button
+
+`/plugins` is a panel you can press: one styled button per plugin (green when it
+is on, grey when it is off, disabled for `ops`), and pressing one detaches or
+re-attaches that plugin's handlers in place, then redraws the panel. `/plugin
+<slug> on|off` still exists for scripts. `PLUGINS=leech,filestore` narrows a
+build — an unselected plugin registers nothing at all, it does not half-work,
+and `PLUGINS=*` (the default) registers everything compiled in.
+
+Buttons use the Bot API 10.3 `style` field (primary / success / danger) and the
+info screen carries a `copy_text` button, so the user id can be pasted without
+selecting text on a phone.
 
 ## Layout
 
