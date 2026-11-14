@@ -1,18 +1,11 @@
 """Profiles — how much of this bot a clone actually runs.
 
-A clone has always been "this bot, on another token". That is the right default,
-but it is not the only useful shape: most people who drop a token in want a file
-bot, and handing them moderation, music and the deployment's own controls for no
-reason is how one pasted token becomes a liability.
+Profiles select optional features, not whether a bot can protect groups.
+The shell and mandatory group-management core are added by module selection.
 
-Three profiles, no new commands:
-
-* ``standard`` — the deployment's own ``PLUGINS`` set. A clone behaves like this
-  bot, which is what it did before profiles existed.
-* ``files`` — the file machinery only: store, leech, links, rename, post. No
-  moderation, no music, no clone-of-a-clone, no deployment controls.
-* ``tiny`` — the shell alone (``core`` + ``ops``): ``/start``, ``/help``,
-  ``/menu``, and nothing that touches storage or moderation.
+* ``standard`` — deployment-selected optional features.
+* ``files`` — file store, leech, links, rename and post.
+* ``tiny`` — no optional features.
 
 ``ops`` and ``clone`` are stripped from every restricted profile on purpose: a
 clone whose owner is not this deployment's owner must not reach ``/plugin``,
@@ -81,8 +74,8 @@ def describe(profile: str | None) -> str:
     """What the profile means, in one sentence."""
     return {
         STANDARD: "Runs the same plugins as this bot.",
-        FILES: "File store, leech, links, rename and post only.",
-        TINY: "Just /start, /help and /menu — nothing that touches files.",
+        FILES: "Group core plus file store, leech, links, rename and post.",
+        TINY: "Group core and navigation, without optional tools.",
     }[clean(profile)]
 
 

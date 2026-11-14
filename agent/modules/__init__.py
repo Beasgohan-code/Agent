@@ -1,19 +1,15 @@
 """Agent — feature modules.
 
-Every module is compiled in; which ones *register* is the deployment's choice
-(``PLUGINS``, default: :data:`agent.config.DEFAULT_PLUGINS`). That distinction is
-the whole lifecycle rule of this bot: a module that is not selected registers
-nothing — no commands, no watchers, no menu entries — so it cannot half-work.
-
-:data:`SHELL` is the exception, and it is not a plugin: ``ops`` owns
-``/plugins``, ``/plugin`` and ``/restart``, and ``core`` owns ``/menu``,
-``/about``, ``/status``, ``/cancel`` and ``/owner``. A build that dropped those
-would accept files and offer no way to look at, cancel or repair itself, so
-they register whatever ``PLUGINS`` says.
+Agent is a group-management bot. The shell and GROUP_CORE register regardless
+of PLUGINS; deployment selection controls optional modules only. Protection rules
+(such as verification) can still be configured per group: mandatory availability
+is not the same thing as automatically enforcing every rule.
 
 Order matters only for collisions: the registry rejects any command declared
 twice, so adding a module can never silently shadow another.
 """
+
+from ..platform.policy import GROUP_CORE
 
 from . import (
     clone,
@@ -89,7 +85,7 @@ def select(slugs) -> tuple:
     """The modules to register for *slugs*, in :data:`ORDER`.
 
         ``("*",)`` selects everything compiled in. Otherwise *slugs* plus
-        :data:`SHELL`. Unknown slugs are returned in :func:`unknown` rather than
+        :data:`SHELL` and the mandatory group-management core. Unknown slugs are returned in :func:`unknown` rather than
         raising, so a typo in ``PLUGINS`` costs one plugin and a log line, not the
         whole bot.
         
@@ -97,7 +93,7 @@ def select(slugs) -> tuple:
     requested = tuple(slugs or ())
     if requested == ("*",):
         return tuple(ALL_MODULES[name] for name in ORDER)
-    wanted = set(requested) | set(SHELL)
+    wanted = set(requested) | set(SHELL) | set(GROUP_CORE)
     return tuple(ALL_MODULES[name] for name in ORDER if name in wanted)
 
 

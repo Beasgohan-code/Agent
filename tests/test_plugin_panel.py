@@ -8,6 +8,7 @@ from pyrogram.enums import ButtonStyle
 from agent.bot import AgentBot
 from agent.config import Settings
 from agent.modules import ops, select, not_selected, unknown
+from agent.platform.policy import GROUP_CORE
 
 OWNER = 11
 ENV = {
@@ -81,10 +82,9 @@ def test_the_default_build_ships_nine_plugins_plus_the_shell(tmp_path):
         "music",
         "postmaker",
         "renamer",
-    }
-    # The eight the deployment left out are absent, not idle or hidden.
-    assert {"encoder", "filters", "group", "premium", "reports", "security",
-            "utilities", "welcome"} <= set(not_selected(bot.settings.plugins))
+    } | set(GROUP_CORE)
+    # Optional modules left out by the deployment register nothing.
+    assert {"encoder", "premium", "utilities"} <= set(not_selected(bot.settings.plugins))
     assert "encode" not in set(bot.registry.active_commands())
     assert {"fsave", "leech", "ban", "plugins"} <= set(bot.registry.active_commands())
 
@@ -95,7 +95,7 @@ def test_the_shell_survives_even_when_plugins_names_nothing_else(tmp_path):
     commands = set(bot.registry.active_commands())
 
     # A build with one feature still has a front door and a way to repair it.
-    assert registered == {"ops", "core", "leech"}
+    assert registered == {"ops", "core", "leech"} | set(GROUP_CORE)
     assert {"menu", "about", "status", "cancel", "plugins", "plugin"} <= commands
 
 
@@ -103,16 +103,16 @@ def test_plugins_env_narrows_the_build_and_unselected_plugins_vanish(tmp_path):
     bot = make_bot(tmp_path, PLUGINS="ops,leech,filestore")
     registered = {m.slug for m in bot.registry.manifests()}
 
-    assert registered == {"ops", "core", "leech", "filestore"}
-    assert "moderation" in not_selected(bot.settings.plugins)
+    assert registered == {"ops", "core", "leech", "filestore"} | set(GROUP_CORE)
+    assert "moderation" not in not_selected(bot.settings.plugins)
     # A plugin that is not selected has no commands at all, not hidden ones.
-    assert "ban" not in set(bot.registry.active_commands())
+    assert "ban" in set(bot.registry.active_commands())
     assert "leech" in set(bot.registry.active_commands())
 
 
 def test_an_unknown_slug_costs_one_plugin_not_the_bot():
     assert unknown(("ops", "nope")) == ("nope",)
-    assert [m.MANIFEST.slug for m in select(("ops", "nope"))] == ["ops", "core"]
+    assert {m.MANIFEST.slug for m in select(("ops", "nope"))} == {"ops", "core", *GROUP_CORE}
 
 
 def test_star_selects_everything_compiled():
@@ -142,19 +142,19 @@ def test_the_panel_has_one_styled_button_per_plugin(tmp_path):
 def test_pressing_a_button_switches_the_plugin_and_redraws(tmp_path):
     bot = make_bot(tmp_path)
     ops.build(bot.modules)
-    query = FakeQuery("plugin:moderation")
+    query = FakeQuery("plugin:filestore")
 
     asyncio.run(bot.actions.dispatch(None, query))
 
-    assert bot.registry.is_enabled("moderation") is False
-    assert "ban" not in set(bot.registry.active_commands())
+    assert bot.registry.is_enabled("filestore") is False
+    assert "fsave" not in set(bot.registry.active_commands())
     assert "off" in query.edits[0][0]
-    assert "moderation is off" in query.answers[0][0]
+    assert "filestore is off" in query.answers[0][0]
     # The redraw keeps working buttons, including the one just pressed.
-    assert any(b.callback_data == "plugin:moderation" for b in buttons(query.edits[0][1]))
+    assert any(b.callback_data == "plugin:filestore" for b in buttons(query.edits[0][1]))
 
-    asyncio.run(bot.actions.dispatch(None, FakeQuery("plugin:moderation")))
-    assert bot.registry.is_enabled("moderation") is True
+    asyncio.run(bot.actions.dispatch(None, FakeQuery("plugin:filestore")))
+    assert bot.registry.is_enabled("filestore") is True
 
 
 def test_the_locked_plugin_cannot_be_pressed_off(tmp_path):
@@ -183,9 +183,9 @@ def test_a_stranger_cannot_toggle_plugins(tmp_path):
 def test_the_panel_still_works_through_the_text_command(tmp_path):
     bot = make_bot(tmp_path)
     _, commands = ops.build(bot.modules)
-    message = FakeMessage("/plugin moderation off")
+    message = FakeMessage("/plugin filestore off")
 
     asyncio.run(commands["plugin"](None, message))
 
-    assert bot.registry.is_enabled("moderation") is False
+    assert bot.registry.is_enabled("filestore") is False
     assert "now disabled" in message.replies[0]

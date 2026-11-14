@@ -1,9 +1,9 @@
 """Agent — per-chat state shared by modules.
 
 Warnings, member notes, trust flags, anti-spam policy and the moderation audit
-trail live here. They are plain JSON on disk, not a database: the surface this
-bot actually needs is small enough that a schema and a migration tool would be
-overhead, and the file is easy to inspect and to back up.
+trail live here. PostgreSQL persists a bot-scoped JSONB document when connected,
+with local JSON as the standalone fallback. Group ids partition that document;
+this is not a relational member/case database or a safe cross-process slot counter.
 
 Keys are Telegram ids stringified, because JSON object keys must be strings.
 """
@@ -42,7 +42,7 @@ DEFAULT_ANTISPAM: dict[str, Any] = {
 
 
 class ChatStore:
-    """JSON-backed state for every chat the bot moderates."""
+    """Document-backed, group-keyed state for the chats this bot moderates."""
 
     def __init__(
         self,

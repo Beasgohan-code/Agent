@@ -1,16 +1,18 @@
 # Agent
 
-A Telegram bot that does three jobs and does them with the same machinery: it
-keeps files, it runs a group, and it plays music into a voice chat. One job
-queue, one file store, one link signer and one settings panel sit underneath, so
-a file saved by one command can be fetched, renamed, linked and re-sent by
-another.
+A professional Telegram group-management bot with mandatory moderation and
+safety systems. Music, FileStore, Encoder and other tools are optional modules.
 
-Sixty-nine commands register in a default deployment — sixty-one without a
-voice session, because the music plugin refuses to register commands it cannot
-run. Everything is a plugin, so
-a leaner build is a one-line change (`PLUGINS=…`), and every panel you see is
-built from the live state of this process rather than a stored copy of it.
+The shell plus moderation, group settings, filters, onboarding, reports and
+verification always register, even with a narrow `PLUGINS` setting. They cannot
+be disabled through the plugin panel or restored as disabled from old state.
+Individual rules remain configurable by group; verification is off by default.
+
+**In progress:** Owner-approved optional catalog, three atomic plugin slots per
+group, group-scoped plugin teardown and an integrated Group Control Center.
+The existing plugin panel still controls optional modules deployment-wide;
+it is not yet the per-group activation UI. The 210-feature brief is a target,
+not a claim of implemented coverage. See [the architecture audit](docs/GROUP_MANAGEMENT.md).
 
 ## Environment
 
@@ -19,7 +21,7 @@ built from the live state of this process rather than a stored copy of it.
 | `BOT_TOKEN` | yes | From [@BotFather](https://t.me/BotFather). |
 | `API_ID` / `API_HASH` | yes | From [my.telegram.org](https://my.telegram.org). |
 | `OWNER_ID` | recommended | Unlocks `/owner`, `/plugins`, `/restart`, `/clonestats`. |
-| `PLUGINS` | no | Which plugins register. Default is the nine below; `*` is everything. |
+| `PLUGINS` | no | Which optional modules register; mandatory group core is always included. `*` includes all modules. |
 | `SESSION_STRING` | for music | A user session is the only thing that can join a group call. |
 | `LOG_CHANNEL` | no | Where the bot posts its event log; without it, the owner's DM. |
 | `DATA_DIR` | no | Where local state (vault files, and JSON stores without a database) lives. Default `data`. |
@@ -74,20 +76,16 @@ pasted without selecting text on a phone.
 ## Plugins
 
 A plugin is a folder: the manifest and its handlers in `__init__.py`, helpers
-beside it. Every module is compiled in; which ones *register* is the deployment's
-choice.
+beside it. The mandatory modules are `ops`, `core`, `moderation`, `group`,
+`filters`, `welcome`, `reports` and `security`. They always register.
 
-The default build registers nine: `ops` and `core` (the shell — controls and
-front door, always on and never switchable off), plus `filestore`, `leech`,
-`linkshare`, `moderation`, `music`, `postmaker`, `renamer` and `clone`.
-
-The others — `encoder`, `filters`, `group`, `premium`, `reports`, `security`,
-`utilities`, `welcome` — register nothing until a deployment names them:
-`PLUGINS=encoder,security`. An unselected plugin has no commands, no watchers and
-no menu entries, so it cannot half-work. `PLUGINS=*` turns everything on.
+Default optional modules are `filestore`, `leech`, `linkshare`, `music`,
+`postmaker`, `renamer` and `clone`. `encoder`, `premium` and `utilities` are
+available through `PLUGINS`. An unselected optional module has no commands or
+watchers. `PLUGINS=*` includes everything compiled in.
 
 `/plugins` is a panel you can press: one button per plugin, green when it is on,
-grey when it is off, disabled for the shell. Pressing one detaches or re-attaches
+grey when it is off, locked for the shell and mandatory group core. Pressing one detaches or re-attaches
 that plugin's handlers in place and redraws the panel; `/plugin <slug> on|off`
 does the same from a script. A plugin that is enabled but registered nothing says
 why — `music` without `SESSION_STRING`, `encoder` without ffmpeg.
@@ -102,7 +100,7 @@ and it is deliberately not a one-click install.
    and *parsed*, never imported.
 2. **Inspect** — `exec`, `eval`, `compile`, `__import__`, `subprocess`, `socket`,
    `ctypes`, `multiprocessing` and `pty` are **hard blockers**: the install is
-   refused. Network imports, file writes and unknown permissions are *warnings*,
+   refused. Network imports and unknown permissions are *warnings*,
    shown as `Needs review`.
 3. **Approve** — `Approvals(DATA_DIR, db=...).approve(inspection)`, recorded
    against the digest in PostgreSQL.

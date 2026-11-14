@@ -12,12 +12,12 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
+from .policy import PROTECTED_PLUGINS
+
 logger = logging.getLogger(__name__)
 
-#: The shell: ``ops`` owns /plugins, /plugin and /restart, ``core`` owns /menu,
-#: /about, /status, /cancel and /owner. Neither may disable itself, or the bot
-#: loses the only door back in.
-PROTECTED = ("ops", "core")
+#: The shell and group-management core cannot be switched off.
+PROTECTED = PROTECTED_PLUGINS
 
 
 class PluginRuntime:
@@ -34,7 +34,7 @@ class PluginRuntime:
         self.registry = registry
         self.state_path = Path(state_path) if state_path else None
         self._db = db
-        self.protected = protected
+        self.protected = tuple(dict.fromkeys((*PROTECTED, *protected)))
         self._handlers: dict[str, list[tuple[Any, int]]] = {}
         self._client = None
         self._disabled: set[str] = set()
@@ -80,7 +80,7 @@ class PluginRuntime:
         self._handlers.setdefault(slug, []).append((handler, group))
 
     def wants_disabled(self, slug: str) -> bool:
-        return slug in self._disabled
+        return slug not in self.protected and slug in self._disabled
 
     # -- control -----------------------------------------------------------
 
