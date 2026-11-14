@@ -7,7 +7,14 @@ from pyrogram.enums import ParseMode
 from pyrogram.parser import Parser
 
 from agent.ui.keyboards import CB_HELP, CB_HOME, CB_INFO
-from agent.ui.screens import help_screen, info_screen, welcome_screen
+from agent.health import HealthMonitor
+from agent.ui.screens import (
+    format_uptime,
+    help_screen,
+    info_screen,
+    ping_screen,
+    welcome_screen,
+)
 from agent.ui.theme import Theme, strip_custom_emoji
 from agent.utils.sender import to_safe_html
 
@@ -151,3 +158,55 @@ def test_rendered_html_is_parseable_by_the_telegram_parser(builder):
 
     assert parsed["message"].strip()
     assert parsed["message"] == parsed["message"].strip()
+
+
+# --- ping screen -----------------------------------------------------------
+
+
+def test_ping_screen_reports_live_health():
+    monitor = HealthMonitor()
+    monitor.record_success(latency_ms=37)
+    monitor.record_activity("start")
+
+    screen = ping_screen(monitor, Theme())
+
+    assert "healthy" in screen.rich_text
+    assert "37 ms" in screen.rich_text
+    assert "Probes" in screen.rich_text
+    assert CB_HOME in callbacks(screen.keyboard)
+
+
+def test_ping_screen_survives_a_dead_link():
+    monitor = HealthMonitor(failure_threshold=2)
+    monitor.record_failure("ConnectionResetError: link down")
+    monitor.record_failure("ConnectionResetError: link down")
+
+    screen = ping_screen(monitor, Theme())
+
+    assert "down" in screen.rich_text
+    assert "link down" in screen.rich_text
+
+
+def test_ping_screen_without_a_monitor():
+    screen = ping_screen(None, Theme())
+
+    assert "not running" in screen.rich_text
+
+
+@pytest.mark.parametrize(
+    "seconds,expected",
+    [(5, "5s"), (65, "1m 5s"), (3725, "1h 2m 5s"), (90000, "1d 1h 0m")],
+)
+def test_uptime_is_human_readable(seconds, expected):
+    assert format_uptime(seconds) == expected
+
+
+def test_ping_screen_renders_to_parseable_html():
+    monitor = HealthMonitor()
+    monitor.record_success(latency_ms=12)
+
+    rendered = to_safe_html(ping_screen(monitor, Theme()).rich_text)
+
+    assert "<h2>" not in rendered
+    parsed = asyncio.run(Parser(None).parse(rendered, ParseMode.HTML))
+    assert parsed["message"].strip()

@@ -1,7 +1,7 @@
 # Agent
 
-A Telegram bot. Phase 1: `/start`, `/help`, user profile, inline keyboards and
-callback navigation. Built on **wzgram** (client) and **richgram** (formatting).
+A Telegram bot. Phase 1: `/start`, `/help`, `/ping`, user profile, inline
+keyboards and callback navigation. Built on **wzgram** (client) and **richgram** (formatting).
 
 ## Environment
 
@@ -80,6 +80,18 @@ get accounts suspended removed.
   | `GET /health` | JSON state, uptime, latency, failures, version. **503** when down, so the platform's own health check restarts the container |
   | `GET /health/live` | `ok` — process liveness only, so a slow probe never kills a healthy container |
   | `GET /` | one-line banner |
+
+**Checking the ping**
+
+Two ways, depending on the deployment shape:
+
+| Where | How | What you get |
+| --- | --- | --- |
+| Telegram | send `/ping` | state, uptime, Telegram latency, probe/failure counts, last update, last error |
+| HTTP | `curl https://<service>/health` | the same numbers as JSON (needs `HEALTH_PORT` or a web service) |
+
+`/ping` works on a Background Worker, where no port is exposed — that is the
+reason it exists alongside the HTTP endpoint.
 
 **Tuning (all optional)**
 

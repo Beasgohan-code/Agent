@@ -78,6 +78,7 @@ class AgentBot:
         self._handlers = [
             MessageHandler(commands.start, filters.command("start") & filters.private),
             MessageHandler(commands.help, filters.command("help") & filters.private),
+            MessageHandler(commands.ping, filters.command("ping") & filters.private),
             CallbackQueryHandler(callbacks.on_callback),
             ErrorHandler(self._on_error),
         ]

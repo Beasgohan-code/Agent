@@ -25,6 +25,21 @@ from . import keyboards
 from .theme import Theme
 
 
+def format_uptime(seconds: float) -> str:
+    """Human-readable uptime, e.g. ``2d 4h 11m``."""
+    total = max(0, int(seconds))
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, secs = divmod(rem, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
+
 @dataclass(frozen=True)
 class Screen:
     """A rendered screen: rich markup plus the keyboard shown under it."""
@@ -129,3 +144,36 @@ SCREENS: dict[str, Callable[[object, Theme], Screen]] = {
     keyboards.CB_HELP: help_screen,
     keyboards.CB_INFO: info_screen,
 }
+
+
+def ping_screen(monitor, theme: Theme) -> Screen:
+    """Live health, as a Telegram reply (works on a Background Worker)."""
+    if monitor is None:
+        return Screen(
+            rich_heading("Ping", 2) + "\n" + rich_note("Health tracking is not running."),
+            keyboards.info_keyboard(),
+        )
+
+    snapshot = monitor.snapshot()
+    rows = [
+        ("State", f"{theme.emoji('check')} {snapshot.state}"),
+        ("Uptime", format_uptime(snapshot.uptime_seconds)),
+        ("Telegram latency", f"{snapshot.latency_ms} ms" if snapshot.latency_ms is not None else "no probe yet"),
+        ("Probes", f"{snapshot.probes} ({snapshot.failures} failed)"),
+    ]
+    if snapshot.seconds_since_activity is not None:
+        rows.append(("Last update", f"{format_uptime(snapshot.seconds_since_activity)} ago"))
+    if snapshot.last_error:
+        rows.append(("Last error", rich_esc(snapshot.last_error)))
+
+    text = (
+        rich_heading("Ping", 2)
+        + "\n"
+        + f"{theme.emoji('bolt')} Live status of this instance."
+        + "\n"
+        + rich_kv_table(rows)
+        + "\n"
+        + rich_hr()
+        + rich_footer("The watchdog probes Telegram on a timer.")
+    )
+    return Screen(text, keyboards.info_keyboard())

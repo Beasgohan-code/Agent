@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from ..ui.screens import help_screen, welcome_screen
+from ..ui.screens import help_screen, ping_screen, welcome_screen
 from ..ui.theme import Theme
 from ..utils.sender import ScreenSender
 
@@ -14,7 +14,7 @@ FAILURE_NOTICE = "Something went wrong on my side. Please try again in a moment.
 
 
 class CommandHandlers:
-    """``/start`` and ``/help``."""
+    """``/start``, ``/help`` and ``/ping``."""
 
     def __init__(self, sender: ScreenSender, theme: Theme, monitor=None) -> None:
         self._sender = sender
@@ -34,6 +34,13 @@ class CommandHandlers:
             self._monitor.record_activity("help")
         logger.info("/help from user %s", user_id)
         await self._show(client, message, help_screen(message.from_user, self._theme), "help")
+
+    async def ping(self, client, message) -> None:
+        user_id = getattr(getattr(message, "from_user", None), "id", None)
+        if self._monitor is not None:
+            self._monitor.record_activity("ping")
+        logger.info("/ping from user %s", user_id)
+        await self._show(client, message, ping_screen(self._monitor, self._theme), "ping")
 
     async def _show(self, client, message, screen, name: str) -> None:
         chat_id = getattr(getattr(message, "chat", None), "id", None)
