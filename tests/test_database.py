@@ -251,3 +251,39 @@ def test_stores_reread_themselves_once_the_database_has_loaded(tmp_path):
     assert users.seen(5) is True
     assert book.is_premium(7) is True
     assert runtime.wants_disabled("leech") is True
+
+
+def test_required_database_never_reads_local_document_fallback(tmp_path):
+    from agent.platform.db import Database, load_document
+    path = tmp_path / 'old.json'
+    path.write_text('{"unsafe": true}')
+    db = Database('postgresql://localhost/test', required=True)
+    assert load_document(db, 'test', path, {}) == {}
+    db.connected = True
+    assert load_document(db, 'test', path, {}) == {}
+
+
+def test_required_database_never_writes_local_fallback(tmp_path):
+    import pytest
+    from agent.platform.db import Database, save_document
+    path = tmp_path / 'state.json'
+    db = Database('postgresql://localhost/test', required=True)
+    with pytest.raises(RuntimeError, match='refusing local'):
+        save_document(db, 'test', path, {'state': 'new'})
+    assert not path.exists()
+
+
+def test_failed_document_load_is_distinguishable_from_empty_database():
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from agent.platform.db import Database
+    class Pool:
+        @asynccontextmanager
+        async def acquire(self):
+            yield SimpleNamespace(fetch=AsyncMock(side_effect=RuntimeError('unavailable')))
+    db = Database('postgresql://localhost/test', required=True)
+    db.connected = True
+    db._pool = Pool()
+    assert asyncio.run(db.load()) == 0
+    assert db.load_error == 'RuntimeError'

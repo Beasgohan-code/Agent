@@ -96,7 +96,7 @@ def build(ctx):
 
     async def _protected(client, message, target_id: int) -> bool:
         if await target_is_protected(client, message.chat.id, target_id):
-            await reply(message, "I cannot act on an administrator.")
+            await reply(message, "I cannot act on an administrator or a target whose membership could not be verified. Action not attempted.")
             return True
         return False
 

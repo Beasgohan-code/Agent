@@ -71,7 +71,7 @@ class AgentBot:
         # Every row this instance writes is prefixed with its scope, so a
         # clone's ``runtime`` can never overwrite the main bot's.
         self.database = (
-            Database(settings.database_url, scope=settings.db_scope)
+            Database(settings.database_url, scope=settings.db_scope, required=settings.db_required)
             if settings.database_url
             else None
         )
@@ -211,21 +211,9 @@ class AgentBot:
             manifest, handlers = module.build(self.modules)
             self.registry.register(manifest, handlers)
 
-        # Third-party plugins come last, so a builtin always wins a command
-        # collision. Only approved digests are imported, and a bad one is logged
-        # rather than allowed to stop the bot. See platform/installer.
-        try:
-            from .platform import installer
-
-            approvals = installer.Approvals(self.settings.data_dir, db=self.database)
-            installed = installer.load(
-                self.settings.data_dir, ctx=self.modules, registry=self.registry,
-                approvals=approvals,
-            )
-            if installed:
-                logger.info("Installed plugins loaded: %s", ", ".join(installed))
-        except Exception:  # noqa: BLE001 - a feature, never the bot
-            logger.exception("Could not load installed plugins; continuing.")
+        # Never import third-party Python into the token-bearing bot process.
+        # Staging/review is not isolation. External execution stays disabled until
+        # a capability-scoped process boundary exists.
 
         # A plugin disabled in a previous run stays off, and registers nothing.
         for manifest in self.registry.manifests():
@@ -370,9 +358,17 @@ class AgentBot:
 
     async def _run(self) -> None:
         """Connect only after obtaining exclusive ownership of this bot token."""
+        if self.settings.db_required and self.database is None:
+            self.fatal_reason = "DB_REQUIRED is enabled but DATABASE_URL is missing or invalid"
+            logger.critical(self.fatal_reason)
+            return
         if self.database is not None:
             if await self.database.connect():
                 await self.database.load()
+                if self.settings.db_required and self.database.load_error:
+                    self.fatal_reason = "Required PostgreSQL state could not be loaded"
+                    logger.critical(self.fatal_reason)
+                    return
                 # These three were built in __init__, before the database was
                 # readable; re-read them so a deploy starts from the stored state
                 # rather than from last boot's files.

@@ -489,3 +489,38 @@ def test_antispam_watcher_reports_partial_result_and_avoids_success_log(ctx):
     run(moderation.watch(ctx), PartialKickClient(caller=MEMBER), message)
     assert 'Kick incomplete' in message.replies[-1]
     assert [e['action'] for e in ctx.chats.history(-100500)] == ['kick:incomplete']
+
+
+@pytest.mark.parametrize('command', ['warn', 'mute', 'unmute', 'kick', 'ban', 'unban'])
+@pytest.mark.parametrize('mode', ['exception', 'missing', 'unknown'])
+def test_unknown_target_membership_prevents_moderation(ctx, command, mode):
+    class Unknown(FakeClient):
+        async def get_chat_member(self, chat_id, user_id):
+            if int(user_id) == 11:
+                return member(ADMIN)
+            if mode == 'exception':
+                raise RuntimeError('Telegram unavailable')
+            if mode == 'missing':
+                return None
+            return SimpleNamespace(status='not-a-telegram-status')
+    client = Unknown()
+    message = FakeMessage('/' + command, reply=True)
+    run(handlers(ctx)[command], client, message)
+    assert not client.calls
+    assert not ctx.chats.history(-100500)
+    assert ctx.chats.active_warning_count(-100500, 22) == 0
+    assert 'not attempted' in message.replies[-1]
+
+
+def test_automatic_protection_does_not_punish_when_membership_lookup_fails(ctx):
+    class Unknown(FakeClient):
+        async def get_chat_member(self, *args):
+            raise RuntimeError('Telegram unavailable')
+    policy = ctx.chats.antispam(-100500)
+    ctx.chats.save_antispam(-100500, {**policy, 'action': 'ban', 'links_enabled': True})
+    client = Unknown()
+    message = FakeMessage('https://spam.example')
+    run(moderation.watch(ctx), client, message)
+    assert not client.calls
+    assert not ctx.chats.history(-100500)
+    assert not message.deleted

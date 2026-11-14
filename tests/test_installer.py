@@ -230,53 +230,42 @@ def test_activation_lands_the_plugin(tmp_path):
 # --- loading ---------------------------------------------------------------
 
 
-def test_only_approved_plugins_are_imported(tmp_path):
+@pytest.mark.parametrize("approved", [False, True])
+def test_external_execution_refused_even_after_approval(tmp_path, approved):
     store = tmp_path / "store"
-    stage(plugin(tmp_path), root=store)
-
+    found = stage(plugin(tmp_path), root=store)
+    approvals = Approvals(store)
+    if approved:
+        approvals.approve(found)
+        installer.activate(found, root=store, approvals=approvals)
     registry = PluginRegistry()
-    loaded = load(store, ctx=None, registry=registry, approvals=Approvals(store))
-
-    assert loaded == ()
+    with pytest.raises(InstallRefused, match="capability-isolated"):
+        load(store, ctx=None, registry=registry, approvals=approvals)
     assert registry.manifests() == []
     assert "agent_plugin_hello" not in sys.modules
 
 
-def test_an_approved_plugin_is_registered(tmp_path):
-    store = tmp_path / "store"
-    found = stage(plugin(tmp_path), root=store)
-    approvals = Approvals(store)
-    approvals.approve(found)
-    installer.activate(found, root=store, approvals=approvals)
-
-    registry = PluginRegistry()
-    loaded = load(store, ctx=None, registry=registry, approvals=approvals)
-
-    assert loaded == ("hello",)
-    assert [m.slug for m in registry.manifests()] == ["hello"]
-    assert "hello" in registry.active_commands()
+def test_manifest_cannot_escape_install_root(tmp_path):
+    root = plugin(tmp_path, manifest='MANIFEST = PluginManifest(slug="../../outside", commands=("hello",))\n')
+    with pytest.raises(InstallRefused, match='simple lowercase'):
+        stage(root, root=tmp_path / 'store')
 
 
-def test_a_plugin_that_raises_on_build_does_not_stop_the_loader(tmp_path):
-    store = tmp_path / "store"
+def test_symlinked_plugin_contents_refused(tmp_path):
     root = plugin(tmp_path)
-    (root / "__init__.py").write_text(
-        (root / "__init__.py").read_text() + "\nraise RuntimeError('boom')\n"
-    )
-    found = stage(root, root=store)
-    approvals = Approvals(store)
-    approvals.approve(found)
-    installer.activate(found, root=store, approvals=approvals)
-
-    assert load(store, ctx=None, registry=PluginRegistry(), approvals=approvals) == ()
+    secret = tmp_path / 'not-plugin.txt'
+    secret.write_text('private bytes')
+    (root / 'linked.txt').symlink_to(secret)
+    with pytest.raises(InstallRefused, match='symbolic links'):
+        stage(root, root=tmp_path / 'store')
 
 
-def test_a_plugin_is_skipped_when_its_bytes_change_on_disk(tmp_path):
-    store = tmp_path / "store"
+def test_activation_reinspects_staged_bytes(tmp_path):
+    store = tmp_path / 'store'
     found = stage(plugin(tmp_path), root=store)
     approvals = Approvals(store)
     approvals.approve(found)
-    landing = installer.activate(found, root=store, approvals=approvals)
-    (landing / "extra.py").write_text("Y = 2\n")
-
-    assert load(store, ctx=None, registry=PluginRegistry(), approvals=approvals) == ()
+    source = found.path / '__init__.py'
+    source.write_text(source.read_text() + '\nCHANGED = True\n')
+    with pytest.raises(InstallRefused, match='changed'):
+        installer.activate(found, root=store, approvals=approvals)

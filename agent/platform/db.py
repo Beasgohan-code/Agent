@@ -43,6 +43,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .plugin_access import SCHEMA as PLUGIN_SCHEMA
+
 logger = logging.getLogger(__name__)
 
 #: Everything this module needs, in one statement each. Safe to run every boot.
@@ -63,6 +65,8 @@ SCHEMA: tuple[str, ...] = (
     )
     """,
 )
+
+SCHEMA += PLUGIN_SCHEMA
 
 UPSERT_DOCUMENT = """
     INSERT INTO agent_documents (name, value)
@@ -123,12 +127,15 @@ class Database:
         url: str | None,
         *,
         scope: str = "global",
+        required: bool = False,
         flush_interval: float = 0.05,
     ) -> None:
         self.url = normalise_url(url)
         #: Which bot owns these rows: ``main:<id>``, ``clone:<id>``, ``global``.
         self.scope = _clean_scope(scope)
         self.connected = False
+        self.required = required
+        self.load_error: str | None = None
         self.error: str | None = None
         self._pool = None
         self._docs: dict[str, Any] = {}
@@ -206,7 +213,9 @@ class Database:
 
     async def load(self) -> int:
         """Read every stored document into memory. Returns how many were found."""
+        self.load_error = None
         if not self.connected or self._pool is None:
+            self.load_error = "PostgreSQL is not connected"
             return 0
         try:
             async with self._pool.acquire() as connection:
@@ -215,7 +224,8 @@ class Database:
                     self._pattern(),
                 )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not read documents from PostgreSQL: %s", exc)
+            self.load_error = type(exc).__name__
+            logger.warning("Could not read documents from PostgreSQL: %s", type(exc).__name__)
             return 0
         self._docs = {}
         prefix = f"{self.scope}:"
@@ -386,6 +396,8 @@ def load_document(database: Database | None, name: str, path: Path, default: Any
         value = database.get(name)
         if value is not None:
             return value
+    if database is not None and getattr(database, "required", False):
+        return default
     return read_json(path, default)
 
 
@@ -394,6 +406,8 @@ def save_document(database: Database | None, name: str, path: Path, value: Any) 
     if database is not None and database.connected:
         database.save(name, value)
         return
+    if database is not None and getattr(database, "required", False):
+        raise RuntimeError("PostgreSQL required: refusing local document write")
     write_json(path, value)
 
 

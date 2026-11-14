@@ -1,26 +1,8 @@
-"""Agent — installing plugins without pretending a text file is a sandbox.
+"""Local source review only; third-party execution is disabled.
 
-A plugin here is a package whose ``build(ctx)`` returns a manifest and its
-handlers, and it runs **in this process**, next to the bot token, the database
-password and every user's files. That is a real capability, so this module
-refuses to treat "install" as a copy step:
-
-* **A URL is not a source.** There is no download-and-run path, because a click
-  cannot make third-party code safe. Remote plugins would need their own process
-  and a capability IPC, which this runtime does not have — so the honest answer
-  is a refusal with that reason, not an approval dialog that implies a review
-  nobody performed.
-* **Inspection comes first.** Every staged plugin is parsed (AST, never imported)
-  and *hard blockers* — ``exec``, ``eval``, ``compile``, ``__import__``,
-  ``subprocess``, ``socket``, ``ctypes`` — refuse the install outright. Imports of
-  network libraries, file writes and unknown permissions are *warnings*: they can
-  be approved, and the approval is tied to the digest, so any byte change means a
-  new review.
-* **Unapproved code is never imported.** The loader skips a directory whose digest
-  was not approved; "it is on disk" is not "it may run".
-
-Staging, approving and activating are three separate steps on purpose. Approval
-that happens implicitly at install time is not approval.
+Parsing source can highlight risks but cannot sandbox Python. Digest approval is
+an inspection record, not permission to execute beside the bot token. load()
+refuses execution until a capability-isolated external runtime exists.
 """
 
 from __future__ import annotations
@@ -28,6 +10,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import logging
+import re
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -131,6 +114,8 @@ def _digest_files(root: Path) -> str:
 def inspect(root: Path) -> Inspection:
     """Parse a plugin directory. Never imports it, never executes it."""
     root = Path(root)
+    if root.is_symlink() or any(p.is_symlink() for p in root.rglob("*")):
+        raise InstallRefused("Plugin directories must not contain symbolic links")
     if not root.is_dir():
         raise InstallRefused(f"{root.name} is not a directory")
     if not (root / "__init__.py").exists():
@@ -168,9 +153,11 @@ def inspect(root: Path) -> Inspection:
                     blockers.append(f"{rel}: calls {node.func.id}()")
         # The manifest is read from the AST when it is a literal, so a typo or a
         # computed value is visible here rather than at first use.
-        if path.name == "__init__.py":
+        if path == root / "__init__.py":
             slug, version, commands, permissions = _read_manifest(tree, rel, blockers)
 
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,47}", slug):
+        blockers.append("manifest slug must be a simple lowercase plugin name")
     for permission in permissions:
         if permission not in KNOWN_PERMISSIONS:
             warnings.append(f"declares an unknown permission {permission!r}")
@@ -306,7 +293,10 @@ def stage(source: str | Path, *, root: Path) -> Inspection:
 
 def activate(inspection: Inspection, *, root: Path, approvals: Approvals) -> Path:
     """Move an approved, unchanged staging copy into the plugin directory."""
-    if not approvals.is_approved(inspection):
+    current = inspect(inspection.path)
+    if current.digest != inspection.digest or current.slug != inspection.slug or current.blockers:
+        raise InstallRefused("Staged plugin changed; inspect and approve it again")
+    if not approvals.is_approved(current):
         raise InstallRefused(
             f"{inspection.slug} has not been approved; approve digest "
             f"{inspection.digest[:12]}… first"
@@ -326,51 +316,12 @@ def activate(inspection: Inspection, *, root: Path, approvals: Approvals) -> Pat
 
 
 def load(root: Path, *, ctx, registry, approvals: Approvals) -> tuple[str, ...]:
-    """Import the approved plugins under *root*/plugins and register them.
+    """External execution is disabled until a capability process boundary exists.
 
-    Anything unapproved, blocked, or whose digest changed since approval is
-    skipped with a reason — the bot must not refuse to start over third-party
-    code, and must not run it either.
+    AST inspection and digest review are not a sandbox. Retain the entry point
+    so older integrations receive an explicit refusal rather than importing code.
     """
-    import importlib.util
-
-    directory = Path(root) / PLUGINS_DIRNAME
-    if not directory.is_dir():
-        return ()
-    loaded: list[str] = []
-    for entry in sorted(directory.iterdir()):
-        if not entry.is_dir() or not (entry / "__init__.py").exists():
-            continue
-        try:
-            inspection = inspect(entry)
-        except InstallRefused as exc:
-            logger.warning("skipping plugin %s: %s", entry.name, exc)
-            continue
-        if inspection.blockers:
-            logger.error(
-                "refusing to load plugin %s: %s", entry.name, "; ".join(inspection.blockers)
-            )
-            continue
-        if not approvals.is_approved(inspection):
-            logger.warning(
-                "plugin %s is installed but its digest was not approved; not loading it",
-                entry.name,
-            )
-            continue
-        module_name = f"agent_plugin_{inspection.slug}"
-        try:
-            spec = importlib.util.spec_from_file_location(
-                module_name, entry / "__init__.py", submodule_search_locations=[str(entry)]
-            )
-            if spec is None or spec.loader is None:
-                raise InstallRefused("could not build an import spec")
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            manifest, handlers = module.build(ctx)
-            registry.register(manifest, handlers)
-        except Exception as exc:  # noqa: BLE001 - one bad plugin is not the bot
-            logger.exception("plugin %s failed to load: %s", entry.name, exc)
-            continue
-        loaded.append(inspection.slug)
-        logger.info("loaded plugin %s v%s", inspection.slug, inspection.version)
-    return tuple(loaded)
+    raise InstallRefused(
+        "Third-party execution is disabled: a capability-isolated process runtime "
+        "is required. Inspection and Owner approval do not sandbox Python."
+    )

@@ -130,3 +130,58 @@ still be banned and provides `/unban <id>` as a recovery action. Flood-wait
 failures include the retry delay. The bot does not automatically replay the ban.
 The anti-spam watcher contains recovery-notice failures as well. This improves
 observability and recovery, not atomicity across the two Telegram requests.
+
+## Upgrade phase: security and relational plugin permissions
+
+Completed in this phase:
+
+- Unknown/missing target membership and lookup errors fail closed for moderation
+  and automatic anti-spam actions. Warning escalation checks the target too.
+- Third-party execution is refused even for approved digests. Automatic startup
+  loading is removed. Inspection is not process isolation.
+- Local plugin staging rejects symlinks and unsafe slugs; activation re-inspects
+  source rather than trusting a stale inspection object.
+- Required database mode refuses file reads as a fallback for absent documents,
+  refuses offline file writes, and stops startup after a failed document load.
+- Relational plugin-use service provides Owner approval, activation/deactivation,
+  per-group configuration and history. Catalog row locks serialize revocation
+  against activation; a group-specific advisory lock serializes slot checks.
+- Revocation removes activation rows and marks resource records cleanup-pending
+  atomically. Core never consumes slots. No JSONB count/write fallback exists.
+
+Five additive tables are created by the normal database bootstrap:
+`agent_plugin_catalog`, `agent_group_plugins`, `agent_plugin_config`,
+`agent_plugin_history`, `agent_plugin_resources`. No existing data is dropped or
+converted. Approval defaults to false. Configuration uses per-group JSONB rows,
+not a shared document counter. Existing deployment plugin settings are not
+silently converted to Owner approvals or group activations.
+
+Not completed by this phase:
+
+- Telegram catalog/activation UI and execution-boundary routing.
+- Runtime job/listener teardown, including cleanup-pending resource processing.
+- An external-process capability protocol (execution remains disabled).
+- Relational members/cases, persistent verification, database recovery and
+  document-store write consistency beyond the fail-closed changes listed above.
+- Full Control Center, granular-permission audit of every callback, and the
+  detailed 200+ capability matrix. The earlier audit is a system-level inventory,
+  not a substitute for that requested matrix.
+
+Do not treat the new service alone as end-to-end enforcement. Existing optional
+commands still use the deployment-wide runtime until routing and teardown are
+integrated. Mandatory core availability is retained.
+
+Validation: full suite with a disposable PostgreSQL server: **626 passed**, no
+skips. The integration test exercises concurrent activation, fourth-slot refusal,
+group isolation, configuration isolation, deactivation, resource cleanup markers
+and a revocation/activation race. It is opt-in via `AGENT_TEST_DATABASE_URL` when
+running elsewhere; no production database is used by default. Without that
+variable the normal run reports 625 passed and one skipped. `pgserver` was used
+only in the local test environment, not added to application requirements.
+Compile checks, pyflakes and whitespace checks passed.
+
+Deployment: no new application environment variables. Existing `DATABASE_URL`
+and `OWNER_ID` are used by the service; `DB_REQUIRED=1` now refuses legacy local
+fallback. Import any needed local-only state deliberately before requiring the
+database: this phase intentionally does not auto-import stale disk documents.
+Keep Render's liveness path `/health/live`.

@@ -172,9 +172,14 @@ async def is_moderator(client, message, *, need: str | None = None, owner_id: in
 
 
 async def target_is_protected(client, chat_id: int, target_id: int) -> bool:
-    """Administrators are not ours to moderate."""
+    """Unknown membership is protected too: lookup failure is not consent."""
+    if not isinstance(target_id, int) or isinstance(target_id, bool) or target_id <= 0:
+        return True
     member = await _member_of(client, chat_id, target_id)
-    return member is not None and getattr(member, "status", None) in _ADMIN_STATUSES
+    status = getattr(member, "status", None)
+    known = (ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED,
+             ChatMemberStatus.BANNED, ChatMemberStatus.LEFT)
+    return status not in known
 
 
 class PartialKickError(RuntimeError):
@@ -207,6 +212,8 @@ async def escalate_warning(client, ctx, message, target_id: int, action: str) ->
         
     """
     chat_id = message.chat.id
+    if await target_is_protected(client, chat_id, target_id):
+        return "Escalation not attempted: target is protected or membership could not be verified."
     try:
         if action == "mute":
             await client.restrict_chat_member(
@@ -346,6 +353,8 @@ def watch(ctx):
             action = str(policy.get("action", "warn")).lower()
             if action not in SPAM_ACTIONS:
                 action = "warn"
+            if await target_is_protected(client, chat.id, user.id):
+                return
             recent.clear(chat.id, user.id)
             await _punish(client, ctx, message, action, policy=policy)
             ctx.chats.log(
@@ -383,7 +392,7 @@ def build(ctx):
 
     async def _protected(client, message, target_id: int) -> bool:
         if await target_is_protected(client, message.chat.id, target_id):
-            await reply(message, "I cannot act on an administrator.")
+            await reply(message, "I cannot act on an administrator or a target whose membership could not be verified. Action not attempted.")
             return True
         return False
 
@@ -568,6 +577,8 @@ def build(ctx):
             await reply(message, "Pass the user id to unban: <code>/unban 123456</code>")
             return
         target_id, mention = target
+        if await _protected(client, message, target_id):
+            return
         await client.unban_chat_member(message.chat.id, target_id)
         ctx.chats.log(
             message.chat.id, "unban", actor_id=message.from_user.id, target_id=target_id

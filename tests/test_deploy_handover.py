@@ -123,3 +123,25 @@ def test_optional_shutdown_errors_do_not_skip_telegram_disconnect():
         bot.modules.clones.stop_all.assert_awaited_once()
         bot._shutdown.assert_awaited_once_with('telegram client')
     asyncio.run(scenario())
+
+
+def test_required_database_missing_refuses_before_build_or_telegram():
+    async def scenario():
+        bot = SimpleNamespace(settings=SimpleNamespace(db_required=True), database=None,
+                              fatal_reason=None, build=AsyncMock())
+        await AgentBot._run(bot)
+        assert 'DATABASE_URL' in bot.fatal_reason
+        bot.build.assert_not_called()
+    asyncio.run(scenario())
+
+
+def test_required_database_load_failure_refuses_before_build_or_telegram():
+    async def scenario():
+        db = SimpleNamespace(connect=AsyncMock(return_value=True), load=AsyncMock(),
+                             load_error='ConnectionError')
+        bot = SimpleNamespace(settings=SimpleNamespace(db_required=True), database=db,
+                              fatal_reason=None, build=AsyncMock())
+        await AgentBot._run(bot)
+        assert 'could not be loaded' in bot.fatal_reason
+        bot.build.assert_not_called()
+    asyncio.run(scenario())
