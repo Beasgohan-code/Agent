@@ -250,3 +250,11 @@ explains deployment-Owner responsibility, distinguishes the key from user bot
 credentials and requests no secrets while encryption is missing. Empty clone
 management directs users to guided private setup. Ordinary non-clone commands
 do not require the key. No production secret was generated/changed or requested.
+
+### Batch delivery preference and utilities batch
+
+User explicitly requests grouped batches, with command-by-command testing inside
+each batch rather than tiny isolated deliveries. Upgraded id/info/time/repo as
+one batch: themed identity/profile panels, sender-chat honesty, moderator-gated
+warning/trust metadata, validated IANA clock and corrected repository URL cell.
+Keep listing changed commands and actual tests; no merge without second approval.
