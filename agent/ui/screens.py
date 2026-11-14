@@ -97,6 +97,8 @@ def help_screen(user, theme: Theme) -> Screen:
             [
                 "<code>/start</code> — open the main menu",
                 "<code>/help</code> — show this help",
+                "<code>/menu</code> — open the menu · <code>/about</code> — what this is",
+                "<code>/status</code> — live runtime status · <code>/cancel</code> — stop your jobs",
                 "<code>/ping</code> — live health of this instance",
             ]
         )
@@ -115,6 +117,17 @@ def help_screen(user, theme: Theme) -> Screen:
                 "<code>/genlink</code> — share a replied file",
                 "<code>/links</code> — list your links",
                 "<code>/revoke</code> — revoke one",
+            ]
+        )
+        + "\n"
+        + rich_list(
+            [
+                "<b>Group moderation</b>",
+                "<code>/warn</code> <code>/warnings</code> <code>/unwarn</code> — warnings",
+                "<code>/mute</code> <code>/unmute</code> <code>/kick</code> — restrict",
+                "<code>/ban</code> <code>/unban</code> <code>/purge</code> — remove",
+                "<code>/note</code> <code>/trust</code> — member metadata",
+                "<code>/antispam</code> <code>/modlog</code> — policy and audit trail",
             ]
         )
         + "\n"

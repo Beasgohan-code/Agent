@@ -78,12 +78,20 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    assert bot.handler_count == 12   # 5 core + 7 module commands
+    # 3 built-in commands + 26 module commands + callback + error handler,
+    # plus the moderation watcher in its own group.
+    assert bot.handler_count == 32
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 10   # 3 core + 7 module
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 29
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
+
+    # The anti-spam watcher must not sit in group 0, where it could shadow a
+    # command handler; at most one handler per group handles an update.
+    watchers = client.dispatcher.groups[1]
+    assert len(watchers) == 1
+    assert isinstance(watchers[0], MessageHandler)
 
 
 def test_duplicate_initialisation_is_prevented():
@@ -94,13 +102,24 @@ def test_duplicate_initialisation_is_prevented():
         bot.build()
 
 
-def test_commands_are_private_only_and_named_correctly():
+def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     bot = AgentBot(make_settings())
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 10
+    assert len(messages) == 29
     assert all(h.filters is not None for h in messages)
+
+    scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
+    private = {c for c, scope in scopes.items() if scope == "private"}
+    group = {c for c, scope in scopes.items() if scope == "group"}
+
+    # Media commands stay in private chats; moderation only makes sense in groups.
+    assert private == {"encode", "encinfo", "enccancel", "encpreset", "genlink", "links", "revoke"}
+    assert group == {
+        "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
+        "unban", "purge", "note", "trust", "antispam", "modlog",
+    }
 
 
 def test_error_handler_logs_the_failure(caplog):

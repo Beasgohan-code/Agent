@@ -37,6 +37,9 @@ class Settings:
     #: Derived from the bot token so links stay valid across restarts without
     #: introducing another required variable.
     link_secret: str = ""
+    #: Optional. Until it is set, owner-only commands refuse politely instead
+    #: of guessing who owns the bot.
+    owner_id: int | None = None
     health_port: int | None = None
     watchdog_interval: float = 30.0
     watchdog_timeout: float = 20.0
@@ -96,6 +99,7 @@ class Settings:
             api_hash=api_hash,
             data_dir=Path((source.get("DATA_DIR") or "data").strip() or "data"),
             link_secret=hashlib.sha256(bot_token.encode()).hexdigest(),
+            owner_id=_optional_id(source.get("OWNER_ID")),
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),
@@ -103,6 +107,15 @@ class Settings:
                 _optional_float(source.get("WATCHDOG_FATAL_AFTER"), 5.0)
             ),
         )
+
+
+def _optional_id(raw: str | None) -> int | None:
+    """A Telegram user id, or ``None`` when unset or unparseable."""
+    try:
+        value = int((raw or "").strip())
+    except ValueError:
+        return None
+    return value if value > 0 else None
 
 
 def _optional_float(raw: str | None, default: float) -> float:

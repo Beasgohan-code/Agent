@@ -9,6 +9,7 @@ from ..config import Settings
 from ..health import HealthMonitor
 from ..ui.theme import Theme
 from ..utils.sender import ScreenSender
+from .chats import ChatStore
 from .jobs import JobQueue
 from .links import LinkStore
 from .storage import Storage
@@ -30,6 +31,8 @@ class ModuleContext:
     links: LinkStore
     monitor: HealthMonitor | None = None
     client: object | None = None
+    chats: ChatStore | None = None
+    registry: object | None = None
 
     @classmethod
     def build(cls, settings: Settings, theme: Theme, sender: ScreenSender, *, root: Path) -> "ModuleContext":
@@ -40,4 +43,5 @@ class ModuleContext:
             jobs=JobQueue(concurrency=2),
             storage=Storage(root),
             links=LinkStore(root, settings.link_secret, default_ttl_hours=24),
+            chats=ChatStore(root),
         )

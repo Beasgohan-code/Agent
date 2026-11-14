@@ -1,12 +1,9 @@
 """Agent — feature modules.
 
-Each module is a plugin: a manifest plus real command handlers. Registering a
-module whose commands are declared but not implemented is impossible — the
-registry rejects it.
+Order matters only for collisions: the registry rejects any command declared
+twice, so adding a module can never silently shadow another.
 """
 
-from . import encoder, linkshare
+from . import core, encoder, linkshare, moderation
 
-MODULES = (encoder, linkshare)
-
-__all__ = ["MODULES", "encoder", "linkshare"]
+MODULES = (core, encoder, linkshare, moderation)

@@ -18,6 +18,15 @@ from .platform.context import ModuleContext
 from .platform.manifest import PluginRegistry
 from .health_server import start_health_server, stop_health_server
 from .ui.theme import Theme
+
+
+def _scope_filter(scope: str):
+    """Where a module's commands may run, as declared by its manifest."""
+    if scope == "group":
+        return filters.group
+    if scope == "all":
+        return filters.all
+    return filters.private
 from .utils.sender import ScreenSender
 from .watchdog import build_watchdog
 
@@ -48,7 +57,7 @@ class AgentBot:
 
     @property
     def handler_count(self) -> int:
-        return len(self._handlers)
+        return len(self._handlers) + len(getattr(self, "_watchers", []))
 
     def build(self) -> Client:
         """Create the client and register handlers exactly once."""
@@ -71,18 +80,21 @@ class AgentBot:
             "Client initialised (token=%s, api_id=%s, handlers=%d)",
             self.settings.masked_token,
             self.settings.api_id,
-            len(self._handlers),
+            self.handler_count,
         )
         return client
 
     def _register_handlers(self, client: Client) -> None:
         sender = ScreenSender(client, self.theme)
+        #: Plain-message watchers (anti-spam) run in their own handler group so
+        #: they can never shadow a command handler.
+        self._watchers = []
         commands = CommandHandlers(sender, self.theme, monitor=self.health)
         callbacks = CallbackHandlers(sender, self.theme, monitor=self.health)
 
         self._handlers = [
-            MessageHandler(commands.start, filters.command("start") & filters.private),
-            MessageHandler(commands.help, filters.command("help") & filters.private),
+            MessageHandler(commands.start, filters.command(["start", "restart_bot"]) & filters.private),
+            MessageHandler(commands.help, filters.command(["help", "h"]) & filters.private),
             MessageHandler(commands.ping, filters.command("ping") & filters.private),
             CallbackQueryHandler(callbacks.on_callback),
             ErrorHandler(self._on_error),
@@ -97,18 +109,32 @@ class AgentBot:
             manifest, handlers = module.build(self.modules)
             self.registry.register(manifest, handlers)
 
+        # Modules can look at the registry (counts, enabled names) after this.
+        self.modules.registry = self.registry
+
         # Only *enabled* plugins contribute handlers. A disabled plugin
         # registers nothing at all, which is the lifecycle rule that matters.
+        scopes = {c: m.scope for m in self.registry.manifests() for c in m.commands}
         for command in self.registry.active_commands():
             callback = self.registry.handler_for(command)
             if callback is None:  # pragma: no cover - active_commands guarantees this
                 continue
-            self._handlers.append(
-                MessageHandler(callback, filters.command(command) & filters.private)
-            )
+            chat_filter = _scope_filter(scopes.get(command, "private"))
+            self._handlers.append(MessageHandler(callback, filters.command(command) & chat_filter))
+
+        # Some modules also need to *see* plain messages (anti-spam). They run in
+        # their own handler group so they can never shadow a command handler.
+        for module in MODULES:
+            factory = getattr(module, "watch", None)
+            slug = module.MANIFEST.slug
+            if factory is None or not self.registry.is_enabled(slug):
+                continue
+            self._watchers.append(MessageHandler(factory(self.modules), filters.group))
 
         for handler in self._handlers:
             client.add_handler(handler)
+        for watcher in self._watchers:
+            client.add_handler(watcher, group=1)
 
         enabled = [m.slug for m in self.registry.manifests() if self.registry.is_enabled(m.slug)]
         logger.info(

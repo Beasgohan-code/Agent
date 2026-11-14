@@ -105,23 +105,45 @@ WATCHDOG_FATAL_AFTER=5
 Not implemented yet: Videl1's cross-instance lease (it needs shared storage to
 be meaningful — see the no-database rule for this phase).
 
-## Modules
+## Commands
 
-Each module is a plugin (manifest + real handlers) sharing one job queue,
-storage and link signer. A plugin that is disabled registers **nothing**.
+The command surface follows **Meikoagent**: the same 21 commands, the same
+argument shapes, the same defaults (a mute is 600 s, a purge is 10 messages).
+Every one is wired to something real — none is a stub.
 
-| Module | Commands | State |
-| --- | --- | --- |
-| `encoder` | `/encode`, `/encinfo`, `/encpreset`, `/enccancel` | ✅ real FFmpeg (probe → encode → decode-validate) |
-| `linkshare` | `/genlink`, `/links`, `/revoke` | ✅ real storage + HMAC-signed, expiring, revocable links |
-| `music` | — | ⏸ needs voice-chat (MTProto/pytgcalls) |
-| `filestore` | — | ⏸ needs the multi-bot worker layer |
-| `leech` | — | ⏸ needs Telegram upload + external services |
-| `saver` | — | ⏸ blocked by the authorized-backup rules |
+| Area | Commands |
+| --- | --- |
+| Core | `/start` `/help` `/menu` `/about` `/status` `/cancel` `/ping` `/owner` |
+| Moderation (groups) | `/warn` `/warnings` `/warns` `/unwarn` `/mute` `/unmute` `/kick` `/ban` `/unban` `/purge` `/note` `/trust` `/antispam` `/modlog` |
+| Encoding | `/encode` `/encinfo` `/encpreset` `/enccancel` |
+| Sharing | `/genlink` `/links` `/revoke` |
 
-Commands come from the reference projects where they do not clash:
-`/encode` and friends follow `ENCODING-BOT`; `/genlink` follows
-`LINK-SHAREBOT`. Nothing is registered before it actually works.
+Aliases follow the reference too: `/h` for help, `/restart_bot` for start,
+`/warns` for warnings.
+
+Where this deliberately differs, because copying the reference would have meant
+shipping a fake control:
+
+* **`/cancel`** there answers "Cancelled" without cancelling anything. Here it
+  cancels your real jobs and reports the count.
+* **`/status`** reports this process's live counters (uptime, probes, failures,
+  queued jobs) rather than placeholders.
+* **`/antispam`** stores a policy *and* ships the watcher that enforces it —
+  flood, duplicates, links, invites and keywords, with a real action. Settings
+  that nothing reads would be decoration.
+* **`/owner`** needs `OWNER_ID`; without it the command says so instead of
+  guessing an owner. It is optional, like every other knob here.
+* Every moderation command checks the caller's admin rights (and the specific
+  privilege the action needs) plus that the target is not an administrator.
+
+Moderation state (warnings, notes, trust, policy, audit log) lives in
+`data/chats.json`. Chat message text is never stored — the anti-spam tracker
+keeps a window in memory only.
+
+Untested against live Telegram: there is no session or group in this sandbox,
+so moderation is covered by tests that drive the handlers against a fake client
+and assert the exact pyrogram calls. That is stated plainly rather than claimed
+as deployment-tested.
 
 ## Layout
 

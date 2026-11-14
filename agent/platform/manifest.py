@@ -21,6 +21,9 @@ class PluginManifest:
     commands: tuple[str, ...] = ()
     permissions: tuple[str, ...] = ()
     config_schema: dict = field(default_factory=dict)
+    #: Where the commands may run: "private", "group" or "all". Moderation has
+    #: no meaning in a private chat, so the scope is declared, not guessed.
+    scope: str = "private"
 
 
 @dataclass
