@@ -18,7 +18,7 @@ from pathlib import Path
 from ...platform.attachments import attachment_kwargs
 from ...platform.jobs import Job
 from ...platform.manifest import PluginManifest
-from ...ui.tables import Table, kv_table, panel
+from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
 from ..filestore.vault import human_bytes
 
@@ -35,9 +35,7 @@ MANIFEST = PluginManifest(
         "sample",
         "toaudio",
         "screens",
-        "encinfo",
-        "enccancel",
-        "encpreset",
+        "mediainfo",
     ),
     permissions=("messages.read", "files.write", "process.spawn"),
 )
@@ -315,7 +313,7 @@ def build(ctx):
         )
         await reply(message, 
             f"Encoding job <code>{job.id}</code> started ({preset}). "
-            "Use <code>/enccancel</code> to stop it."
+            "Use <code>/cancel</code> to stop it."
         )
         await job.task
 
@@ -371,7 +369,7 @@ def build(ctx):
         await reply(
             message,
             f"Job <code>{job.id}</code> started ({html.escape(label)}). "
-            "<code>/enccancel</code> stops it.",
+            "<code>/cancel</code> stops it.",
         )
         await job.task
         if job.state.value != "done":
@@ -467,10 +465,10 @@ def build(ctx):
 
         await _run_tool(client, message, kind="screens", label="contact sheet", make=make)
 
-    async def encinfo(_client, message):
+    async def mediainfo(_client, message):
         media = _source_media(message)
         if media is None:
-            await reply(message, "Reply to a video or document with /encinfo.")
+            await reply(message, "Reply to a video or document with /mediainfo.")
             return
         try:
             source = await message.reply_to_message.download()
@@ -502,39 +500,6 @@ def build(ctx):
             )
         )
 
-    async def enccancel(_client, message):
-        owner = message.from_user.id
-        prefixes = (getattr(message, "text", "") or "").split()
-        target = prefixes[1] if len(prefixes) > 1 else None
-        stopped = 0
-        for job in ctx.jobs.active():
-            if job.owner_id != owner or job.module != 'encoder':
-                continue
-            if target and job.id != target:
-                continue
-            stopped += bool(ctx.jobs.cancel(job.id, owner_id=owner))
-        await reply(message, 
-            f"Cancelled {stopped} job(s)." if stopped else "Nothing of yours was running."
-        )
-
-    async def encpreset(_client, message):
-        table = Table(
-            headers=("Preset", "CRF", "x264 speed"),
-            rows=tuple(
-                (name, str(crf), x264) for name, (crf, x264) in PRESETS.items()
-            ),
-            aligns=("left", "right", "left"),
-        )
-        await reply(message, 
-            panel(
-                "Encoding presets",
-                icon=ctx.theme.emoji("fire"),
-                subtitle="Lower CRF means higher quality and a bigger file.",
-                table=table,
-                note="Pick one with <code>/encode &lt;preset&gt;</code>.",
-                footer="H.264 in an MP4 container, validated after encoding.",
-            )
-        )
 
     def validated(name, handler):
         async def wrapped(client, message):
@@ -544,12 +509,10 @@ def build(ctx):
                 return
             args = (getattr(message, 'text', '') or '').split()[1:]
             problem = None
-            if name in ('compress', 'toaudio', 'screens', 'encinfo', 'encpreset') and args:
+            if name in ('compress', 'toaudio', 'screens', 'mediainfo') and args:
                 problem = f'Use /{name} without arguments.'
             elif name == 'encode' and (len(args) > 1 or (args and args[0].lower() not in PRESETS)):
                 problem = 'Use /encode [fast|balanced|quality].'
-            elif name == 'enccancel' and len(args) > 1:
-                problem = 'Use /enccancel [job_id].'
             elif name == 'sample':
                 try:
                     if len(args) > 2 or any(len(value) > 20 for value in args):
@@ -565,7 +528,7 @@ def build(ctx):
                     problem = 'Use /sample [start_seconds] [length_seconds]: start 0–86400, length above 0 up to 300. Finite numbers only.'
             if problem:
                 await reply(message, panel('Check Encoder options', icon=ctx.theme.emoji('info'),
-                    lines=[html.escape(problem)], footer='/encpreset · /help'))
+                    lines=[html.escape(problem)], footer='/encode fast|balanced|quality · /help'))
                 return
             return await handler(client, message)
         return wrapped
@@ -576,8 +539,7 @@ def build(ctx):
         "sample": sample,
         "toaudio": toaudio,
         "screens": screens,
-        "encinfo": encinfo,
-        "enccancel": enccancel,
-        "encpreset": encpreset,
+        "mediainfo": mediainfo,
+
     }
     return MANIFEST, {name: validated(name, handler) for name, handler in handlers.items()}

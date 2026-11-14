@@ -7,7 +7,7 @@ from ...utils.rich import reply
 from ..moderation import is_moderator
 from .queue import Track
 
-COMMANDS = ('saveplaylist', 'playlist', 'playlists', 'deleteplaylist', 'playlistinfo')
+COMMANDS = ('saveplaylist', 'playlist', 'playlists', 'deleteplaylist')
 
 
 def build_playlists(ctx, queues):
@@ -31,20 +31,12 @@ def build_playlists(ctx, queues):
                     subtitle=f"{ctx.theme.emoji('diamond')} {len(records)}/10 saved lists · up to 20 tracks each",
                     table=Table(headers=('Name', 'Tracks'), rows=tuple((row['name'], str(row['count'])) for row in records)),
                     lines=[] if records else [f"{ctx.theme.emoji('sparkles')} Your library is empty here. Use /saveplaylist name during playback."],
-                    note=f"{ctx.theme.emoji('lock')} Only your lists in this group and bot. /playlistinfo name previews; /playlist name appends after fresh playback starts.",
+                    note=f"{ctx.theme.emoji('lock')} Only your lists in this group and bot. /playlist name appends after fresh playback starts.",
                     footer='Saved in PostgreSQL · current playback and queue are session-only'))
                 return
             if len(args) != 1:
                 raise PlaylistError(f'Use /{name} <name>. Names use lowercase letters, digits, _ or -.')
             key = args[0]
-            if name == 'playlistinfo':
-                info = await store.inspect(chat_id, owner_id, key)
-                await reply(message, panel('Playlist preview', icon=ctx.theme.emoji('eyes'),
-                    subtitle=f"{ctx.theme.emoji('music')} <b>{html.escape(key)}</b> · {len(info['titles'])} tracks",
-                    table=Table(headers=('#', 'Track'), rows=tuple((str(i), title) for i, title in enumerate(info['titles'], 1))),
-                    note=f"{ctx.theme.emoji('lock')} Only your saved list here. Titles may contain personal text; avoid sharing this preview. No media URLs are displayed.",
-                    footer='Metadata preview only · no URL checks, downloads or playback changes'))
-                return
             if name == 'deleteplaylist':
                 removed = await store.delete(chat_id, owner_id, key)
                 await reply(message, panel('Playlist deleted' if removed else 'Playlist not found',
@@ -61,7 +53,7 @@ def build_playlists(ctx, queues):
                     table=kv_table([('Name', key), ('Tracks', str(count)), ('Persistence', 'PostgreSQL confirmed')]),
                     lines=[f'Saved {count} tracks as <b>{html.escape(key)}</b>. This replaces your same-named playlist here.'],
                     note=f"{ctx.theme.emoji('shield')} Media URLs are stored as metadata; delete with /deleteplaylist.",
-                    footer=f'/playlistinfo {html.escape(key)} · /playlists'))
+                    footer='/playlists · /playlist name'))
                 return
             if queue.current is None or engine.playback(chat_id) is None:
                 raise PlaylistError('Start a fresh track with /play first. Loading a saved playlist only appends upcoming tracks; it never starts or replaces current playback.')

@@ -1,5 +1,9 @@
 # Post Studio: current behavior and limits
 
+> Command availability changed after the reference-pruning request. See
+> [current removals and replacement](COMMAND_SURFACE_CHANGES.md); older command
+> instructions below are historical where they conflict.
+
 `/posttemplate` displays the full escaped administrator-authored template outside
 clipped table cells. `/posttemplate reset` restores the default layout for this
 group; literal `reset` is now reserved for that operation. Template changes use

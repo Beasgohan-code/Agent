@@ -170,6 +170,6 @@ def test_saved_playlist_commands_are_capability_gated(tmp_path, monkeypatch):
     assert not set(playlists.COMMANDS).intersection(handlers)
     ctx.db = SimpleNamespace(connected=True, _pool=object(), scope='test')
     manifest, handlers = music.build(ctx)
-    assert len(handlers) == 30
+    assert len(handlers) == 29
     assert set(manifest.commands) == set(handlers)
     assert set(playlists.COMMANDS).issubset(handlers)

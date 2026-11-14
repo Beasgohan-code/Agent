@@ -18,14 +18,10 @@ def test_configured_database_failure_does_not_fall_back(tmp_path):
         ctx.db = SimpleNamespace(connected=False, _pool=None, scope='test')
         _, commands = postmaker.build(ctx)
         client = SimpleNamespace(send_message=AsyncMock())
-        for command in ['posttemplate', 'postpreview', 'post']:
+        for command in ['post']:
             request = FakeMessage('/' + command + (' title | body' if command != 'posttemplate' else ''))
             await commands[command](client, request)
             assert 'unavailable' in request.replies[-1].lower()
-        request = FakeMessage('/posttemplate <i>{body}</i>')
-        await commands['posttemplate'](client, request)
-        assert 'not confirmed' in request.replies[-1]
-        assert ctx.chats.get(-1001234567890, 'post_template') is None
         client.send_message.assert_not_awaited()
     asyncio.run(scenario())
 

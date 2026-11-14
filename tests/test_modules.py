@@ -105,16 +105,6 @@ def test_encoder_manifest_matches_its_handlers(ctx):
     assert manifest.slug == "encoder"
 
 
-def test_encpreset_lists_presets(ctx):
-    _, handlers = encoder.build(ctx)
-    message = FakeMessage("/encpreset")
-
-    run(handlers["encpreset"], ctx, message)
-
-    assert "fast" in message.replies[0]
-    assert "balanced" in message.replies[0]
-
-
 def test_encode_without_a_reply_explains_itself(ctx):
     _, handlers = encoder.build(ctx)
     message = FakeMessage("/encode")
@@ -136,9 +126,9 @@ def test_encode_rejects_unknown_preset(ctx, media_file):
 def test_encinfo_reports_real_media(ctx, media_file):
     _, handlers = encoder.build(ctx)
     reply = FakeReply(FakeMedia(media_file))
-    message = FakeMessage("/encinfo", reply_to=reply)
+    message = FakeMessage("/mediainfo", reply_to=reply)
 
-    run(handlers["encinfo"], ctx, message)
+    run(handlers["mediainfo"], ctx, message)
 
     assert "h264" in message.replies[0]
     assert "96x64" in message.replies[0]
@@ -153,15 +143,6 @@ def test_encode_runs_a_real_job(ctx, media_file):
 
     assert any("Encoding job" in r for r in message.replies)
     assert any("finished" in r for r in message.replies)
-
-
-def test_enccancel_reports_nothing_running(ctx):
-    _, handlers = encoder.build(ctx)
-    message = FakeMessage("/enccancel")
-
-    run(handlers["enccancel"], ctx, message)
-
-    assert "Nothing of yours was running." in message.replies[0]
 
 
 # --- linkshare -------------------------------------------------------------

@@ -49,7 +49,6 @@ MANIFEST = PluginManifest(
         "errors",
         "db",
         "setlog",
-        "unsetlog",
         "log",
     ),
     permissions=("process.control", "plugins.manage", "files.write"),
@@ -589,19 +588,6 @@ def build(ctx):
             return
         await reply(message, f"Log channel set to <b>{html.escape(str(title))}</b> (<code>{target}</code>). Saved in {logbook.backend}.")
 
-    async def unsetlog(_client, message):
-        if not await _owner_gate(message):
-            return
-        logbook = getattr(ctx, "logbook", None)
-        if logbook is None:  # pragma: no cover
-            return
-        try:
-            await logbook.configure(None)
-        except LogSettingsError as exc:
-            await reply(message, html.escape(str(exc)))
-            return
-        fallback = "your DM" if logbook.owner_id else "nowhere — set OWNER_ID or LOG_CHANNEL"
-        await reply(message, f"Log channel cleared and saved in {logbook.backend}. Events now go to {fallback}.")
 
     async def log(client, message):
         if not await _owner_gate(message):
@@ -674,6 +660,6 @@ def build(ctx):
         "events": show_events,
         "errors": errors,
         "setlog": setlog,
-        "unsetlog": unsetlog,
+
         "log": log,
     }

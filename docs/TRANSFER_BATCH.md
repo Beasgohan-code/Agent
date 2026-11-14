@@ -1,5 +1,9 @@
 # Transfer command batch
 
+> Command availability changed after the reference-pruning request. See
+> [current removals and replacement](COMMAND_SURFACE_CHANGES.md); older command
+> instructions below are historical where they conflict.
+
 The six Leech commands now require personal user identity. `/leech` and `/mirror`
 require exactly one URL; `/taskbackend` and `/leechstats` refuse unsupported
 arguments; `/taskstatus` requires exactly one ID. `/tasklist [page]` validates

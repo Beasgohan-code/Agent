@@ -33,7 +33,6 @@ MANIFEST = PluginManifest(
         "delthumb",
         "viewthumb",
         "setcaption",
-        "delcaption",
         "viewcaption",
     ),
     permissions=("messages.read", "messages.send"),
@@ -371,13 +370,6 @@ def build(ctx):
             ),
         )
 
-    async def delcaption(_client, message):
-        if chats is None:
-            await reply(message, _unavailable())
-            return
-        had = chats.get(message.chat.id, CAPTION_KEY)
-        chats.put(message.chat.id, CAPTION_KEY, None)
-        await reply(message, "Caption cleared." if had else "There was no caption to clear.")
 
     async def viewcaption(_client, message):
         if chats is None:
@@ -394,7 +386,7 @@ def build(ctx):
                 "Caption for this chat",
                 icon=ctx.theme.emoji("info"),
                 table=kv_table([("Template", html.escape(template)), ("Example", html.escape(example or ""))]),
-                footer="<code>/delcaption</code> removes it.",
+                footer="Use <code>/setcaption</code> to change this layout.",
             ),
         )
 
@@ -403,7 +395,7 @@ def build(ctx):
         "delthumb": delthumb,
         "viewthumb": viewthumb,
         "setcaption": setcaption,
-        "delcaption": delcaption,
+
         "viewcaption": viewcaption,
         "autorename": autorename,
         "rename": rename,

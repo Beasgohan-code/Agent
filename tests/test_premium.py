@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent.config import Settings
-from agent.modules import filestore, leech, premium as premium_module
+from agent.modules import leech, premium as premium_module
 from agent.platform.chats import ChatStore
 from agent.platform.context import ModuleContext
 from agent.platform.jobs import JobQueue
@@ -181,21 +181,6 @@ def test_free_quota_is_smaller_and_enforced(tmp_path):
         storage.check_quota(USER, len(payload), quota_bytes=FREE.quota_bytes)
     # The same write fits the premium allowance.
     storage.check_quota(USER, len(payload), quota_bytes=PREMIUM.quota_bytes)
-
-
-def test_filestore_reports_the_tier_quota(tmp_path):
-    ctx = make_ctx(tmp_path)
-    _, commands = filestore.build(ctx)
-    message = FakeMessage("/storequota")
-
-    run(commands["storequota"], message)
-
-    assert f"{FREE.quota_mb}.0 MB" in message.replies[0]
-
-    ctx.premium.grant(USER, 30)
-    run(commands["storequota"], message)
-
-    assert f"{PREMIUM.quota_mb}.0 MB" in message.replies[-1]
 
 
 def test_leech_refuses_when_the_day_is_spent(tmp_path):

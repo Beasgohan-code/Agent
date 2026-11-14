@@ -90,10 +90,10 @@ def test_build_creates_client_and_registers_handlers():
     # 3 built-in commands + 103 module commands (music registers nothing without
     # SESSION_STRING) + callback + error handler, plus four watchers (anti-spam,
     # filters, joins/leaves, new-group log), each in its own group.
-    assert bot.handler_count == 115
+    assert bot.handler_count == 102
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 107
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 94
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -125,7 +125,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 107
+    assert len(messages) == 94
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -135,7 +135,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     # Media commands stay in private chats; moderation only makes sense in groups.
     assert private == {
         "encode", "compress", "sample", "toaudio", "screens",
-        "encinfo", "enccancel", "encpreset",
+        "mediainfo",
         "genlink", "share", "links", "revoke",
         "clone", "mybots", "delclone", "clonestats",
     }
@@ -146,7 +146,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
         "setwelcome", "welcome", "goodbye",
         "settings", "rules", "setrules", "pin", "unpin",
         "admins", "warnlimit", "resetwarns", "lockdown",
-        "post", "postpreview", "posttemplate", "verify",
+        "post", "verify",
     }
 
 

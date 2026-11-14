@@ -2,7 +2,7 @@
 
 One hard limit is stated instead of hidden: **the Bot API will not let a bot
 download a file larger than 20 MB.** A vault that silently refused big files
-would look broken, so ``/fsave`` names the cap and the size it saw.
+would look broken, so batch saves enforce the size cap.
 
 Scope is personal: every member's vault is keyed by their user id, and ``/get``
 only releases files the caller owns. A file id from somebody else's vault is
@@ -11,7 +11,6 @@ answered with "not in your vault", never with the file.
 
 from __future__ import annotations
 
-import html
 import logging
 import time
 
@@ -29,7 +28,6 @@ from .vault import (
     human_bytes,
     media_in,
     media_name,
-    media_of,
     media_size,
 )
 
@@ -40,7 +38,7 @@ MANIFEST = PluginManifest(
     name="Filestore",
     version="1.0.0",
     description="Per-member file vault: save, fetch, list and delete, with quotas.",
-    commands=("fsave", "get", "files", "batch", "check", "del", "storestats", "storequota"),
+    commands=("get", "files", "batch", "check", "del"),
     permissions=("messages.read", "messages.send", "storage.read", "storage.write"),
     scope="all",
 )
@@ -72,54 +70,6 @@ def build(ctx):
 
     # -- /fsave ------------------------------------------------------------
 
-    async def fsave(client, message):
-        found = media_of(message)
-        if found is None:
-            await reply(message, 
-                "Reply to a file with <code>/fsave</code> to keep it in your vault."
-            )
-            return
-        replied, media = found
-        size = media_size(media)
-        if size > MAX_BOT_DOWNLOAD:
-            await reply(message, 
-                f"<b>Too large to save</b>\nFile: {human_bytes(size)}\n"
-                f"Limit: {human_bytes(MAX_BOT_DOWNLOAD)} — that is the Bot API's "
-                "download cap for bots, not a setting of mine."
-            )
-            return
-        name = media_name(media)
-        try:
-            source = await replied.download()
-            stored = storage.save_path(
-                message.from_user.id,
-                source,
-                name=name,
-                quota_bytes=allowance(message.from_user.id),
-            )
-            logger.info(
-                "vault save user=%s id=%s size=%s", message.from_user.id, stored.id, stored.size
-            )
-        except Exception as exc:  # noqa: BLE001 - quota errors and IO reach the user
-            logger.warning("fsave failed (%s)", type(exc).__name__)
-            await reply(message, panel("Save unconfirmed", icon=ctx.theme.emoji("warn"),
-                lines=[f"Could not confirm that save ({type(exc).__name__}). Check /files and /storequota before retrying."],
-                note="No raw file paths or provider errors are displayed."))
-            return
-        rows = [
-            ("Name", stored.name),
-            ("Size", human_bytes(stored.size)),
-            ("Id", stored.id),
-        ] + _quota_rows(message.from_user.id)
-        await reply(message, 
-            panel(
-                "Saved to your vault",
-                icon=ctx.theme.emoji("check"),
-                subtitle="Retrieve with <code>/get &lt;id&gt;</code> while local or archived bytes remain available.",
-                table=kv_table(rows),
-                footer="Retrieval checks your identity; replies and files are visible in the current chat.",
-            )
-        )
 
     # -- /get --------------------------------------------------------------
 
@@ -296,7 +246,7 @@ def build(ctx):
                     "Your vault",
                     icon=ctx.theme.emoji("stats"),
                     lines=["Nothing stored yet."],
-                    note="Reply to a file with <code>/fsave</code> to start.",
+                    note="Reply to a file with <code>/batch 1</code> to start.",
                 )
             )
             return
@@ -347,55 +297,11 @@ def build(ctx):
         await reply(message, 
             panel("Vault entry deleted", icon=ctx.theme.emoji("check"),
                 table=kv_table([("Id", stored.id), ("Name", stored.name), ("Size", human_bytes(stored.size))]),
-                note="Removed from your vault. Previously delivered or archived copies are not remotely erased.", footer="/files · /storequota")
+                note="Removed from your vault. Previously delivered or archived copies are not remotely erased.", footer="/files")
         )
 
     # -- /storestats and /storequota ---------------------------------------
 
-    async def storestats(client, message):
-        owner_id = message.from_user.id
-        owned = storage.list_owned(owner_id)
-        newest = owned[0] if owned else None
-        lines = []
-        if newest is not None:
-            lines.append(
-                f"Newest: <code>{html.escape(newest.id)}</code> — {html.escape(newest.name)} "
-                f"({human_bytes(newest.size)})"
-            )
-        await reply(message, 
-            panel(
-                "Vault statistics",
-                icon=ctx.theme.emoji("stats"),
-                subtitle=f"{ctx.theme.emoji('diamond')} Your vault in this bot · metadata accounting",
-                table=kv_table(_quota_rows(owner_id)),
-                lines=lines + [f"Tier: <b>{html.escape(_tier_label(owner_id))}</b>"],
-                footer="One vault per user in this bot. Responses are visible in the current chat.",
-            )
-        )
-
-    async def storequota(client, message):
-        owner_id = message.from_user.id
-        used = storage.usage(owner_id)
-        quota = allowance(owner_id)
-        percent = (used / quota * 100) if quota else 0
-        await reply(message, 
-            panel(
-                "Vault quota",
-                icon=ctx.theme.emoji("shield"),
-                table=kv_table(
-                    [
-                        ("Used", human_bytes(used)),
-                        ("Quota", human_bytes(quota)),
-                        ("Used %", f"{percent:.0f}%"),
-                    ]
-                ),
-                note=(
-                    "A save that would cross the quota is refused before anything is "
-                    "written. The tier is the limit: <code>/premium</code> shows it."
-                ),
-                footer="Shared with <code>/genlink</code>; one store, not two.",
-            )
-        )
 
     def identified(handler):
         async def wrapped(client, message):
@@ -407,13 +313,12 @@ def build(ctx):
         return wrapped
 
     handlers = {
-        "fsave": fsave,
+
         "get": get,
         "files": files,
         "batch": batch,
         "check": check,
         "del": delete,
-        "storestats": storestats,
-        "storequota": storequota,
+
     }
     return MANIFEST, {name: identified(handler) for name, handler in handlers.items()}

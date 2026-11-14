@@ -196,13 +196,13 @@ Clones are still clients in the parent process, not OS-process isolation.
 
 | Command | What it does |
 | --- | --- |
-| `/fsave` | Keep a replied file in your vault (20 MB cap — the Bot API's, not ours). |
+| `/batch [count]` | Save replied consecutive files to your vault; use `/batch 1` for one file. |
 | `/batch [n]` | Save a run of consecutive files, starting at the replied one. |
 | `/files`, `/check <id>`, `/get <id>`, `/del <id>` | List, inspect, re-send and delete vault entries. |
 | `/genlink [hours] [uses]` | Store the replied file and answer with a share link (deep link + copy button). |
 | `/share <id> [hours] [uses]` | The same, for a file already in your vault — no second copy. |
 | `/links`, `/revoke` | Every live link with the uses and hours it has left; revoke by token or button. |
-| `/setcaption`, `/viewcaption`, `/delcaption` | The caption attached to files this chat receives; `{name}`, `{stem}`, `{size}`. |
+| `/setcaption`, `/viewcaption` | The caption attached to files this chat receives; `{name}`, `{stem}`, `{size}`. |
 | `/setthumb`, `/viewthumb`, `/delthumb` | The thumbnail attached to those files. |
 
 A saved caption or thumbnail is applied by the sender (`/get`, `/leech`,
@@ -227,15 +227,14 @@ handler that throws is logged without taking `/start` down.
 `/leech <url>` streams an HTTP(S) file to disk and sends it; `/mirror` also keeps
 it in the vault. URLs are checked before a request is made — http/https only, no
 embedded credentials, no address that only resolves from inside the host — and
-the transfers are ordinary jobs, so `/cancel` stops them and `/tasklist` shows
-them.
+the transfers are ordinary jobs, so `/cancel` stops your active jobs.
 
 The encoder plugin runs real FFmpeg (system binary, or the `imageio-ffmpeg`
 wheel): `/encode` with presets and live progress, `/compress` for the fast
 preset by name, `/sample [start] [length]` for a stream-copied clip, `/toaudio`
-for the audio track as MP3, `/screens` for a 3×3 contact sheet, and `/encinfo`
+for the audio track as MP3, `/screens` for a 3×3 contact sheet, and `/mediainfo`
 to probe what a file actually is. Every tool feeds the same job queue, so
-`/enccancel` kills the child process instead of politely forgetting it, and every
+`/cancel` kills the child process instead of politely forgetting it, and every
 produced file comes back with the chat's caption and thumbnail attached. The music player drives `pytgcalls` with a Telethon
 user session, and is gated on capability: without `SESSION_STRING` the module
 registers zero commands and `/plugins` says why. `/play` and `/nowplaying` answer
@@ -339,7 +338,7 @@ endpoint to fake liveness.
 
 Every notable event (new user, new group, plugin toggled, restart, error) is
 posted to `LOG_CHANNEL` with a searchable hashtag, or to the owner's DM when no
-channel is set. `/setlog`, `/unsetlog` and `/log` manage it.
+channel is set. `/setlog` and `/log` manage it.
 
 ## Layout
 
@@ -450,8 +449,8 @@ for URL-validation limitations and the remaining feature backlog.
 
 With `DATABASE_URL` configured, `/setlog <negative channel id>` tests posting
 permission and saves the destination directly to PostgreSQL **before** confirming
-success. `/log` rereads the database, and `/unsetlog` saves an explicit clear that
-continues overriding `LOG_CHANNEL` after restart. Main bot and clone settings
+success. `/log` rereads the database. The former `/unsetlog` command has been
+retired; existing explicit-clear records remain respected. Main bot and clone settings
 are separate. A configured but unavailable database never silently redirects
 these settings to an ephemeral JSON file.
 

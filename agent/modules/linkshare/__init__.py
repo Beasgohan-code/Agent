@@ -187,7 +187,7 @@ def build(ctx):
                         f"Send <code>/share &lt;id&gt;</code> — you have "
                         f"<b>{len(owned)}</b> file(s) in the vault."
                         if owned
-                        else "Your vault is empty: <code>/fsave</code> a file first."
+                        else "Your vault is empty: use <code>/batch</code> on replied files to save them."
                     ),
                     table=Table(
                         headers=("Id", "Name", "Size"),

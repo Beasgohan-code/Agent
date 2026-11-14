@@ -109,7 +109,7 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
         + rich_list(
             [
                 "<code>/help</code> — every command, one screen per section",
-                "<code>/fsave</code> — reply to a file to keep it in your vault",
+                "<code>/files</code> — browse your stored files",
                 "<code>/leech</code> — fetch a link and get the file back",
             ]
         )
@@ -142,10 +142,9 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Encoding & files",
         (
             "encode", "compress", "sample", "toaudio", "screens",
-            "encinfo", "encpreset", "enccancel",
-            "autorename", "rename", "testrename", "clean",
+            "mediainfo", "autorename", "rename", "testrename", "clean",
             "setthumb", "delthumb", "viewthumb",
-            "setcaption", "delcaption", "viewcaption",
+            "setcaption", "viewcaption",
             "genlink", "share", "links", "revoke",
         ),
     ),
@@ -153,9 +152,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "box",
         "Vault & downloads",
         (
-            "fsave", "get", "files", "batch", "check", "del", "storestats", "storequota",
-            "leech", "mirror", "tasklist", "taskstatus", "leechstats", "taskbackend",
-        ),
+            "get", "files", "batch", "check", "del", "leech", "mirror", ),
     ),
     (
         "music",
@@ -163,7 +160,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         ("play", "playnext", "pause", "resume", "skip", "stop", "end", "resetplayer",
          "queue", "q", "nowplaying", "voicehealth", "leave", "loop", "shuffle", "clearqueue", "clear",
          "remove", "move", "jump", "replay", "volume", "volumeup", "volumedown", "history",
-         "saveplaylist", "playlist", "playlists", "deleteplaylist", "playlistinfo"),
+         "saveplaylist", "playlist", "playlists", "deleteplaylist", ),
     ),
     (
         "lock",
@@ -188,7 +185,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Community & premium",
         (
             "report", "reports", "appeal",
-            "post", "postpreview", "posttemplate", "verify",
+            "post", "verify",
             "premium", "myplan", "plans", "addpremium", "delpremium", "premiumusers",
         ),
     ),
@@ -202,7 +199,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Operations (owner)",
         (
             "restart", "watchdog", "plugins", "plugin", "events", "errors", "db",
-            "setlog", "unsetlog", "log", "sudo",
+            "setlog", "log", "sudo",
         ),
     ),
 )

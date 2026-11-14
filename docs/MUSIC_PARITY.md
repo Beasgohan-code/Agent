@@ -1,5 +1,9 @@
 # Music behavior migration
 
+> Command availability changed after the reference-pruning request. See
+> [current removals and replacement](COMMAND_SURFACE_CHANGES.md); older command
+> instructions below are historical where they conflict.
+
 Target reference: the pinned `Videl0` checkout in
 [the source inventory](references/Videl0.md). Original Agent implementations are
 used; reference source is not copied or imported. This is an implementation

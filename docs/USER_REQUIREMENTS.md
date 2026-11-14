@@ -284,3 +284,12 @@ uncertainty classes. No command/plugin/data was deleted by this review step;
 source-name absence is not proven absence of behavior or permission to delete
 stored data. Resolve aliases/dynamic registrations and standing safety/feature
 constraints before applying destructive command-surface changes.
+
+### Approved reference-based command removal
+
+User explicitly approved deleting all 15 unmatched command names. Removed public
+registration, handler implementations and menu/Help entries; added only the
+verified reference name `/mediainfo` in place of `/encinfo`. No stored data or
+SQL tables removed. COMMAND_SURFACE_CHANGES.md supersedes older instructions for
+retired commands. Remaining name matches are not proof of behavioral parity;
+continue actual reference review without blindly adding dangerous endpoints.

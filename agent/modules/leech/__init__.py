@@ -3,8 +3,7 @@
 * ``/leech <url>`` streams an ``http(s)`` file to disk with progress, then sends
   it to the chat as a document;
 * ``/mirror <url>`` does the same and also keeps it in the filestore;
-* ``/tasklist`` ``/taskstatus`` ``/leechstats`` read the shared job queue, so
-  ``/cancel`` (from the core module) stops these transfers like any other job.
+* ``/cancel`` (from the core module) stops owned transfers like other jobs.
 
 Safety worth stating: URLs are checked before a request is made. Only
 ``http``/``https``, no embedded credentials, and no host that resolves to a
@@ -20,7 +19,7 @@ import shutil
 from ...platform.attachments import attachment_kwargs
 from ...platform.manifest import PluginManifest
 from ...platform.net import LinkError, check_target, human_bytes, parse_url
-from ...ui.tables import Table, kv_table, panel
+from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
 from .transfer import _destination, download
 
@@ -34,7 +33,7 @@ MANIFEST = PluginManifest(
     name="Leech",
     version="1.0.0",
     description="Download an http(s) file with progress and deliver it to the chat.",
-    commands=("leech", "mirror", "tasklist", "taskstatus", "leechstats", "taskbackend"),
+    commands=("leech", "mirror",),
     permissions=("messages.read", "messages.send", "storage.write", "http.outbound"),
     scope="all",
 )
@@ -197,7 +196,7 @@ def build(ctx):
 
         job = ctx.jobs.submit("leech", message.from_user.id, runner, label=label[:60])
         await reply(message, 
-            f"Job <code>{job.id}</code> started. <code>/taskstatus {job.id}</code> "
+            f"Job <code>{job.id}</code> started. "
             "to watch it, <code>/cancel</code> to stop it."
         )
 
@@ -209,126 +208,6 @@ def build(ctx):
 
     # -- queue reporting ---------------------------------------------------
 
-    async def tasklist(client, message):
-        args = (getattr(message, 'text', '') or '').split()[1:]
-        if len(args) > 1 or (args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0]) > 8 or int(args[0]) < 1)):
-            await reply(message, 'Usage: <code>/tasklist [page]</code>, starting at page 1.')
-            return
-        page = int(args[0]) if args else 1
-        jobs = list(reversed(ctx.jobs.for_owner(message.from_user.id)))
-        pages = max(1, (len(jobs) + 9) // 10)
-        if page > pages:
-            await reply(message, f'Choose a task page from 1 to {pages}.')
-            return
-        if not jobs:
-            await reply(message, 
-                panel(
-                    "Your tasks",
-                    icon=ctx.theme.emoji("stats"),
-                    lines=["Nothing queued."],
-                    note="Start one with <code>/leech &lt;url&gt;</code>.",
-                )
-            )
-            return
-        rows = tuple(
-            (
-                job.id,
-                job.state.value,
-                f"{int(job.progress * 100)}%",
-                job.module,
-            )
-            for job in jobs[(page - 1) * 10:page * 10]
-        )
-        await reply(message, 
-            panel(
-                "Your tasks",
-                icon=ctx.theme.emoji("stats"),
-                subtitle=f"{ctx.theme.emoji('diamond')} Page <b>{page}/{pages}</b> · {len(jobs)} retained task(s), newest first.",
-                table=Table(
-                    headers=("Id", "State", "Done", "Module"),
-                    rows=rows,
-                    aligns=("left", "left", "right", "left"),
-                    total_width=56,
-                ),
-                lines=([f"<code>/tasklist {page - 1}</code> previous"] if page > 1 else []) +
-                      ([f"<code>/tasklist {page + 1}</code> next"] if page < pages else []),
-                note="<code>/taskstatus &lt;id&gt;</code> for one. Labels are omitted to avoid exposing source URLs from older jobs.",
-                footer="Jobs live in this process; a restart clears them.",
-            )
-        )
-
-    async def taskstatus(client, message):
-        parts = (getattr(message, "text", "") or "").split()
-        if len(parts) != 2:
-            await reply(message, "Usage: <code>/taskstatus &lt;id&gt;</code>")
-            return
-        job = ctx.jobs.get(parts[1])
-        if job is None or job.owner_id != message.from_user.id:
-            await reply(message, "No task of yours has that id.")
-            return
-        rows = [
-            ("Id", job.id),
-            ("Module", job.module),
-            ("State", job.state.value),
-            ("Progress", f"{int(job.progress * 100)}%"),
-            ("Detail", "withheld: task details may contain private paths or URLs"),
-        ]
-        if job.error:
-            rows.append(("Error", "Task failed; raw provider/tool errors are withheld."))
-        await reply(message, 
-            panel(
-                "Task",
-                icon=ctx.theme.emoji("bolt"),
-                table=kv_table(rows),
-                footer="<code>/cancel</code> stops everything you have running.",
-            )
-        )
-
-    async def leechstats(client, message):
-        jobs = ctx.jobs.for_owner(message.from_user.id)
-        counts: dict[str, int] = {}
-        for job in jobs:
-            counts[job.state.value] = counts.get(job.state.value, 0) + 1
-        rows = [(state, str(count)) for state, count in sorted(counts.items())]
-        book = getattr(ctx, "premium", None)
-        if book is not None:
-            tier = book.tier(message.from_user.id)
-            rows.append(("Tier", tier.label))
-            rows.append(
-                (
-                    "Left today",
-                    f"{book.remaining(message.from_user.id, 'leech')} / {tier.transfers_per_day}",
-                )
-            )
-        await reply(message, 
-            panel(
-                "Leech statistics",
-                icon=ctx.theme.emoji("stats"),
-                table=kv_table(rows) if rows else None,
-                lines=[] if rows else ["Nothing has been queued by you this run."],
-                footer=f"{sum(not job.finished for job in jobs)} of your tasks active. Counts cover retained shared jobs, not only transfers.",
-            )
-        )
-
-    async def taskbackend(client, message):
-        rows = tuple(backends())
-        await reply(message, 
-            panel(
-                "Transfer backends",
-                icon=ctx.theme.emoji("gear"),
-                subtitle="Determined with <code>shutil.which</code>, not from config.",
-                table=Table(
-                    headers=("Backend", "Ready", "Note"),
-                    rows=rows,
-                    total_width=56,
-                ),
-                note=(
-                    "Only <code>local</code> is used. An absent daemon is listed as "
-                    "absent rather than enabled."
-                ),
-                footer="aria2/rclone/qBittorrent would need a service this image does not run.",
-            )
-        )
 
     def validated(name, handler):
         async def wrapped(client, message):
@@ -337,9 +216,6 @@ def build(ctx):
                 await reply(message, 'Use your personal Telegram user identity for transfer commands.')
                 return
             args = (getattr(message, 'text', '') or '').split()[1:]
-            if name in ('leechstats', 'taskbackend') and args:
-                await reply(message, f'Usage: <code>/{name}</code> without arguments.')
-                return
             if name in ('leech', 'mirror') and len(args) != 1:
                 await reply(message, panel('Transfer options', icon=ctx.theme.emoji('info'),
                     lines=[f'Usage: <code>/{name} &lt;public_http_url&gt;</code>. Supply exactly one URL.'],
@@ -351,9 +227,6 @@ def build(ctx):
     handlers = {
         "leech": leech,
         "mirror": mirror,
-        "tasklist": tasklist,
-        "taskstatus": taskstatus,
-        "leechstats": leechstats,
-        "taskbackend": taskbackend,
+
     }
     return MANIFEST, {name: validated(name, handler) for name, handler in handlers.items()}

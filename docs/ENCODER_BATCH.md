@@ -1,5 +1,9 @@
 # Encoder batch: eight-command validation and lifecycle pass
 
+> Command availability changed after the reference-pruning request. See
+> [current removals and replacement](COMMAND_SURFACE_CHANGES.md); older command
+> instructions below are historical where they conflict.
+
 All Encoder handlers now require a personal user identity. `/encode` accepts one
 supported preset only; `/compress`, `/toaudio`, `/screens`, `/encinfo` and
 `/encpreset` reject extra arguments rather than pretending to support them.

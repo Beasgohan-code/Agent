@@ -22,17 +22,14 @@ def test_oversized_composition_is_rejected_not_truncated(title, body):
         render(DEFAULT_TEMPLATE, title, body)
 
 
-def test_publish_and_preview_use_identical_payload_without_preview_audit(tmp_path):
+def test_publication_escapes_payload_and_records_metadata(tmp_path):
     async def scenario():
         ctx = make_ctx(tmp_path)
         ctx.chats.log = log = Mock()
         _, handlers = postmaker.build(ctx)
         client = SimpleNamespace(send_message=AsyncMock())
-        await handlers['postpreview'](client, FakeMessage('/postpreview title | <unsafe> & body'))
-        log.assert_not_called()
-        preview = client.send_message.await_args
         await handlers['post'](client, FakeMessage('/post title | <unsafe> & body'))
-        assert client.send_message.await_args == preview
+        preview = client.send_message.await_args
         assert preview.args[0] == CHAT
         assert preview.kwargs['parse_mode'] == ParseMode.HTML
         assert '&lt;unsafe&gt;' in preview.args[1]
@@ -48,7 +45,7 @@ def test_permissions_limits_and_caption_support(tmp_path):
         client = SimpleNamespace(send_message=AsyncMock(), get_chat_member=AsyncMock(return_value=SimpleNamespace(status='member')))
         await handlers['post'](client, FakeMessage('/post bad | body', uid=99))
         client.send_message.assert_not_awaited()
-        await handlers['postpreview'](client, FakeMessage('/postpreview t | ' + 'x'*3001))
+        await handlers['post'](client, FakeMessage('/post t | ' + 'x'*3001))
         client.send_message.assert_not_awaited()
         request = FakeMessage('/post title', reply_to=SimpleNamespace(text=None, caption='caption & text'))
         await handlers['post'](client, request)
@@ -73,20 +70,4 @@ def test_send_failure_and_audit_failure_are_not_false_success(tmp_path):
         await handlers['post'](client, request)
         assert 'Do not republish' in request.replies[-1]
         assert 'SECRET_DB' not in ''.join(request.replies)
-    asyncio.run(scenario())
-
-
-def test_template_reset_and_readable_untruncated_layout(tmp_path):
-    async def scenario():
-        ctx = make_ctx(tmp_path)
-        _, handlers = postmaker.build(ctx)
-        client = SimpleNamespace()
-        await handlers['posttemplate'](client, FakeMessage('/posttemplate <i>{body}</i>'))
-        assert ctx.chats.get(CHAT, 'post_template') == '<i>{body}</i>'
-        await handlers['posttemplate'](client, FakeMessage('/posttemplate reset'))
-        assert ctx.chats.get(CHAT, 'post_template') == DEFAULT_TEMPLATE
-        request = FakeMessage('/posttemplate')
-        await handlers['posttemplate'](client, request)
-        assert '&lt;b&gt;{title}&lt;/b&gt;' in request.replies[-1]
-        assert 'Standalone settings' in request.replies[-1]
     asyncio.run(scenario())

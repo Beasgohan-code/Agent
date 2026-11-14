@@ -1,5 +1,9 @@
 # Utility command batch
 
+> Command availability changed after the reference-pruning request. See
+> [current removals and replacement](COMMAND_SURFACE_CHANGES.md); older command
+> instructions below are historical where they conflict.
+
 - `/id`: themed identifiers panel, including explicit sender-chat identities.
   Anonymous/channel messages are not treated as proof of a human administrator.
 - `/info`: themed member profile, honest unknown membership status and an explicit

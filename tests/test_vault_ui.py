@@ -15,20 +15,6 @@ def save(ctx, tmp_path, owner, name):
     return ctx.storage.save_path(owner, path, name=name)
 
 
-def test_storestats_no_longer_crashes_and_escapes_metadata(tmp_path):
-    async def scenario():
-        ctx = make_ctx(tmp_path)
-        stored = save(ctx, tmp_path, OWNER, '<title>.txt')
-        stored.name = '<b>untrusted</b>'
-        _, commands = filestore.build(ctx)
-        request = FakeMessage('/storestats')
-        await commands['storestats'](None, request)
-        body = request.replies[-1]
-        assert 'Vault statistics' in body and 'deployment default' in body
-        assert '<b>untrusted</b>' not in body and '&lt;b&gt;untrusted&lt;/b&gt;' in body
-    asyncio.run(scenario())
-
-
 def test_pagination_exposes_all_owned_files_not_other_users(tmp_path):
     async def scenario():
         ctx = make_ctx(tmp_path)
@@ -76,19 +62,6 @@ def test_anonymous_vault_commands_refused(tmp_path):
             request.from_user = None
             await handler(None, request)
             assert 'personal Telegram user' in request.replies[-1]
-    asyncio.run(scenario())
-
-
-def test_save_failure_hides_sensitive_exception(tmp_path):
-    async def scenario():
-        ctx = make_ctx(tmp_path)
-        _, commands = filestore.build(ctx)
-        request = FakeMessage('/fsave', reply_to=SimpleNamespace(
-            document=SimpleNamespace(file_size=100, file_name='test.txt'),
-            download=AsyncMock(side_effect=RuntimeError('SECRET_PATH_TOKEN'))))
-        await commands['fsave'](None, request)
-        assert 'SECRET_PATH_TOKEN' not in ''.join(request.replies)
-        assert 'unconfirmed' in request.replies[-1]
     asyncio.run(scenario())
 
 

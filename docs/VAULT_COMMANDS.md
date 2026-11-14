@@ -1,5 +1,9 @@
 # FileStore command upgrade
 
+> Command availability changed after the reference-pruning request. See
+> [current removals and replacement](COMMAND_SURFACE_CHANGES.md); older command
+> instructions below are historical where they conflict.
+
 `/files [page]` now exposes every entry in the authenticated user's bot-scoped
 vault, ten per page, newest first. Commands in the previous/next hints are
 revalidated on each request; concurrent saves/deletes can shift page membership.

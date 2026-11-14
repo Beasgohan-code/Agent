@@ -73,21 +73,18 @@ DESCRIPTIONS: dict[str, str] = {
     "resetwarns": "Clear all warnings for a member",
     "lockdown": "Restrict the group to administrators",
     # filestore
-    "fsave": "Save a replied file to your vault",
+
     "get": "Re-send a file from your vault",
     "files": "Browse your vault: /files [page]",
     "batch": "Save a run of files into your vault",
     "check": "Everything about one vault entry",
     "del": "Delete one vault entry",
-    "storestats": "Vault usage statistics",
-    "storequota": "Vault quota and what is left",
+
+
     # leech
     "leech": "Download an http(s) link and send it here",
     "mirror": "Download a link and keep it in your vault",
-    "tasklist": "Your download tasks",
-    "taskstatus": "Detail of one task",
-    "leechstats": "Your task counts",
-    "taskbackend": "Which transfer backends exist here",
+
     # music (voice chat)
     "play": "Stream audio into the voice chat",
     "pause": "Pause playback",
@@ -116,7 +113,7 @@ DESCRIPTIONS: dict[str, str] = {
     "volumedown": "Decrease voice-chat volume by 20 percent",
     "history": "Recent acknowledged music titles this session",
     "saveplaylist": "Save your group's queue as a named playlist",
-    "playlistinfo": "Preview your saved playlist titles without playback",
+
     "playlist": "Append your saved playlist to the current queue",
     "playlists": "List your saved playlists in this group",
     "deleteplaylist": "Delete your saved playlist in this group",
@@ -126,8 +123,7 @@ DESCRIPTIONS: dict[str, str] = {
     "reports": "Review reports: pages, closed, show or close number",
     "appeal": "Appeal a moderation action",
     "post": "Publish a formatted post",
-    "postpreview": "Preview a post before publishing",
-    "posttemplate": "Set this group's post template",
+
     "verify": "Mute new members until they verify",
     "premium": "Your tier, its limits and what is left today",
     "myplan": "Your tier and what is left, short form",
@@ -153,9 +149,8 @@ DESCRIPTIONS: dict[str, str] = {
     "sample": "Cut a short clip from a replied video",
     "toaudio": "Extract the audio track as MP3",
     "screens": "Contact sheet of frames from a video",
-    "encinfo": "Probe a replied video",
-    "encpreset": "List encoding presets",
-    "enccancel": "Cancel your encoding jobs",
+    "mediainfo": "Probe a replied video",
+
     # linkshare
     "genlink": "Create a signed link for a file",
     "share": "Link a file already in your vault",
@@ -170,7 +165,7 @@ DESCRIPTIONS: dict[str, str] = {
     "delthumb": "Stop attaching a thumbnail",
     "viewthumb": "Show the thumbnail this chat uses",
     "setcaption": "Set the caption files are sent with",
-    "delcaption": "Stop adding a caption",
+
     "viewcaption": "Show the caption with an example",
     # ops (owner)
     "restart": "Restart the process (owner)",
@@ -183,7 +178,7 @@ DESCRIPTIONS: dict[str, str] = {
     "errors": "Private error incident history (owner)",
     "db": "The state store: backend, host, health (owner)",
     "setlog": "Set the log channel (owner)",
-    "unsetlog": "Clear the log channel (owner)",
+
     "log": "Show where events are logged (owner)",
 }
 
@@ -197,8 +192,7 @@ GROUP_ONLY = frozenset(
         "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
         "voicehealth", "q", "end", "resetplayer", "playnext", "loop", "shuffle", "clear", "clearqueue",
         "remove", "move", "jump", "replay", "volume", "volumeup", "volumedown", "history",
-        "saveplaylist", "playlist", "playlists", "deleteplaylist", "playlistinfo",
-        "post", "postpreview", "posttemplate", "verify",
+        "saveplaylist", "playlist", "playlists", "deleteplaylist", "post", "verify",
         "addpremium", "delpremium", "premiumusers",
         "filter", "filters", "stopfilter",
         "setwelcome", "welcome", "goodbye",
