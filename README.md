@@ -8,10 +8,10 @@ verification always register, even with a narrow `PLUGINS` setting. They cannot
 be disabled through the plugin panel or restored as disabled from old state.
 Individual rules remain configurable by group; verification is off by default.
 
-**In progress:** Owner-approved optional catalog, three atomic plugin slots per
-group, group-scoped plugin teardown and an integrated Group Control Center.
-The existing plugin panel still controls optional modules deployment-wide;
-it is not yet the per-group activation UI. The 210-feature brief is a target,
+**In progress:** the full Group Control Center, durable resource teardown and
+plugin-specific per-group data/configuration workflows. The group plugin panel
+now provides approval-aware three-slot activation; the private Owner runtime
+panel still controls deployment-wide availability. The 210-feature brief is a target,
 not a claim of implemented coverage. See [the architecture audit](docs/GROUP_MANAGEMENT.md).
 
 ## Environment
@@ -102,13 +102,27 @@ Local staging and review APIs remain for inspection only. Symbolic links and
 unsafe manifest paths are refused; activation rechecks staged source bytes.
 A future external runtime needs an actual capability-scoped process boundary.
 
-`platform/plugin_access.py` implements the PostgreSQL permission service:
-Owner approval, per-group activation (three slots), configuration, history and
-cleanup-pending resource records. Approval is rechecked under a catalog row lock;
-slot reservation uses a group-specific transaction-scoped advisory lock. There
-is no file fallback. This service is **not yet wired into the Telegram plugin
-panel, every execution boundary or runtime task teardown**. The three-slot
-product behavior is therefore not yet released end-to-end.
+`platform/plugin_access.py` implements PostgreSQL Owner approval, three optional
+slots per group, configuration and activation history. Approval is rechecked
+under a catalog row lock; reservation uses a group-specific transaction lock.
+There is no file fallback. In groups, optional command, callback, deep-link and
+watcher entry points check live eligibility. Mandatory moderation bypasses the
+optional gate. Private tools retain deployment-scoped behavior and do not consume
+group slots; global approval is currently a group-use permission.
+
+- Owner: `/plugin music approve` or `/plugin music revoke` controls global
+  group-use approval. Deployment-wide on/off remains a separate Owner control.
+- Administrators: `/plugins` in a group, or the plugin button under `/settings`,
+  shows actual availability and slots. Activation rechecks management rights;
+  disabling asks for confirmation. Private-only modules are not offered as group
+  features. Music also needs a configured voice session.
+- Group-owned invocation tasks and queued jobs are cancelled on local revocation
+  or disable. Music releases its queue/call. Other processes reconcile active
+  scopes every two seconds; new requests always check PostgreSQL directly.
+
+This is the plugin slice of the Control Center, not its complete implementation.
+Generic durable job/subscription cleanup, plugin-specific configuration forms,
+full per-group feature-data migration and external process isolation remain open.
 
 ## Clones
 

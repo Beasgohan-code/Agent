@@ -21,6 +21,7 @@ class ActionRouter:
     """Maps ``prefix:...`` callback data to a module handler."""
 
     def __init__(self) -> None:
+        self.gate = None
         self._routes: dict[str, ActionHandler] = {}
 
     def register(self, prefix: str, handler: ActionHandler) -> None:
@@ -29,6 +30,10 @@ class ActionRouter:
             raise ValueError("an action prefix cannot be empty")
         if key in self._routes:
             raise ValueError(f"callback prefix {key!r} is already registered")
+        from .execution import REGISTERING
+        owner = REGISTERING.get()
+        if self.gate is not None and owner is not None:
+            handler = self.gate.wrap(owner, handler, callback=True)
         self._routes[key] = handler
 
     def handles(self, data: str) -> bool:

@@ -40,6 +40,7 @@ class Job:
     started_at: float | None = None
     finished_at: float | None = None
     task: asyncio.Task | None = None
+    group_id: int | None = None
 
     @property
     def finished(self) -> bool:
@@ -62,6 +63,7 @@ class JobQueue:
     """Bounded-concurrency runner with cancellation."""
 
     def __init__(self, *, concurrency: int = 2, max_history: int = 200) -> None:
+        self.eligibility_check = None
         self._limit = asyncio.Semaphore(max(1, concurrency))
         self._jobs: dict[str, Job] = {}
         self._counter = 0
@@ -78,6 +80,13 @@ class JobQueue:
     ) -> Job:
         self._counter += 1
         job = Job(id=f"{module}-{self._counter}", module=module, owner_id=owner_id, label=label)
+        from .execution import GROUP_EXECUTION
+        scope = GROUP_EXECUTION.get()
+        if scope is not None:
+            group_id, slug = scope
+            if slug != module:
+                raise ValueError("Job module does not match its execution owner")
+            job.group_id = group_id
         self._jobs[job.id] = job
         job.task = asyncio.create_task(self._run(job, runner), name=job.id)
         self._tasks.add(job.task)
@@ -89,6 +98,15 @@ class JobQueue:
         async with self._limit:
             if job.state is JobState.CANCELLED:
                 return
+            if job.group_id is not None and self.eligibility_check is not None:
+                try:
+                    eligible = await self.eligibility_check(job.group_id, job.module)
+                except Exception:
+                    eligible = False
+                if not eligible:
+                    job.state = JobState.CANCELLED
+                    job.finished_at = time.time()
+                    return
             job.state = JobState.RUNNING
             job.started_at = time.time()
             try:
@@ -116,9 +134,20 @@ class JobQueue:
         if owner_id is not None and job.owner_id != owner_id:
             return False
         job.state = JobState.CANCELLED
+        job.finished_at = time.time()
         if job.task is not None:
             job.task.cancel()
         return True
+
+    async def cancel_group(self, group_id: int, module: str) -> None:
+        tasks = []
+        for job in self.active():
+            if job.group_id == group_id and job.module == module:
+                self.cancel(job.id)
+                if job.task is not None and job.task is not asyncio.current_task():
+                    tasks.append(job.task)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)

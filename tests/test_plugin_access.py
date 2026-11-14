@@ -122,3 +122,16 @@ def test_revocation_marks_resources_and_removes_activations_in_same_transaction(
         assert any("cleanup_pending" in sql for sql in statements)
         assert all(call.args[1] == 'main:123' for call in conn.execute.await_args_list)
     asyncio.run(scenario())
+
+
+def test_revocation_invokes_local_cleanup_only_after_commit():
+    async def scenario():
+        service, conn = access()
+        conn.fetch.return_value = [{'group_id': -100}]
+        async def cleanup(group, slug):
+            assert conn.committed
+            assert (group, slug) == (-100, 'music')
+        service.cleanup_callback = AsyncMock(side_effect=cleanup)
+        await service.revoke('music', actor_id=11)
+        service.cleanup_callback.assert_awaited_once_with(-100, 'music')
+    asyncio.run(scenario())

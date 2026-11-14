@@ -132,6 +132,7 @@ class PluginRuntime:
                     "enabled": enabled,
                     "commands": list(manifest.commands),
                     "description": manifest.description,
+                    "scope": manifest.scope,
                     "protected": self.is_protected(manifest.slug),
                 }
             )

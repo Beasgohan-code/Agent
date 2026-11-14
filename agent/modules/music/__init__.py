@@ -73,6 +73,15 @@ def build(ctx):
         )
 
     queues = QueueBook()
+    gate = getattr(ctx, "plugin_gate", None)
+
+    async def cleanup_group(chat_id):
+        queues.drop(chat_id)
+        if engine.playback(chat_id) is not None:
+            await engine.leave(chat_id)
+
+    if gate is not None:
+        gate.cleanup_hook("music", cleanup_group)
 
     def _in_group(message) -> bool:
         chat = getattr(message, "chat", None)
@@ -80,6 +89,9 @@ def build(ctx):
 
     async def _play_next(chat_id: int) -> str | None:
         """Advance the queue; returns the title that started, or None."""
+        if gate is not None and not await gate.allowed(chat_id, "music"):
+            await cleanup_group(chat_id)
+            return None
         queue = queues.for_chat(chat_id)
         track = queue.advance()
         if track is None:

@@ -30,7 +30,7 @@ class FakeMessage:
     def __init__(self, text, *, uid=OWNER):
         self.text = text
         self.id = 7
-        self.chat = SimpleNamespace(id=-100)
+        self.chat = SimpleNamespace(id=11)
         self.from_user = SimpleNamespace(id=uid, first_name="Owner")
         self.replies = []
         self.markup = None
@@ -48,7 +48,7 @@ class FakeQuery:
         self.answers = []
         self.edits = []
         self.message = SimpleNamespace(
-            chat=SimpleNamespace(id=-100),
+            chat=SimpleNamespace(id=11),
             id=8,
             edit_text=self._edit,
         )

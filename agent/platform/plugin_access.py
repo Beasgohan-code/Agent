@@ -54,6 +54,7 @@ class PluginAccess:
     def __init__(self, db, *, owner_id: int | None):
         self.db = db
         self.owner_id = owner_id
+        self.cleanup_callback = None
 
     @property
     def tenant(self):
@@ -152,7 +153,11 @@ class PluginAccess:
             for row in affected:
                 await self._history(conn, slug, "revoked", actor_id, row["group_id"])
             await self._history(conn, slug, "blocked", actor_id)
-        return [row["group_id"] for row in affected]
+        groups = [row["group_id"] for row in affected]
+        if self.cleanup_callback:
+            for group_id in groups:
+                await self.cleanup_callback(group_id, slug)
+        return groups
 
     async def activate(self, client, message, slug):
         self._slug(slug)
@@ -194,7 +199,22 @@ class PluginAccess:
             )
             if removed:
                 await self._history(conn, slug, "deactivated", actor_id, group_id)
+        if self.cleanup_callback:
+            await self.cleanup_callback(group_id, slug)
         return bool(removed)
+
+    async def status(self, client, message):
+        group_id, _ = await self._admin(client, message)
+        async with self._transaction() as conn:
+            rows = await conn.fetch(
+                """SELECT c.slug,c.approved,(p.slug IS NOT NULL) AS active
+                FROM agent_plugin_catalog c LEFT JOIN agent_group_plugins p
+                ON c.tenant=p.tenant AND c.slug=p.slug AND p.group_id=$2
+                WHERE c.tenant=$1 ORDER BY c.slug""", self.tenant, group_id,
+            )
+        state = {row["slug"]: dict(row) for row in rows}
+        return [state.get(slug, {"slug": slug, "approved": False, "active": False})
+                for slug in sorted(OPTIONAL)]
 
     async def eligible(self, group_id, slug):
         self._group(group_id)

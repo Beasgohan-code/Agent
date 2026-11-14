@@ -1,0 +1,172 @@
+"""Group execution and cleanup must not affect core or another group's jobs."""
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+from agent.platform.actions import ActionRouter
+from agent.platform.execution import PluginGate, REGISTERING, GROUP_EXECUTION
+from agent.platform.jobs import JobQueue, JobState
+
+
+def message(group=-100):
+    return SimpleNamespace(chat=SimpleNamespace(id=group), reply=AsyncMock())
+
+
+def gate():
+    access = SimpleNamespace(eligible=AsyncMock(return_value=True))
+    runtime = SimpleNamespace(wants_disabled=lambda slug: False,
+                              registry=SimpleNamespace(is_enabled=lambda slug: True))
+    jobs = JobQueue(concurrency=4)
+    return PluginGate(access, runtime, jobs), access, jobs
+
+
+def test_unapproved_command_refused_and_core_never_queries_catalog():
+    async def scenario():
+        execution, access, _ = gate()
+        access.eligible.return_value = False
+        handler = AsyncMock()
+        update = message()
+        await execution.wrap('encoder', handler)(None, update)
+        handler.assert_not_awaited()
+        assert update.reply.await_count == 1
+        access.eligible.reset_mock()
+        await execution.wrap('moderation', handler)(None, update)
+        handler.assert_awaited_once()
+        access.eligible.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_callback_eligibility_rechecked_on_every_press():
+    async def scenario():
+        execution, access, _ = gate()
+        router = ActionRouter()
+        router.gate = execution
+        handler = AsyncMock()
+        token = REGISTERING.set('music')
+        try:
+            router.register('transport', handler)
+        finally:
+            REGISTERING.reset(token)
+        query = SimpleNamespace(data='transport:pause', message=message(), answer=AsyncMock())
+        await router.dispatch(None, query)
+        handler.assert_awaited_once()
+        access.eligible.return_value = False
+        await router.dispatch(None, query)
+        assert handler.await_count == 1
+        query.answer.assert_awaited_once()
+        assert access.eligible.await_count == 2
+    asyncio.run(scenario())
+
+
+def test_private_compatibility_does_not_use_group_slots():
+    async def scenario():
+        execution, access, _ = gate()
+        handler = AsyncMock()
+        await execution.wrap('filestore', handler)(None, message(22))
+        handler.assert_awaited_once()
+        access.eligible.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_optional_exception_is_contained_and_execution_context_reset():
+    async def scenario():
+        execution, _, _ = gate()
+        handler = AsyncMock(side_effect=RuntimeError('plugin bug'))
+        update = message()
+        await execution.wrap('encoder', handler)(None, update)
+        assert 'moderation remains available' in update.reply.await_args.args[0]
+        assert GROUP_EXECUTION.get() is None
+    asyncio.run(scenario())
+
+
+def test_revocation_cancels_only_owned_group_jobs_and_calls_cleanup():
+    async def scenario():
+        execution, access, jobs = gate()
+        wait = asyncio.Event()
+        async def runner(job):
+            await wait.wait()
+        async def submit(_client, update):
+            return jobs.submit('encoder', 22, runner)
+        wrapped = execution.wrap('encoder', submit)
+        first = await wrapped(None, message(-100))
+        second = await wrapped(None, message(-200))
+        await asyncio.sleep(0)
+        cleanup = AsyncMock()
+        execution.cleanup_hook('encoder', cleanup)
+        access.eligible.side_effect = lambda group, slug: group != -100
+        await execution.reconcile()
+        assert first.group_id == -100 and first.state is JobState.CANCELLED
+        assert second.group_id == -200 and second.state is JobState.RUNNING
+        cleanup.assert_awaited_once_with(-100)
+        await jobs.shutdown()
+    asyncio.run(scenario())
+
+
+def test_queued_job_rechecks_approval_before_starting():
+    async def scenario():
+        execution, access, jobs = gate()
+        runner = AsyncMock()
+        for _ in range(4):
+            await jobs._limit.acquire()
+        async def submit(_client, update):
+            return jobs.submit('encoder', 22, runner)
+        job = await execution.wrap('encoder', submit)(None, message())
+        access.eligible.return_value = False
+        jobs._limit.release()
+        await job.task
+        assert job.state is JobState.CANCELLED
+        runner.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_database_outage_refuses_optional_execution_without_affecting_core():
+    async def scenario():
+        execution, access, _ = gate()
+        access.eligible.side_effect = RuntimeError('db unavailable')
+        handler = AsyncMock()
+        await execution.wrap('encoder', handler)(None, message())
+        handler.assert_not_awaited()
+        await execution.wrap('security', handler)(None, message())
+        handler.assert_awaited_once()
+    asyncio.run(scenario())
+
+
+def test_cleanup_cancels_owned_invocation_not_dispatcher():
+    async def scenario():
+        execution, _, _ = gate()
+        entered = asyncio.Event()
+        cancelled = asyncio.Event()
+        async def handler(*args):
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+        dispatcher = asyncio.create_task(execution.wrap('music', handler)(None, message()))
+        await entered.wait()
+        await execution.cleanup(-100, 'music')
+        await dispatcher
+        assert not dispatcher.cancelled()
+        assert cancelled.is_set()
+        assert not execution._running
+    asyncio.run(scenario())
+
+
+def test_optional_build_failure_does_not_remove_moderation(tmp_path, monkeypatch):
+    from agent.bot import AgentBot
+    from agent.config import Settings
+    from agent.modules import leech
+    from agent.platform.policy import GROUP_CORE
+    def broken(ctx):
+        ctx.actions.register('broken-plugin-route', AsyncMock())
+        raise RuntimeError('optional build failure')
+    monkeypatch.setattr(leech, 'build', broken)
+    bot = AgentBot(Settings.from_env({
+        'BOT_TOKEN': '123456789:AAHfakeTokenValueForTests_1234567890abc', 'API_ID': '123', 'API_HASH': 'a' * 32,
+        'DATA_DIR': str(tmp_path), 'PLUGINS': 'leech',
+    }))
+    bot.build()
+    assert set(GROUP_CORE) <= {manifest.slug for manifest in bot.registry.manifests()}
+    assert 'ban' in bot.registry.active_commands()
+    assert 'leech' not in bot.registry.active_commands()
+    assert not bot.actions.handles('broken-plugin-route:anything')

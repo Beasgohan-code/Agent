@@ -7,6 +7,7 @@ down, and disabling a plugin detaches its handlers rather than hiding it.
 
 from __future__ import annotations
 
+import html
 import logging
 import shutil
 import tempfile
@@ -394,6 +395,11 @@ def build(ctx):
         )
 
     async def plugins(_client, message):
+        if getattr(getattr(message, "chat", None), "id", 0) < 0:
+            show = getattr(ctx, "group_plugin_panel", None)
+            if show is not None:
+                await show(_client, message)
+                return
         if not await _owner_gate(message):
             return
         if runtime is None:  # pragma: no cover - always wired
@@ -410,14 +416,29 @@ def build(ctx):
             await reply(message, "Plugin runtime is unavailable.")
             return
         args = _args(message)[1:]
+        if len(args) == 2 and args[1].lower() in ("approve", "revoke"):
+            from ...platform.plugin_access import AccessError
+            service = getattr(ctx, "plugin_access", None)
+            if service is None:
+                await reply(message, "PostgreSQL plugin access is unavailable.")
+                return
+            try:
+                operation = service.approve if args[1].lower() == "approve" else service.revoke
+                await operation(args[0].lower(), actor_id=message.from_user.id)
+                await reply(message, "Global plugin approval updated. Refresh group plugins to see current state.")
+            except AccessError as exc:
+                await reply(message, str(exc))
+            except Exception:
+                await reply(message, "Approval change could not be confirmed. Check database availability.")
+            return
         if not args:
-            await reply(message, "Usage: <code>/plugin &lt;slug&gt; on|off</code>")
+            await reply(message, "Usage: <code>/plugin &lt;slug&gt; on|off|approve|revoke</code>")
             return
         slug = args[0].lower()
         action = args[1].lower() if len(args) > 1 else ""
         known = {row["slug"] for row in runtime.state()}
         if slug not in known:
-            await reply(message, f"No plugin named <code>{slug}</code>.")
+            await reply(message, f"No plugin named <code>{html.escape(slug)}</code>.")
             return
         if action not in ("on", "off"):
             await reply(message, "Usage: <code>/plugin &lt;slug&gt; on|off</code>")

@@ -85,8 +85,16 @@ def _on_off(flag: object) -> str:
     return "on" if flag else "off"
 
 
+def _plugin_keyboard():
+    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    return InlineKeyboardMarkup([[InlineKeyboardButton("Optional plugins ›", callback_data="gplug:page:0")]])
+
+
 def build(ctx):
     """Wire the group-management commands to the shared chat store."""
+
+    from .plugin_panel import build as build_plugin_panel
+    ctx.group_plugin_panel = build_plugin_panel(ctx)
 
     async def _guard(client, message, need: str | None = None) -> bool:
         if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
@@ -153,7 +161,8 @@ def build(ctx):
                     "and <code>/lockdown</code>."
                 ),
                 footer="Administrators with the change-info right only.",
-            )
+            ),
+            reply_markup=_plugin_keyboard() if ctx.group_plugin_panel else None,
         )
 
     # -- /rules and /setrules ---------------------------------------------

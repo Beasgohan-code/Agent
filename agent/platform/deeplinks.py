@@ -44,6 +44,7 @@ class DeepLinkRouter:
     """Maps the prefix of a ``/start`` payload to a module handler."""
 
     def __init__(self) -> None:
+        self.gate = None
         self._routes: dict[str, DeepLinkHandler] = {}
 
     def register(self, prefix: str, handler: DeepLinkHandler) -> None:
@@ -54,6 +55,10 @@ class DeepLinkRouter:
             raise ValueError(f"deep-link prefix {key!r} cannot contain {SEPARATOR!r}")
         if key in self._routes:
             raise ValueError(f"deep-link prefix {key!r} is already registered")
+        from .execution import REGISTERING
+        owner = REGISTERING.get()
+        if self.gate is not None and owner is not None:
+            handler = self.gate.wrap(owner, handler)
         self._routes[key] = handler
 
     def prefixes(self) -> list[str]:

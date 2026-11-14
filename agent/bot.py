@@ -201,15 +201,41 @@ class AgentBot:
         self.modules.logbook = self.logbook
         self.modules.client = client
 
+        from .platform.execution import PluginGate, REGISTERING
+        from .platform.plugin_access import PluginAccess
+        self.plugin_access = PluginAccess(self.database, owner_id=self.settings.owner_id)
+        self.plugin_gate = PluginGate(self.plugin_access, self.runtime, self.modules.jobs)
+        self.plugin_access.cleanup_callback = self.plugin_gate.cleanup
+        self.modules.plugin_access = self.plugin_access
+        self.modules.plugin_gate = self.plugin_gate
+        self.actions.gate = self.plugin_gate
+        self.deeplinks.gate = self.plugin_gate
+
         self._modules = select(self.settings.plugins)
         for slug in unknown(self.settings.plugins):
             logger.warning("PLUGINS names %r, which is not a module here; ignoring it", slug)
         skipped = not_selected(self.settings.plugins)
         if skipped:
             logger.info("Plugins not selected (compile in, register nothing): %s", ", ".join(skipped))
+        built = []
         for module in self._modules:
-            manifest, handlers = module.build(self.modules)
-            self.registry.register(manifest, handlers)
+            from .platform.policy import PROTECTED_PLUGINS
+            token = REGISTERING.set(module.MANIFEST.slug)
+            action_routes = dict(self.actions._routes)
+            link_routes = dict(self.deeplinks._routes)
+            try:
+                manifest, handlers = module.build(self.modules)
+                self.registry.register(manifest, handlers)
+                built.append(module)
+            except Exception:
+                self.actions._routes = action_routes
+                self.deeplinks._routes = link_routes
+                if module.MANIFEST.slug in PROTECTED_PLUGINS:
+                    raise  # never pretend a missing mandatory system is healthy
+                logger.exception("Optional plugin %s failed to build; core remains available.", module.MANIFEST.slug)
+            finally:
+                REGISTERING.reset(token)
+        self._modules = tuple(built)
 
         # Never import third-party Python into the token-bearing bot process.
         # Staging/review is not isolation. External execution stays disabled until
@@ -229,6 +255,7 @@ class AgentBot:
             if callback is None:  # pragma: no cover - active_commands guarantees this
                 continue
             chat_filter = _scope_filter(scopes.get(command, "private"))
+            callback = self.plugin_gate.wrap(owners.get(command, "unknown"), callback)
             handler = MessageHandler(callback, filters.command(command) & chat_filter)
             self._handlers.append(handler)
             self.runtime.track(owners.get(command, "unknown"), handler, 0)
@@ -243,6 +270,7 @@ class AgentBot:
             if factory is None or not self.registry.is_enabled(slug):
                 continue
             for watcher in factory(self.modules):
+                watcher.callback = self.plugin_gate.wrap(slug, watcher.callback, silent=True)
                 self._watchers.append(watcher)
                 self.runtime.track(slug, watcher, len(self._watchers))
 
@@ -312,6 +340,11 @@ class AgentBot:
                 logger.info("No HEALTH_PORT/PORT set: running without an HTTP health endpoint.")
             await self._run()
         finally:
+            plugin_watch = getattr(self, "_plugin_watch", None)
+            if plugin_watch is not None:
+                plugin_watch.cancel()
+                with suppress(asyncio.CancelledError):
+                    await plugin_watch
             # Each cleanup must run even if an earlier cleanup fails. Release is
             # owner-checked; never delete another container's lease.
             try:
@@ -415,6 +448,7 @@ class AgentBot:
             return
 
         heartbeat_task = self.lease.start_heartbeat(stop_event)
+        self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
         logger.info("Starting Agent (token=%s)", self.settings.masked_token)
         try:
             await client.start()
@@ -517,6 +551,12 @@ class AgentBot:
                 await clones.stop_all()
             except Exception:
                 logger.exception("Clone shutdown failed; continuing cleanup.")
+        jobs = getattr(self.modules, "jobs", None)
+        if jobs is not None:
+            try:
+                await jobs.shutdown()
+            except Exception:
+                logger.exception("Job shutdown failed; continuing Telegram disconnect.")
         await self._shutdown(client)
 
     def _health_detail(self) -> dict:

@@ -185,3 +185,49 @@ and `OWNER_ID` are used by the service; `DB_REQUIRED=1` now refuses legacy local
 fallback. Import any needed local-only state deliberately before requiring the
 database: this phase intentionally does not auto-import stale disk documents.
 Keep Render's liveness path `/health/live`.
+
+## Execution-routing phase (supersedes earlier routing/UI pending notes)
+
+`platform/execution.py` now gates group optional-module commands, registered
+callbacks/deep links and watcher callbacks using live PostgreSQL eligibility.
+Callback/deep-link ownership is captured while the module builds. Mandatory
+modules are not wrapped. Missing chat origins are refused rather than assumed
+private. Private optional tools retain deployment-scoped use; their group-use
+approval does not change private availability. Runtime disable still blocks
+private callbacks and deep links.
+
+Group invocation tasks are owned children, so cleanup cancels plugin work rather
+than a shared dispatcher worker. JobQueue inherits group/module ownership through
+execution context and rechecks approval before starting queued work. Group cleanup
+cancels only matching jobs and invocation tasks. Music registers queue/call
+cleanup and rechecks eligibility before advancing an ended stream. Global revoke
+and group deactivate invoke local cleanup after commit; a two-second reconciler
+handles other processes and existing deployment-wide toggles. New calls never
+use a cached approval. Optional build failures restore callback registrations and
+leave core modules available. Generic arbitrary-task/subscription ownership and
+durable resource-row lifecycle processing are still incomplete.
+
+### Telegram workflow
+
+- Owner: `/plugin <slug> approve|revoke` changes global group-use permission.
+  Existing Owner deployment-wide `on|off` controls remain separate.
+- Group administrator: `/plugins`, or the button under `/settings`, opens a live
+  paginated table of approval, activation and deployment availability. The panel
+  shows actual remaining slots. It rechecks the presser's manage-chat rights,
+  provides activation and a disable confirmation, and edits the same message.
+- Private-only plugins are not offered for activation in groups; this prevents
+  pretending that changing a catalog row makes private handlers group-safe.
+- The full multi-section Control Center, searchable members/cases, plugin-specific
+  configuration forms and group feature-data isolation remain incomplete.
+
+No additional migration or application environment variable is needed beyond the
+five tables introduced previously. Group optional execution now fails closed if
+PostgreSQL or approval is absent. Deployments relying on group music must set up
+DATABASE_URL, SESSION_STRING and Owner approval, then activate it in the group.
+No live Telegram/Render rollout was exercised in this environment.
+
+Validation: **641 passed**, with real disposable PostgreSQL enabled; compileall,
+pyflakes and whitespace checks passed. Added regression tests for execution gates,
+callback rechecks, queued-job rechecks, cross-group cancellation isolation,
+owned-child cancellation, optional failure containment, presser authorization,
+confirmation rendering, live slot counts and private-only availability.
