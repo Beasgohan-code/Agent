@@ -130,7 +130,7 @@ def test_encode_rejects_unknown_preset(ctx, media_file):
 
     run(handlers["encode"], ctx, message)
 
-    assert "Unknown preset" in message.replies[0]
+    assert "fast|balanced|quality" in message.replies[0]
 
 
 def test_encinfo_reports_real_media(ctx, media_file):

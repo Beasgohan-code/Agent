@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import math
 import re
 import shutil
 import tempfile
@@ -76,7 +77,13 @@ async def probe(path: Path) -> dict:
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, raw = await asyncio.wait_for(process.communicate(), timeout=60)
+    try:
+        _, raw = await asyncio.wait_for(process.communicate(), timeout=60)
+    except BaseException:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+        raise
     banner = (raw or b"").decode(errors="ignore")
     duration = 0.0
     if match := _DURATION_RE.search(banner):
@@ -124,7 +131,7 @@ async def run_tool(job: Job, command: list[str], dst: Path, *, duration: float) 
     process = await asyncio.create_subprocess_exec(
         *command,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
     )
     try:
         assert process.stdout is not None
@@ -138,15 +145,14 @@ async def run_tool(job: Job, command: list[str], dst: Path, *, duration: float) 
                 job.progress = min(0.99, seconds / duration)
                 job.detail = f"{seconds:.0f}s / {duration:.0f}s"
         await process.wait()
-    except asyncio.CancelledError:
+    except BaseException:
         if process.returncode is None:
             process.kill()
             await process.wait()
         raise
 
     if process.returncode != 0:
-        stderr = (await process.stderr.read()).decode(errors="ignore")[-400:] if process.stderr else ""
-        raise RuntimeError(f"ffmpeg exited {process.returncode}: {stderr.strip()}")
+        raise RuntimeError(f"ffmpeg exited {process.returncode}; media conversion was not confirmed")
     return dst
 
 
@@ -318,7 +324,7 @@ def build(ctx):
         elif job.state.value == "cancelled":
             await reply(message, "Encode cancelled.")
         else:
-            await reply(message, f"Encode failed: {html.escape(str(job.error))}")
+            await reply(message, "Encode failed. Check the input media and try a supported preset; raw tool output is withheld.")
 
     async def _deliver(client, message, job: Job, produced: Path) -> None:
         """Send the file a tool produced, with the chat's caption/thumbnail."""
@@ -369,7 +375,7 @@ def build(ctx):
         )
         await job.task
         if job.state.value != "done":
-            reason = "cancelled" if job.state.value == "cancelled" else str(job.error)
+            reason = "cancelled" if job.state.value == "cancelled" else "Conversion failed; raw tool output is withheld."
             await reply(message, f"<b>{html.escape(label)} failed</b>\n{html.escape(reason)}")
             return
         await _deliver(client, message, job, Path(job.result))
@@ -385,6 +391,9 @@ def build(ctx):
         except Exception as exc:  # noqa: BLE001
             await reply(message, f"Could not download that file: {type(exc).__name__}")
             return
+        if not source:
+            await reply(message, 'Telegram returned no file to work on.')
+            return
         src = Path(source)
         job = ctx.jobs.submit(
             "encoder",
@@ -395,7 +404,7 @@ def build(ctx):
         await reply(message, f"Compressing as <code>{job.id}</code> (fast preset).")
         await job.task
         if job.state.value != "done":
-            await reply(message, f"Compression failed: {html.escape(str(job.error))}")
+            await reply(message, "Compression cancelled." if job.state.value == "cancelled" else "Compression failed; raw tool output is withheld.")
             return
         await _deliver(client, message, job, Path(job.result))
 
@@ -440,7 +449,7 @@ def build(ctx):
         await _run_tool(client, message, kind="toaudio", label="audio", make=make)
 
     async def screens(client, message):
-        """/screens [count] — a contact sheet of the replied video."""
+        """/screens — a fixed-layout contact sheet of the replied video."""
 
         def make(src: Path):
             async def run(job: Job) -> Path:
@@ -468,7 +477,14 @@ def build(ctx):
         except Exception as exc:  # noqa: BLE001
             await reply(message, f"Could not download that file: {type(exc).__name__}")
             return
-        info = await probe(Path(source))
+        if not source:
+            await reply(message, 'Telegram returned no file to inspect.')
+            return
+        try:
+            info = await probe(Path(source))
+        except Exception as error:
+            await reply(message, f'Could not inspect the media ({type(error).__name__}). No raw paths or tool output are displayed.')
+            return
         rows = [
             ("Video", info["video_codec"] or "none"),
             ("Resolution", f"{info['width']}x{info['height']}" if info.get("width") else "n/a"),
@@ -492,7 +508,7 @@ def build(ctx):
         target = prefixes[1] if len(prefixes) > 1 else None
         stopped = 0
         for job in ctx.jobs.active():
-            if job.owner_id != owner:
+            if job.owner_id != owner or job.module != 'encoder':
                 continue
             if target and job.id != target:
                 continue
@@ -520,7 +536,41 @@ def build(ctx):
             )
         )
 
-    return MANIFEST, {
+    def validated(name, handler):
+        async def wrapped(client, message):
+            user_id = getattr(getattr(message, 'from_user', None), 'id', None)
+            if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+                await reply(message, 'Use your personal Telegram user identity for Encoder commands.')
+                return
+            args = (getattr(message, 'text', '') or '').split()[1:]
+            problem = None
+            if name in ('compress', 'toaudio', 'screens', 'encinfo', 'encpreset') and args:
+                problem = f'Use /{name} without arguments.'
+            elif name == 'encode' and (len(args) > 1 or (args and args[0].lower() not in PRESETS)):
+                problem = 'Use /encode [fast|balanced|quality].'
+            elif name == 'enccancel' and len(args) > 1:
+                problem = 'Use /enccancel [job_id].'
+            elif name == 'sample':
+                try:
+                    if len(args) > 2 or any(len(value) > 20 for value in args):
+                        raise ValueError()
+                    values = [float(value) for value in args]
+                    if any(not math.isfinite(value) for value in values):
+                        raise ValueError()
+                    if values and not 0 <= values[0] <= 86400:
+                        raise ValueError()
+                    if len(values) > 1 and not 0 < values[1] <= 300:
+                        raise ValueError()
+                except ValueError:
+                    problem = 'Use /sample [start_seconds] [length_seconds]: start 0–86400, length above 0 up to 300. Finite numbers only.'
+            if problem:
+                await reply(message, panel('Check Encoder options', icon=ctx.theme.emoji('info'),
+                    lines=[html.escape(problem)], footer='/encpreset · /help'))
+                return
+            return await handler(client, message)
+        return wrapped
+
+    handlers = {
         "encode": encode,
         "compress": compress,
         "sample": sample,
@@ -530,3 +580,4 @@ def build(ctx):
         "enccancel": enccancel,
         "encpreset": encpreset,
     }
+    return MANIFEST, {name: validated(name, handler) for name, handler in handlers.items()}

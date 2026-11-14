@@ -258,3 +258,11 @@ each batch rather than tiny isolated deliveries. Upgraded id/info/time/repo as
 one batch: themed identity/profile panels, sender-chat honesty, moderator-gated
 warning/trust metadata, validated IANA clock and corrected repository URL cell.
 Keep listing changed commands and actual tests; no merge without second approval.
+
+### Eight-command Encoder batch
+
+Validated encode/compress/sample/toaudio/screens/encinfo/enccancel/encpreset
+arguments and sender identity, corrected cancellation scope and empty downloads,
+reaped cancelled probe/tool children and removed the unread stderr pipe/raw tool
+error rendering. Existing real FFmpeg tests plus regression tests validate this
+batch. Do not claim all media resource/sandbox/cleanup risks are resolved.
