@@ -17,7 +17,12 @@ from .modules import MODULES
 from .platform.context import ModuleContext
 from .platform.manifest import PluginRegistry
 from .health_server import start_health_server, stop_health_server
+from .platform.events import EventLog
+from .platform.instance import InstanceLease
+from .platform.runtime import PluginRuntime
 from .ui.theme import Theme
+from .utils.sender import ScreenSender
+from .watchdog import build_watchdog
 
 
 def _scope_filter(scope: str):
@@ -27,8 +32,6 @@ def _scope_filter(scope: str):
     if scope == "all":
         return filters.all
     return filters.private
-from .utils.sender import ScreenSender
-from .watchdog import build_watchdog
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,12 @@ class AgentBot:
         self._handlers: list = []
         self.modules: ModuleContext | None = None
         self.registry = PluginRegistry()
+        self.events = EventLog()
+        #: One lease per bot token: two live copies would answer every update twice.
+        self.lease = InstanceLease(settings.data_dir / "instance.lock")
+        self.runtime = PluginRuntime(
+            self.registry, state_path=settings.data_dir / "plugins.json"
+        )
 
     @property
     def client(self) -> Client | None:
@@ -109,18 +118,29 @@ class AgentBot:
             manifest, handlers = module.build(self.modules)
             self.registry.register(manifest, handlers)
 
-        # Modules can look at the registry (counts, enabled names) after this.
+        # Modules can look at the shared services after this.
         self.modules.registry = self.registry
+        self.modules.events = self.events
+        self.modules.runtime = self.runtime
+        self.modules.lease = self.lease
+
+        # A plugin disabled in a previous run stays off, and registers nothing.
+        for manifest in self.registry.manifests():
+            if self.runtime.wants_disabled(manifest.slug):
+                self.registry.disable(manifest.slug)
 
         # Only *enabled* plugins contribute handlers. A disabled plugin
         # registers nothing at all, which is the lifecycle rule that matters.
         scopes = {c: m.scope for m in self.registry.manifests() for c in m.commands}
+        owners = {c: m.slug for m in self.registry.manifests() for c in m.commands}
         for command in self.registry.active_commands():
             callback = self.registry.handler_for(command)
             if callback is None:  # pragma: no cover - active_commands guarantees this
                 continue
             chat_filter = _scope_filter(scopes.get(command, "private"))
-            self._handlers.append(MessageHandler(callback, filters.command(command) & chat_filter))
+            handler = MessageHandler(callback, filters.command(command) & chat_filter)
+            self._handlers.append(handler)
+            self.runtime.track(owners.get(command, "unknown"), handler, 0)
 
         # Some modules also need to see updates that are not commands (anti-spam,
         # filters, joins/leaves). Each gets its own handler group: pyrogram runs
@@ -131,12 +151,15 @@ class AgentBot:
             slug = module.MANIFEST.slug
             if factory is None or not self.registry.is_enabled(slug):
                 continue
-            self._watchers.extend(factory(self.modules))
+            for watcher in factory(self.modules):
+                self._watchers.append(watcher)
+                self.runtime.track(slug, watcher, len(self._watchers))
 
         for handler in self._handlers:
             client.add_handler(handler)
         for index, watcher in enumerate(self._watchers, start=1):
             client.add_handler(watcher, group=index)
+        self.runtime.attach(client)
 
         enabled = [m.slug for m in self.registry.manifests() if self.registry.is_enabled(m.slug)]
         logger.info(
@@ -161,6 +184,17 @@ class AgentBot:
 
         stop_event = asyncio.Event()
         _install_signal_handlers(stop_event)
+        self.runtime.restart_hook = stop_event.set
+
+        # Two copies of one token would answer every update twice. Take the
+        # lease first; wait for a departing deploy, then give up rather than
+        # double-serve.
+        if not await self.lease.acquire():
+            self.fatal_reason = "instance lease held by another process"
+            logger.critical(
+                "Another instance holds the lease for this bot; not connecting."
+            )
+            return
 
         logger.info("Starting Agent (token=%s)", self.settings.masked_token)
         try:
@@ -189,10 +223,13 @@ class AgentBot:
             on_fatal=lambda: self._request_restart(stop_event),
         )
         watchdog_task = asyncio.create_task(watchdog.run(stop_event), name="agent-watchdog")
+        heartbeat_task = self.lease.start_heartbeat(stop_event)
 
         health_runner = None
         if self.settings.health_port:
-            health_runner = await start_health_server(self.health, self.settings.health_port)
+            health_runner = await start_health_server(
+                self.health, self.settings.health_port, extra=self._health_detail
+            )
         else:
             logger.info("No HEALTH_PORT/PORT set: running without an HTTP health endpoint.")
 
@@ -200,10 +237,26 @@ class AgentBot:
             await stop_event.wait()
         finally:
             watchdog_task.cancel()
+            heartbeat_task.cancel()
             with suppress(asyncio.CancelledError):
                 await watchdog_task
+            with suppress(asyncio.CancelledError):
+                await heartbeat_task
             await stop_health_server(health_runner)
             await self._shutdown(client)
+            await self.lease.stop_heartbeat()
+            # Releasing lets a replacement process start immediately (this is
+            # what makes /restart a fast handover rather than a 60s timeout).
+            self.lease.release()
+
+    def _health_detail(self) -> dict:
+        """Extra fields for ``/health``: the lease and the plugin states."""
+        disabled = [row["slug"] for row in self.runtime.state() if not row["enabled"]]
+        return {
+            "instance": self.lease.state(),
+            "plugins_disabled": disabled,
+            "events": self.events.count(),
+        }
 
     def _request_restart(self, stop_event: asyncio.Event) -> None:
         """Called by the watchdog when the link is declared dead."""

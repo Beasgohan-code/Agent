@@ -118,6 +118,7 @@ Every one is wired to something real — none is a stub.
 | Filters (groups) | `/filter` `/filters` `/stopfilter` |
 | Welcome (groups) | `/setwelcome` `/welcome` `/goodbye` |
 | Utilities | `/id` `/info` `/time` |
+| Operations (owner) | `/restart` `/watchdog` `/plugins` `/plugin` `/events` |
 | Encoding | `/encode` `/encinfo` `/encpreset` `/enccancel` |
 | Sharing | `/genlink` `/links` `/revoke` |
 
@@ -148,6 +149,39 @@ so moderation is covered by tests that drive the handlers against a fake client
 and assert the exact pyrogram calls. That is stated plainly rather than claimed
 as deployment-tested.
 
+## Keep-alive, one instance, restart (Videl1)
+
+Videl1's lesson is that two live copies of one token answer every update twice.
+Deploys overlap — Render and Railway start the new container before stopping the
+old one — so "we deploy carefully" is not protection.
+
+* **Lease.** `agent/platform/instance.py` takes a lease before connecting; a
+  departing deploy releases it, so `/restart` is an immediate handover rather
+  than a 60-second standoff. Videl1 keeps this in MongoDB; this bot has no
+  database, so the same contract lives in a JSON file — owner, expiry,
+  heartbeat, atomic takeover.
+* **Heartbeat.** If another process takes the lease (this one was frozen past
+  the TTL), the heartbeat stops the bot instead of double-serving.
+* **Refusing is a feature.** When the lease cannot be taken, the process exits
+  without connecting. That is the honest outcome; serving anyway is not.
+* **`/watchdog`** reports the lease, uptime, latency, running jobs and disabled
+  plugins; `/watchdog run` sweeps stale encoder working directories and purges
+  expired links; `/watchdog clean` also prunes stored files older than 7 days.
+  It reports the bytes it actually removed.
+* **`/restart`** stops the process so its supervisor restarts it, after
+  refusing while jobs are running unless you pass `force`. It says plainly that
+  an unsupervised process will simply stay down.
+* **`/health`** now carries the lease state, disabled plugins and event count,
+  so a platform health check can see what the bot sees.
+
+## Plugins you can switch at runtime
+
+`/plugins` lists every module; `/plugin <slug> off` detaches that module's
+handlers from the dispatcher — not a flag that later code might forget to check
+— and persists the choice, so it stays off across restarts. `ops` cannot disable
+itself. Watchers are detached too, so a disabled `moderation` stops enforcing
+anti-spam rather than quietly continuing.
+
 ## Where each reference project went
 
 | Reference | Contributed here | Still missing, and what it needs |
@@ -159,7 +193,7 @@ as deployment-tested.
 | **Multi-FileStoreBot** | the shared file store behind `/genlink`/`/links` | per-user bots need one isolated client per token — not safe in-process |
 | **playeon** | nothing yet | it is a streaming indexer: needs a web server and a file database |
 | **save-restricted-content-bot** | nothing | it works by session-based access to protected content, which the project rules forbid |
-| **Videl1** | keep-alive and watchdog (already shipped) | — |
+| **Videl1** | keep-alive, watchdog, **single-instance lease, `/restart`** | — |
 | **wzgram** | the client itself | — |
 
 Nothing in the "still missing" column is registered as a command. A command

@@ -1,0 +1,42 @@
+"""A small, bounded event log.
+
+Modules emit what they did; the log keeps the most recent entries in memory and
+writes each one to the normal logger so it also lands in the platform's log
+stream. Nothing is persisted — this is an operational view, not an audit trail
+(the per-chat moderation log is the audit trail).
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from collections import deque
+from typing import Any
+
+logger = logging.getLogger("agent.events")
+
+
+class EventLog:
+    """Ring buffer of recent events, newest last."""
+
+    def __init__(self, maxlen: int = 200) -> None:
+        self._events: deque[dict[str, Any]] = deque(maxlen=max(10, maxlen))
+
+    def emit(self, kind: str, **fields: Any) -> dict[str, Any]:
+        event = {"kind": kind, "at": time.time(), **fields}
+        self._events.append(event)
+        detail = " ".join(f"{key}={value}" for key, value in fields.items())
+        logger.info("%s %s", kind, detail)
+        return event
+
+    def recent(self, limit: int = 10, *, kind: str | None = None) -> list[dict[str, Any]]:
+        items = [e for e in self._events if kind is None or e["kind"] == kind]
+        return items[-max(0, limit) :][::-1]
+
+    def count(self, kind: str | None = None) -> int:
+        if kind is None:
+            return len(self._events)
+        return sum(1 for e in self._events if e["kind"] == kind)
+
+    def clear(self) -> None:
+        self._events.clear()

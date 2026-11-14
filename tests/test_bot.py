@@ -83,12 +83,12 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    # 3 built-in commands + 35 module commands + callback + error handler,
+    # 3 built-in commands + 40 module commands + callback + error handler,
     # plus three watchers (anti-spam, filters, joins/leaves), one per group.
-    assert bot.handler_count == 43
+    assert bot.handler_count == 48
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 38
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 43
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -115,7 +115,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 38
+    assert len(messages) == 43
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}

@@ -10,6 +10,8 @@ distinction is the whole point (see ``docs``/README "Health").
 
 from __future__ import annotations
 
+from typing import Callable
+
 import logging
 
 from . import __version__
@@ -23,12 +25,14 @@ except ImportError:  # pragma: no cover - exercised only on a broken install
     web = None
 
 
-def health_payload(monitor: HealthMonitor) -> dict:
+def health_payload(monitor: HealthMonitor, extra: dict | None = None) -> dict:
     """JSON body for ``/health`` (pure, so it is easy to test)."""
     snapshot = monitor.snapshot()
     payload = snapshot.as_dict()
     payload["version"] = __version__
     payload["ok"] = snapshot.state not in (DOWN,)
+    if extra:
+        payload.update(extra)
     return payload
 
 
@@ -41,7 +45,7 @@ def status_code(state: str) -> int:
     return 503 if state == DOWN else 200
 
 
-def build_app(monitor: HealthMonitor):
+def build_app(monitor: HealthMonitor, extra: Callable[[], dict] | None = None):
     """Build the aiohttp application (raises if aiohttp is unavailable)."""
     if web is None:  # pragma: no cover
         raise RuntimeError("aiohttp is required for the health endpoint.")
@@ -51,7 +55,13 @@ def build_app(monitor: HealthMonitor):
 
     async def health(_request):
         state = monitor.state()
-        return web.json_response(health_payload(monitor), status=status_code(state))
+        detail = {}
+        if extra is not None:
+            try:
+                detail = extra() or {}
+            except Exception:  # noqa: BLE001 - health must answer even if a probe fails
+                detail = {"detail_error": True}
+        return web.json_response(health_payload(monitor, detail), status=status_code(state))
 
     async def live(_request):
         # Process liveness only: it never touches Telegram, so a slow probe
@@ -65,7 +75,12 @@ def build_app(monitor: HealthMonitor):
     return app
 
 
-async def start_health_server(monitor: HealthMonitor, port: int, host: str = "0.0.0.0"):
+async def start_health_server(
+    monitor: HealthMonitor,
+    port: int,
+    host: str = "0.0.0.0",
+    extra: Callable[[], dict] | None = None,
+):
     """Start the endpoint; returns the runner (or ``None`` when unavailable)."""
     if web is None:  # pragma: no cover
         logger.warning("HEALTH_PORT is set but aiohttp is not installed; skipping health server.")

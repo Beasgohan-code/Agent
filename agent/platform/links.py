@@ -84,7 +84,9 @@ class LinkStore:
         return _b64(hmac.new(self._secret, payload.encode(), hashlib.sha256).digest()[:16])
 
     def create(self, file_id: str, owner_id: int, *, ttl_hours: int | None = None) -> LinkRecord:
-        ttl = (ttl_hours or self.default_ttl // 3600) * 3600
+        # ``ttl_hours=0`` means "expires now"; only None falls back to the default.
+        hours = self.default_ttl // 3600 if ttl_hours is None else ttl_hours
+        ttl = hours * 3600
         payload = f"{file_id}.{int(owner_id)}.{int(time.time() + ttl)}"
         token = f"{payload}.{self._sign(payload)}"
         record = LinkRecord(
@@ -163,3 +165,12 @@ class LinkStore:
         except (binascii.Error, ValueError):
             return False
         return hmac.compare_digest(self._sign(payload), signature)
+
+    def purge_expired(self) -> int:
+        """Drop records whose expiry has passed. Returns how many were removed."""
+        stale = [token for token, record in self._links.items() if record.expired]
+        for token in stale:
+            self._links.pop(token, None)
+        if stale:
+            self._save()
+        return len(stale)

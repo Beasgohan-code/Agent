@@ -33,6 +33,9 @@ class ModuleContext:
     client: object | None = None
     chats: ChatStore | None = None
     registry: object | None = None
+    events: object | None = None
+    runtime: object | None = None
+    lease: object | None = None
 
     @classmethod
     def build(cls, settings: Settings, theme: Theme, sender: ScreenSender, *, root: Path) -> "ModuleContext":
