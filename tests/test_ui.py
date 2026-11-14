@@ -59,12 +59,34 @@ def test_welcome_screen_without_a_first_name_still_greets():
     assert "Ada" not in screen.rich_text
 
 
-def test_help_screen_lists_commands_and_links_back():
+def test_help_screen_is_an_overview_that_links_to_sections_and_back():
     screen = help_screen(make_user(), Theme())
+
+    assert "Command reference" in screen.rich_text
+    assert "Essentials" in screen.rich_text          # a section row
+    assert CB_HOME in callbacks(screen.keyboard)
+    assert "help:essentials" in callbacks(screen.keyboard)
+
+
+def test_a_help_section_lists_its_commands_with_descriptions():
+    from agent.ui.screens import _section_builder
+
+    screen = _section_builder("Essentials")(make_user(), Theme())
 
     assert "/start" in screen.rich_text
     assert "/help" in screen.rich_text
-    assert CB_HOME in callbacks(screen.keyboard)
+    assert "Open the main menu" in screen.rich_text
+    assert "help:all" in callbacks(screen.keyboard)
+
+
+def test_an_unavailable_plugin_is_not_in_the_help():
+    from agent.ui.screens import _section_builder
+
+    active = {"start", "help", "ping", "status"}
+    music = _section_builder("Music (voice chat)")(make_user(), Theme(), active=active)
+
+    assert "/play" not in music.rich_text
+    assert "Nothing in this section" in music.rich_text
 
 
 def test_info_screen_shows_telegram_profile_fields():
@@ -93,9 +115,13 @@ def test_user_supplied_text_is_escaped():
 
 
 def test_every_screen_fits_a_telegram_message():
-    for builder in (welcome_screen, help_screen, info_screen):
+    from agent.ui.screens import HELP_SECTIONS, _section_builder
+
+    builders = [welcome_screen, help_screen, info_screen]
+    builders += [_section_builder(title) for _icon, title, _cmds in HELP_SECTIONS]
+    for builder in builders:
         rendered = to_safe_html(builder(make_user(), Theme()).rich_text)
-        assert 0 < len(rendered) < 4096
+        assert 0 < len(rendered) < 4096, builder
 
 
 # --- theme / premium emoji -------------------------------------------------

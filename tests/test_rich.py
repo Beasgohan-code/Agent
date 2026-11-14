@@ -144,3 +144,31 @@ def test_every_credit_states_a_licence():
         "LGPL-3.0",
         "Attribution & personal use",
     }
+
+
+# --- the packages themselves ----------------------------------------------
+
+
+def test_every_ported_plugin_is_a_package_not_a_single_file():
+    """A plugin is a folder: manifest in __init__, helpers beside it."""
+    import pathlib
+
+    root = pathlib.Path("agent/modules")
+    for name in ("filestore", "leech", "music", "reports", "postmaker", "security", "premium"):
+        package = root / name
+        assert package.is_dir(), f"{name} should be a package"
+        assert (package / "__init__.py").is_file()
+        siblings = [p for p in package.glob("*.py") if p.name != "__init__.py"]
+        assert siblings, f"{name} should keep its helpers in sibling modules"
+
+
+def test_every_package_is_credited():
+    from agent.platform.credits import PACKAGES
+
+    credited = {package for package, _source in PACKAGES}
+    assert "agent/modules/filestore" in credited
+    assert "agent/modules/premium" in credited
+    doc = open("docs/CREDITS.md", encoding="utf-8").read()
+    for package, source in PACKAGES:
+        assert package in doc
+        assert source.split(",")[0] in doc

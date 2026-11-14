@@ -114,7 +114,7 @@ CREDITS: tuple[Credit, ...] = (
         "https://github.com/Badmunda05/richgram",
         "Badmunda05",
         "MIT",
-        "the rich layer this UI is built on",
+        "the rich layer this UI is built on (the repository now lives as nextgram)",
     ),
     Credit(
         "wzgram",
@@ -123,6 +123,21 @@ CREDITS: tuple[Credit, ...] = (
         "LGPL-3.0",
         "the Telegram client",
     ),
+)
+
+#: Which upstream project each package here learned from. One row per package,
+#: because "credits" that do not say what came from where are decoration.
+PACKAGES: tuple[tuple[str, str], ...] = (
+    ("agent/modules/filestore", "Meikoagent (file_store), Multi-FileStoreBot"),
+    ("agent/modules/leech", "Meikoagent (leech), CBML, WZML-X"),
+    ("agent/modules/music", "Videl0, Playeon"),
+    ("agent/modules/reports", "Meikoagent (reports)"),
+    ("agent/modules/postmaker", "Meikoagent (post_maker)"),
+    ("agent/modules/security", "Meikoagent (security)"),
+    ("agent/modules/premium", "Videl1 (premium tier)"),
+    ("agent/modules/encoder", "ENCODING-BOT"),
+    ("agent/modules/linkshare", "LINK-SHAREBOT"),
+    ("agent/ui", "richgram"),
 )
 
 #: What this line means, said once so no panel has to repeat it.

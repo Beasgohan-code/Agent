@@ -12,13 +12,22 @@ to — there is no ``/schedule`` command until there is a scheduler behind it.
 
 from __future__ import annotations
 
-import html
 import logging
 
-from ..platform.manifest import PluginManifest
-from ..ui.tables import kv_table, panel
-from .moderation import is_moderator
-from ..utils.rich import reply
+from ...platform.manifest import PluginManifest
+from ...ui.tables import kv_table, panel
+from ..moderation import is_moderator
+from ...utils.rich import reply
+from .templates import (
+    DEFAULT_TEMPLATE,
+    MAX_BODY,
+    MAX_TEMPLATE,
+    TEMPLATE_KEY,
+    _args,
+    _post_text,
+    render,
+    split_title_body,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,39 +40,6 @@ MANIFEST = PluginManifest(
     permissions=("messages.read", "messages.send"),
     scope="group",
 )
-
-TEMPLATE_KEY = "post_template"
-DEFAULT_TEMPLATE = "<b>{title}</b>\n\n{body}"
-MAX_BODY = 3000
-MAX_TEMPLATE = 600
-
-
-def _args(message) -> list[str]:
-    return (getattr(message, "text", "") or "").split(maxsplit=1)
-
-
-def split_title_body(message) -> tuple[str, str]:
-    """``/post Title | body``, or ``/post Title`` with the body replied to."""
-    rest = _args(message)
-    payload = rest[1].strip() if len(rest) > 1 else ""
-    replied = getattr(message, "reply_to_message", None)
-    replied_text = (getattr(replied, "text", "") or "").strip() if replied else ""
-    if "|" in payload:
-        title, body = payload.split("|", 1)
-        return title.strip(), body.strip()
-    if payload and replied_text:
-        return payload, replied_text
-    if payload and not replied_text:
-        return payload, ""
-    return "", replied_text
-
-
-def render(template: str, title: str, body: str) -> str:
-    """Substitute escaped values into the (trusted) template."""
-    rendered = (template or DEFAULT_TEMPLATE)
-    rendered = rendered.replace("{title}", html.escape(title))
-    rendered = rendered.replace("{body}", html.escape(body))
-    return rendered[:MAX_BODY]
 
 
 def build(ctx):
@@ -144,18 +120,18 @@ def build(ctx):
             )
             return
         ctx.chats.log(message.chat.id, "post", actor_id=message.from_user.id, reason=title[:80])
+        logger.info(
+            "post published chat=%s by=%s title=%r chars=%s",
+            message.chat.id,
+            message.from_user.id,
+            title[:60],
+            len(text),
+        )
 
     return MANIFEST, {
         "posttemplate": posttemplate,
         "postpreview": postpreview,
         "post": post,
     }
-
-
-def _post_text(template: str, title: str, body: str) -> str:
-    """Render and wrap in the screen normaliser, so rich-only tags still work."""
-    from ..utils.sender import to_safe_html
-
-    return to_safe_html(render(template, title, body))
 
 

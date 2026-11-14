@@ -1,17 +1,9 @@
-"""Security — member verification, from Meikoagent's ``security`` plugin.
+"""The verification state machine: pending members, their timers, their button.
 
-A new member is muted on arrival and asked to press one button. When they press
-it, the mute is lifted. If they never press it, they are removed after the
-configured timeout. That is the whole feature, and every part of it is real:
-a restriction Telegram applies, a button Telegram delivers, a timer this process
-holds, and a removal Telegram performs.
-
-Deliberate limits, stated rather than implied:
-
-* the pending set lives in memory — a restart forgets who was mid-verification
-  (their mute stays, because Telegram keeps it; an administrator can lift it);
-* verification is **off** by default and switches on with ``/verify on``;
-* ``/lockdown`` already exists in the group module and is not duplicated here.
+Two facts shape this file. First, the pending set is in memory, so a restart
+forgets who was waiting — their mute stays on Telegram's side, and an
+administrator can lift it. Second, a press must only work for the member it was
+issued to; a shared link to the button is not a way to verify somebody else.
 """
 
 from __future__ import annotations
@@ -20,32 +12,24 @@ import asyncio
 import logging
 
 from pyrogram.enums import ChatMemberStatus, ChatType
-from pyrogram.handlers import ChatMemberUpdatedHandler
 from pyrogram.types import ChatPermissions
 from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
-from ..platform.actions import ActionRouter
-from ..platform.manifest import PluginManifest
-from ..ui.tables import kv_table, panel
-from .moderation import is_moderator
-from ..utils.rich import reply
+from ...ui.tables import kv_table, panel
+from ...utils.rich import reply
+from ..moderation import is_moderator
 
 logger = logging.getLogger(__name__)
 
-MANIFEST = PluginManifest(
-    slug="security",
-    name="Security & verification",
-    version="1.0.0",
-    description="Mute new members until they press a button; remove them if they never do.",
-    commands=("verify",),
-    permissions=("messages.send", "chats.restrict", "chats.ban"),
-    scope="group",
-)
-
 PREFIX = "verify"
+
+
 DEFAULT_TIMEOUT_MINUTES = 10
+
+
 MAX_TIMEOUT_MINUTES = 120
+
 
 SILENCED = ChatPermissions(
     can_send_messages=False,
@@ -53,6 +37,8 @@ SILENCED = ChatPermissions(
     can_send_other_messages=False,
     can_add_web_page_previews=False,
 )
+
+
 RESTORED = ChatPermissions(
     can_send_messages=True,
     can_send_media_messages=True,
@@ -122,6 +108,7 @@ class Verifier:
         if task is not None and not task.done():
             task.cancel()
         self._chats.log(chat_id, "verify", actor_id=user_id, target_id=user_id)
+        logger.info("member verified chat=%s user=%s", chat_id, user_id)
         await query.answer("Verified — welcome!")
         location = self.prompts.pop((chat_id, user_id), None)
         if location is not None:
@@ -253,29 +240,11 @@ class Verifier:
                 name=f"verify-{chat.id}-{user.id}",
             )
             self._chats.log(chat.id, "verify:prompt", actor_id=None, target_id=int(user.id))
+            logger.info(
+                "verification prompt chat=%s user=%s timeout_minutes=%s",
+                chat.id,
+                user.id,
+                minutes,
+            )
         except Exception:  # noqa: BLE001 - a watcher must never break the client
             logger.exception("verification watcher failed")
-
-
-def verifier(ctx) -> Verifier:
-    """The one Verifier for this context (built once by :func:`build`)."""
-    existing = getattr(ctx, "verifier", None)
-    if existing is None:
-        existing = Verifier(ctx)
-        ctx.verifier = existing
-        router = getattr(ctx, "actions", None)
-        if isinstance(router, ActionRouter):
-            router.register(PREFIX, existing.on_press)
-    return existing
-
-
-def build(ctx):
-    """Wire ``/verify`` and share one :class:`Verifier` with the watcher."""
-    instance = verifier(ctx)
-    return MANIFEST, {"verify": instance.verify}
-
-
-def extra_handlers(ctx):
-    """The join watcher that mutes unverified members."""
-    instance = verifier(ctx)
-    return [ChatMemberUpdatedHandler(instance.on_member_update)]

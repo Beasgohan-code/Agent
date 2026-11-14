@@ -72,6 +72,30 @@ Two fallbacks, both automatic:
   Telegram has no `edit_rich_message`: an edit that would have to be re-sent is
   worse than a table without borders.
 
+## Premium
+
+After Videl1: `/premium` shows your tier and what is left today, and the owner
+grants it with `/addpremium <user_id> [days]` (`0` = lifetime), removes it with
+`/delpremium` and lists it with `/premiumusers`. Premium buys three real
+allowances and nothing else:
+
+| Allowance | Free | Premium |
+| --- | --- | --- |
+| Vault quota | 64 MB | 256 MB |
+| Transfers per day | 5 | 50 |
+| Encodes per day | 3 | 25 |
+
+They are enforced in `filestore` and `leech` before anything is written or
+fetched, the counters reset at midnight UTC, and the state is `data/premium.json`.
+
+## Layout
+
+Every ported plugin is a package, not a single file: `MANIFEST` and the handlers
+in `__init__.py`, the parts worth testing on their own beside it —
+`filestore/vault.py`, `leech/transfer.py`, `music/{queue,sources}.py`,
+`reports/queue.py`, `postmaker/templates.py`, `security/verify.py`,
+`premium/limits.py`.
+
 ## Credits
 
 The command surfaces, defaults and layouts in this bot come from the projects in

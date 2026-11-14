@@ -17,7 +17,8 @@ class CommandHandlers:
     """``/start``, ``/help`` and ``/ping``."""
 
     def __init__(self, sender: ScreenSender, theme: Theme, monitor=None, *,
-                 events=None, users=None, start_image: str | None = None) -> None:
+                 events=None, users=None, start_image: str | None = None,
+                 active_commands=None) -> None:
         self._sender = sender
         self._theme = theme
         self._monitor = monitor
@@ -25,6 +26,8 @@ class CommandHandlers:
         self._users = users
         #: Picture above /start; a failure there falls back to the text screen.
         self._start_image = start_image
+        #: Callable returning the commands that are actually registered.
+        self._active_commands = active_commands
 
     async def start(self, client, message) -> None:
         user_id = getattr(getattr(message, "from_user", None), "id", None)
@@ -54,7 +57,9 @@ class CommandHandlers:
         if self._monitor is not None:
             self._monitor.record_activity("help")
         logger.info("/help from user %s", user_id)
-        await self._show(client, message, help_screen(message.from_user, self._theme), "help")
+        active = set(self._active_commands()) if self._active_commands is not None else None
+        screen = help_screen(message.from_user, self._theme, active=active)
+        await self._show(client, message, screen, "help")
 
     async def ping(self, client, message) -> None:
         user_id = getattr(getattr(message, "from_user", None), "id", None)

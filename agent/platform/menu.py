@@ -96,6 +96,11 @@ DESCRIPTIONS: dict[str, str] = {
     "postpreview": "Preview a post before publishing",
     "posttemplate": "Set this group's post template",
     "verify": "Mute new members until they verify",
+    # premium (Videl1's tier)
+    "premium": "Your tier, its limits and what is left today",
+    "addpremium": "Grant premium to a user (owner)",
+    "delpremium": "Take premium away (owner)",
+    "premiumusers": "Everyone with premium (owner)",
     # filters / welcome
     "filter": "Add a keyword auto-reply",
     "filters": "List this group's filters",
@@ -141,6 +146,7 @@ GROUP_ONLY = frozenset(
         "admins", "warnlimit", "resetwarns", "lockdown",
         "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
         "post", "postpreview", "posttemplate", "verify",
+        "addpremium", "delpremium", "premiumusers",
         "filter", "filters", "stopfilter",
         "setwelcome", "welcome", "goodbye",
     }

@@ -16,12 +16,15 @@ STALE_OPTION = "That option is no longer available."
 class CallbackHandlers:
     """Routes inline keyboard presses to screens."""
 
-    def __init__(self, sender: ScreenSender, theme: Theme, monitor=None, *, router=None) -> None:
+    def __init__(self, sender: ScreenSender, theme: Theme, monitor=None, *, router=None,
+                 active_commands=None) -> None:
         self._sender = sender
         self._theme = theme
         self._monitor = monitor
         #: Modules own their own prefixes; the UI owns the menu screens.
         self._router = router
+        #: Callable returning the registered commands, for the help sections.
+        self._active_commands = active_commands
 
     async def on_callback(self, client, callback_query) -> None:
         data = callback_query.data or ""
@@ -52,7 +55,8 @@ class CallbackHandlers:
             logger.debug("Callback %r has no message to edit; ignoring.", data)
             return
 
-        screen = builder(user, self._theme)
+        active = set(self._active_commands()) if self._active_commands is not None else None
+        screen = builder(user, self._theme, active=active)
         if not await self._sender.edit(callback_query, screen):
             chat_id = getattr(getattr(message, "chat", None), "id", None)
             try:

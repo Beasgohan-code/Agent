@@ -41,6 +41,7 @@ from richgram import rich_footer, rich_heading, rich_hr, rich_note, rich_table
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _ZERO_WIDTH = {"\u200b", "\u200c", "\u200d", "\u200e", "\u200f", "\ufeff", "\u00ad"}
+_VARIATION_SELECTORS = {"\ufe0e", "\ufe0f"}
 
 #: Box-drawing characters for the default border.
 BOX = {
@@ -102,7 +103,10 @@ def plain(text: object) -> str:
 
 def char_width(char: str) -> int:
     """Columns *char* occupies in a monospace font."""
-    if char in _ZERO_WIDTH or unicodedata.combining(char):
+    if char in _ZERO_WIDTH or char in _VARIATION_SELECTORS or unicodedata.combining(char):
+        # U+FE0E/U+FE0F pick a glyph style, they do not take a column of their
+        # own. Counting them as one is what shifts every row that carries "⚙️"
+        # by a space relative to the rows that do not.
         return 0
     if unicodedata.east_asian_width(char) in ("W", "F"):
         return 2

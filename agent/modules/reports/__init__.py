@@ -20,10 +20,11 @@ from __future__ import annotations
 import logging
 import time
 
-from ..platform.manifest import PluginManifest
-from ..ui.tables import Table, panel
-from .moderation import is_moderator
-from ..utils.rich import reply
+from ...platform.manifest import PluginManifest
+from ...ui.tables import Table, panel
+from ..moderation import is_moderator
+from ...utils.rich import reply
+from .queue import _args, _reason, _notify_owner, replicated
 
 logger = logging.getLogger(__name__)
 
@@ -36,17 +37,6 @@ MANIFEST = PluginManifest(
     permissions=("messages.read", "messages.send"),
     scope="all",
 )
-
-MAX_REASON = 400
-
-
-def _args(message) -> list[str]:
-    return (getattr(message, "text", "") or "").split(maxsplit=1)
-
-
-def _reason(message) -> str:
-    parts = _args(message)
-    return (parts[1].strip() if len(parts) > 1 else "")[:MAX_REASON]
 
 
 def build(ctx):
@@ -75,6 +65,13 @@ def build(ctx):
             actor_id=message.from_user.id,
             target_id=getattr(target, "id", None),
             reason=f"#{number}",
+        )
+        logger.info(
+            "report filed chat=%s number=%s reporter=%s target=%s",
+            message.chat.id,
+            number,
+            message.from_user.id,
+            getattr(target, "id", None),
         )
         if events is not None:
             events.emit(
@@ -114,6 +111,12 @@ def build(ctx):
             ctx.chats.log(
                 message.chat.id, "report:close", actor_id=message.from_user.id,
                 reason=f"#{number}",
+            )
+            logger.info(
+                "report closed chat=%s number=%s by=%s",
+                message.chat.id,
+                number,
+                message.from_user.id,
             )
             await reply(message, f"Report #{number} closed.")
             return
@@ -171,6 +174,13 @@ def build(ctx):
             kind="appeal",
         )
         delivered = await _notify_owner(client, ctx.settings.owner_id, message, number, text)
+        logger.info(
+            "appeal filed chat=%s number=%s reporter=%s delivered=%s",
+            message.chat.id,
+            number,
+            message.from_user.id,
+            delivered,
+        )
         if events is not None:
             events.emit(
                 "appeal", chat=message.chat.id, number=number, reporter=message.from_user.id
@@ -189,22 +199,3 @@ def build(ctx):
     return MANIFEST, {"report": report, "reports": reports, "appeal": appeal}
 
 
-def replicated(entries: list[dict]) -> list[dict]:
-    """Newest last, capped for a phone-sized table."""
-    return entries[-10:]
-
-
-async def _notify_owner(client, owner_id, message, number: int, text: str) -> str:
-    """DM the owner, and say honestly whether it worked."""
-    if owner_id is None:
-        return "No owner is configured, so nobody was notified automatically."
-    try:
-        await client.send_message(
-            owner_id,
-            f"<b>Appeal #{number}</b> from user "
-            f"<code>{getattr(message.from_user, 'id', '?')}</code>\n{text}",
-        )
-    except Exception as exc:  # noqa: BLE001 - reported to the member
-        logger.exception("appeal notification failed")
-        return f"Could not reach the owner ({type(exc).__name__})."
-    return "The owner was notified."

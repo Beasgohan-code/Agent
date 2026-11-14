@@ -12,9 +12,11 @@ command, which is the whole point of ``/help``.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Callable
 
+from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup
 from richgram import (
     rich_esc,
@@ -66,7 +68,7 @@ def _username(user) -> str:
     return f"@{rich_esc(username)}" if username else "not set"
 
 
-def welcome_screen(user, theme: Theme) -> Screen:
+def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
     name = display_name(user)
     greeting = (
         f"{theme.emoji('wave')} Hello, <b>{rich_esc(name)}</b>!" if name else f"{theme.emoji('wave')} Hello!"
@@ -107,6 +109,9 @@ def welcome_screen(user, theme: Theme) -> Screen:
 #: Command reference sections. Names come from the live registry, descriptions
 #: from the same table the Telegram command menu uses, so ``/help`` and the menu
 #: can never drift apart.
+#: Registered outside the module registry, so the help filter must let them through.
+BUILTIN = frozenset({"start", "help", "ping"})
+
 HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "bolt",
@@ -123,11 +128,24 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         ),
     ),
     (
+        "box",
+        "Vault & downloads",
+        (
+            "fsave", "get", "files", "del", "storestats", "storequota",
+            "leech", "mirror", "tasklist", "taskstatus", "leechstats", "taskbackend",
+        ),
+    ),
+    (
+        "music",
+        "Music (voice chat)",
+        ("play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave"),
+    ),
+    (
         "lock",
         "Moderation",
         (
             "warn", "warnings", "unwarn", "mute", "unmute", "kick", "ban", "unban",
-            "purge", "note", "trust", "antispam", "modlog",
+            "purge", "note", "trust", "antispam", "modlog", "warns",
         ),
     ),
     (
@@ -141,6 +159,15 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         ),
     ),
     (
+        "fire",
+        "Community & premium",
+        (
+            "report", "reports", "appeal",
+            "post", "postpreview", "posttemplate", "verify",
+            "premium", "addpremium", "delpremium", "premiumusers",
+        ),
+    ),
+    (
         "bot",
         "Operations (owner)",
         ("restart", "watchdog", "plugins", "plugin", "events", "setlog", "unsetlog", "log"),
@@ -148,10 +175,29 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 )
 
 
-def help_screen(user, theme: Theme) -> Screen:
-    # Imported here so the UI layer keeps no import-time dependency on platform.
-    from ..platform.menu import DESCRIPTIONS
+def section_slug(title: str) -> str:
+    """``Vault & downloads`` -> ``vault-downloads``, for callback data."""
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
 
+
+def help_visible(commands, active: set[str] | None) -> list[str]:
+    """The commands of a section that this deployment really registered."""
+    return [
+        name
+        for name in commands
+        if name and (active is None or name in active or name in BUILTIN)
+    ]
+
+
+def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+    """The command reference, one section per button.
+
+    *active* is the set of commands the registry actually registered. A plugin
+    that could not start (music without a session string) must not appear in the
+    reference — an entry for a command that does not exist is the same lie as a
+    fake command — and with 79 commands the whole list no longer fits a message,
+    so the overview stays short and each section has its own screen.
+    """
     blocks = [
         rich_heading("Command reference", 2),
         rich_note(
@@ -159,29 +205,84 @@ def help_screen(user, theme: Theme) -> Screen:
             "<code>OWNER_ID</code>; group commands need moderator rights."
         ),
     ]
+    rows: list[tuple[str, str]] = []
     for icon, title, commands in HELP_SECTIONS:
-        lines = [
-            f"<code>/{name}</code> — {rich_esc(DESCRIPTIONS[name])}"
-            for name in commands
-            if name in DESCRIPTIONS
-        ]
-        if not lines:
+        visible = help_visible(commands, active)
+        if not visible:
             continue
+        rows.append((f"{theme.emoji(icon)} {title}", str(len(visible))))
+    if rows:
         blocks.append("")
-        blocks.append(rich_heading(f"{theme.emoji(icon)} {title}", 3))
-        blocks.append(rich_list(lines))
+        blocks.append(
+            kv_table(rows, headers=("Section", "Commands")).classic_block()
+        )
     blocks.append("")
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"{theme.emoji('help')} Built on the projects credited in /about — "
-            "tap a button below to keep going."
+            f"{theme.emoji('help')} Tap a section for what it does. "
+            "Built on the projects credited in /about."
         )
     )
-    return Screen("\n".join(blocks), keyboards.help_keyboard())
+    return Screen("\n".join(blocks), _help_keyboard(active))
 
 
-def info_screen(user, theme: Theme) -> Screen:
+def _help_keyboard(active: set[str] | None) -> InlineKeyboardMarkup:
+    rows: list[list[Button]] = []
+    row: list[Button] = []
+    for icon, title, commands in HELP_SECTIONS:
+        if not help_visible(commands, active):
+            continue
+        row.append(Button(title, callback_data=f"help:{section_slug(title)}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([Button("\u21a9\ufe0f Back to menu", callback_data=keyboards.CB_HOME)])
+    return InlineKeyboardMarkup(rows)
+
+
+def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+    """One section of the reference, with a sentence per command."""
+    from ..platform.menu import DESCRIPTIONS
+
+    if title is None:
+        return help_screen(user, theme, active=active)
+    icon, commands = "help", ()
+    for section_icon, section_title, section_commands in HELP_SECTIONS:
+        if section_title == title:
+            icon, commands = section_icon, section_commands
+            break
+    lines = [
+        f"<code>/{name}</code> — {rich_esc(DESCRIPTIONS[name])}"
+        for name in help_visible(commands, active)
+        if name in DESCRIPTIONS
+    ]
+    blocks = [
+        rich_heading(f"{theme.emoji(icon)} {title}", 2),
+        rich_list(lines) if lines else rich_note("Nothing in this section is available here."),
+    ]
+    return Screen("\n".join(blocks), _section_keyboard())
+
+
+def _section_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [Button("\u2b05\ufe0f All sections", callback_data=f"help:{ALL_SECTIONS}")],
+            [Button("\u21a9\ufe0f Back to menu", callback_data=keyboards.CB_HOME)],
+        ]
+    )
+
+
+def _section_builder(title: str):
+    def build(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+        return help_section_screen(title, user, theme, active=active)
+
+    return build
+
+
+def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
     user_id = getattr(user, "id", None)
     language = (getattr(user, "language_code", None) or "").strip() or "not reported"
     premium = getattr(user, "is_premium", None)
@@ -212,11 +313,16 @@ def info_screen(user, theme: Theme) -> Screen:
 
 
 # Callback data -> screen builder, used by the callback router.
-SCREENS: dict[str, Callable[[object, Theme], Screen]] = {
+SCREENS: dict[str, Callable[..., Screen]] = {
     keyboards.CB_HOME: welcome_screen,
     keyboards.CB_HELP: help_screen,
     keyboards.CB_INFO: info_screen,
 }
+#: Callback data that returns to the overview from a section screen.
+ALL_SECTIONS = "all"
+SCREENS[f"help:{ALL_SECTIONS}"] = help_screen
+for _icon, _title, _commands in HELP_SECTIONS:
+    SCREENS[f"help:{section_slug(_title)}"] = _section_builder(_title)
 
 
 def ping_screen(monitor, theme: Theme) -> Screen:

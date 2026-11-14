@@ -90,6 +90,9 @@ def build(ctx):
         await engine.play(
             chat_id, track.source, title=track.title, requested_by=track.requested_by
         )
+        logger.info(
+            "now playing chat=%s title=%r requested_by=%s", chat_id, track.title, track.requested_by
+        )
         return track.title
 
     async def on_stream_end(chat_id: int) -> None:
@@ -138,6 +141,13 @@ def build(ctx):
             await engine.play(
                 message.chat.id, source, title=title, requested_by=message.from_user.id
             )
+            logger.info(
+                "play started chat=%s title=%r by=%s source=%s",
+                message.chat.id,
+                title,
+                message.from_user.id,
+                source,
+            )
         except VoiceUnavailable as exc:
             await reply(message, f"<b>Could not start playback</b>\n{exc}")
             return
@@ -162,6 +172,7 @@ def build(ctx):
         except VoiceUnavailable as exc:
             await reply(message, f"Nothing to pause: {exc}")
             return
+        logger.info("paused chat=%s by=%s", message.chat.id, message.from_user.id)
         await reply(message, "Paused.")
 
     async def resume(client, message):
@@ -200,6 +211,7 @@ def build(ctx):
         except VoiceUnavailable as exc:
             await reply(message, f"Stopped, but the engine was already idle ({exc}).")
             return
+        logger.info("stopped chat=%s by=%s", message.chat.id, message.from_user.id)
         await reply(message, "Stopped and left the voice chat. The queue is cleared.")
 
     async def leave(client, message):

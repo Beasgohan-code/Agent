@@ -26,6 +26,7 @@ from .platform.events import EventLog
 from .platform.instance import InstanceLease
 from .platform.logbook import LogBook, subscribe
 from .platform.menu import publish as publish_menu, reset_menu_button
+from .platform.premium import PremiumBook
 from .platform.runtime import PluginRuntime
 from .platform.voice import VoiceEngine, capability
 from .ui.theme import Theme
@@ -77,6 +78,8 @@ class AgentBot:
         )
         #: Module-owned callback prefixes (member verification today).
         self.actions = ActionRouter()
+        #: Premium membership and the tier allowances the modules enforce.
+        self.premium = PremiumBook(settings.data_dir)
         #: Voice-chat streaming is optional: without a session string there is no
         #: engine and the music module registers nothing.
         ok, reason = capability(settings.session_string)
@@ -141,9 +144,14 @@ class AgentBot:
             events=self.events,
             users=self.users,
             start_image=self.settings.start_image,
+            active_commands=self.registry.active_commands,
         )
         callbacks = CallbackHandlers(
-            sender, self.theme, monitor=self.health, router=self.actions
+            sender,
+            self.theme,
+            monitor=self.health,
+            router=self.actions,
+            active_commands=self.registry.active_commands,
         )
 
         self._handlers = [
@@ -165,6 +173,7 @@ class AgentBot:
         self.modules.registry = self.registry
         self.modules.actions = self.actions
         self.modules.voice = self.voice
+        self.modules.premium = self.premium
         self.modules.events = self.events
         self.modules.runtime = self.runtime
         self.modules.lease = self.lease

@@ -38,6 +38,8 @@ class ModuleContext:
     actions: object | None = None
     #: Voice-chat engine, present only when a session string and the libraries are.
     voice: object | None = None
+    #: Who has premium, and what the tiers allow.
+    premium: object | None = None
     events: object | None = None
     runtime: object | None = None
     lease: object | None = None

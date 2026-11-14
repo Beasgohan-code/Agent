@@ -87,10 +87,17 @@ class Storage:
     def usage(self, owner_id: int) -> int:
         return sum(f.size for f in self._index.values() if f.owner_id == owner_id)
 
-    def check_quota(self, owner_id: int, incoming: int) -> None:
-        if self.usage(owner_id) + incoming > self.quota_bytes:
+    def check_quota(self, owner_id: int, incoming: int, *, quota_bytes: int | None = None) -> None:
+        """Refuse a write that would cross the owner's allowance.
+
+        *quota_bytes* lets the caller pass an allowance that depends on the
+        user (the premium tiers do); without it the deployment default applies.
+        """
+        allowance = self.quota_bytes if quota_bytes is None else int(quota_bytes)
+        used = self.usage(owner_id)
+        if used + incoming > allowance:
             raise QuotaExceeded(
-                f"quota exceeded: {self.usage(owner_id)} + {incoming} > {self.quota_bytes} bytes"
+                f"quota exceeded: {used} + {incoming} > {allowance} bytes"
             )
 
     # -- writes ------------------------------------------------------------
@@ -114,10 +121,17 @@ class Storage:
         self._save()
         return stored
 
-    def save_path(self, owner_id: int, source: Path, *, name: str | None = None) -> StoredFile:
+    def save_path(
+        self,
+        owner_id: int,
+        source: Path,
+        *,
+        name: str | None = None,
+        quota_bytes: int | None = None,
+    ) -> StoredFile:
         source = Path(source)
         size = source.stat().st_size
-        self.check_quota(owner_id, size)
+        self.check_quota(owner_id, size, quota_bytes=quota_bytes)
         digest = hashlib.sha256()
         with source.open("rb") as fh:
             for chunk in iter(lambda: fh.read(1024 * 256), b""):

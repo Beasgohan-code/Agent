@@ -24,17 +24,14 @@ from __future__ import annotations
 
 import logging
 import shutil
-import tempfile
-import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import aiohttp
-
-from ..platform.manifest import PluginManifest
-from ..platform.net import LinkError, check_target, human_bytes, parse_url
-from ..ui.tables import Table, kv_table, panel
-from ..utils.rich import reply
+from ...platform.manifest import PluginManifest
+from ...platform.net import LinkError, check_target, human_bytes, parse_url
+from ...ui.tables import Table, kv_table, panel
+from ...utils.rich import reply
+from .transfer import _destination, download
 
 logger = logging.getLogger(__name__)
 
@@ -52,41 +49,6 @@ MANIFEST = PluginManifest(
 )
 
 #: Refuse anything bigger than this before writing a byte to disk.
-MAX_BYTES = 2 * 1024 * 1024 * 1024
-CHUNK = 1024 * 256
-PROGRESS_INTERVAL = 2.0
-def _destination(url: str) -> Path:
-    name = Path(urlsplit(url).path).name or "download.bin"
-    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)[:80]
-    return Path(tempfile.mkdtemp(prefix="leech-")) / (safe or "download.bin")
-
-
-async def download(url: str, destination: Path, on_progress=None) -> int:
-    """Stream *url* to *destination*; returns the byte count."""
-    written = 0
-    started = time.monotonic()
-    last_report = 0.0
-    timeout = aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(url) as response:
-            if response.status >= 400:
-                raise LeechError(f"the server answered HTTP {response.status}")
-            total = int(response.headers.get("Content-Length") or 0)
-            if total and total > MAX_BYTES:
-                raise LeechError(
-                    f"that file is {human_bytes(total)}; the limit is {human_bytes(MAX_BYTES)}"
-                )
-            with destination.open("wb") as handle:
-                async for chunk in response.content.iter_chunked(CHUNK):
-                    handle.write(chunk)
-                    written += len(chunk)
-                    if written > MAX_BYTES:
-                        raise LeechError("the download passed the size limit")
-                    now = time.monotonic()
-                    if on_progress is not None and now - last_report >= PROGRESS_INTERVAL:
-                        last_report = now
-                        await on_progress(written, total, now - started)
-    return written
 
 
 def backends() -> list[tuple[str, str, str]]:
@@ -141,8 +103,15 @@ def build(ctx):
             job.progress = 1.0
             job.detail = f"downloaded {human_bytes(written)}"
             if keep:
+                book = getattr(ctx, "premium", None)
+                allowance = (
+                    book.tier(job.owner_id).quota_bytes if book is not None else None
+                )
                 stored = ctx.storage.save_path(
-                    job.owner_id, destination, name=destination.name
+                    job.owner_id,
+                    destination,
+                    name=destination.name,
+                    quota_bytes=allowance,
                 )
                 job.detail = f"stored as {stored.id}"
             return destination
@@ -158,9 +127,41 @@ def build(ctx):
             url = parse_url(raw)
             await check_target(url)
         except LeechError as exc:
+            logger.info("leech refused user=%s reason=%s", message.from_user.id, exc)
             await reply(message, f"<b>Not fetching that</b>\n{exc}.")
             return
+
+        book = getattr(ctx, "premium", None)
+        user_id = message.from_user.id
+        if book is not None and not book.take(user_id, "leech"):
+            tier = book.tier(user_id)
+            logger.info("leech refused: daily allowance spent user=%s tier=%s", user_id, tier.slug)
+            await reply(
+                message,
+                panel(
+                    "Daily allowance spent",
+                    icon=ctx.theme.emoji("shield"),
+                    table=kv_table(
+                        [
+                            ("Tier", tier.label),
+                            ("Transfers/day", str(tier.transfers_per_day)),
+                        ]
+                    ),
+                    note=(
+                        "The counter resets at midnight UTC. "
+                        "<code>/premium</code> shows the tier that raises it."
+                    ),
+                    footer="Refused before any download started, so nothing was written.",
+                ),
+            )
+            return
         label = f"{'Mirror' if keep else 'Leech'}: <code>{Path(urlsplit(url).path).name or url}</code>"
+        logger.info(
+            "transfer queued user=%s kind=%s url=%s",
+            user_id,
+            "mirror" if keep else "leech",
+            url,
+        )
         _message_id, report = await _progress_message(client, message, label)
 
         async def runner(job):
@@ -170,8 +171,15 @@ def build(ctx):
             job.progress = 1.0
             job.detail = f"downloaded {human_bytes(written)}"
             if keep:
+                book = getattr(ctx, "premium", None)
+                allowance = (
+                    book.tier(job.owner_id).quota_bytes if book is not None else None
+                )
                 stored = ctx.storage.save_path(
-                    job.owner_id, destination, name=destination.name
+                    job.owner_id,
+                    destination,
+                    name=destination.name,
+                    quota_bytes=allowance,
                 )
                 job.detail = f"stored as {stored.id} ({human_bytes(stored.size)})"
                 await reply(message, 
@@ -277,6 +285,16 @@ def build(ctx):
         for job in jobs:
             counts[job.state.value] = counts.get(job.state.value, 0) + 1
         rows = [(state, str(count)) for state, count in sorted(counts.items())]
+        book = getattr(ctx, "premium", None)
+        if book is not None:
+            tier = book.tier(message.from_user.id)
+            rows.append(("Tier", tier.label))
+            rows.append(
+                (
+                    "Left today",
+                    f"{book.remaining(message.from_user.id, 'leech')} / {tier.transfers_per_day}",
+                )
+            )
         await reply(message, 
             panel(
                 "Leech statistics",

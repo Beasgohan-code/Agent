@@ -58,6 +58,7 @@ PLAIN: dict[str, str] = {
     "trash": "\U0001f5d1",
     "clock": "\U0001f552",
     "hash": "#\ufe0f\u20e3",
+    "box": "\U0001f4e6",
 }
 
 
