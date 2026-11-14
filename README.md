@@ -208,7 +208,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 416 tests
+pytest -q                      # 430 tests
 python -m pyflakes agent tests # no unused names
 ```
 
