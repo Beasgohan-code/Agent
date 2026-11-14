@@ -68,6 +68,7 @@ class FakeQuery:
         self.data = data
         self.from_user = SimpleNamespace(id=uid)
         self.answers: list[str] = []
+        self.message = SimpleNamespace(chat=SimpleNamespace(id=CHAT), id=777)
 
     async def answer(self, text="", show_alert=False):
         self.answers.append(text)
@@ -76,6 +77,13 @@ class FakeQuery:
 class FakeClient:
     def __init__(self):
         self.calls = []
+
+    async def get_chat_member(self, chat_id, user_id):
+        return SimpleNamespace(status=ChatMemberStatus.MEMBER)
+
+    async def get_chat(self, chat_id):
+        from pyrogram.types import ChatPermissions
+        return SimpleNamespace(permissions=ChatPermissions(can_send_messages=True, can_send_photos=False))
 
     async def restrict_chat_member(self, chat_id, user_id, permissions, **kwargs):
         self.calls.append(("restrict", int(user_id)))

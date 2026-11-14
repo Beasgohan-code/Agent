@@ -551,6 +551,12 @@ class AgentBot:
                 await clones.stop_all()
             except Exception:
                 logger.exception("Clone shutdown failed; continuing cleanup.")
+        verifier = getattr(self.modules, "verifier", None)
+        if verifier is not None:
+            try:
+                await verifier.shutdown()
+            except Exception:
+                logger.exception("Verification timer shutdown failed.")
         jobs = getattr(self.modules, "jobs", None)
         if jobs is not None:
             try:

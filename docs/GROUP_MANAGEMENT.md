@@ -231,3 +231,33 @@ pyflakes and whitespace checks passed. Added regression tests for execution gate
 callback rechecks, queued-job rechecks, cross-group cancellation isolation,
 owned-child cancellation, optional failure containment, presser authorization,
 confirmation rendering, live slot counts and private-only availability.
+
+## Verification safety phase
+
+Verification callbacks now require a pending session, the correct group and the
+exact prompt message. A stale button cannot lift restrictions. Callback ids are
+bounded, positive-user/negative-group ids; malformed input is rejected. Membership
+is refreshed before unrestriction, and current group defaults are restored rather
+than generic open permissions. Telegram failure leaves the session/timer intact;
+success is logged only after confirmation. Callback and timeout operations share
+a per-member lock.
+
+Timeouts refuse to kick unknown or administrator targets, skip departed members,
+and share the partial-kick audit path used by moderation. Old timers cannot expire
+a replacement session. Shutdown cancels verification timers. Join events are
+serialized, check fresh membership and trusted-member exemptions, and escape names.
+If prompt delivery fails after confirmed restriction, current group defaults are
+used to roll back; failed rollback is recorded as `verify:recovery_required` for
+administrator recovery. This cannot make Telegram's separate calls atomic.
+
+Important remaining limitation: pending sessions and timers are still process-local
+and are not restored after restart. The durable verification migration is not
+included here. Existing members affected by a restart may need administrator
+recovery. Turning verification off controls new onboarding; it does not undo
+existing pending restrictions automatically.
+
+Validation: **666 passed** with disposable PostgreSQL, plus compileall, pyflakes
+and whitespace checks. Added safety tests for stale/cross-group/wrong-prompt
+callbacks, membership changes, failed unrestriction, baseline restoration,
+timeout protection, malformed ids, failed prompt rollback, duplicate join events
+and lookup failure. No new migration, environment variable or dependency.

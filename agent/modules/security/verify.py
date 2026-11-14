@@ -1,15 +1,17 @@
-"""The verification state machine: pending members, their timers, their button.
+"""Verification sessions and their bound buttons.
 
-Two facts shape this file. First, the pending set is in memory, so a restart
-forgets who was waiting — their mute stays on Telegram's side, and an
-administrator can lift it. Second, a press must only work for the member it was
-issued to; a shared link to the button is not a way to verify somebody else.
+Pending records are currently process-local. A missing session never authorizes
+lifting a restriction. Callbacks and timeouts serialize per member, recheck
+membership, and use the current group defaults rather than generic open rights.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import html
+import re
+from weakref import WeakValueDictionary
 
 from pyrogram.enums import ButtonStyle, ChatMemberStatus, ChatType
 from pyrogram.types import ChatPermissions
@@ -18,7 +20,7 @@ from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
-from ..moderation import is_moderator
+from ..moderation import is_moderator, kick_member, PartialKickError
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +38,6 @@ SILENCED = ChatPermissions(
     can_send_media_messages=False,
     can_send_other_messages=False,
     can_add_web_page_previews=False,
-)
-
-
-RESTORED = ChatPermissions(
-    can_send_messages=True,
-    can_send_media_messages=True,
-    can_send_other_messages=True,
-    can_add_web_page_previews=True,
 )
 
 
@@ -76,10 +70,13 @@ def button_for(chat_id: int, user_id: int) -> Keyboard:
 
 def parse_press(rest: str) -> tuple[int, int] | None:
     """``<chat>:<user>`` from callback data, or ``None`` when malformed."""
-    parts = (rest or "").split(":")
-    if len(parts) != 2 or not all(part.lstrip("-").isdigit() for part in parts):
+    if not re.fullmatch(r"-[0-9]{1,19}:[0-9]{1,19}", rest or ""):
         return None
-    return int(parts[0]), int(parts[1])
+    parts = rest.split(":")
+    chat_id, user_id = int(parts[0]), int(parts[1])
+    if chat_id >= 0 or user_id <= 0 or abs(chat_id) >= 2**63 or user_id >= 2**63:
+        return None
+    return chat_id, user_id
 
 
 class Verifier:
@@ -92,6 +89,7 @@ class Verifier:
         self.pending: dict[tuple[int, int], asyncio.Task] = {}
         #: (chat_id, user_id) → (chat_id, prompt message id)
         self.prompts: dict[tuple[int, int], tuple[int, int]] = {}
+        self._locks = WeakValueDictionary()
 
     # -- button ------------------------------------------------------------
 
@@ -105,27 +103,45 @@ class Verifier:
         if presser != user_id:
             await query.answer("This button belongs to someone else.", show_alert=True)
             return
-        task = self.pending.pop((chat_id, user_id), None)
-        if task is None:
-            await query.answer("You are already verified.", show_alert=False)
-        try:
-            await client.restrict_chat_member(chat_id, user_id, RESTORED)
-        except Exception:  # noqa: BLE001 - the member is told
-            await query.answer("I could not lift your restriction.", show_alert=True)
+        origin = getattr(query, "message", None)
+        if getattr(getattr(origin, "chat", None), "id", None) != chat_id:
+            await query.answer("This verification button belongs to a different group.", show_alert=True)
             return
-        if task is not None and not task.done():
-            task.cancel()
-        self._chats.log(chat_id, "verify", actor_id=user_id, target_id=user_id)
-        logger.info("member verified chat=%s user=%s", chat_id, user_id)
-        await query.answer("Verified — welcome!")
-        location = self.prompts.pop((chat_id, user_id), None)
-        if location is not None:
-            chat, message_id = location
+        key = (chat_id, user_id)
+        async with self._locks.setdefault(key, asyncio.Lock()):
+            task = self.pending.get(key)
+            location = self.prompts.get(key)
+            if task is None or location is None:
+                await query.answer("This verification session is no longer active.", show_alert=True)
+                return
+            if location != (chat_id, getattr(origin, "id", None)):
+                await query.answer("This verification prompt is no longer valid.", show_alert=True)
+                return
             try:
-                await client.edit_message_text(
-                    chat, message_id, "Verified. Welcome to the group."
-                )
-            except Exception:  # noqa: BLE001 - cosmetics only
+                member = await client.get_chat_member(chat_id, user_id)
+                status = getattr(member, "status", None)
+                if status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED):
+                    await query.answer("Membership changed. Ask a group administrator for help.", show_alert=True)
+                    return
+                chat = await client.get_chat(chat_id)
+                permissions = getattr(chat, "permissions", None)
+                if permissions is None:
+                    await query.answer("Cannot read group permissions. Please try again.", show_alert=True)
+                    return
+                await client.restrict_chat_member(chat_id, user_id, permissions)
+            except Exception:
+                # Retain the session and timeout when Telegram does not confirm.
+                await query.answer("I could not confirm verification. Please try again.", show_alert=True)
+                return
+            self.pending.pop(key, None)
+            self.prompts.pop(key, None)
+            if not task.done():
+                task.cancel()
+            self._chats.log(chat_id, "verify", actor_id=user_id, target_id=user_id)
+            await query.answer("Verified — welcome!")
+            try:
+                await client.edit_message_text(chat_id, location[1], "Verified. Welcome to the group.")
+            except Exception:
                 logger.debug("could not edit the verification prompt", exc_info=True)
 
     # -- timer -------------------------------------------------------------
@@ -135,16 +151,40 @@ class Verifier:
             await asyncio.sleep(minutes * 60)
         except asyncio.CancelledError:
             raise
-        if (chat_id, user_id) not in self.pending:
-            return
-        self.pending.pop((chat_id, user_id), None)
-        self.prompts.pop((chat_id, user_id), None)
-        try:
-            await client.ban_chat_member(chat_id, user_id)
-            await client.unban_chat_member(chat_id, user_id)
-            logger.info("verification timed out for %s in %s", user_id, chat_id)
-        except Exception:  # noqa: BLE001 - logged; nothing else to do
-            logger.exception("could not remove unverified member")
+        key = (chat_id, user_id)
+        async with self._locks.setdefault(key, asyncio.Lock()):
+            # An old timer must never expire a replacement session for this user.
+            if self.pending.get(key) is not asyncio.current_task():
+                return
+            self.pending.pop(key, None)
+            self.prompts.pop(key, None)
+            try:
+                member = await client.get_chat_member(chat_id, user_id)
+                status = getattr(member, "status", None)
+                if status in (ChatMemberStatus.LEFT, ChatMemberStatus.BANNED):
+                    return
+                if status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED):
+                    self._chats.log(chat_id, "verify:timeout_not_attempted", actor_id=None,
+                                    target_id=user_id, reason="protected or unknown membership")
+                    return
+                await kick_member(client, self._ctx, chat_id, user_id, source="verification")
+                self._chats.log(chat_id, "verify:timeout", actor_id=None, target_id=user_id)
+            except PartialKickError:
+                logger.warning("Verification timeout kick incomplete; see group audit.")
+            except Exception as exc:
+                self._chats.log(chat_id, "verify:timeout_failed", actor_id=None,
+                                target_id=user_id, reason=type(exc).__name__)
+                logger.warning("Could not remove unverified member: %s", type(exc).__name__)
+
+    async def shutdown(self):
+        """Do not leave verification timers running after bot shutdown."""
+        tasks = list(self.pending.values())
+        self.pending.clear()
+        self.prompts.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     # -- /verify -----------------------------------------------------------
 
@@ -211,6 +251,14 @@ class Verifier:
     # -- join watcher ------------------------------------------------------
 
     async def on_member_update(self, client, update) -> None:
+        chat_id = getattr(getattr(update, "chat", None), "id", None)
+        user_id = getattr(getattr(getattr(update, "new_chat_member", None), "user", None), "id", None)
+        if type(chat_id) is not int or chat_id >= 0 or type(user_id) is not int or user_id <= 0:
+            return
+        async with self._locks.setdefault((chat_id, user_id), asyncio.Lock()):
+            await self._on_member_update(client, update)
+
+    async def _on_member_update(self, client, update) -> None:
         try:
             chat = getattr(update, "chat", None)
             if chat is None or getattr(chat, "type", None) not in (
@@ -233,14 +281,33 @@ class Verifier:
             user = getattr(new, "user", None)
             if user is None or getattr(user, "is_bot", False):
                 return
+            key = (int(chat.id), int(user.id))
+            if key in self.pending or self._chats.is_trusted(chat.id, user.id):
+                return
+            current = await client.get_chat_member(chat.id, user.id)
+            if getattr(current, "status", None) not in (ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED):
+                return
+            baseline = getattr(await client.get_chat(chat.id), "permissions", None)
+            if baseline is None:
+                return
             await client.restrict_chat_member(chat.id, user.id, SILENCED)
             minutes = timeout_minutes(self._chats, chat.id)
-            prompt = await client.send_message(
-                chat.id,
-                f"{getattr(user, 'first_name', 'Welcome')}, please confirm you are human "
-                f"within {minutes} minutes.",
-                reply_markup=button_for(chat.id, user.id),
-            )
+            try:
+                prompt = await client.send_message(
+                    chat.id,
+                    f"{html.escape(getattr(user, 'first_name', None) or 'Welcome')}, please confirm you are human "
+                    f"within {minutes} minutes.",
+                    reply_markup=button_for(chat.id, user.id),
+                )
+            except Exception as exc:
+                try:
+                    await client.restrict_chat_member(chat.id, user.id, baseline)
+                    action = "verify:prompt_failed"
+                except Exception:
+                    action = "verify:recovery_required"
+                self._chats.log(chat.id, action, actor_id=None, target_id=user.id,
+                                reason=type(exc).__name__)
+                return
             key = (int(chat.id), int(user.id))
             self.prompts[key] = (int(chat.id), getattr(prompt, "id", 0))
             self.pending[key] = asyncio.create_task(
