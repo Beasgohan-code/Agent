@@ -152,3 +152,13 @@ previews, without selecting media source fields or probing media addresses.
 Upgrade all saved-playlist result panels with premium theming, quota and empty
 state guidance. Existing admin permissions, confirmed SQL saves and whole-list
 load validation remain unchanged. Full Music/reference parity is still pending.
+
+### Post Studio increment
+
+Moved beyond Music: fixed the broken Post Maker publishing import, single-pass
+substitution and dangerous silent truncation. Preview/publication now share the
+same normalised HTML path, accept replied captions, enforce bounded composition,
+and distinguish ambiguous send failures from acknowledged sends with failed
+audit writes. Upgraded studio/template/status UI and added default-layout reset.
+Template writes still use older background-flushed ChatStore; do not claim full
+confirmed-write durability. Preview is group-visible, not a private draft.
