@@ -20,6 +20,7 @@ import hashlib
 import logging
 import re
 import shutil
+import secrets
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -144,6 +145,9 @@ class Storage:
         except Exception:  # noqa: BLE001 - a failed archive must not lose the file
             logger.warning("could not archive %s", stored.name, exc_info=True)
             return ""
+        if self._index.get(stored.id) is not stored:
+            # An archive upload finishing after deletion must not resurrect it.
+            return ""
         if file_id:
             stored.telegram_file_id = str(file_id)
             self._index[stored.id] = stored
@@ -188,7 +192,7 @@ class Storage:
     def save_bytes(self, owner_id: int, name: str, payload: bytes) -> StoredFile:
         self.check_quota(owner_id, len(payload))
         digest = hashlib.sha256(payload).hexdigest()
-        file_id = digest[:16]
+        file_id = self._new_id()
         stored = StoredFile(
             id=file_id,
             owner_id=int(owner_id),
@@ -197,13 +201,7 @@ class Storage:
             sha256=digest,
             created_at=time.time(),
         )
-        self._ensure_dirs()
-        path = self.path_for(stored)
-        path.write_bytes(payload)
-        self._index[file_id] = stored
-        self._save()
-        self.schedule_archive(stored)
-        return stored
+        return self._store(stored, lambda path: path.write_bytes(payload))
 
     def save_path(
         self,
@@ -222,17 +220,35 @@ class Storage:
                 digest.update(chunk)
         sha = digest.hexdigest()
         stored = StoredFile(
-            id=sha[:16],
+            id=self._new_id(),
             owner_id=int(owner_id),
             name=safe_filename(name or source.name),
             size=size,
             sha256=sha,
             created_at=time.time(),
         )
+        return self._store(stored, lambda path: shutil.copyfile(source, path))
+
+    def _new_id(self) -> str:
+        # IDs are handles, not content hashes. Identical uploads must never
+        # transfer ownership or replace metadata referenced by existing links.
+        for _ in range(10):
+            file_id = secrets.token_hex(16)
+            if file_id not in self._index:
+                return file_id
+        raise RuntimeError("Could not allocate a unique storage handle")
+
+    def _store(self, stored: StoredFile, write) -> StoredFile:
         self._ensure_dirs()
-        shutil.copyfile(source, self.path_for(stored))
-        self._index[stored.id] = stored
-        self._save()
+        path = self.path_for(stored)
+        try:
+            write(path)
+            self._index[stored.id] = stored
+            self._save()
+        except BaseException:
+            self._index.pop(stored.id, None)
+            path.unlink(missing_ok=True)
+            raise
         self.schedule_archive(stored)
         return stored
 
@@ -262,9 +278,13 @@ class Storage:
         if stored is None or (owner_id is not None and stored.owner_id != owner_id):
             return False
         with_path = self.path_for(stored)
-        with_path.unlink(missing_ok=True)
         self._index.pop(file_id, None)
-        self._save()
+        try:
+            self._save()
+        except BaseException:
+            self._index[file_id] = stored
+            raise
+        with_path.unlink(missing_ok=True)
         return True
 
     def prune(self, *, retention_days: int, now: float | None = None) -> list[str]:
