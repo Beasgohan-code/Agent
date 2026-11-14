@@ -16,17 +16,22 @@ FAILURE_NOTICE = "Something went wrong on my side. Please try again in a moment.
 class CommandHandlers:
     """``/start`` and ``/help``."""
 
-    def __init__(self, sender: ScreenSender, theme: Theme) -> None:
+    def __init__(self, sender: ScreenSender, theme: Theme, monitor=None) -> None:
         self._sender = sender
         self._theme = theme
+        self._monitor = monitor
 
     async def start(self, client, message) -> None:
         user_id = getattr(getattr(message, "from_user", None), "id", None)
+        if self._monitor is not None:
+            self._monitor.record_activity("start")
         logger.info("/start from user %s", user_id)
         await self._show(client, message, welcome_screen(message.from_user, self._theme), "welcome")
 
     async def help(self, client, message) -> None:
         user_id = getattr(getattr(message, "from_user", None), "id", None)
+        if self._monitor is not None:
+            self._monitor.record_activity("help")
         logger.info("/help from user %s", user_id)
         await self._show(client, message, help_screen(message.from_user, self._theme), "help")
 

@@ -72,6 +72,13 @@ def main(argv: list[str] | None = None) -> int:
         logger.exception("Agent stopped because of an unhandled error.")
         return 1
 
+    if bot.fatal_reason:
+        logger.error(
+            "Exiting with code 1 so the platform restarts the container (%s).",
+            bot.fatal_reason,
+        )
+        return 1
+
     return 0
 
 

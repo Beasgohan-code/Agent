@@ -30,6 +30,11 @@ class Settings:
     api_id: int
     api_hash: str
     session_name: str = "agent"
+    # Optional operational knobs; every one has a working default.
+    health_port: int | None = None
+    watchdog_interval: float = 30.0
+    watchdog_timeout: float = 20.0
+    watchdog_fatal_after: int = 5
 
     @property
     def masked_token(self) -> str:
@@ -79,4 +84,41 @@ class Settings:
                 "Invalid environment configuration:\n  - " + "\n  - ".join(problems)
             )
 
-        return cls(bot_token=bot_token, api_id=api_id, api_hash=api_hash)
+        return cls(
+            bot_token=bot_token,
+            api_id=api_id,
+            api_hash=api_hash,
+            health_port=_optional_port(source),
+            watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
+            watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),
+            watchdog_fatal_after=int(
+                _optional_float(source.get("WATCHDOG_FATAL_AFTER"), 5.0)
+            ),
+        )
+
+
+def _optional_float(raw: str | None, default: float) -> float:
+    try:
+        value = float((raw or "").strip())
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _optional_port(env: Mapping[str, str]) -> int | None:
+    """``HEALTH_PORT`` wins; a platform-provided ``PORT`` enables it too.
+
+    Returns ``None`` when neither is usable, which keeps the bot a pure
+    background worker with no HTTP server.
+    """
+    for key in ("HEALTH_PORT", "PORT"):
+        raw = (env.get(key) or "").strip()
+        if not raw:
+            continue
+        try:
+            port = int(raw)
+        except ValueError:
+            continue
+        if 0 < port < 65536:
+            return port
+    return None

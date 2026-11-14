@@ -5,14 +5,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from contextlib import suppress
 
 from pyrogram import Client, filters
 from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
 
 from .config import Settings
 from .handlers import CallbackHandlers, CommandHandlers
+from .health import HealthMonitor
+from .health_server import start_health_server, stop_health_server
 from .ui.theme import Theme
 from .utils.sender import ScreenSender
+from .watchdog import build_watchdog
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,13 @@ class AgentBot:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.theme = Theme()
+        self.health = HealthMonitor(
+            degraded_after=max(60.0, settings.watchdog_interval * 3),
+            down_after=max(180.0, settings.watchdog_interval * 10),
+            failure_threshold=max(3, settings.watchdog_fatal_after - 2),
+        )
+        #: Set when the watchdog gives up; start.py turns it into exit code 1.
+        self.fatal_reason: str | None = None
         self._client: Client | None = None
         self._handlers: list = []
 
@@ -61,8 +72,8 @@ class AgentBot:
 
     def _register_handlers(self, client: Client) -> None:
         sender = ScreenSender(client, self.theme)
-        commands = CommandHandlers(sender, self.theme)
-        callbacks = CallbackHandlers(sender, self.theme)
+        commands = CommandHandlers(sender, self.theme, monitor=self.health)
+        callbacks = CallbackHandlers(sender, self.theme, monitor=self.health)
 
         self._handlers = [
             MessageHandler(commands.start, filters.command("start") & filters.private),
@@ -100,6 +111,9 @@ class AgentBot:
             )
             raise
 
+        # A completed handshake is a successful probe.
+        self.health.record_success()
+
         me = client.me
         logger.info(
             "Connected as %s (id=%s)",
@@ -107,10 +121,33 @@ class AgentBot:
             me.id,
         )
 
+        watchdog = build_watchdog(
+            client,
+            self.health,
+            self.settings,
+            on_fatal=lambda: self._request_restart(stop_event),
+        )
+        watchdog_task = asyncio.create_task(watchdog.run(stop_event), name="agent-watchdog")
+
+        health_runner = None
+        if self.settings.health_port:
+            health_runner = await start_health_server(self.health, self.settings.health_port)
+        else:
+            logger.info("No HEALTH_PORT/PORT set: running without an HTTP health endpoint.")
+
         try:
             await stop_event.wait()
         finally:
+            watchdog_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await watchdog_task
+            await stop_health_server(health_runner)
             await self._shutdown(client)
+
+    def _request_restart(self, stop_event: asyncio.Event) -> None:
+        """Called by the watchdog when the link is declared dead."""
+        self.fatal_reason = "telegram unreachable"
+        stop_event.set()
 
     async def _shutdown(self, client: Client) -> None:
         logger.info("Shutdown requested; disconnecting...")
