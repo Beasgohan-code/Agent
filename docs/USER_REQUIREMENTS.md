@@ -274,3 +274,13 @@ identity/argument validation, paged owned history, URL-free new transfer labels
 and enqueue logs, withheld sensitive shared-job details/errors and caller-only
 active counts. Shared task history remains process-local; this is not durable
 transfer recovery or a full network/download security audit.
+
+### Reference-based command pruning request
+
+User clarified that all supplied repositories in refs are the reference set.
+Restored all 29 cataloged revisions after ignored checkouts were absent from a
+workspace restore. Added a static current-command comparison with evidence and
+uncertainty classes. No command/plugin/data was deleted by this review step;
+source-name absence is not proven absence of behavior or permission to delete
+stored data. Resolve aliases/dynamic registrations and standing safety/feature
+constraints before applying destructive command-surface changes.
