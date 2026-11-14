@@ -1,0 +1,29 @@
+# Version control / CI
+.git
+.gitignore
+.github
+
+# Secrets — never in a build context
+.env
+.env.*
+!.env.example
+
+# Python noise
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local/dev only
+tests/
+requirements-dev.txt
+README.md
+render.yaml
+*.session
+*.session-journal

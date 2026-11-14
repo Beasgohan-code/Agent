@@ -1,0 +1,82 @@
+"""Agent — configuration loaded from the environment.
+
+Required environment variables (and nothing else):
+
+    BOT_TOKEN   from @BotFather
+    API_ID      from https://my.telegram.org
+    API_HASH    from https://my.telegram.org
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from dataclasses import dataclass
+from typing import Mapping
+
+BOT_TOKEN_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
+API_HASH_RE = re.compile(r"^[0-9a-fA-F]{32}$")
+
+
+class ConfigError(RuntimeError):
+    """Raised when the environment does not describe a runnable bot."""
+
+
+@dataclass(frozen=True)
+class Settings:
+    """Validated runtime settings."""
+
+    bot_token: str
+    api_id: int
+    api_hash: str
+    session_name: str = "agent"
+
+    @property
+    def masked_token(self) -> str:
+        """Token with the secret half hidden, safe to write to logs."""
+        prefix, _, _ = self.bot_token.partition(":")
+        return f"{prefix}:{'-' * 8}"
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
+        """Build settings from *env* (defaults to ``os.environ``).
+
+        Every problem is reported at once so a misconfigured deploy does not
+        need one restart per missing variable.
+        """
+        source = os.environ if env is None else env
+        problems: list[str] = []
+
+        bot_token = (source.get("BOT_TOKEN") or "").strip()
+        if not bot_token:
+            problems.append("BOT_TOKEN is missing (get it from @BotFather).")
+        elif not BOT_TOKEN_RE.match(bot_token):
+            problems.append(
+                "BOT_TOKEN is malformed; expected '<digits>:<secret>' as issued by @BotFather."
+            )
+
+        raw_api_id = (source.get("API_ID") or "").strip()
+        api_id = 0
+        if not raw_api_id:
+            problems.append("API_ID is missing (from https://my.telegram.org).")
+        else:
+            try:
+                api_id = int(raw_api_id)
+            except ValueError:
+                problems.append("API_ID must be an integer, got a non-numeric value.")
+            else:
+                if api_id <= 0:
+                    problems.append("API_ID must be a positive integer.")
+
+        api_hash = (source.get("API_HASH") or "").strip()
+        if not api_hash:
+            problems.append("API_HASH is missing (from https://my.telegram.org).")
+        elif not API_HASH_RE.match(api_hash):
+            problems.append("API_HASH must be 32 hexadecimal characters.")
+
+        if problems:
+            raise ConfigError(
+                "Invalid environment configuration:\n  - " + "\n  - ".join(problems)
+            )
+
+        return cls(bot_token=bot_token, api_id=api_id, api_hash=api_hash)

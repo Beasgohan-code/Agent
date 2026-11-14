@@ -1,0 +1,8 @@
+# Agent — runtime dependencies
+#
+# NOTE: richgram is installed separately with --no-deps (see Dockerfile).
+# richgram pins `kurigram`, which ships its own top-level `pyrogram` package
+# and overwrites wzgram's files, silently downgrading the client to another
+# fork. Installing it with --no-deps keeps wzgram as the owner of `pyrogram`.
+wzgram==3.1.7
+python-dotenv==1.1.1
