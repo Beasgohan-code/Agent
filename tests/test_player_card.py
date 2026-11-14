@@ -84,7 +84,7 @@ class FakeMessage:
         self.from_user = SimpleNamespace(id=REQUESTER, first_name="Ada")
         self.edits = []
 
-    async def edit_text(self, text=None, reply_markup=None):
+    async def edit_text(self, text=None, reply_markup=None, **kwargs):
         self.edits.append((text, reply_markup))
         return self
 

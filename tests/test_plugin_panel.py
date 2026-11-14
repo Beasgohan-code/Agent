@@ -52,7 +52,7 @@ class FakeQuery:
             edit_text=self._edit,
         )
 
-    async def _edit(self, text=None, reply_markup=None):
+    async def _edit(self, text=None, reply_markup=None, **kwargs):
         self.edits.append((text, reply_markup))
 
     async def answer(self, text=None, show_alert=False):

@@ -24,6 +24,7 @@ from ...ui.tables import Panel, Table, kv_table, panel
 from ..moderation import is_moderator
 from .queue import QueueBook, Track
 from .sources import SourceError, resolve
+from ...utils import rich as rich_ui
 from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,7 @@ def build(ctx):
         card = _card(chat_id)
         keyboard = _transport(chat_id) if engine.playback(chat_id) is not None else None
         try:
-            await query.message.edit_text(text=str(card.classic), reply_markup=keyboard)
+            await rich_ui.edit(query, card, reply_markup=keyboard)
         except Exception:  # noqa: BLE001 - a stale card is not a failed control
             logger.debug("could not redraw the player card", exc_info=True)
         await query.answer(said)

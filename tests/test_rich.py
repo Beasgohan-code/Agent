@@ -118,6 +118,124 @@ def test_send_uses_the_same_two_paths(restore_rich):
     assert [kind for kind, _ in plain_client.calls] == ["plain"]
 
 
+class FakeQuery:
+    """A callback query whose client may or may not speak rich messages."""
+
+    def __init__(self, client, *, edit_error=None):
+        self._client = client
+        self.message = SimpleNamespace(chat=SimpleNamespace(id=-100), id=9)
+        self.edits = []
+        self.edit_error = edit_error
+
+    async def edit_message_text(self, **kwargs):
+        # A refusal is about the rich attempt only; the grid still goes through.
+        if self.edit_error is not None and "rich_text" in kwargs:
+            raise self.edit_error
+        self.edits.append(kwargs)
+        return SimpleNamespace(id=9)
+
+
+def test_a_rich_client_edits_in_place_and_keeps_the_table():
+    """Navigating a table screen must not collapse it into a grid."""
+    client = FakeClient()
+    query = FakeQuery(client)
+
+    asyncio.run(rich.edit(query, panel("X", table=kv_table([("a", "1")]))))
+
+    assert len(query.edits) == 1
+    rich_edit = query.edits[0]
+    assert "rich_text" in rich_edit
+    assert "<table" in rich_edit["rich_text"].html
+    assert "text" not in rich_edit
+
+
+def test_a_plain_client_gets_the_grid_on_edit(restore_rich):
+    client = FakeClient(rich=False)
+    query = FakeQuery(client)
+
+    asyncio.run(rich.edit(query, panel("X", table=kv_table([("a", "1")]))))
+
+    edit = query.edits[0]
+    assert "rich_text" not in edit
+    assert "<table" not in edit["text"]
+    assert "<pre>" in edit["text"]          # drawn, not flattened
+    assert edit["parse_mode"] == "html"
+
+
+def test_a_refused_rich_edit_falls_back_to_the_grid(restore_rich):
+    client = FakeClient()
+    query = FakeQuery(client, edit_error=RuntimeError("RICH_TEXT_INVALID"))
+
+    asyncio.run(rich.edit(query, panel("X", table=kv_table([("a", "1")]))))
+
+    assert len(query.edits) == 1
+    assert "<pre>" in query.edits[0]["text"]
+
+
+def test_a_native_table_survives_the_classic_form_as_a_grid():
+    body = Table(
+        headers=("Command", "What it does"),
+        rows=(("/pin", "Pin the replied message"), ("/rules", "Show this group's rules")),
+    ).rich_block()
+
+    classic = rich.classic(body)
+
+    assert "<table" not in classic
+    assert "<pre>" in classic
+    assert "\u250c" in classic               # the box survives, aligned
+    assert "/pin" in classic and "Pin the replied message" in classic
+
+
+def test_the_menu_and_help_are_delivered_as_rich_messages():
+    """The screens a user opens first arrive as tables, not as a grid."""
+    from types import SimpleNamespace as NS
+
+    from agent.ui.screens import help_screen, welcome_screen
+    from agent.ui.theme import Theme
+    from agent.utils.sender import ScreenSender
+
+    client = FakeClient()
+    sender = ScreenSender(client, Theme())
+    user = NS(id=7, first_name="Ada", last_name=None, language_code="en")
+
+    asyncio.run(sender.send(-100, help_screen(user, Theme(), active={"start", "help"})))
+    asyncio.run(sender.send(-100, welcome_screen(user, Theme())))
+
+    rich_payloads = [kwargs["rich_text"].html for kind, kwargs in client.calls if kind == "rich"]
+    assert len(rich_payloads) == 2
+    assert "<table" in rich_payloads[0] and "<h2>Help</h2>" in rich_payloads[0]
+    assert "/about" not in rich_payloads[0]      # no bibliography anywhere
+    assert "<table" in rich_payloads[1]
+
+
+def test_navigating_help_edits_the_rich_message_in_place():
+    from types import SimpleNamespace as NS
+
+    from agent.ui.screens import _section_builder
+    from agent.ui.theme import Theme
+    from agent.utils.sender import ScreenSender
+
+    client = FakeClient()
+    query = FakeQuery(client)
+    user = NS(id=7, first_name="Ada", last_name=None, language_code="en")
+
+    ok = asyncio.run(
+        ScreenSender(client, Theme()).edit(
+            query, _section_builder("Essentials")(user, Theme(), active={"start", "help"})
+        )
+    )
+
+    assert ok is True
+    assert len(query.edits) == 1
+    html = query.edits[0]["rich_text"].html
+    assert "<table" in html
+    assert "/start" in html
+
+
+def test_a_query_without_an_editor_is_left_alone():
+    assert asyncio.run(rich.edit(SimpleNamespace(), "<h2>x</h2>")) is None
+
+
 def test_available_is_a_capability_check_not_a_promise():
     assert rich.available(FakeClient()) is True
     assert rich.available(object()) is False

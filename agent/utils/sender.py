@@ -11,10 +11,12 @@ import re
 
 from pyrogram.enums import ParseMode
 from pyrogram.errors import MessageNotModified
-from pyrogram.types import LinkPreviewOptions
+from pyrogram.types import InputRichMessage, LinkPreviewOptions
 from richgram import rich_caption
 
+from ..ui import tables
 from ..ui.screens import Screen
+from . import rich as rich_utils
 from ..ui.theme import Theme, strip_custom_emoji
 
 logger = logging.getLogger(__name__)
@@ -63,8 +65,32 @@ class ScreenSender:
         self._client = client
         self._theme = theme
 
+    async def _send_rich(self, chat_id, screen: Screen):
+        """A real rich message: native tables, headings, collapsible blocks.
+
+        Returns the message, or ``None`` when this deployment cannot have one —
+        then the caller sends the classic HTML instead. Never raises.
+        """
+        if not tables.rich_enabled() or not rich_utils.needs_rich(screen.rich_text):
+            return None
+        client = self._client
+        if not rich_utils.available(client):
+            return None
+        try:
+            return await client.send_rich_message(
+                chat_id=chat_id,
+                rich_text=InputRichMessage(html=screen.rich_text),
+                reply_markup=screen.keyboard,
+            )
+        except Exception as exc:  # noqa: BLE001 - downgrade, never lose the screen
+            rich_utils._refused(exc)
+            return None
+
     async def send(self, chat_id, screen: Screen):
-        text = to_safe_html(screen.rich_text)
+        sent = await self._send_rich(chat_id, screen)
+        if sent is not None:
+            return sent
+        text = rich_utils._classic_form(screen, screen.rich_text)
         try:
             return await self._post(chat_id, text, screen.keyboard)
         except Exception as exc:
@@ -101,7 +127,31 @@ class ScreenSender:
             return await self.send(chat_id, screen)
 
     async def edit(self, callback_query, screen: Screen) -> bool:
-        """Edit the message a callback query points at."""
+        """Edit the message a callback query points at.
+
+        Rich first: the Bot API edits a rich message through
+        ``edit_message_text(rich_message=…)``, so a table stays a table across a
+        button press instead of collapsing into a monospace grid.
+        """
+        client = getattr(callback_query, "_client", None) or self._client
+        if (
+            tables.rich_enabled()
+            and rich_utils.needs_rich(screen.rich_text)
+            and rich_utils.available(client)
+        ):
+            try:
+                await callback_query.edit_message_text(
+                    rich_text=InputRichMessage(html=screen.rich_text),
+                    reply_markup=screen.keyboard,
+                )
+                return True
+            except MessageNotModified:
+                return True
+            except Exception as exc:  # noqa: BLE001 - a refused edit is not fatal
+                logger.warning(
+                    "Telegram refused a rich edit (%s); sending the classic form.",
+                    exc,
+                )
         text = to_safe_html(screen.rich_text)
         try:
             await callback_query.edit_message_text(

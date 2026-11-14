@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from ..ui.screens import help_screen, ping_screen, welcome_screen
+from ..ui.screens import help_lookup_screen, help_screen, ping_screen, welcome_screen
 from ..ui.theme import Theme
 from ..utils.sender import ScreenSender
 
@@ -56,12 +56,19 @@ class CommandHandlers:
             await self._notify_failure(client, chat_id)
 
     async def help(self, client, message) -> None:
+        """``/help`` opens the sections; ``/help <command|section>`` the one page."""
         user_id = getattr(getattr(message, "from_user", None), "id", None)
         if self._monitor is not None:
             self._monitor.record_activity("help")
-        logger.info("/help from user %s", user_id)
+        bits = (getattr(message, "text", None) or "").split(maxsplit=1)
+        argument = bits[1].strip() if len(bits) > 1 else ""
+        logger.info("/help %s from user %s", argument or "(overview)", user_id)
         active = set(self._active_commands()) if self._active_commands is not None else None
-        screen = help_screen(message.from_user, self._theme, active=active)
+        screen = (
+            help_lookup_screen(argument, message.from_user, self._theme, active=active)
+            if argument
+            else help_screen(message.from_user, self._theme, active=active)
+        )
         await self._show(client, message, screen, "help")
 
     async def ping(self, client, message) -> None:

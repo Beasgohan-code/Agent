@@ -228,7 +228,7 @@ def test_known_callback_answers_and_edits_the_message():
 
     assert query.answered == [(None, False)]
     assert len(query.edits) == 1
-    assert "Command reference" in query.edits[0]["text"]
+    assert "Help" in query.edits[0]["text"]
     assert query.edits[0]["reply_markup"] is not None
 
 

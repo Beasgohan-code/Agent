@@ -24,6 +24,7 @@ from ...platform.manifest import PluginManifest
 from ...ui.screens import format_uptime
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
+from ...utils import rich as rich_ui
 from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
@@ -255,12 +256,12 @@ def build(ctx):
             return "idle"
         return "on (locked)" if row["protected"] else "on"
 
-    def _plugin_panel() -> tuple[str, Keyboard]:
+    def _plugin_panel() -> tuple[object, Keyboard]:
         """The runtime panel plus one button per plugin.
 
-                Rendered in the classic form on purpose: a button press edits this
-                message in place, and Telegram cannot edit a rich message.
-                
+        A :class:`~agent.ui.tables.Panel`, not a string: the runtime panel is a
+        real table, and a button press edits it as a rich message rather than
+        dropping it back to a grid.
         """
         state = runtime.state()
         idle = [row for row in state if row["enabled"] and not row["commands"]]
@@ -303,7 +304,7 @@ def build(ctx):
                 row_buttons = []
         if row_buttons:
             buttons.append(row_buttons)
-        return str(body.classic), Keyboard(buttons)
+        return body, Keyboard(buttons)
 
     async def on_plugin_press(client, query, rest: str) -> None:
         """A button pressed on the runtime panel."""
@@ -336,11 +337,11 @@ def build(ctx):
         logger.info("plugin %s toggled by %s from the panel", slug, presser)
         text, keyboard = _plugin_panel()
         try:
-            await query.message.edit_text(text=text, reply_markup=keyboard)
+            await rich_ui.edit(query, text, reply_markup=keyboard)
         except Exception:  # noqa: BLE001 - an old message is not a failed toggle
             chat_id = getattr(getattr(query.message, "chat", None), "id", None)
             if chat_id is not None:
-                await client.send_message(chat_id, text, reply_markup=keyboard)
+                await rich_ui.send(client, chat_id, text, reply_markup=keyboard)
         await query.answer(message)
 
     def _database_rows() -> list[tuple[str, str]]:
@@ -399,7 +400,7 @@ def build(ctx):
             await reply(message, "Plugin runtime is unavailable.")
             return
         text, keyboard = _plugin_panel()
-        await message.reply(text, reply_markup=keyboard)
+        await reply(message, text, reply_markup=keyboard)
         logger.info("plugin panel opened by %s", getattr(message.from_user, "id", None))
 
     async def plugin(_client, message):

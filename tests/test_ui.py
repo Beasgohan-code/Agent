@@ -78,8 +78,10 @@ def test_welcome_screen_without_a_first_name_still_greets():
 def test_help_screen_is_an_overview_that_links_to_sections_and_back():
     screen = help_screen(make_user(), Theme())
 
-    assert "Command reference" in screen.rich_text
+    assert screen.rich_text.startswith("<h2>Help</h2>")
+    assert "<table" in screen.rich_text               # a real rich table
     assert "Essentials" in screen.rich_text          # a section row
+    assert "/about" not in screen.rich_text          # no bibliography
     assert CB_HOME in callbacks(screen.keyboard)
     assert "help:essentials" in callbacks(screen.keyboard)
 
@@ -103,6 +105,66 @@ def test_an_unavailable_plugin_is_not_in_the_help():
 
     assert "/play" not in music.rich_text
     assert "Nothing in this section" in music.rich_text
+
+
+def test_help_with_a_command_name_opens_that_commands_page():
+    from agent.ui.screens import help_lookup_screen
+
+    screen = help_lookup_screen("/encode", make_user(), Theme(), active={"encode", "start"})
+
+    assert screen.rich_text.startswith("<h2>/encode</h2>")
+    assert "<table" in screen.rich_text
+    assert "Encoding &amp; files" in screen.rich_text      # the section it belongs to
+    assert "help:encoding-files" in callbacks(screen.keyboard)
+    assert "help:all" in callbacks(screen.keyboard)
+
+
+def test_help_with_a_command_from_a_switched_off_plugin_says_so():
+    from agent.ui.screens import help_lookup_screen
+
+    screen = help_lookup_screen("play", make_user(), Theme(), active={"start", "help"})
+
+    assert "switched off" in screen.rich_text
+    assert "help:music-voice-chat" not in callbacks(screen.keyboard)
+
+
+def test_help_with_a_section_name_opens_the_section():
+    from agent.ui.screens import help_lookup_screen
+
+    screen = help_lookup_screen("moderation", make_user(), Theme(), active=None)
+
+    assert "/ban" in screen.rich_text
+    assert "<table" in screen.rich_text
+
+
+def test_the_help_command_routes_an_argument_to_the_lookup():
+    """``/help encode`` must not silently ignore the word after the command."""
+    from agent.handlers.commands import CommandHandlers
+
+    class Sender:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, chat_id, screen):
+            self.sent.append(screen.rich_text)
+
+    sender = Sender()
+    handlers = CommandHandlers(sender, Theme(), active_commands=lambda: ["encode", "start"])
+    message = FakeUser(text="/help encode", from_user=make_user(), chat=FakeUser(id=-100))
+
+    asyncio.run(handlers.help(None, message))
+
+    assert len(sender.sent) == 1
+    assert sender.sent[0].startswith("<h2>/encode</h2>")
+
+
+def test_help_with_an_unknown_name_is_not_a_dead_end():
+    from agent.ui.screens import help_lookup_screen
+
+    screen = help_lookup_screen("nonsense", make_user(), Theme(), active=None)
+
+    assert "No command or section called" in screen.rich_text
+    assert "help:all" in callbacks(screen.keyboard)
 
 
 def test_info_screen_shows_telegram_profile_fields():

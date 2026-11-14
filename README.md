@@ -51,6 +51,17 @@ and three commands worth trying. `/help` is the full reference, split into
 sections that only list commands this deployment actually registered — a plugin
 that could not start (music without a session) is absent, not a dead button.
 
+Every panel is a **rich message**: a real heading over a real table (Bot API
+10.3), not a table drawn out of box characters. Tapping a button edits that same
+message in place — `edit_message_text(rich_text=…)` keeps the native table, so
+navigation does not downgrade the screen — and when Telegram or the client
+cannot take a rich message, `utils/rich.py` redraws the table as an aligned
+`<pre>` grid instead of flattening it into one run-on line. `/help` is a table of
+sections with a count for each, each section is a table of commands with the
+sentence behind each one, and `/help <command>` opens that command's own page
+(the description, the section it belongs to, and whether this deployment has it).
+`docs/UI_PREVIEW.md` is generated from the real handlers.
+
 Panels that answer a question (`/about`, `/status`, `/owner`, `/plans`) end with
 a row back to the menu, so reading one is never a dead end. Buttons carry Bot API
 10.3 styles — green for "do this", grey for "this is off", red for "this
@@ -208,7 +219,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 430 tests
+pytest -q                      # 442 tests
 python -m pyflakes agent tests # no unused names
 ```
 

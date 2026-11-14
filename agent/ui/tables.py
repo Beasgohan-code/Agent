@@ -5,8 +5,12 @@ Two paths, one API:
 * :meth:`Table.rich_block` is the native ``<table>`` markup used when a rich
   message can be delivered;
 * :meth:`Table.render` / :meth:`Table.block` keep the monospace ``<pre>`` grid,
-  which is what a deployment without rich support falls back to (and what the
-  edit path still uses, because Telegram has no way to *edit* a rich message).
+  which is what a deployment without rich support falls back to.
+
+Both paths survive editing: the Bot API edits a rich message through
+``edit_message_text(rich_text=…)``, and :func:`agent.utils.rich.edit` redraws a
+native table in place. A refused edit degrades to the grid, never to a run-on
+line.
 
 :func:`set_rich` flips the default for everything rendered afterwards; the
 sender calls it when Telegram rejects a rich message, so one rejection turns the

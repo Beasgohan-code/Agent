@@ -26,7 +26,7 @@ from richgram import (
 
 from .. import __version__
 from . import keyboards
-from .tables import kv_table
+from .tables import Table, kv_table, markup
 from .theme import Theme
 
 
@@ -102,9 +102,7 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
             "one job queue, one store, one link signer underneath."
         )
         + "\n"
-        # Classic grid on purpose: this screen is *edited* when the user taps a
-        # button, and Telegram cannot edit a rich message.
-        + table.classic_block()
+        + table.block()
         + "\n"
         + f"<b>{theme.emoji('bolt')} Try</b>"
         + "\n"
@@ -221,39 +219,43 @@ def help_visible(commands, active: set[str] | None) -> list[str]:
 
 
 def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
-    """The command reference, one section per button.
+    """The command reference: one table, one button per section.
 
-        *active* is the set of commands the registry actually registered. A plugin
-        that could not start (music without a session string) must not appear in the
-        reference — an entry for a command that does not exist is the same lie as a
-        fake command — and with 79 commands the whole list no longer fits a message,
-        so the overview stays short and each section has its own screen.
-        
+    *active* is the set of commands the registry actually registered. A plugin
+    that could not start (music without a session string) must not appear in the
+    reference — an entry for a command that does not exist is the same lie as a
+    fake command — so the table is built from what really answered.
+
+    It stays a *rich* message: a native table, a heading and a footer. Editing
+    keeps it that way, because the Bot API can edit a rich message too.
     """
-    blocks = [
-        rich_heading("Command reference", 2),
-        rich_note(
-            f"{theme.emoji('info')} Anything marked owner-only needs "
-            "<code>OWNER_ID</code>; group commands need moderator rights."
-        ),
-    ]
     rows: list[tuple[str, str]] = []
+    total = 0
     for icon, title, commands in HELP_SECTIONS:
         visible = help_visible(commands, active)
         if not visible:
             continue
-        rows.append((f"{theme.emoji(icon)} {title}", str(len(visible))))
+        total += len(visible)
+        rows.append(
+            (markup(f"{theme.emoji(icon)} {rich_esc(title)}"), str(len(visible)))
+        )
+    blocks = [
+        rich_heading("Help", 2),
+        rich_note(
+            f"{theme.emoji('info')} <b>{total}</b> commands in "
+            f"<b>{len(rows)}</b> sections. Owner-only commands need "
+            "<code>OWNER_ID</code>; group commands need moderator rights."
+        ),
+    ]
     if rows:
         blocks.append("")
-        blocks.append(
-            kv_table(rows, headers=("Section", "Commands")).classic_block()
-        )
+        blocks.append(kv_table(rows, headers=("Section", "Commands")).block())
     blocks.append("")
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"{theme.emoji('help')} Tap a section for what it does. "
-            "Built on the projects credited in /about."
+            f"{theme.emoji('help')} Tap a section for the sentence behind every "
+            "command, or <code>/menu</code> for the ones you use daily."
         )
     )
     return Screen("\n".join(blocks), _help_keyboard(active))
@@ -286,15 +288,37 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
         if section_title == title:
             icon, commands = section_icon, section_commands
             break
-    lines = [
-        f"<code>/{name}</code> — {rich_esc(DESCRIPTIONS[name])}"
-        for name in help_visible(commands, active)
-        if name in DESCRIPTIONS
-    ]
+    visible = [name for name in help_visible(commands, active) if name in DESCRIPTIONS]
     blocks = [
         rich_heading(f"{theme.emoji(icon)} {title}", 2),
-        rich_list(lines) if lines else rich_note("Nothing in this section is available here."),
+        rich_note(
+            f"<b>{len(visible)}</b> command(s) ready here · owner-only ones need "
+            "<code>OWNER_ID</code>"
+            if visible
+            else "Nothing in this section is available in this deployment."
+        ),
     ]
+    if visible:
+        table = Table(
+            headers=("Command", "What it does"),
+            rows=tuple(
+                (markup(f"<code>/{rich_esc(name)}</code>"), rich_esc(DESCRIPTIONS[name]))
+                for name in visible
+            ),
+            aligns=("left", "left"),
+            max_column=44,
+            total_width=58,
+        )
+        blocks.append("")
+        blocks.append(table.block())
+    blocks.append("")
+    blocks.append(rich_hr())
+    blocks.append(
+        rich_footer(
+            f"{theme.emoji('help')} <code>/help</code> lists every section; "
+            "the buttons below move between them."
+        )
+    )
     return Screen("\n".join(blocks), _section_keyboard())
 
 
@@ -342,12 +366,94 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
         + "\n"
         + f"{theme.emoji('user')} This is what Telegram shares with the bot."
         + "\n"
-        + kv_table(rows).classic_block()
+        + kv_table(rows).block()
         + "\n"
         + rich_hr()
         + rich_footer(f"{theme.emoji('id')} Nothing is stored — details are read live.")
     )
     return Screen(text, keyboards.info_keyboard(user_id if isinstance(user_id, int) else None))
+
+
+def _section_of(command: str) -> str | None:
+    """Which help section a command lives in, or ``None`` if it is unfiled."""
+    for _icon, title, commands in HELP_SECTIONS:
+        if command in commands:
+            return title
+    return None
+
+
+def help_lookup_screen(
+    argument: str, user, theme: Theme, *, active: set[str] | None = None
+) -> Screen:
+    """``/help <something>``: one command, or one section, without the tapping.
+
+    A name is matched against the section titles and against every command the
+    menu knows. An unknown name answers with the overview instead of a dead end,
+    and a command whose plugin is switched off says so — "not available here" is
+    more useful than a description of a command that will not answer.
+    """
+    from ..platform.menu import DESCRIPTIONS
+
+    query = (argument or "").strip().lstrip("/").lower()
+    for _icon, title, commands in HELP_SECTIONS:
+        if query and query in {title.lower(), section_slug(title)}:
+            return _section_builder(title)(user, theme, active=active)
+    if query not in DESCRIPTIONS:
+        body = (
+            rich_heading("Help", 2)
+            + "\n"
+            + rich_note(
+                f"No command or section called <code>{rich_esc(query)}</code>."
+                if query
+                else "Send <code>/help &lt;command&gt;</code> for one command, "
+                "or tap a section."
+            )
+            + "\n"
+            + rich_hr()
+            + rich_footer(
+                f"{theme.emoji('help')} <code>/help</code> lists the sections; "
+                "<code>/menu</code> has the buttons."
+            )
+        )
+        return Screen(body, _section_keyboard())
+
+    available = bool(help_visible((query,), active))
+    section = _section_of(query)
+    rows = [
+        ("Command", markup(f"<code>/{rich_esc(query)}</code>")),
+        ("What it does", rich_esc(DESCRIPTIONS[query])),
+        ("Section", rich_esc(section or "unfiled")),
+        (
+            "Available here",
+            "yes" if available else "no — the plugin is switched off",
+        ),
+    ]
+    body = (
+        rich_heading(f"/{query}", 2)
+        + "\n\n"
+        + kv_table(rows).block()
+        + "\n"
+        + (
+            "\n" + rich_note(f"Tap <b>{rich_esc(section)}</b> for the rest of its commands.")
+            if section and available
+            else ""
+        )
+        + "\n"
+        + rich_hr()
+        + rich_footer(
+            f"{theme.emoji('help')} <code>/help</code> lists every section."
+        )
+    )
+    rows: list[list[Button]] = []
+    if section and available:
+        rows.append([Button(section, callback_data=f"help:{section_slug(section)}")])
+    rows.append(
+        [
+            Button("\U0001f4da All sections", callback_data=f"help:{ALL_SECTIONS}"),
+            Button("\u21a9\ufe0f Menu", callback_data=keyboards.CB_HOME),
+        ]
+    )
+    return Screen(body, InlineKeyboardMarkup(rows))
 
 
 # Callback data -> screen builder, used by the callback router.
@@ -398,7 +504,7 @@ def ping_screen(monitor, theme: Theme) -> Screen:
         + "\n"
         + f"{theme.emoji('bolt')} Live status of this instance."
         + "\n"
-        + kv_table(rows).classic_block()
+        + kv_table(rows).block()
         + ("\n" + error_line if error_line else "")
         + "\n"
         + rich_hr()

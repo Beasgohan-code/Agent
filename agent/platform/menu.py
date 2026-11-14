@@ -33,7 +33,7 @@ MAX_DESCRIPTION = 256
 DESCRIPTIONS: dict[str, str] = {
     # core
     "start": "Open the main menu",
-    "help": "Full command reference",
+    "help": "Every command, one screen per section",
     "menu": "Open the inline control menu",
     "about": "What this bot is",
     "status": "Live runtime status",

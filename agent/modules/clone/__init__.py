@@ -29,6 +29,7 @@ from pyrogram.types import InlineKeyboardMarkup as Keyboard
 from ...platform.manifest import PluginManifest
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
+from ...utils import rich as rich_ui
 from ...utils.rich import reply
 from .limits import PREMIUM, allowance, pitch
 from .manager import CloneError, CloneManager
@@ -62,7 +63,7 @@ def build(ctx):
     def _when(seconds: float) -> str:
         return time.strftime("%Y-%m-%d", time.gmtime(seconds or 0))
 
-    def _panel(owner_id: int) -> tuple[str, Keyboard]:
+    def _panel(owner_id: int) -> tuple[object, Keyboard]:
         """The control panel: one row of buttons per clone."""
         mine = store.by_owner(owner_id)
         if not mine:
@@ -75,7 +76,7 @@ def build(ctx):
                 ],
                 note=pitch(),
             )
-            return str(body.classic), nav_keyboard()
+            return body, nav_keyboard()
         rows = tuple(
             (
                 clone.handle,
@@ -119,7 +120,7 @@ def build(ctx):
                 Button("\U0001f4a1 Help", callback_data="menu:help"),
             ]
         )
-        return str(body.classic), Keyboard(buttons)
+        return body, Keyboard(buttons)
 
     def _may_manage(user_id: int | None, clone: Clone) -> bool:
         if user_id is None:
@@ -324,11 +325,11 @@ def build(ctx):
         logger.info("clone %s %s by %s from the panel", bot_id, action, presser)
         text, keyboard = _panel(target.owner_id)
         try:
-            await query.message.edit_text(text=text, reply_markup=keyboard)
+            await rich_ui.edit(query, text, reply_markup=keyboard)
         except Exception:  # noqa: BLE001 - a stale panel is not a failed control
             chat_id = getattr(getattr(query.message, "chat", None), "id", None)
             if chat_id is not None:
-                await client.send_message(chat_id, text, reply_markup=keyboard)
+                await rich_ui.send(client, chat_id, text, reply_markup=keyboard)
         await query.answer(said)
 
     router = getattr(ctx, "actions", None)
