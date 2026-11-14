@@ -20,7 +20,7 @@ from ...platform.attachments import attachment_kwargs
 from .rules import COMMANDS as RULE_COMMANDS, build_rules
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
-from ...platform.attachments import CAPTION_KEY, MAX_CAPTION, THUMB_KEY, render_caption
+from ...platform.attachments import CAPTION_KEY, MAX_CAPTION, THUMB_KEY, caption_for
 
 MANIFEST = PluginManifest(
     slug="renamer",
@@ -359,7 +359,10 @@ def build(ctx):
             await reply(
                 message,
                 "Usage: <code>/setcaption 📁 {name} — {size}</code>. "
-                "Fields: <code>{name}</code>, <code>{stem}</code>, <code>{size}</code>.",
+                "Fields: <code>{name}</code> / <code>{filename}</code> / <code>{file_name}</code>, "
+                "<code>{stem}</code>, <code>{size}</code>, <code>{quality}</code>, "
+                "<code>{season}</code>, <code>{episode}</code>, <code>{format}</code>. "
+                "Metadata comes from the filename; unavailable values show unknown.",
             )
             return
         template = parts[1].strip()
@@ -367,7 +370,7 @@ def build(ctx):
             await reply(message, f"That caption is longer than Telegram's {MAX_CAPTION}-character cap.")
             return
         chats.put(message.chat.id, CAPTION_KEY, template)
-        example = render_caption(template, name="Show.S01E01.1080p.mkv", size="1.2 GB")
+        example = caption_for(chats, message.chat.id, name="Show.S01E01.1080p.x265.mkv", size="1.2 GB")
         await reply(
             message,
             panel(
@@ -387,7 +390,7 @@ def build(ctx):
         if not template:
             await reply(message, "No caption is set here. Set one with <code>/setcaption</code>.")
             return
-        example = render_caption(template, name="Show.S01E01.1080p.mkv", size="1.2 GB")
+        example = caption_for(chats, message.chat.id, name="Show.S01E01.1080p.x265.mkv", size="1.2 GB")
         await reply(
             message,
             panel(
