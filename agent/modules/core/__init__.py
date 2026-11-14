@@ -151,6 +151,8 @@ def build(ctx):
             table=kv_table([
                 ("Process uptime", format_uptime(snapshot.uptime_seconds)),
                 ("Telegram state", snapshot.state),
+                ("Probe latency", "pending" if snapshot.latency_ms is None else f"{snapshot.latency_ms} ms"),
+                ("Consecutive failures", str(snapshot.consecutive_failures)),
                 ("Last successful probe", "not yet" if snapshot.seconds_since_ok is None else f"{snapshot.seconds_since_ok:.0f}s ago"),
                 ("Successful probes", str(snapshot.probes - snapshot.failures)),
                 ("Failed probes", str(snapshot.failures)),

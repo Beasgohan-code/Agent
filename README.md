@@ -405,7 +405,9 @@ does not revoke Telegram authorization.
 `/` and `/alive` now report measured heartbeat age, uptime and UTC time as JSON.
 `/health/ready` returns 200 only once Telegram probes are healthy; the existing
 `/health/live` remains process liveness. Telegram `/alive` opens the live status
-screen. This does not self-ping or prevent free-tier service sleep.
+screen. Web services with `RENDER_EXTERNAL_URL` and `PORT` now self-ping
+`/health` every 300 seconds (10-second timeout); this cannot prevent all
+free-tier sleep or guarantee uninterrupted hosting. See `docs/ALWAYS_ON.md`.
 
 Music has 24 base group commands when its dependencies and assistant are
 configured, plus four saved-playlist commands when PostgreSQL is connected, including queue editing, repeat modes, shuffle, replay, volume,

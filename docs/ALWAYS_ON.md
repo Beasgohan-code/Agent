@@ -78,3 +78,25 @@ of explicitly forcing `MenuButtonCommands` or installing a web-app button.
 Telegram clients may still show their built-in Commands/Menu control. Existing
 per-chat overrides or language-specific command lists are not enumerated or
 bulk-deleted. No claim is made that the button is completely disabled.
+
+## Public keep-alive heartbeat
+
+Agent now implements the inspected public self-ping behavior: when a web health
+server is enabled and `RENDER_EXTERNAL_URL` is present, it sends a GET to that
+origin's `/health` immediately and every 300 seconds, with a 10-second timeout.
+Redirects are rejected. Origins containing credentials, paths, query strings or
+fragments are rejected; no reference project's hostname is hardcoded. Background
+workers without HTTP do not ping. The task starts alongside the health server
+and is cancelled on shutdown. It does not block Telegram startup or mark its
+connection healthy. No additional thread or dependency is needed.
+
+`/health` includes secret-free `keepalive` attempts, successes, last-success time,
+consecutive failures and exception category (not exception text or target URL).
+Counters reset on process restart. A 503 counts as a failed ping, not a reason to
+fake readiness. This does not change the host's billing/plan or keep a suspended
+process executing. Earlier statements that Agent never self-pings are superseded
+by this opt-in/public-origin web-service behavior.
+
+The next command increment enhances `/uptime` with probe latency and consecutive
+failures. Home, Help, profile and Ping headings now use the existing premium
+emoji theme with Unicode fallback; no unverified emoji IDs were invented.

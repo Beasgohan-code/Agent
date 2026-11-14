@@ -93,7 +93,7 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
     table = kv_table(rows)
 
     text = (
-        rich_heading("Agent", 2)
+        rich_heading(f"{theme.emoji('diamond')} Agent", 2)
         + "\n"
         + greeting
         + "\n"
@@ -244,7 +244,7 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
             (markup(f"{theme.emoji(icon)} {rich_esc(title)}"), str(len(visible)))
         )
     blocks = [
-        rich_heading("Help", 2),
+        rich_heading(f"{theme.emoji('sparkles')} Help", 2),
         rich_note(
             f"{theme.emoji('info')} <b>{total}</b> commands in "
             f"<b>{len(rows)}</b> sections. Owner-only commands need "
@@ -366,7 +366,7 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
     ]
 
     text = (
-        rich_heading("Your profile", 2)
+        rich_heading(f"{theme.emoji('crown')} Your profile", 2)
         + "\n"
         + f"{theme.emoji('user')} This is what Telegram shares with the bot."
         + "\n"
@@ -404,7 +404,7 @@ def help_lookup_screen(
             return _section_builder(title)(user, theme, active=active)
     if query not in DESCRIPTIONS:
         body = (
-            rich_heading("Help", 2)
+            rich_heading(f"{theme.emoji('sparkles')} Help", 2)
             + "\n"
             + rich_note(
                 f"No command or section called <code>{rich_esc(query)}</code>."
@@ -477,7 +477,7 @@ def ping_screen(monitor, theme: Theme) -> Screen:
     """Live health, as a Telegram reply (works on a Background Worker)."""
     if monitor is None:
         return Screen(
-            rich_heading("Ping", 2)
+            rich_heading(f"{theme.emoji('bolt')} Ping", 2)
             + "\n"
             + rich_note("Health tracking is not running."),
             keyboards.info_keyboard(),
@@ -504,7 +504,7 @@ def ping_screen(monitor, theme: Theme) -> Screen:
     )
 
     text = (
-        rich_heading("Ping", 2)
+        rich_heading(f"{theme.emoji('bolt')} Ping", 2)
         + "\n"
         + f"{theme.emoji('bolt')} Live status of this instance."
         + "\n"

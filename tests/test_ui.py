@@ -78,7 +78,8 @@ def test_welcome_screen_without_a_first_name_still_greets():
 def test_help_screen_is_an_overview_that_links_to_sections_and_back():
     screen = help_screen(make_user(), Theme())
 
-    assert screen.rich_text.startswith("<h2>Help</h2>")
+    assert screen.rich_text.startswith("<h2>")
+    assert "Help</h2>" in screen.rich_text
     assert "<table" in screen.rich_text               # a real rich table
     assert "Essentials" in screen.rich_text          # a section row
     assert "/about" not in screen.rich_text          # no bibliography

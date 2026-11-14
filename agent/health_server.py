@@ -4,8 +4,8 @@ Disabled by default: a polling bot on a *Background Worker* needs no HTTP
 server at all. Set ``HEALTH_PORT`` (or run as a web service, where the
 platform provides ``PORT``) to expose ``/health`` and ``/health/live``.
 
-This endpoint answers real platform checks. Nothing pings itself — that
-distinction is the whole point (see ``docs``/README "Health").
+This endpoint answers platform checks and the optional public self-pinger.
+Self-ping outcomes never mark the Telegram connection healthy.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def status_code(state: str) -> int:
     """HTTP status for a health state.
 
         ``503`` when down so the platform's own health check restarts the
-        container — the honest alternative to pinging ourselves awake.
+        container; self-pings do not override this state.
         
     """
     return 503 if state == DOWN else 200

@@ -15,6 +15,7 @@ from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
 from . import __version__
 from .config import Settings
 from .handlers import CallbackHandlers, CommandHandlers
+from .keepalive import KeepAlive
 from .health import HealthMonitor
 from .modules import not_selected, select, unknown
 from .platform.context import ModuleContext
@@ -55,6 +56,7 @@ class AgentBot:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.theme = Theme()
+        self.keepalive = KeepAlive(settings.keepalive_origin)
         self.health = HealthMonitor(
             degraded_after=max(60.0, settings.watchdog_interval * 3),
             down_after=max(180.0, settings.watchdog_interval * 10),
@@ -339,6 +341,7 @@ class AgentBot:
     async def run(self) -> None:
         """Expose process liveness before waiting for a rolling-deploy handover."""
         runner = None
+        keepalive_task = None
         try:
             if self.settings.health_port:
                 runner = await start_health_server(
@@ -346,8 +349,14 @@ class AgentBot:
                 )
             else:
                 logger.info("No HEALTH_PORT/PORT set: running without an HTTP health endpoint.")
+            if runner is not None and self.keepalive.target:
+                keepalive_task = asyncio.create_task(self.keepalive.run(), name="public-keepalive")
             await self._run()
         finally:
+            if keepalive_task is not None:
+                keepalive_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await keepalive_task
             plugin_watch = getattr(self, "_plugin_watch", None)
             if plugin_watch is not None:
                 plugin_watch.cancel()
@@ -625,6 +634,7 @@ class AgentBot:
             "instance": self.lease.state(),
             "plugins_disabled": disabled,
             "events": self.events.count(),
+            "keepalive": self.keepalive.snapshot(),
         }
 
     def _request_restart(self, stop_event: asyncio.Event) -> None:

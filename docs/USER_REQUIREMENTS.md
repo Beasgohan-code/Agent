@@ -116,3 +116,12 @@ flag. Remaining standalone JSON helper branches are legacy/test compatibility,
 not a supported bot runtime mode. Temporary downloaded/encoded media is distinct
 from JSON metadata. Continue upgrading mutable commands one by one; reference
 feature extraction/manual review and full Music parity are still unfinished.
+
+## Follow-up: public keep-alive and progressive UI upgrades
+
+Match the public 300-second keep-alive behavior of the inspected reference,
+continue command-by-command improvements, and increase modern premium-emoji UI
+coverage. Implemented public-origin web-service heartbeat plus uptime telemetry
+and themed Home/Help/profile/Ping headings; remaining commands are incremental
+work, not a completed universal redesign. Preserve fallback and never claim
+self-pinging guarantees uninterrupted hosting.

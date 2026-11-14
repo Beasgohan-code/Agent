@@ -104,6 +104,7 @@ class Settings:
     plugins: tuple[str, ...] = DEFAULT_PLUGINS
     ai_api_key: str | None = field(default=None, repr=False)
     ai_model: str | None = None
+    keepalive_origin: str | None = None
     health_port: int | None = None
     watchdog_interval: float = 30.0
     watchdog_timeout: float = 20.0
@@ -180,6 +181,7 @@ class Settings:
             database_url=(source.get("DATABASE_URL") or "").strip() or None,
             ai_api_key=(source.get("AI_API_KEY") or "").strip() or None,
             ai_model=(source.get("AI_MODEL") or "").strip() or None,
+            keepalive_origin=(source.get("RENDER_EXTERNAL_URL") or "").strip() or None,
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),

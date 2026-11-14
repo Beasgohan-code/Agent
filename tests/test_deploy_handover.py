@@ -67,7 +67,8 @@ def test_http_binds_before_startup_and_cleans_up_on_failure(monkeypatch, fails):
         lease = SimpleNamespace(stop_heartbeat=AsyncMock(), release_async=AsyncMock())
         db = SimpleNamespace(close=AsyncMock())
         bot = SimpleNamespace(settings=SimpleNamespace(health_port=10000), health=None,
-                              _health_detail=lambda: {}, _run=run, lease=lease, database=db)
+                              _health_detail=lambda: {}, _run=run, lease=lease, database=db,
+                              keepalive=SimpleNamespace(target=None))
         if fails:
             with pytest.raises(RuntimeError, match='Telegram unavailable'):
                 await AgentBot.run(bot)

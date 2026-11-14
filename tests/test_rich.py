@@ -203,7 +203,7 @@ def test_the_menu_and_help_are_delivered_as_rich_messages():
 
     rich_payloads = [kwargs["rich_text"].html for kind, kwargs in client.calls if kind == "rich"]
     assert len(rich_payloads) == 2
-    assert "<table" in rich_payloads[0] and "<h2>Help</h2>" in rich_payloads[0]
+    assert "<table" in rich_payloads[0] and "Help</h2>" in rich_payloads[0]
     assert "/about" not in rich_payloads[0]      # no bibliography anywhere
     assert "<table" in rich_payloads[1]
 
