@@ -46,6 +46,7 @@ class InstanceLease:
         self.owner = owner or default_owner()
         #: A database-backed lease is visible to every instance; the file is not.
         self._db = db
+        self._database_lease = False
         self.name = name
         self.ttl = ttl
         self.beat = beat
@@ -68,7 +69,7 @@ class InstanceLease:
         return "postgres" if self._uses_db() else "file"
 
     def _uses_db(self) -> bool:
-        return self._db is not None and getattr(self._db, "connected", False)
+        return self._database_lease or (self._db is not None and getattr(self._db, "connected", False))
 
     def state(self) -> dict:
         current = self.read() or {}
@@ -141,6 +142,7 @@ class InstanceLease:
         this one must not serve updates.
         """
         if self._uses_db():
+            self._database_lease = True
             return await self._acquire_db(wait_seconds=wait_seconds, poll=poll)
         deadline = time.monotonic() + max(0.0, wait_seconds)
         announced = False
@@ -172,13 +174,11 @@ class InstanceLease:
                 logger.info("Instance lease held in PostgreSQL.")
                 return True
             if state == "unavailable":
-                # The database answered nothing usable. Refusing to serve would
-                # take a working bot down over a transient error, so say so and
-                # continue degraded (a doubled process is the lesser risk).
+                # Never invent ownership: another container may still be live.
                 self.degraded = True
-                self.held = True
-                logger.warning("Database lease unavailable; serving without a guarantee.")
-                return True
+                self.held = False
+                logger.error("Database lease unavailable; refusing unprotected startup.")
+                return False
             holder, _until = await self._db.lease_holder(self.name)
             self.other = holder
             if not announced:
@@ -201,7 +201,9 @@ class InstanceLease:
                 self.held = True
                 return True
             if state == "unavailable":
-                return True
+                self.degraded = True
+                self.held = False
+                return False
             holder, _until = await self._db.lease_holder(self.name)
             self.held = False
             self.other = holder
@@ -247,7 +249,15 @@ class InstanceLease:
                 return
             except asyncio.TimeoutError:
                 pass
-            if not await self.beat_once():
+            try:
+                renewed = await self.beat_once()
+            except Exception:  # a dead heartbeat must not leave Telegram serving
+                logger.exception("Lease renewal failed; stopping rather than serving unprotected.")
+                self.held = False
+                self.degraded = True
+                stop_event.set()
+                return
+            if not renewed:
                 logger.critical("Instance lease was taken over by %s; stopping.", self.other)
                 stop_event.set()
                 return

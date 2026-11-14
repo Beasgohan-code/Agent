@@ -78,3 +78,48 @@ def test_http_binds_before_startup_and_cleans_up_on_failure(monkeypatch, fails):
         lease.release_async.assert_awaited_once()
         db.close.assert_awaited_once()
     asyncio.run(scenario())
+
+
+def test_database_cleanup_runs_even_when_http_cleanup_fails(monkeypatch):
+    async def scenario():
+        async def stop(_runner):
+            raise RuntimeError('cleanup failed')
+        monkeypatch.setattr('agent.bot.stop_health_server', stop)
+        lease = SimpleNamespace(stop_heartbeat=AsyncMock(), release_async=AsyncMock())
+        db = SimpleNamespace(close=AsyncMock())
+        bot = SimpleNamespace(settings=SimpleNamespace(health_port=None),
+                              _run=AsyncMock(), lease=lease, database=db)
+        with pytest.raises(RuntimeError, match='cleanup failed'):
+            await AgentBot.run(bot)
+        lease.stop_heartbeat.assert_awaited_once()
+        lease.release_async.assert_awaited_once()
+        db.close.assert_awaited_once()
+    asyncio.run(scenario())
+
+
+def test_database_cleanup_runs_even_when_lease_release_fails(monkeypatch):
+    async def scenario():
+        monkeypatch.setattr('agent.bot.stop_health_server', AsyncMock())
+        lease = SimpleNamespace(stop_heartbeat=AsyncMock(),
+                                release_async=AsyncMock(side_effect=RuntimeError('release failed')))
+        db = SimpleNamespace(close=AsyncMock())
+        bot = SimpleNamespace(settings=SimpleNamespace(health_port=None),
+                              _run=AsyncMock(), lease=lease, database=db)
+        with pytest.raises(RuntimeError, match='release failed'):
+            await AgentBot.run(bot)
+        db.close.assert_awaited_once()
+    asyncio.run(scenario())
+
+
+def test_optional_shutdown_errors_do_not_skip_telegram_disconnect():
+    async def scenario():
+        bot = SimpleNamespace(
+            voice=SimpleNamespace(shutdown=AsyncMock(side_effect=RuntimeError('voice'))),
+            modules=SimpleNamespace(clones=SimpleNamespace(
+                stop_all=AsyncMock(side_effect=RuntimeError('clone')))),
+            _shutdown=AsyncMock(),
+        )
+        await AgentBot._cleanup_services(bot, 'telegram client')
+        bot.modules.clones.stop_all.assert_awaited_once()
+        bot._shutdown.assert_awaited_once_with('telegram client')
+    asyncio.run(scenario())

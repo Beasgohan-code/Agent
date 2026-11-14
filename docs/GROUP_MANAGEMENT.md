@@ -76,3 +76,17 @@ token must be stopped. Background workers retain the bounded lease wait.
 The shutdown wrapper closes HTTP, stops the heartbeat, releases only its own
 lease and closes PostgreSQL even after startup failure. The heartbeat starts
 immediately after acquisition, before Telegram, voice or clone initialization.
+
+### Lease safety during database outages
+
+An unavailable database is not evidence of lease ownership. Acquisition now
+refuses unprotected startup, and failed renewals signal shutdown. Once a process
+selects a PostgreSQL lease, it cannot silently downgrade to a container-local
+file lock after disconnection. Web standby retries include a delay to avoid
+hammering the database. Operators should expect reduced availability during a
+database outage rather than duplicate bot responders.
+
+Cleanup attempts continue through optional voice/clone shutdown failures so
+Telegram disconnect is not skipped. Database cleanup also runs if HTTP cleanup
+or lease release raises. These changes are covered by regression tests; live
+Render rollout still needs to be verified on the deployed branch.

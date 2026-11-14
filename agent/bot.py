@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import signal
 from contextlib import suppress
@@ -325,13 +324,19 @@ class AgentBot:
                 logger.info("No HEALTH_PORT/PORT set: running without an HTTP health endpoint.")
             await self._run()
         finally:
-            await stop_health_server(runner)
-            # Includes lease refusal and Telegram startup errors, not just normal
-            # shutdown. Release is owner-checked; never delete another holder.
-            await self.lease.stop_heartbeat()
-            await self.lease.release_async()
-            if self.database is not None:
-                await self.database.close()
+            # Each cleanup must run even if an earlier cleanup fails. Release is
+            # owner-checked; never delete another container's lease.
+            try:
+                await stop_health_server(runner)
+            finally:
+                try:
+                    await self.lease.stop_heartbeat()
+                finally:
+                    try:
+                        await self.lease.release_async()
+                    finally:
+                        if self.database is not None:
+                            await self.database.close()
 
     async def _acquire_lease(self, stop_event) -> bool:
         """A web replacement may wait while Render retires its predecessor."""
@@ -348,7 +353,13 @@ class AgentBot:
                     return True
                 if not self.settings.health_port:
                     return False
-                logger.warning("Standby: waiting for the previous bot instance to release its lease.")
+                logger.warning("Standby: waiting for exclusive database lease ownership.")
+                # An unavailable database may fail immediately. Do not spin and
+                # hammer PostgreSQL while waiting for it to recover.
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
             finally:
                 for task in (attempt, stopped):
                     task.cancel()
@@ -416,6 +427,9 @@ class AgentBot:
                 "Could not connect to Telegram. Check BOT_TOKEN, API_ID, API_HASH "
                 "and outbound network access."
             )
+            # start() may have opened a session before failing. Disconnect it
+            # before the outer wrapper releases exclusive token ownership.
+            await self._shutdown(client)
             raise
 
         # Start the voice engine after the bot is up: a failure there must not
@@ -481,19 +495,33 @@ class AgentBot:
                 await watchdog_task
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
-            if self.voice is not None:
-                await self.voice.shutdown()
-            supervisor = getattr(self, "_supervisor", None)
-            if supervisor is not None:
-                supervisor.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await supervisor
-                self._supervisor = None
-            clones = getattr(self.modules, "clones", None)
-            if clones is not None:
-                await clones.stop_all()
-            await self._shutdown(client)
+            await self._cleanup_services(client)
             self.events.emit("stop")
+
+    async def _cleanup_services(self, client) -> None:
+        """Optional shutdown failures must not prevent Telegram disconnect."""
+        supervisor = getattr(self, "_supervisor", None)
+        if supervisor is not None:
+            supervisor.cancel()
+            try:
+                await supervisor
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("Clone supervisor failed during shutdown.")
+            self._supervisor = None
+        if self.voice is not None:
+            try:
+                await self.voice.shutdown()
+            except Exception:
+                logger.exception("Voice shutdown failed; continuing cleanup.")
+        clones = getattr(self.modules, "clones", None)
+        if clones is not None:
+            try:
+                await clones.stop_all()
+            except Exception:
+                logger.exception("Clone shutdown failed; continuing cleanup.")
+        await self._shutdown(client)
 
     def _health_detail(self) -> dict:
         """Extra fields for ``/health``: the lease and the plugin states."""

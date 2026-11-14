@@ -218,16 +218,16 @@ def test_a_stolen_database_lease_stops_the_heartbeat(tmp_path):
     assert lease.held is False
 
 
-def test_an_unreachable_database_lease_keeps_the_bot_serving(tmp_path):
+def test_an_unreachable_database_lease_refuses_unprotected_startup(tmp_path):
     class DeadDB(FakeDB):
         async def take_lease(self, *args, **kwargs):
             return "unavailable"
 
     lease = InstanceLease(tmp_path / "lock", owner="mine", db=DeadDB())
 
-    assert asyncio.run(lease.acquire(wait_seconds=0)) is True
+    assert asyncio.run(lease.acquire(wait_seconds=0)) is False
     assert lease.degraded is True
-    assert lease.held is True
+    assert lease.held is False
 
 
 def test_stores_reread_themselves_once_the_database_has_loaded(tmp_path):

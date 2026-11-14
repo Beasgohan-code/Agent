@@ -320,7 +320,9 @@ class Database:
                 )
                 if row is None:
                     other = await connection.fetchrow(READ_LEASE, self.lease_key(name))
-                    return "held" if other else "taken"
+                    # A concurrent release is not proof that this caller acquired
+                    # the row. Retry rather than claiming nonexistent ownership.
+                    return "held" if other else "unavailable"
                 current = await connection.fetchrow(READ_LEASE, self.lease_key(name))
         except Exception as exc:  # noqa: BLE001
             logger.warning("Lease query failed: %s", exc)
