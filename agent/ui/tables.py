@@ -13,8 +13,8 @@ native table in place. A refused edit degrades to the grid, never to a run-on
 line.
 
 :func:`set_rich` flips the default for everything rendered afterwards; the
-sender calls it when Telegram rejects a rich message, so one rejection turns the
-whole UI back into the monospace grid instead of failing message by message.
+sender calls it when Telegram explicitly reports rich messages unsupported.
+Invalid individual cards fall back locally, without changing all other screens.
 
 Cell rules:
 
@@ -55,7 +55,7 @@ STYLES = ("box", "plain")
 ALIGNMENTS = ("left", "right", "center")
 
 #: Whether new panels are rendered as native rich tables. Flipped off for good by
-#: :func:`set_rich` when Telegram refuses a rich message.
+#: :func:`set_rich` when Telegram explicitly reports rich support unavailable.
 _RICH = True
 
 

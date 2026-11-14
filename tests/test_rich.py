@@ -255,3 +255,93 @@ def test_every_ported_plugin_is_a_package_not_a_single_file():
         assert (package / "__init__.py").is_file()
         siblings = [p for p in package.glob("*.py") if p.name != "__init__.py"]
         assert siblings, f"{name} should keep its helpers in sibling modules"
+
+
+def test_refused_reply_preserves_keyboard_and_options(restore_rich):
+    tables.set_rich(True)
+    message = FakeMessage(FakeClient(fail_rich=True))
+    keyboard = object()
+    asyncio.run(rich.reply(message, panel('Controls', table=kv_table([('State', 'ready')])),
+                           reply_markup=keyboard, disable_notification=True))
+    _, options = message.replies[0]
+    assert options['reply_markup'] is keyboard
+    assert options['disable_notification'] is True
+
+
+@pytest.mark.parametrize('path', ['send', 'reply', 'edit'])
+@pytest.mark.parametrize('error', [TimeoutError('ambiguous delivery'), RuntimeError('FLOOD_WAIT_10'), RuntimeError('CHAT_WRITE_FORBIDDEN')])
+def test_transport_and_permission_errors_do_not_retry_or_disable_rich(restore_rich, path, error):
+    from unittest.mock import AsyncMock
+    tables.set_rich(True)
+    client = FakeClient()
+    client.send_rich_message = AsyncMock(side_effect=error)
+    message = FakeMessage(client)
+    query = FakeQuery(client, edit_error=error)
+    body = panel('Test', table=kv_table([('Key', 'Value')]))
+    with pytest.raises(type(error)):
+        if path == 'send':
+            asyncio.run(rich.send(client, -100, body))
+        elif path == 'reply':
+            asyncio.run(rich.reply(message, body))
+        else:
+            asyncio.run(rich.edit(query, body))
+    assert tables.rich_enabled()
+    assert not client.calls and not message.replies and not query.edits
+
+
+@pytest.mark.parametrize('path', ['send', 'reply', 'edit'])
+def test_invalid_card_falls_back_locally_with_keyboard(restore_rich, path):
+    from unittest.mock import AsyncMock
+    tables.set_rich(True)
+    client = FakeClient()
+    error = RuntimeError('RICH_TEXT_INVALID')
+    client.send_rich_message = AsyncMock(side_effect=error)
+    message = FakeMessage(client)
+    query = FakeQuery(client, edit_error=error)
+    keyboard = object()
+    body = panel('Controls', table=kv_table([('State', 'ready')]))
+    if path == 'send':
+        asyncio.run(rich.send(client, -100, body, reply_markup=keyboard))
+        result = client.calls[0][1]
+        text = result['text']
+    elif path == 'reply':
+        asyncio.run(rich.reply(message, body, reply_markup=keyboard))
+        text, result = message.replies[0]
+    else:
+        asyncio.run(rich.edit(query, body, reply_markup=keyboard))
+        result = query.edits[0]
+        text = result['text']
+    assert result['reply_markup'] is keyboard
+    assert '<pre>' in text and 'ready' in text and '<table' not in text
+    assert tables.rich_enabled()
+
+
+def test_explicit_reply_parameters_not_overwritten():
+    tables.set_rich(True)
+    client = FakeClient()
+    message = FakeMessage(client)
+    parameters = object()
+    asyncio.run(rich.reply(message, panel('Test'), reply_parameters=parameters))
+    assert client.calls[0][1]['reply_parameters'] is parameters
+
+
+def test_noncallable_rich_attribute_is_not_capability():
+    assert rich.available(SimpleNamespace(send_rich_message=None)) is False
+
+
+@pytest.mark.parametrize('path', ['send', 'reply'])
+def test_prebuilt_rich_card_degrades_after_support_was_disabled(restore_rich, path):
+    tables.set_rich(True)
+    body = panel('Earlier card', table=kv_table([('State', 'ready')]))
+    assert '<table' in body
+    tables.set_rich(False)
+    client = FakeClient()
+    message = FakeMessage(client)
+    if path == 'send':
+        asyncio.run(rich.send(client, -100, body))
+        text = client.calls[0][1]['text']
+        assert client.calls[0][0] == 'plain'
+    else:
+        asyncio.run(rich.reply(message, body))
+        text = message.replies[0][0]
+    assert '<pre>' in text and '<table' not in text
