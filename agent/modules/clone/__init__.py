@@ -85,7 +85,12 @@ def build(ctx):
     def quota(user_id):
         return allowance(ctx.premium, user_id)[0]
 
-    def entitled(user_id):
+    async def entitled(user_id):
+        premium = ctx.premium
+        if premium is None or user_id is None:
+            return False
+        if hasattr(premium, "ais_premium"):
+            return await premium.ais_premium(user_id)
         return quota(user_id) > 0
 
     manager.eligible = entitled
@@ -250,7 +255,7 @@ def build(ctx):
         if getattr(getattr(message, "chat", None), "id", None) != user.id:
             await reply(message, "Use /clone privately. Never send bot tokens or session strings in groups; revoke any token you already posted publicly.")
             return
-        if not entitled(user.id):
+        if not await entitled(user.id):
             await reply(message, "Cloning requires bot premium, including for Owner and sudo users.")
             return
         parts = (getattr(message, "text", "") or "").split()
@@ -481,7 +486,7 @@ def build(ctx):
         if not _may_manage(presser, target):
             await query.answer("Only its owner can control this clone.", show_alert=True)
             return
-        if action in ("start", "profile", "p") and not entitled(presser):
+        if action in ("start", "profile", "p") and not await entitled(presser):
             await query.answer("Starting or reconfiguring clones requires bot premium, including for Owner and sudo users.", show_alert=True)
             return
         if action in ("profile", "p", "back"):

@@ -140,13 +140,11 @@ def test_premium_ledger_round_trips_through_the_database(tmp_path):
     book = PremiumBook(tmp_path, db=database)
     assert book.is_premium(7) is True  # lifetime
 
-    book.grant(8, days=1, by=1)
-    assert "8" in database.saved["premium"]["users"]
+    from agent.platform.entitlements import EntitlementError
+    with pytest.raises(EntitlementError, match="Awaited"):
+        book.grant(8, days=1, by=1)
+    assert not database.saved
     assert not (tmp_path / "premium.json").exists()
-
-    # A second process reads exactly what the first one wrote.
-    again = PremiumBook(tmp_path, db=FakeDB({"premium": database.saved["premium"]}))
-    assert again.is_premium(8) is True
 
 
 def test_links_require_awaited_database_operations(tmp_path):

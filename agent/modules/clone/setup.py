@@ -139,7 +139,7 @@ class CloneSetup:
         if message.chat.id != user_id:
             await reply(message, 'Open this bot privately and send /clone. Never send tokens in groups.')
             return
-        if not self.entitled(user_id):
+        if not await self.entitled(user_id):
             await reply(message, 'Clone setup requires bot premium, including for sudo and Owner users.')
             return
         existing = self.active(user_id)
@@ -197,7 +197,7 @@ class CloneSetup:
         async with lock:
             if self.active(user_id) is not state:
                 return
-            if not self.entitled(user_id):
+            if not await self.entitled(user_id):
                 self.cancel(user_id)
                 await reply(message, 'Clone access is no longer available. Setup cancelled.')
                 return
@@ -213,7 +213,7 @@ class CloneSetup:
                     if bot_id == self.ctx.settings.bot_id or self.store.get(bot_id):
                         raise SetupError('That bot is already managed here or is the main bot.')
                     me = await self.api(text, 'getMe')
-                    if self.active(user_id) is not state or not self.entitled(user_id):
+                    if self.active(user_id) is not state or not await self.entitled(user_id):
                         return
                     if me.get('is_bot') is not True or me.get('id') != bot_id:
                         raise SetupError('Telegram did not confirm a matching bot identity.')
@@ -230,7 +230,7 @@ class CloneSetup:
                         await message.delete()
                     except Exception:
                         pass
-                    if self.active(user_id) is not state or not self.entitled(user_id):
+                    if self.active(user_id) is not state or not await self.entitled(user_id):
                         return
                     try:
                         validate_session(text)
@@ -244,7 +244,7 @@ class CloneSetup:
                         await message.delete()
                     except Exception:
                         pass
-                    if self.active(user_id) is not state or not self.entitled(user_id):
+                    if self.active(user_id) is not state or not await self.entitled(user_id):
                         return
                     if not re.fullmatch(r'sk-[A-Za-z0-9_-]{16,250}', text):
                         raise SetupError('Send an OpenAI API key beginning with sk-. It is not validated with a paid request.')
@@ -300,7 +300,7 @@ class CloneSetup:
         if not state or nonce != state.nonce or getattr(origin, 'id', None) != user_id:
             await query.answer('This setup is expired or belongs to someone else.', show_alert=True)
             return
-        if not self.entitled(user_id):
+        if not await self.entitled(user_id):
             self.cancel(user_id)
             await query.answer('Clone access is no longer available.', show_alert=True)
             return
@@ -355,7 +355,7 @@ class CloneSetup:
             return
         await query.answer('Checking and starting your clone…')
         async with self._finish_lock:
-            if self.active(user_id) is not state or not self.entitled(user_id):
+            if self.active(user_id) is not state or not await self.entitled(user_id):
                 return
             limit = self.quota(user_id)
             if len(self.store.by_owner(user_id)) >= limit or self.store.count() >= self.ctx.settings.clone_limit:
@@ -375,7 +375,7 @@ class CloneSetup:
                             raise SetupError('Channel administrator permissions changed. Restart setup.')
                         if uid == state.bot_id and member.get('status') != 'creator' and not member.get('can_post_messages'):
                             raise SetupError('The clone can no longer post in the configured channel.')
-                if self.active(user_id) is not state or not self.entitled(user_id):
+                if self.active(user_id) is not state or not await self.entitled(user_id):
                     return
                 if self.store.get(state.bot_id):
                     raise SetupError('That bot was added while setup was running. No duplicate was created.')

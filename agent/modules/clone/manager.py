@@ -17,6 +17,7 @@ instead of being reported as up.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import hashlib
 from dataclasses import replace
@@ -145,10 +146,14 @@ class CloneManager:
     def current(self) -> tuple[Clone, ...]:
         return self._store.all()
 
+    async def _eligible(self, user_id):
+        result = self.eligible(user_id)
+        return await result if inspect.isawaitable(result) else result
+
     async def start(self, clone: Clone) -> str:
         """Start one clone and return its username (``""`` when Telegram hides it)."""
         async with self._lock:
-            if self.eligible is not None and not self.eligible(clone.owner_id):
+            if self.eligible is not None and not await self._eligible(clone.owner_id):
                 raise CloneError("Clone owner no longer has bot premium eligibility.")
             if clone.bot_id in self._running:
                 return self._running[clone.bot_id][2]
@@ -308,7 +313,7 @@ class CloneManager:
         restarted: list[int] = []
         for bot_id in tuple(self._running):
             record = self._store.get(bot_id)
-            if record is not None and self.eligible is not None and not self.eligible(record.owner_id):
+            if record is not None and self.eligible is not None and not await self._eligible(record.owner_id):
                 await self.stop(bot_id)
                 self._store.update(bot_id, disabled=True)
                 continue
@@ -356,7 +361,7 @@ class CloneManager:
         started: list[int] = []
         for clone in self._store.all():
             if (clone.disabled or self.is_running(clone.bot_id)
-                    or (self.eligible is not None and not self.eligible(clone.owner_id))):
+                    or (self.eligible is not None and not await self._eligible(clone.owner_id))):
                 continue
             try:
                 await self.start(clone)
