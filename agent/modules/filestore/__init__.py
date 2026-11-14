@@ -18,6 +18,7 @@ from ...platform.attachments import attachment_kwargs
 from ...platform.manifest import PluginManifest
 from ...ui.tables import Table, kv_table, panel
 from ...ui.screens import format_uptime
+from ...utils.delivery import send_stored
 from ...utils.rich import reply
 from .vault import (
     MAX_BATCH,
@@ -131,28 +132,19 @@ def build(ctx):
         if stored is None or stored.owner_id != message.from_user.id:
             await reply(message, "That id is not in your vault.")
             return
-        path = storage.path_for(stored)
-        if not path.exists():
-            await reply(message, 
-                "That entry is indexed but the file is gone from disk. "
-                "Delete it with <code>/del</code> and save it again."
-            )
-            return
-        try:
-            await client.send_document(
+        # One delivery path for every store: cached file_id first, then the disk,
+        # then an honest "the bytes are gone". See agent.utils.delivery.
+        await send_stored(
+            message,
+            storage,
+            stored,
+            **attachment_kwargs(
+                ctx.chats,
                 message.chat.id,
-                str(path),
-                file_name=stored.name,
-                **attachment_kwargs(
-                    ctx.chats,
-                    message.chat.id,
-                    name=stored.name,
-                    size=human_bytes(stored.size),
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("get failed")
-            await reply(message, f"Could not send that file: {type(exc).__name__}")
+                name=stored.name,
+                size=human_bytes(stored.size),
+            ),
+        )
 
     # -- /batch ------------------------------------------------------------
 

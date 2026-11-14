@@ -26,6 +26,7 @@ built from the live state of this process rather than a stored copy of it.
 | `DATABASE_URL` | no | PostgreSQL DSN. Set it and every store is kept in the database, scoped per bot. |
 | `TOKEN_KEY` | no | Encrypts clone tokens at rest (Fernet). Unset ⇒ plaintext, announced. |
 | `DB_REQUIRED` | no | `1` makes an unreachable `DATABASE_URL` a startup failure. |
+| `STORAGE_CHANNEL` | no | A private channel id vault files are archived into (durable bytes). |
 | `CLONE_LIMIT` | no | How many clones this deployment will run at once. Default `5`. |
 | `START_IMAGE` | no | Picture above `/start`; `0` keeps the text only. |
 | `HEALTH_PORT` / `PORT` | no | Exposes `/health` and `/health/live`. |
@@ -211,10 +212,23 @@ encryption existed is rewritten as ciphertext on the next save, and a record thi
 key cannot read is skipped with a logged reason instead of taking the bot down.
 Without a key the store still works in plaintext and says so once at startup.
 
-**The vault is the exception.** Files live on the host's disk under `DATA_DIR`;
-the database holds the index and the links. A multi-instance deployment that
-wants shared *files* needs object storage, and this bot does not pretend
-otherwise.
+### The vault survives a redeploy
+
+Two halves, two lifetimes:
+
+* **the index** — which file belongs to whom, its size and its hash — is a
+  scoped `files` document in PostgreSQL, read back by `Storage.hydrate()` once the
+  database is loaded;
+* **the bytes** — on disk under `DATA_DIR` by default, or in a private Telegram
+  storage channel when `STORAGE_CHANNEL` is set. A stored file is archived in the
+  background and its `file_id` remembered, so delivery (`/get`, a redeemed share
+  link) is one `reply_cached_media` call that works on an instance which has
+  never seen the upload — which is exactly what a redeploy looks like.
+
+Delivery lives in one place, `agent/utils/delivery.py`: cached `file_id` first,
+then the disk, then an honest "the bytes are gone" instead of a traceback. Without
+`STORAGE_CHANNEL` nothing changes — files stay on disk, and the README says so
+rather than implying a durability the host does not have.
 
 ## Premium
 
@@ -270,7 +284,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 491 tests
+pytest -q                      # 503 tests
 python -m pyflakes agent tests # no unused names
 ```
 

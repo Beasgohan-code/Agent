@@ -97,6 +97,9 @@ class Settings:
     db_scope: str = "global"
     #: TOKEN_KEY: the Fernet key clone tokens are encrypted with at rest.
     token_key: str | None = None
+    #: STORAGE_CHANNEL: a private channel id the bot archives files into. With it,
+    #: the vault survives a redeploy: delivery re-uses Telegram's own file_id.
+    storage_channel: int | None = None
     #: DB_REQUIRED=1 makes an unreachable DATABASE_URL a startup failure instead
     #: of a quiet fall back to JSON files.
     db_required: bool = False
@@ -173,6 +176,7 @@ class Settings:
             bot_id=_bot_id(bot_token),
             db_scope=f"main:{_bot_id(bot_token)}",
             token_key=(source.get("TOKEN_KEY") or "").strip() or None,
+            storage_channel=_optional_chat(source.get("STORAGE_CHANNEL")),
             db_required=(source.get("DB_REQUIRED") or "0").strip().lower()
             in ("1", "true", "yes", "on"),
             database_url=(source.get("DATABASE_URL") or "").strip() or None,
@@ -205,6 +209,15 @@ def _optional_image(raw: str | None) -> str | None:
     """``START_IMAGE`` as a URL or path; ``None`` disables the picture."""
     value = (DEFAULT_START_IMAGE if raw is None else str(raw)).strip()
     return None if value.lower() in ("", "0", "false", "no", "off", "none") else value
+
+
+def _optional_chat(raw: str | None) -> int | None:
+    """A chat id: negative for groups and channels, which ``_optional_id`` refuses."""
+    try:
+        value = int((raw or "").strip())
+    except ValueError:
+        return None
+    return value if value != 0 else None
 
 
 def _optional_id(raw: str | None) -> int | None:

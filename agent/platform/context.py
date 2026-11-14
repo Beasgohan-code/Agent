@@ -69,7 +69,7 @@ class ModuleContext:
             theme=theme,
             sender=sender,
             jobs=JobQueue(concurrency=2),
-            storage=Storage(root),
+            storage=Storage(root, db=db),
             links=LinkStore(root, settings.link_secret, default_ttl_hours=24, db=db),
             chats=ChatStore(root, db=db),
             db=db,

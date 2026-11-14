@@ -197,6 +197,7 @@ class AgentBot:
         self.modules.events = self.events
         self.modules.runtime = self.runtime
         self.modules.lease = self.lease
+        self._wire_archive(client)
         self.modules.logbook = self.logbook
         self.modules.client = client
 
@@ -255,6 +256,32 @@ class AgentBot:
             len(self.registry.active_commands()),
         )
 
+    def _wire_archive(self, client: Client) -> None:
+        """Let the vault put bytes in the storage channel, when one is configured.
+
+        The uploader is a closure over the client, not the store holding a
+        client: the store stays a storage layer, and a deployment without
+        ``STORAGE_CHANNEL`` simply keeps its files on disk.
+        """
+        channel = self.settings.storage_channel
+        storage = getattr(self.modules, "storage", None)
+        if channel is None or storage is None or not hasattr(storage, "attach_archive"):
+            if storage is not None and channel is None:
+                logger.info(
+                    "STORAGE_CHANNEL is not set: vault files stay on this host's disk."
+                )
+            return
+
+        async def uploader(path, name: str) -> str:
+            sent = await client.send_document(
+                chat_id=channel, document=str(path), file_name=name
+            )
+            document = getattr(sent, "document", None)
+            return getattr(document, "file_id", "") or ""
+
+        storage.attach_archive(uploader)
+        logger.info("Vault files are archived to the storage channel %s", channel)
+
     async def _on_error(self, client, exception, handler, update, users, chats) -> None:
         """Catch anything a handler let escape; the bot keeps polling."""
         # ``kind`` is the event's own parameter, so the field is named separately.
@@ -277,7 +304,12 @@ class AgentBot:
                 # These three were built in __init__, before the database was
                 # readable; re-read them so a deploy starts from the stored state
                 # rather than from last boot's files.
-                for store in (self.users, self.premium, self.runtime):
+                for store in (
+                    self.users,
+                    self.premium,
+                    self.runtime,
+                    getattr(self.modules, "storage", None),
+                ):
                     hydrate = getattr(store, "hydrate", None)
                     if hydrate is not None:
                         hydrate()

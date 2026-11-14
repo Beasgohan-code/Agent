@@ -40,10 +40,24 @@ class FakeMessage:
         self.from_user = SimpleNamespace(id=uid, first_name="Ada")
         self.reply_to_message = None
         self.replies = []
+        #: (target, kwargs) for every file this message delivered.
+        self.sent = []
 
     async def reply(self, text, **kwargs):
         self.replies.append(str(text))
         return SimpleNamespace(id=1)
+
+    async def reply_document(self, document=None, **kwargs):
+        self.sent.append((str(document), kwargs))
+        return SimpleNamespace(id=2)
+
+    async def reply_video(self, video=None, **kwargs):
+        self.sent.append((str(video), kwargs))
+        return SimpleNamespace(id=3)
+
+    async def reply_cached_media(self, file_id, **kwargs):
+        self.sent.append((f"cached:{file_id}", kwargs))
+        return SimpleNamespace(id=4)
 
 
 class FakeClient:
@@ -177,9 +191,12 @@ def test_get_sends_the_stored_caption_and_thumb(tmp_path):
     client = FakeClient()
     run(handlers["get"], message, client)
 
-    chat_id, path, kwargs = client.sent[0]
+    # /get now delivers through the message (one path for every store), so the
+    # attachment is checked where the file actually leaves the bot.
+    path, kwargs = message.sent[0]
     assert kwargs["caption"] == "sample.mkv (32 B)"
     assert kwargs["thumb"] == "thumb-id"
+    assert str(path).endswith("sample.mkv")
 
 
 # --- the batch ------------------------------------------------------------

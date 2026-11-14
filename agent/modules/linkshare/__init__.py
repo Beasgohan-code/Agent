@@ -33,6 +33,7 @@ from ...platform.manifest import PluginManifest
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils import rich as rich_ui
+from ...utils.delivery import send_stored
 from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
@@ -357,21 +358,15 @@ def build(ctx):
             await _refused(message, "The file behind this link is no longer stored.")
             return
 
-        path = ctx.storage.path_for(stored)
         caption = (
             f"<b>{html.escape(stored.name)}</b>\n"
             f"<code>{stored.size:,} bytes</code> · {_uses_text(record)}"
         )
-        try:
-            if stored.name.lower().endswith(VIDEO_SUFFIXES):
-                await message.reply_video(video=str(path), caption=caption)
-            else:
-                await message.reply_document(
-                    document=str(path), caption=caption, file_name=stored.name
-                )
-        except Exception as exc:  # noqa: BLE001 - the user gets the reason
-            logger.exception("could not deliver link %s…", record.token[:12])
-            await _refused(message, f"Telegram refused the file: {type(exc).__name__}")
+        # Cached file_id first: a link opened on a freshly deployed instance still
+        # works, because Telegram holds the bytes rather than this host.
+        delivered = await send_stored(message, ctx.storage, stored, caption=caption)
+        if not delivered:
+            logger.info("link %s… could not deliver %s", record.token[:12], stored.name)
             return
         if getattr(ctx, "events", None) is not None:
             ctx.events.emit("link:redeem", uses=record.uses)

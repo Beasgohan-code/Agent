@@ -42,5 +42,13 @@ services:
       #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - key: TOKEN_KEY
         sync: false
+      # A private channel the bot archives vault files into (negative id). Without
+      # it, files live on this service's disk and a redeploy wipes them.
+      - key: STORAGE_CHANNEL
+        sync: false
+      # The database is the source of truth in production: refuse to start rather
+      # than quietly fall back to a disk that is wiped on every deploy.
+      - key: DB_REQUIRED
+        value: "1"
       - key: OWNER_ID
         sync: false
