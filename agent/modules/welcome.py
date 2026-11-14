@@ -15,6 +15,7 @@ from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.handlers import ChatMemberUpdatedHandler
 
 from ..platform.manifest import PluginManifest
+from ..utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ def build(ctx):
 
         if await is_moderator(client, message, need="can_change_info", owner_id=ctx.settings.owner_id):
             return True
-        await message.reply("Only chat administrators can change greetings.")
+        await reply(message, "Only chat administrators can change greetings.")
         return False
 
     async def setwelcome(client, message):
@@ -128,14 +129,14 @@ def build(ctx):
             return
         text = " ".join(_args(message)[1:]).strip()
         if not text:
-            await message.reply(
+            await reply(message, 
                 "Usage: <code>/setwelcome Welcome {mention} to {chat}!</code>\n"
                 "Placeholders: {mention} {name} {chat} {count}. The text is sent "
                 "as plain text, so markup in it is shown, not applied."
             )
             return
         ctx.chats.set_greeting(message.chat.id, "welcome", text)
-        await message.reply("Welcome message saved and enabled.")
+        await reply(message, "Welcome message saved and enabled.")
 
     async def welcome(client, message):
         if not await _guard(client, message):
@@ -145,12 +146,12 @@ def build(ctx):
             state = ctx.chats.toggle_greeting(
                 message.chat.id, "welcome", args[1].lower() == "on"
             )
-            await message.reply(
+            await reply(message, 
                 f"Welcome messages are now {'on' if state['enabled'] else 'off'}."
             )
             return
         current = ctx.chats.greeting(message.chat.id, "welcome")
-        await message.reply(
+        await reply(message, 
             "<b>Welcome message</b>\n"
             f"Status: {'on' if current['enabled'] else 'off'}\n"
             f"Text: {html.escape(current['text']) or '<i>not set</i>'}\n\n"
@@ -166,14 +167,14 @@ def build(ctx):
             state = ctx.chats.toggle_greeting(
                 message.chat.id, "goodbye", args[1].lower() == "on"
             )
-            await message.reply(
+            await reply(message, 
                 f"Goodbye messages are now {'on' if state['enabled'] else 'off'}."
             )
             return
         text = " ".join(args[1:]).strip()
         if not text:
             current = ctx.chats.greeting(message.chat.id, "goodbye")
-            await message.reply(
+            await reply(message, 
                 "<b>Goodbye message</b>\n"
                 f"Status: {'on' if current['enabled'] else 'off'}\n"
                 f"Text: {html.escape(current['text']) or '<i>not set</i>'}\n\n"
@@ -181,6 +182,6 @@ def build(ctx):
             )
             return
         ctx.chats.set_greeting(message.chat.id, "goodbye", text)
-        await message.reply("Goodbye message saved and enabled.")
+        await reply(message, "Goodbye message saved and enabled.")
 
     return MANIFEST, {"setwelcome": setwelcome, "welcome": welcome, "goodbye": goodbye}

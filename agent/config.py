@@ -44,6 +44,14 @@ class Settings:
     log_channel: int | None = None
     #: Publish the command list to Telegram on start (SYNC_COMMANDS=0 disables).
     sync_commands: bool = True
+    #: Optional MTProto user session for voice-chat streaming (SESSION_STRING).
+    #: A bot token cannot join a group call, so the player needs its own session.
+    #: Never logged, never written to disk here.
+    session_string: str | None = None
+    #: Picture shown above /start — a URL or a path this process can read.
+    #: START_IMAGE=0 removes it. Nothing depends on it: an unreachable image
+    #: falls back to the plain text screen.
+    start_image: str | None = None
     health_port: int | None = None
     watchdog_interval: float = 30.0
     watchdog_timeout: float = 20.0
@@ -107,6 +115,8 @@ class Settings:
             log_channel=_optional_id(source.get("LOG_CHANNEL")),
             sync_commands=(source.get("SYNC_COMMANDS") or "1").strip().lower()
             not in ("0", "false", "no", "off"),
+            start_image=_optional_image(source.get("START_IMAGE")),
+            session_string=(source.get("SESSION_STRING") or "").strip() or None,
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),
@@ -114,6 +124,18 @@ class Settings:
                 _optional_float(source.get("WATCHDOG_FATAL_AFTER"), 5.0)
             ),
         )
+
+
+#: The picture the owner asked for. Kept in code so a fresh deploy looks right
+#: without another environment variable; START_IMAGE overrides it and
+#: START_IMAGE=0 turns the picture off.
+DEFAULT_START_IMAGE = "https://files.catbox.moe/dhajpx.jpg"
+
+
+def _optional_image(raw: str | None) -> str | None:
+    """``START_IMAGE`` as a URL or path; ``None`` disables the picture."""
+    value = (DEFAULT_START_IMAGE if raw is None else str(raw)).strip()
+    return None if value.lower() in ("", "0", "false", "no", "off", "none") else value
 
 
 def _optional_id(raw: str | None) -> int | None:

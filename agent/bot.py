@@ -20,12 +20,14 @@ from .modules import MODULES
 from .platform.context import ModuleContext
 from .platform.manifest import PluginRegistry
 from .health_server import start_health_server, stop_health_server
+from .platform.actions import ActionRouter
 from .platform.audience import UserIndex
 from .platform.events import EventLog
 from .platform.instance import InstanceLease
 from .platform.logbook import LogBook, subscribe
 from .platform.menu import publish as publish_menu, reset_menu_button
 from .platform.runtime import PluginRuntime
+from .platform.voice import VoiceEngine, capability
 from .ui.theme import Theme
 from .utils.sender import ScreenSender
 from .watchdog import build_watchdog
@@ -73,6 +75,20 @@ class AgentBot:
         self.runtime = PluginRuntime(
             self.registry, state_path=settings.data_dir / "plugins.json"
         )
+        #: Module-owned callback prefixes (member verification today).
+        self.actions = ActionRouter()
+        #: Voice-chat streaming is optional: without a session string there is no
+        #: engine and the music module registers nothing.
+        ok, reason = capability(settings.session_string)
+        if ok:
+            self.voice = VoiceEngine(
+                session_string=settings.session_string or "",
+                api_id=settings.api_id,
+                api_hash=settings.api_hash,
+            )
+        else:
+            self.voice = None
+            logger.info("Voice chat disabled: %s", reason)
 
     @property
     def client(self) -> Client | None:
@@ -119,9 +135,16 @@ class AgentBot:
         #: they can never shadow a command handler.
         self._watchers = []
         commands = CommandHandlers(
-            sender, self.theme, monitor=self.health, events=self.events, users=self.users
+            sender,
+            self.theme,
+            monitor=self.health,
+            events=self.events,
+            users=self.users,
+            start_image=self.settings.start_image,
         )
-        callbacks = CallbackHandlers(sender, self.theme, monitor=self.health)
+        callbacks = CallbackHandlers(
+            sender, self.theme, monitor=self.health, router=self.actions
+        )
 
         self._handlers = [
             MessageHandler(commands.start, filters.command(["start", "restart_bot"]) & filters.private),
@@ -140,6 +163,8 @@ class AgentBot:
             self.settings, self.theme, sender, root=self.settings.data_dir
         )
         self.modules.registry = self.registry
+        self.modules.actions = self.actions
+        self.modules.voice = self.voice
         self.modules.events = self.events
         self.modules.runtime = self.runtime
         self.modules.lease = self.lease
@@ -237,6 +262,14 @@ class AgentBot:
             )
             raise
 
+        # Start the voice engine after the bot is up: a failure there must not
+        # take the command surface down with it.
+        if self.voice is not None:
+            try:
+                await self.voice.start()
+            except Exception:  # noqa: BLE001 - the music commands report the reason
+                logger.exception("Voice chat engine failed to start; the player is inert.")
+
         # A completed handshake is a successful probe.
         self.health.record_success()
         self.events.emit("start", version=__version__)
@@ -286,6 +319,8 @@ class AgentBot:
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
             await stop_health_server(health_runner)
+            if self.voice is not None:
+                await self.voice.shutdown()
             await self._shutdown(client)
             await self.lease.stop_heartbeat()
             # Releasing lets a replacement process start immediately (this is

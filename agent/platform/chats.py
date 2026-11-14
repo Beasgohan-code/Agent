@@ -18,6 +18,10 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+#: Caps on the per-chat lists, so one busy group cannot grow the file without end.
+MAX_REPORTS = 100
+MAX_TRACKS = 200
+
 #: Lower-cased actions an anti-spam hit may take.
 SPAM_ACTIONS = ("delete", "warn", "mute", "kick", "ban")
 
@@ -220,6 +224,77 @@ class ChatStore:
     def put(self, chat_id: int, key: str, value) -> None:
         self._chat(chat_id)["settings"][key] = value
         self._save()
+
+    # -- reports and appeals -----------------------------------------------
+
+    def add_report(
+        self,
+        chat_id: int,
+        *,
+        reporter_id: int,
+        reason: str = "",
+        target_id: int | None = None,
+        message_id: int | None = None,
+        kind: str = "report",
+    ) -> int:
+        """Record a report/appeal and return its per-chat number."""
+        settings = self._chat(chat_id)["settings"]
+        sequence = int(settings.get("report_seq", 0)) + 1
+        settings["report_seq"] = sequence
+        entries = settings.setdefault("reports", [])
+        entries.append(
+            {
+                "id": sequence,
+                "kind": kind,
+                "reporter": int(reporter_id),
+                "target": None if target_id is None else int(target_id),
+                "message_id": None if message_id is None else int(message_id),
+                "reason": reason[:500],
+                "state": "open",
+                "at": time.time(),
+            }
+        )
+        del entries[:-MAX_REPORTS]
+        self._save()
+        return sequence
+
+    def reports(self, chat_id: int, *, state: str = "open", limit: int = 20) -> list[dict]:
+        entries = self._chat(chat_id)["settings"].get("reports") or []
+        matching = [entry for entry in entries if entry.get("state") == state]
+        return matching[-max(0, limit) :]
+
+    def close_report(self, chat_id: int, report_id: int, *, by: int | None = None) -> bool:
+        entries = self._chat(chat_id)["settings"].get("reports") or []
+        for entry in entries:
+            if entry.get("id") == int(report_id) and entry.get("state") == "open":
+                entry["state"] = "closed"
+                entry["closed_by"] = None if by is None else int(by)
+                entry["closed_at"] = time.time()
+                self._save()
+                return True
+        return False
+
+    # -- audio catalogue ----------------------------------------------------
+
+    def music(self, chat_id: int) -> list[dict]:
+        return list(self._chat(chat_id)["settings"].get("music") or [])
+
+    def add_music(self, chat_id: int, entry: dict) -> int:
+        """Append one track; returns its 1-based position in the catalogue."""
+        tracks = self._chat(chat_id)["settings"].setdefault("music", [])
+        tracks.append({**entry, "added_at": time.time()})
+        del tracks[:-MAX_TRACKS]
+        self._save()
+        return len(tracks)
+
+    def remove_music(self, chat_id: int, position: int) -> dict | None:
+        """Remove the 1-based *position*; returns the removed entry."""
+        tracks = self._chat(chat_id)["settings"].setdefault("music", [])
+        if not 1 <= int(position) <= len(tracks):
+            return None
+        entry = tracks.pop(int(position) - 1)
+        self._save()
+        return entry
 
     # -- audit trail -------------------------------------------------------
 

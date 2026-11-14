@@ -33,6 +33,11 @@ class ModuleContext:
     client: object | None = None
     chats: ChatStore | None = None
     registry: object | None = None
+    #: Callback prefix router, so a module can own a button without the UI layer
+    #: knowing its data format.
+    actions: object | None = None
+    #: Voice-chat engine, present only when a session string and the libraries are.
+    voice: object | None = None
     events: object | None = None
     runtime: object | None = None
     lease: object | None = None

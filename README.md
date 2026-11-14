@@ -15,6 +15,12 @@ Only three variables, all required:
 
 Nothing else needs to be set. No secrets belong in the repo or the image.
 
+Optional, and off by default: `SESSION_STRING` (the user session the voice-chat
+player joins with — a bot token cannot join a call, so without it the music
+plugin registers no commands at all), `START_IMAGE` (the `/start` picture, a URL
+Telegram fetches itself), `OWNER_ID`, `LOG_CHANNEL_ID` and the health/watchdog
+knobs listed further down. See `.env.example`.
+
 ## Run locally
 
 ```bash
@@ -48,6 +54,31 @@ the Blueprint or create the worker manually:
 Render sends `SIGTERM` on deploy/restart; the bot turns it into a graceful
 disconnect.
 
+
+## Rich messages and tables
+
+The UI is built on **Bot API 10.3 rich messages**: the panels are a real `<h2>`,
+a real `<table>` and a real `<blockquote>`, rendered by Telegram rather than
+drawn in ASCII inside `<pre>`. wzgram ships `send_rich_message`, so this works
+with the same bot token as everything else.
+
+Two fallbacks, both automatic:
+
+- if Telegram refuses a rich message, `agent.utils.rich` switches
+  `agent.ui.tables.set_rich(False)` for the whole process and every later panel
+  is rendered as the monospace `<pre>` grid instead — one refusal, not one
+  failure per message;
+- the edited screens (`/menu` navigation) always use the monospace grid, because
+  Telegram has no `edit_rich_message`: an edit that would have to be re-sent is
+  worse than a table without borders.
+
+## Credits
+
+The command surfaces, defaults and layouts in this bot come from the projects in
+[`docs/CREDITS.md`](docs/CREDITS.md) — Meikoagent, Videl0/Videl1, CBML, WZML-X,
+Multi-FileStoreBot, LINK-SHAREBOT, ENCODING-BOT, save-restricted-content-bot,
+Playeon, plus richgram and wzgram at runtime. `/about` prints the same list, with
+the licences that decided what could be reused and what was only read.
 
 ## Health & watchdog
 

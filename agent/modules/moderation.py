@@ -34,6 +34,7 @@ from pyrogram.types import ChatPermissions
 from ..platform.chats import SPAM_ACTIONS
 from ..platform.manifest import PluginManifest
 from ..ui.tables import Table, kv_table, panel
+from ..utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +279,7 @@ async def _punish(client, ctx, message, action: str, *, policy: dict) -> None:
             pass
     if action == "warn":
         ctx.chats.add_warning(chat_id, user_id, moderator_id=0, reason="anti-spam")
-        await message.reply(
+        await reply(message, 
             f"Anti-spam: {_mention(user_id, getattr(message.from_user, 'first_name', 'member'))} "
             f"warned. Warnings: {ctx.chats.active_warning_count(chat_id, user_id)}"
         )
@@ -289,14 +290,14 @@ async def _punish(client, ctx, message, action: str, *, policy: dict) -> None:
             MUTE_PERMISSIONS,
             until_date=datetime.now(timezone.utc) + timedelta(seconds=int(policy.get("mute_seconds", 300))),
         )
-        await message.reply(f"Anti-spam: member muted for {policy.get('mute_seconds', 300)}s.")
+        await reply(message, f"Anti-spam: member muted for {policy.get('mute_seconds', 300)}s.")
     elif action == "kick":
         await client.ban_chat_member(chat_id, user_id)
         await client.unban_chat_member(chat_id, user_id)
-        await message.reply("Anti-spam: member kicked.")
+        await reply(message, "Anti-spam: member kicked.")
     elif action == "ban":
         await client.ban_chat_member(chat_id, user_id)
-        await message.reply("Anti-spam: member banned.")
+        await reply(message, "Anti-spam: member banned.")
 
 
 def watch(ctx):
@@ -362,12 +363,12 @@ def build(ctx):
     async def _guard(client, message, need: str | None = None) -> bool:
         if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
             return True
-        await message.reply(DENIED)
+        await reply(message, DENIED)
         return False
 
     async def _protected(client, message, target_id: int) -> bool:
         if await target_is_protected(client, message.chat.id, target_id):
-            await message.reply("I cannot act on an administrator.")
+            await reply(message, "I cannot act on an administrator.")
             return True
         return False
 
@@ -376,7 +377,7 @@ def build(ctx):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member or pass their id: <code>/warn 123 [reason]</code>")
+            await reply(message, "Reply to a member or pass their id: <code>/warn 123 [reason]</code>")
             return
         target_id, mention = target
         if await _protected(client, message, target_id):
@@ -392,7 +393,7 @@ def build(ctx):
         escalation = ""
         if limit and count >= limit:
             escalation = "\n" + await escalate_warning(client, ctx, message, target_id, action)
-        await message.reply(
+        await reply(message, 
             f"<b>Warning issued</b>\nMember: {mention}\nWarnings: {count}\n"
             f"Reason: {html.escape(reason)}{escalation}"
         )
@@ -400,7 +401,7 @@ def build(ctx):
     async def warnings(client, message):
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member to inspect their warnings.")
+            await reply(message, "Reply to a member to inspect their warnings.")
             return
         target_id, mention = target
         rows = ctx.chats.warnings_of(message.chat.id, target_id)
@@ -435,7 +436,7 @@ def build(ctx):
         ) if rows_out else None
         if table is None:
             lines.append("No active warnings.")
-        await message.reply(
+        await reply(message, 
             panel(
                 "Warnings",
                 icon=ctx.theme.emoji("warn"),
@@ -450,23 +451,23 @@ def build(ctx):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member to clear a warning.")
+            await reply(message, "Reply to a member to clear a warning.")
             return
         target_id, mention = target
         if not ctx.chats.clear_warning(message.chat.id, target_id):
-            await message.reply("That member has no active warnings.")
+            await reply(message, "That member has no active warnings.")
             return
         ctx.chats.log(
             message.chat.id, "unwarn", actor_id=message.from_user.id, target_id=target_id
         )
-        await message.reply(f"<b>Warning cleared</b>\nMember: {mention}")
+        await reply(message, f"<b>Warning cleared</b>\nMember: {mention}")
 
     async def mute(client, message):
         if not await _guard(client, message, need="can_restrict_members"):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member: <code>/mute 10m reason</code>")
+            await reply(message, "Reply to a member: <code>/mute 10m reason</code>")
             return
         target_id, mention = target
         if await _protected(client, message, target_id):
@@ -481,7 +482,7 @@ def build(ctx):
         ctx.chats.log(
             message.chat.id, "mute", actor_id=message.from_user.id, target_id=target_id
         )
-        await message.reply(
+        await reply(message, 
             f"<b>Member muted</b>\nMember: {mention}\nDuration: {duration_label(seconds)}"
         )
 
@@ -490,21 +491,21 @@ def build(ctx):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member to unmute them.")
+            await reply(message, "Reply to a member to unmute them.")
             return
         target_id, mention = target
         await client.restrict_chat_member(message.chat.id, target_id, UNMUTE_PERMISSIONS)
         ctx.chats.log(
             message.chat.id, "unmute", actor_id=message.from_user.id, target_id=target_id
         )
-        await message.reply(f"<b>Member unmuted</b>\nMember: {mention}")
+        await reply(message, f"<b>Member unmuted</b>\nMember: {mention}")
 
     async def kick(client, message):
         if not await _guard(client, message, need="can_restrict_members"):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member to kick them.")
+            await reply(message, "Reply to a member to kick them.")
             return
         target_id, mention = target
         if await _protected(client, message, target_id):
@@ -514,14 +515,14 @@ def build(ctx):
         ctx.chats.log(
             message.chat.id, "kick", actor_id=message.from_user.id, target_id=target_id
         )
-        await message.reply(f"<b>Member kicked</b>\nMember: {mention}")
+        await reply(message, f"<b>Member kicked</b>\nMember: {mention}")
 
     async def ban(client, message):
         if not await _guard(client, message, need="can_restrict_members"):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member or pass an id to ban them.")
+            await reply(message, "Reply to a member or pass an id to ban them.")
             return
         target_id, mention = target
         if await _protected(client, message, target_id):
@@ -531,7 +532,7 @@ def build(ctx):
         ctx.chats.log(
             message.chat.id, "ban", actor_id=message.from_user.id, target_id=target_id, reason=reason
         )
-        await message.reply(
+        await reply(message, 
             f"<b>Member banned</b>\nMember: {mention}\nReason: {html.escape(reason)}"
         )
 
@@ -540,14 +541,14 @@ def build(ctx):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Pass the user id to unban: <code>/unban 123456</code>")
+            await reply(message, "Pass the user id to unban: <code>/unban 123456</code>")
             return
         target_id, mention = target
         await client.unban_chat_member(message.chat.id, target_id)
         ctx.chats.log(
             message.chat.id, "unban", actor_id=message.from_user.id, target_id=target_id
         )
-        await message.reply(f"<b>Member unbanned</b>\nMember: {mention}")
+        await reply(message, f"<b>Member unbanned</b>\nMember: {mention}")
 
     async def purge(client, message):
         if not await _guard(client, message, need="can_delete_messages"):
@@ -566,7 +567,7 @@ def build(ctx):
         ctx.chats.log(
             message.chat.id, "purge", actor_id=message.from_user.id, reason=f"{deleted} removed"
         )
-        confirmation = await message.reply(
+        confirmation = await reply(message, 
             f"<b>Purged</b>\nMessages removed: {deleted}\nOf requested: {count}"
         )
         if PURGE_CONFIRM_TTL and confirmation is not None:
@@ -581,26 +582,26 @@ def build(ctx):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member to attach a note.")
+            await reply(message, "Reply to a member to attach a note.")
             return
         target_id, mention = target
         args = _args(message)
         text = " ".join(args[2:]).strip() if len(args) > 2 else ""
         if not text:
-            await message.reply("Provide the note text after the id.")
+            await reply(message, "Provide the note text after the id.")
             return
         ctx.chats.set_note(message.chat.id, target_id, text)
         ctx.chats.log(
             message.chat.id, "note", actor_id=message.from_user.id, target_id=target_id
         )
-        await message.reply(f"<b>Note saved</b>\nMember: {mention}")
+        await reply(message, f"<b>Note saved</b>\nMember: {mention}")
 
     async def trust(client, message):
         if not await _guard(client, message, need="can_manage_chat"):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member to trust them.")
+            await reply(message, "Reply to a member to trust them.")
             return
         target_id, mention = target
         trusted = ctx.chats.toggle_trust(message.chat.id, target_id)
@@ -608,14 +609,14 @@ def build(ctx):
             message.chat.id, "trust" if trusted else "untrust",
             actor_id=message.from_user.id, target_id=target_id,
         )
-        await message.reply(
+        await reply(message, 
             f"<b>{'Member trusted' if trusted else 'Trust removed'}</b>\nMember: {mention}"
         )
 
     async def antispam(client, message):
         chat = getattr(message, "chat", None)
         if chat is None or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
-            await message.reply("Anti-spam settings are per group.")
+            await reply(message, "Anti-spam settings are per group.")
             return
         if not await _guard(client, message, need="can_manage_chat"):
             return
@@ -647,7 +648,7 @@ def build(ctx):
                 policy["keywords_enabled"] = False
                 policy["blocked_keywords"] = []
             else:
-                await message.reply(
+                await reply(message, 
                     "Usage: /antispam on|off|limit 7|action mute|links off|invites off"
                     "|mute 300|keyword word|keyword-clear"
                 )
@@ -669,7 +670,7 @@ def build(ctx):
                 ("Action", f"{policy['action']} (mute {policy['mute_seconds']}s)"),
             ]
         )
-        await message.reply(
+        await reply(message, 
             panel(
                 "Anti-spam settings",
                 icon=ctx.theme.emoji("shield"),
@@ -689,7 +690,7 @@ def build(ctx):
             return
         history = ctx.chats.history(message.chat.id, limit=10)
         if not history:
-            await message.reply(
+            await reply(message, 
                 panel(
                     "Moderation log",
                     icon=ctx.theme.emoji("stats"),
@@ -712,7 +713,7 @@ def build(ctx):
             aligns=("left", "right", "left", "left"),
             total_width=56,
         )
-        await message.reply(
+        await reply(message, 
             panel(
                 "Moderation log",
                 icon=ctx.theme.emoji("stats"),

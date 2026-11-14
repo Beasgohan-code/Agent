@@ -3,10 +3,24 @@
 import html
 import re
 
-from agent.ui.tables import Table, clip, kv_table, panel, plain, text_width
+import pytest
+
+from agent.ui.tables import Table, clip, kv_table, markup, panel, plain, text_width
 from agent.utils.sender import to_safe_html
 
 PRE_RE = re.compile(r"<pre>([\s\S]*?)</pre>")
+
+
+@pytest.fixture()
+def classic_mode():
+    """Render the way a deployment without rich messages does."""
+    from agent.ui import tables
+
+    tables.set_rich(False)
+    try:
+        yield
+    finally:
+        tables.set_rich(True)
 
 
 def pre_body(markup: str) -> str:
@@ -130,17 +144,21 @@ def test_richgram_normalisation_cannot_collapse_pre_whitespace():
     assert to_safe_html(markup) == markup
 
 
-def test_panel_keeps_alignment_after_normalisation():
+def test_panel_uses_a_native_table_when_rich_messages_are_available():
     table = Table(headers=("Slug", "State"), rows=(("ops", "on"), ("group", "off")))
 
     rendered = panel("Plugins", table=table)
 
-    lines = pre_body(rendered).splitlines()
-    assert len({text_width(line) for line in lines}) == 1
-    assert "ops" in pre_body(rendered)
+    assert rendered.startswith("<h2>")
+    assert '<table border="1">' in rendered
+    assert "<th>Slug</th>" in rendered
+    assert "<td>off</td>" in rendered
+    # A rich table is not a <pre> grid: no alignment pass, no box drawing.
+    assert "<pre>" not in rendered
+    assert "\u250c" not in rendered
 
 
-def test_panel_normalises_headings_and_notes_but_not_the_table():
+def test_panel_normalises_headings_and_notes_but_not_the_table(classic_mode):
     rendered = panel(
         "Plugins",
         table=Table(headers=("a",), rows=(("1",),)),
@@ -161,8 +179,40 @@ def test_panel_without_a_table_has_no_pre_block():
     assert "nothing to show" in rendered
 
 
-def test_panel_escapes_nothing_it_should_not_and_tags_inside_cells():
+def test_native_table_cells_are_escaped():
     rendered = panel("X", table=Table(headers=("v",), rows=(("<script>",),)))
 
-    body = pre_body(rendered)
-    assert "<script>" not in body
+    assert "<td>&lt;script&gt;</td>" in rendered
+    assert "<script>" not in rendered
+
+
+def test_markup_cells_keep_their_formatting():
+    rendered = panel(
+        "X", table=Table(rows=((markup("<code>/play</code>"), "start"),))
+    )
+
+    assert "<td><code>/play</code></td>" in rendered
+
+
+def test_one_refusal_switches_rendering_for_every_later_panel():
+    from agent.ui import tables
+
+    assert tables.rich_enabled() is True
+    rendered = panel("X", table=Table(rows=(("a",),)))
+    assert "<table" in rendered
+
+    tables.set_rich(False)
+    try:
+        assert "<pre>" in panel("X", table=Table(rows=(("a",),)))
+        assert "<table" not in panel("X", table=Table(rows=(("a",),)))
+    finally:
+        tables.set_rich(True)
+
+
+def test_classic_block_is_still_the_aligned_grid():
+    table = Table(headers=("Slug", "State"), rows=(("ops", "on"), ("group", "off")))
+
+    lines = pre_body(table.classic_block()).splitlines()
+
+    assert lines[0].startswith("\u250c")
+    assert len({text_width(line) for line in lines}) == 1

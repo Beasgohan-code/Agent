@@ -25,6 +25,7 @@ from ..platform.logbook import tag_for
 from ..platform.manifest import PluginManifest
 from ..ui.screens import format_uptime
 from ..ui.tables import Table, kv_table, panel
+from ..utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -126,13 +127,13 @@ def build(ctx):
 
     async def _owner_gate(message) -> bool:
         if ctx.settings.owner_id is None:
-            await message.reply(
+            await reply(message, 
                 "No owner is configured. Set <code>OWNER_ID</code> and restart to "
                 "enable this command."
             )
             return False
         if not _is_owner(message):
-            await message.reply(OWNER_ONLY)
+            await reply(message, OWNER_ONLY)
             return False
         return True
 
@@ -145,7 +146,7 @@ def build(ctx):
         force = "force" in args
         active = ctx.jobs.active() if ctx.jobs is not None else []
         if active and not force:
-            await message.reply(
+            await reply(message, 
                 f"{len(active)} job(s) are still running. "
                 "Use <code>/restart force</code> to stop them, or wait and retry."
             )
@@ -154,7 +155,7 @@ def build(ctx):
         if events is not None:
             events.emit("restart", by=getattr(message.from_user, "id", None), reason=reason)
         started = runtime.request_restart(reason) if runtime is not None else False
-        await message.reply(
+        await reply(message, 
             "Restarting now.\n"
             "The process stops so its supervisor can start it again — on Render or "
             "Docker that is automatic. Run outside a supervisor and the bot simply "
@@ -186,7 +187,7 @@ def build(ctx):
                 lines.append(f"Stored files older than 7 days: {pruned}")
             if events is not None:
                 events.emit("watchdog", mode=mode, removed=removed, freed=freed)
-            await message.reply("\n".join(lines))
+            await reply(message, "\n".join(lines))
             return
 
         rows: list[tuple[str, str]] = []
@@ -211,7 +212,7 @@ def build(ctx):
         if runtime is not None:
             disabled = [row["slug"] for row in runtime.state() if not row["enabled"]]
             rows.append(("Plugins disabled", ", ".join(disabled) or "none"))
-        await message.reply(
+        await reply(message, 
             panel(
                 "Watchdog",
                 icon=ctx.theme.emoji("bolt"),
@@ -231,7 +232,7 @@ def build(ctx):
         if not await _owner_gate(message):
             return
         if runtime is None:  # pragma: no cover - always wired
-            await message.reply("Plugin runtime is unavailable.")
+            await reply(message, "Plugin runtime is unavailable.")
             return
         state = runtime.state()
         # Three columns only: a fourth would squeeze every cell to an ellipsis on
@@ -247,7 +248,7 @@ def build(ctx):
             for row in state
         )
         enabled = sum(1 for row in state if row["enabled"])
-        await message.reply(
+        await reply(message, 
             panel(
                 "Plugin runtime",
                 icon=ctx.theme.emoji("gear"),
@@ -272,20 +273,20 @@ def build(ctx):
         if not await _owner_gate(message):
             return
         if runtime is None:  # pragma: no cover
-            await message.reply("Plugin runtime is unavailable.")
+            await reply(message, "Plugin runtime is unavailable.")
             return
         args = _args(message)[1:]
         if not args:
-            await message.reply("Usage: <code>/plugin &lt;slug&gt; on|off</code>")
+            await reply(message, "Usage: <code>/plugin &lt;slug&gt; on|off</code>")
             return
         slug = args[0].lower()
         action = args[1].lower() if len(args) > 1 else ""
         known = {row["slug"] for row in runtime.state()}
         if slug not in known:
-            await message.reply(f"No plugin named <code>{slug}</code>.")
+            await reply(message, f"No plugin named <code>{slug}</code>.")
             return
         if action not in ("on", "off"):
-            await message.reply("Usage: <code>/plugin &lt;slug&gt; on|off</code>")
+            await reply(message, "Usage: <code>/plugin &lt;slug&gt; on|off</code>")
             return
         if action == "on":
             changed = runtime.enable(slug)
@@ -293,16 +294,16 @@ def build(ctx):
             try:
                 changed = runtime.disable(slug)
             except ValueError as exc:
-                await message.reply(str(exc))
+                await reply(message, str(exc))
                 return
         if not changed:
-            await message.reply(f"<code>{slug}</code> was already {action if action == 'on' else 'off'}.")
+            await reply(message, f"<code>{slug}</code> was already {action if action == 'on' else 'off'}.")
             return
         if events is not None:
             events.emit(
                 "plugin", slug=slug, action=action, by=getattr(message.from_user, "id", None)
             )
-        await message.reply(
+        await reply(message, 
             f"Plugin <code>{slug}</code> is now {'enabled' if action == 'on' else 'disabled'}."
             + (
                 ""
@@ -317,11 +318,11 @@ def build(ctx):
         if not await _owner_gate(message):
             return
         if events is None:  # pragma: no cover
-            await message.reply("No event log in this runtime.")
+            await reply(message, "No event log in this runtime.")
             return
         recent = events.recent(10)
         if not recent:
-            await message.reply("<b>Events</b>\nNothing recorded yet.")
+            await reply(message, "<b>Events</b>\nNothing recorded yet.")
             return
         rows = []
         for event in recent:
@@ -330,7 +331,7 @@ def build(ctx):
                 f"{key}={value}" for key, value in event.items() if key not in ("kind", "at")
             )
             rows.append((stamp, event["kind"], fields or "-"))
-        await message.reply(
+        await reply(message, 
             panel(
                 "Events",
                 icon=ctx.theme.emoji("stats"),
@@ -352,11 +353,11 @@ def build(ctx):
             return
         logbook = getattr(ctx, "logbook", None)
         if logbook is None:  # pragma: no cover - always wired
-            await message.reply("No log channel support in this runtime.")
+            await reply(message, "No log channel support in this runtime.")
             return
         args = _args(message)[1:]
         if not args:
-            await message.reply(
+            await reply(message, 
                 "Usage: <code>/setlog &lt;channel id&gt;</code> or "
                 "<code>/setlog here</code> (run it in the channel)."
             )
@@ -368,14 +369,14 @@ def build(ctx):
                 ChatType.CHANNEL,
                 ChatType.SUPERGROUP,
             ):
-                await message.reply("Run <code>/setlog here</code> inside the channel or group.")
+                await reply(message, "Run <code>/setlog here</code> inside the channel or group.")
                 return
             target = int(chat.id)
         else:
             try:
                 target = int(raw)
             except ValueError:
-                await message.reply("That is not a channel id.")
+                await reply(message, "That is not a channel id.")
                 return
 
         # Verify the bot can actually reach it before claiming it is set.
@@ -383,14 +384,14 @@ def build(ctx):
             chat = await client.get_chat(target)
             title = getattr(chat, "title", None) or str(target)
         except Exception as exc:  # noqa: BLE001 - reported to the owner
-            await message.reply(
+            await reply(message, 
                 f"I cannot reach <code>{target}</code> ({type(exc).__name__}). "
                 "Add me to that channel as an admin, then try again."
             )
             return
 
         logbook.set_channel(target)
-        await message.reply(f"Log channel set to <b>{title}</b> (<code>{target}</code>).")
+        await reply(message, f"Log channel set to <b>{title}</b> (<code>{target}</code>).")
 
     async def unsetlog(_client, message):
         if not await _owner_gate(message):
@@ -400,7 +401,7 @@ def build(ctx):
             return
         logbook.set_channel(None)
         fallback = "your DM" if logbook.owner_id else "nowhere — set OWNER_ID or LOG_CHANNEL"
-        await message.reply(f"Log channel cleared. Events now go to {fallback}.")
+        await reply(message, f"Log channel cleared. Events now go to {fallback}.")
 
     async def log(client, message):
         if not await _owner_gate(message):
@@ -426,7 +427,7 @@ def build(ctx):
                 lines.extend(f"#{tag_for(item['kind'])}" for item in recent)
         lines.append("")
         lines.append("Set one with <code>/setlog &lt;channel id&gt;</code>.")
-        await message.reply("\n".join(lines))
+        await reply(message, "\n".join(lines))
 
     return MANIFEST, {
         "restart": restart,

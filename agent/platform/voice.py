@@ -1,0 +1,226 @@
+"""Agent — voice-chat streaming, on real libraries.
+
+The player is built on three packages whose APIs were read from the installed
+wheels, not guessed:
+
+* ``telethon`` — the MTProto client that actually joins the group call. It is a
+  **second, separate** client (a user session string), because a bot token
+  cannot join a voice chat on its own. Commands keep coming through wzgram; only
+  audio goes through this one.
+* ``py-tgcalls`` — the bridge that joins a call and streams into it.
+* ``ntgcalls`` — the native engine py-tgcalls drives.
+
+Why Telethon and not pyrogram: py-tgcalls 3.0's pyrogram adapter imports
+``pyrogrammod`` (``GroupcallForbidden`` and friends), which this project does not
+install — wzgram owns the ``pyrogram`` package. Telethon is a separate package,
+so nothing is overwritten and both clients can live in one process.
+
+Everything here is optional. Without ``SESSION_STRING`` the capability check
+fails, :class:`VoiceEngine` is never constructed, and the music module registers
+no commands at all rather than offering buttons that cannot work.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import logging
+import time
+from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
+
+#: How long a stop may take before the process continues anyway.
+STOP_TIMEOUT = 10.0
+
+
+class VoiceUnavailable(RuntimeError):
+    """Raised when the voice engine cannot run in this deployment."""
+
+
+@dataclass
+class Playback:
+    """What the engine believes it is playing in one chat."""
+
+    title: str
+    source: str
+    requested_by: int | None = None
+    started_at: float = field(default_factory=time.time)
+    paused_at: float | None = None
+    paused_total: float = 0.0
+
+    @property
+    def elapsed(self) -> float:
+        end = self.paused_at if self.paused_at is not None else time.time()
+        return max(0.0, end - self.started_at - self.paused_total)
+
+    @property
+    def paused(self) -> bool:
+        return self.paused_at is not None
+
+
+def capability(session_string: str | None) -> tuple[bool, str]:
+    """Can this deployment stream into a voice chat? (ok, reason)."""
+    if not session_string:
+        return False, "SESSION_STRING is not set, so no user session can join a call"
+    missing = [
+        name
+        for name in ("ntgcalls", "pytgcalls", "telethon")
+        if importlib.util.find_spec(name) is None
+    ]
+    if missing:  # pragma: no cover - exercised by packaging tests
+        return False, f"voice-chat dependencies are missing ({', '.join(missing)})"
+    return True, ""
+
+
+class VoiceEngine:
+    """Thin, honest wrapper around ``py-tgcalls``.
+
+    The wrapper exists for two reasons: the library is imported only when a
+    session exists, and every failure is reported with the exception type instead
+    of being swallowed into a silent "nothing is playing".
+    """
+
+    def __init__(
+        self,
+        *,
+        session_string: str,
+        api_id: int,
+        api_hash: str,
+        on_stream_end=None,
+    ) -> None:
+        self._session_string = session_string
+        self._api_id = api_id
+        self._api_hash = api_hash
+        self._on_stream_end = on_stream_end
+        self._client = None
+        self._call = None
+        self._connected = False
+        self.playbacks: dict[int, Playback] = {}
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
+    def set_stream_end_handler(self, handler) -> None:
+        """Install the callback fired when a stream finishes on its own."""
+        self._on_stream_end = handler
+
+    async def start(self) -> None:
+        """Build both clients and start streaming support."""
+        if self._connected:
+            return
+        try:
+            from pytgcalls import PyTgCalls
+            from pytgcalls import filters as vc_filters
+            from pytgcalls.types import StreamEnded
+            from telethon import TelegramClient
+            from telethon.sessions import StringSession
+        except ImportError as exc:  # pragma: no cover - packaging guard
+            raise VoiceUnavailable(f"voice-chat dependencies missing: {exc.name}") from exc
+
+        client = TelegramClient(
+            StringSession(self._session_string),
+            self._api_id,
+            self._api_hash,
+            # Quiet: the library logs every raw update at INFO by default.
+            sequential_updates=True,
+        )
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            raise VoiceUnavailable(
+                "the session string is not authorised; generate a new one with "
+                "the documented script"
+            )
+        call = PyTgCalls(client)
+
+        ended = StreamEnded.Type.AUDIO
+
+        @call.on_update(vc_filters.stream_end(ended))
+        async def _ended(_client, update):  # noqa: ANN001 - library handler shape
+            # Read at call time: the module installs its handler after start().
+            if self._on_stream_end is None:
+                return
+            try:
+                await self._on_stream_end(int(update.chat_id))
+            except Exception:  # noqa: BLE001 - a handler must not kill the engine
+                logger.exception("stream-end handler failed")
+
+        await call.start()
+        self._client = client
+        self._call = call
+        self._connected = True
+        logger.info("Voice chat engine connected (telethon + py-tgcalls)")
+
+    async def stop(self) -> None:
+        self._connected = False
+        call, client = self._call, self._client
+        self._call = None
+        self._client = None
+        self.playbacks.clear()
+        if call is not None:
+            try:
+                await call.stop()
+            except Exception:  # noqa: BLE001 - shutdown keeps going
+                logger.debug("py-tgcalls stop failed", exc_info=True)
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception:  # noqa: BLE001
+                logger.debug("telethon disconnect failed", exc_info=True)
+
+    def _require(self):
+        if not self._connected or self._call is None:
+            raise VoiceUnavailable("the voice engine is not running")
+        return self._call
+
+    async def play(self, chat_id: int, source: str, *, title: str, requested_by: int | None = None) -> None:
+        """Join the call in *chat_id* if needed and start streaming *source*."""
+        call = self._require()
+        try:
+            await call.play(int(chat_id), source)
+        except Exception as exc:  # noqa: BLE001 - the command reports the reason
+            logger.exception("play failed in chat %s", chat_id)
+            raise VoiceUnavailable(f"{type(exc).__name__}: {exc}") from exc
+        self.playbacks[int(chat_id)] = Playback(
+            title=title, source=source, requested_by=requested_by
+        )
+
+    async def pause(self, chat_id: int) -> None:
+        call = self._require()
+        await call.pause(int(chat_id))
+        playback = self.playbacks.get(int(chat_id))
+        if playback is not None and playback.paused_at is None:
+            playback.paused_at = time.time()
+
+    async def resume(self, chat_id: int) -> None:
+        call = self._require()
+        await call.resume(int(chat_id))
+        playback = self.playbacks.get(int(chat_id))
+        if playback is not None and playback.paused_at is not None:
+            playback.paused_total += time.time() - playback.paused_at
+            playback.paused_at = None
+
+    async def leave(self, chat_id: int) -> None:
+        call = self._require()
+        try:
+            await call.leave_call(int(chat_id))
+        finally:
+            self.playbacks.pop(int(chat_id), None)
+
+    async def volume(self, chat_id: int, volume: int) -> None:
+        call = self._require()
+        await call.change_volume_call(int(chat_id), max(1, min(200, int(volume))))
+
+    def playback(self, chat_id: int) -> Playback | None:
+        return self.playbacks.get(int(chat_id))
+
+    async def shutdown(self) -> None:
+        """Stop without letting a wedged library hold the process open."""
+        if not self._connected:
+            return
+        try:
+            await asyncio.wait_for(self.stop(), timeout=STOP_TIMEOUT)
+        except Exception:  # noqa: BLE001 - shutdown continues regardless
+            logger.warning("voice engine did not stop cleanly", exc_info=True)

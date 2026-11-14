@@ -40,6 +40,7 @@ from .moderation import (
     target_is_protected,
     warn_policy,
 )
+from ..utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +93,12 @@ def build(ctx):
     async def _guard(client, message, need: str | None = None) -> bool:
         if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
             return True
-        await message.reply(DENIED)
+        await reply(message, DENIED)
         return False
 
     async def _protected(client, message, target_id: int) -> bool:
         if await target_is_protected(client, message.chat.id, target_id):
-            await message.reply("I cannot act on an administrator.")
+            await reply(message, "I cannot act on an administrator.")
             return True
         return False
 
@@ -142,7 +143,7 @@ def build(ctx):
                 ("Log channel", str(log_channel or "not set")),
             ]
         )
-        await message.reply(
+        await reply(message, 
             panel(
                 "Group settings",
                 icon=ctx.theme.emoji("gear"),
@@ -164,7 +165,7 @@ def build(ctx):
         text = (ctx.chats.get(chat_id, "rules", "") or "").strip()
         title = getattr(message.chat, "title", None) or "This group"
         if not text:
-            await message.reply(
+            await reply(message, 
                 panel(
                     "Rules",
                     icon=ctx.theme.emoji("shield"),
@@ -173,7 +174,7 @@ def build(ctx):
                 )
             )
             return
-        await message.reply(
+        await reply(message, 
             panel(
                 "Rules",
                 icon=ctx.theme.emoji("shield"),
@@ -193,7 +194,7 @@ def build(ctx):
             replied = getattr(message, "reply_to_message", None)
             body = (getattr(replied, "text", "") or "").strip() if replied else ""
         if not body:
-            await message.reply(
+            await reply(message, 
                 "Usage: <code>/setrules &lt;text&gt;</code>, or reply to a message with "
                 "<code>/setrules</code>. Use <code>/setrules clear</code> to remove them."
             )
@@ -201,10 +202,10 @@ def build(ctx):
         if body.lower() == "clear":
             ctx.chats.put(chat_id, "rules", "")
             ctx.chats.log(chat_id, "rules:clear", actor_id=message.from_user.id)
-            await message.reply("Group rules cleared.")
+            await reply(message, "Group rules cleared.")
             return
         if len(body) > MAX_RULES:
-            await message.reply(
+            await reply(message, 
                 f"Those rules are too long: {len(body)} characters, the limit is {MAX_RULES}."
             )
             return
@@ -212,7 +213,7 @@ def build(ctx):
         ctx.chats.log(
             chat_id, "rules:set", actor_id=message.from_user.id, reason=f"{len(body)} chars"
         )
-        await message.reply(
+        await reply(message, 
             f"Group rules saved ({len(body)} characters). Members can read them with <code>/rules</code>."
         )
 
@@ -223,7 +224,7 @@ def build(ctx):
             return
         replied = getattr(message, "reply_to_message", None)
         if replied is None:
-            await message.reply("Reply to the message you want pinned with <code>/pin</code>.")
+            await reply(message, "Reply to the message you want pinned with <code>/pin</code>.")
             return
         silent = "silent" in [a.lower() for a in _args(message)[1:]]
         try:
@@ -235,13 +236,13 @@ def build(ctx):
             )
         except Exception as exc:  # noqa: BLE001 - Telegram's refusal reaches the user
             logger.exception("pin failed")
-            await message.reply(f"Could not pin: {type(exc).__name__}. Check my pin rights.")
+            await reply(message, f"Could not pin: {type(exc).__name__}. Check my pin rights.")
             return
         ctx.chats.log(
             message.chat.id, "pin", actor_id=message.from_user.id,
             reason=f"message {replied.id}",
         )
-        await message.reply(
+        await reply(message, 
             "Message pinned." + (" No notification was sent." if silent else "")
         )
 
@@ -253,7 +254,7 @@ def build(ctx):
             if args and args[0] == "all":
                 await client.unpin_all_chat_messages(message.chat.id)
                 ctx.chats.log(message.chat.id, "unpin:all", actor_id=message.from_user.id)
-                await message.reply("All pinned messages were unpinned.")
+                await reply(message, "All pinned messages were unpinned.")
                 return
             replied = getattr(message, "reply_to_message", None)
             await client.unpin_chat_message(
@@ -261,10 +262,10 @@ def build(ctx):
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("unpin failed")
-            await message.reply(f"Could not unpin: {type(exc).__name__}. Check my pin rights.")
+            await reply(message, f"Could not unpin: {type(exc).__name__}. Check my pin rights.")
             return
         ctx.chats.log(message.chat.id, "unpin", actor_id=message.from_user.id)
-        await message.reply("Message unpinned.")
+        await reply(message, "Message unpinned.")
 
     # -- /admins -----------------------------------------------------------
 
@@ -297,13 +298,13 @@ def build(ctx):
                 rows.append((role, name, str(user.id)))
         except Exception as exc:  # noqa: BLE001 - honest failure, not an empty list
             logger.exception("could not list administrators")
-            await message.reply(
+            await reply(message, 
                 f"Could not read the administrator list: {type(exc).__name__}. "
                 "I need to be an administrator to see it."
             )
             return
         if not rows:
-            await message.reply("No administrators were returned for this group.")
+            await reply(message, "No administrators were returned for this group.")
             return
         table = Table(
             headers=("Role", "Name", "ID"),
@@ -311,7 +312,7 @@ def build(ctx):
             aligns=("left", "left", "right"),
         )
         lines = [f"Plus {extra} more."] if extra else []
-        await message.reply(
+        await reply(message, 
             panel(
                 "Administrators",
                 icon=ctx.theme.emoji("shield"),
@@ -334,13 +335,13 @@ def build(ctx):
             elif args[0].isdigit():
                 ctx.chats.put(chat_id, "warn_limit", max(1, min(20, int(args[0]))))
             else:
-                await message.reply(
+                await reply(message, 
                     "Usage: <code>/warnlimit 3 [mute|kick|ban]</code> or <code>/warnlimit off</code>"
                 )
                 return
             if len(args) > 1:
                 if args[1] not in WARN_ACTIONS:
-                    await message.reply(
+                    await reply(message, 
                         f"Unknown action <code>{args[1]}</code>. Use one of: "
                         + ", ".join(WARN_ACTIONS)
                         + "."
@@ -365,7 +366,7 @@ def build(ctx):
                 f"<b>{past}</b> automatically.\n"
                 "Change it with <code>/warnlimit &lt;n&gt; [mute|kick|ban]</code>."
             )
-        await message.reply(panel("Warn threshold", icon=ctx.theme.emoji("warn"), lines=[body]))
+        await reply(message, panel("Warn threshold", icon=ctx.theme.emoji("warn"), lines=[body]))
 
     # -- /resetwarns -------------------------------------------------------
 
@@ -374,20 +375,20 @@ def build(ctx):
             return
         target = parse_target(message)
         if target is None:
-            await message.reply("Reply to a member to clear all their warnings.")
+            await reply(message, "Reply to a member to clear all their warnings.")
             return
         target_id, mention = target
         if await _protected(client, message, target_id):
             return
         cleared = ctx.chats.clear_all_warnings(message.chat.id, target_id)
         if not cleared:
-            await message.reply(f"{mention} had no active warnings.")
+            await reply(message, f"{mention} had no active warnings.")
             return
         ctx.chats.log(
             message.chat.id, "resetwarns", actor_id=message.from_user.id,
             target_id=target_id, reason=f"{cleared} cleared",
         )
-        await message.reply(
+        await reply(message, 
             f"<b>Warnings cleared</b>\nMember: {mention}\nCleared: {cleared}"
         )
 
@@ -403,7 +404,7 @@ def build(ctx):
             await client.set_chat_permissions(message.chat.id, permissions)
         except Exception as exc:  # noqa: BLE001
             logger.exception("lockdown failed")
-            await message.reply(
+            await reply(message, 
                 f"Could not change group permissions: {type(exc).__name__}. "
                 "I need the restrict-members right."
             )
@@ -424,7 +425,7 @@ def build(ctx):
                 f"{ctx.theme.emoji('check')} <b>Lockdown lifted</b>\n"
                 "Members can send messages again."
             )
-        await message.reply(panel("Lockdown", icon=ctx.theme.emoji("lock"), lines=[body]))
+        await reply(message, panel("Lockdown", icon=ctx.theme.emoji("lock"), lines=[body]))
 
     return MANIFEST, {
         "settings": settings,

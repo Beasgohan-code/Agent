@@ -17,12 +17,14 @@ class CommandHandlers:
     """``/start``, ``/help`` and ``/ping``."""
 
     def __init__(self, sender: ScreenSender, theme: Theme, monitor=None, *,
-                 events=None, users=None) -> None:
+                 events=None, users=None, start_image: str | None = None) -> None:
         self._sender = sender
         self._theme = theme
         self._monitor = monitor
         self._events = events
         self._users = users
+        #: Picture above /start; a failure there falls back to the text screen.
+        self._start_image = start_image
 
     async def start(self, client, message) -> None:
         user_id = getattr(getattr(message, "from_user", None), "id", None)
@@ -36,7 +38,16 @@ class CommandHandlers:
                 uid=user_id,
                 username=getattr(message.from_user, "username", None),
             )
-        await self._show(client, message, welcome_screen(message.from_user, self._theme), "welcome")
+        await self._greet(client, message, welcome_screen(message.from_user, self._theme))
+
+    async def _greet(self, client, message, screen) -> None:
+        """``/start`` gets the picture; everything else gets plain text."""
+        chat_id = getattr(getattr(message, "chat", None), "id", None)
+        try:
+            await self._sender.send_photo(chat_id, screen, self._start_image)
+        except Exception:
+            logger.exception("Failed to deliver the welcome screen to chat %s", chat_id)
+            await self._notify_failure(client, chat_id)
 
     async def help(self, client, message) -> None:
         user_id = getattr(getattr(message, "from_user", None), "id", None)

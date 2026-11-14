@@ -18,6 +18,7 @@ import logging
 from ..platform.links import LinkError
 from ..platform.manifest import PluginManifest
 from ..ui.tables import Table, panel
+from ..utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def build(ctx):
         replied = getattr(message, "reply_to_message", None)
         media = replied and (getattr(replied, "document", None) or getattr(replied, "video", None))
         if not media:
-            await message.reply(
+            await reply(message, 
                 "Reply to a file with /genlink (optional TTL in hours: /genlink 48)."
             )
             return
@@ -47,7 +48,7 @@ def build(ctx):
         ttl_hours = None
         if len(parts) > 1:
             if not parts[1].isdigit():
-                await message.reply("TTL must be a whole number of hours.")
+                await reply(message, "TTL must be a whole number of hours.")
                 return
             ttl_hours = max(1, min(24 * 30, int(parts[1])))
 
@@ -57,14 +58,14 @@ def build(ctx):
             stored = ctx.storage.save_path(owner, source, name=media.file_name or "file.bin")
         except Exception as exc:  # noqa: BLE001 - quota and IO errors reach the user
             logger.exception("genlink failed")
-            await message.reply(
+            await reply(message, 
                 f"Could not store that file: {type(exc).__name__}: {html.escape(str(exc))}"
             )
             return
 
         record = ctx.links.create(stored.id, owner, ttl_hours=ttl_hours)
         hours = (record.expires_at - record.created_at) / 3600
-        await message.reply(
+        await reply(message, 
             f"<b>Link created</b>\n"
             f"file: <code>{stored.name}</code> ({stored.size} bytes)\n"
             f"expires in: {hours:.0f}h\n\n"
@@ -75,7 +76,7 @@ def build(ctx):
         owner = message.from_user.id
         records = ctx.links.owned(owner)
         if not records:
-            await message.reply("You have no links yet. Reply to a file with /genlink.")
+            await reply(message, "You have no links yet. Reply to a file with /genlink.")
             return
 
         rows = []
@@ -86,7 +87,7 @@ def build(ctx):
             rows.append((state, name, str(record.uses), f"{record.token[:16]}…"))
         more = len(records) - len(rows)
         lines = [f"Plus {more} older link(s) not shown."] if more > 0 else []
-        await message.reply(
+        await reply(message, 
             panel(
                 "Your links",
                 icon=ctx.theme.emoji("link"),
@@ -106,7 +107,7 @@ def build(ctx):
     async def revoke(_client, message):
         parts = (getattr(message, "text", "") or "").split(maxsplit=1)
         if len(parts) < 2:
-            await message.reply("Usage: /revoke &lt;token&gt;")
+            await reply(message, "Usage: /revoke &lt;token&gt;")
             return
         owner = message.from_user.id
         try:
@@ -115,14 +116,14 @@ def build(ctx):
             # A revoked token must still be revocable-by-owner idempotently;
             # anything else is a genuine failure.
             if str(exc) == "link revoked":
-                await message.reply("That link is already revoked.")
+                await reply(message, "That link is already revoked.")
             else:
-                await message.reply(f"Invalid link: {html.escape(str(exc))}")
+                await reply(message, f"Invalid link: {html.escape(str(exc))}")
             return
 
         if ctx.links.revoke(record.token, owner_id=owner):
-            await message.reply("Link revoked.")
+            await reply(message, "Link revoked.")
         else:
-            await message.reply("That link does not belong to you.")
+            await reply(message, "That link does not belong to you.")
 
     return MANIFEST, {"genlink": genlink, "links": links, "revoke": revoke}

@@ -16,10 +16,12 @@ STALE_OPTION = "That option is no longer available."
 class CallbackHandlers:
     """Routes inline keyboard presses to screens."""
 
-    def __init__(self, sender: ScreenSender, theme: Theme, monitor=None) -> None:
+    def __init__(self, sender: ScreenSender, theme: Theme, monitor=None, *, router=None) -> None:
         self._sender = sender
         self._theme = theme
         self._monitor = monitor
+        #: Modules own their own prefixes; the UI owns the menu screens.
+        self._router = router
 
     async def on_callback(self, client, callback_query) -> None:
         data = callback_query.data or ""
@@ -27,6 +29,14 @@ class CallbackHandlers:
         if self._monitor is not None:
             self._monitor.record_activity("callback")
         logger.info("Callback %r from user %s", data, getattr(user, "id", None))
+
+        if self._router is not None and self._router.handles(data):
+            # Answer first: the handler below may answer with its own text.
+            if self._monitor is not None:
+                self._monitor.record_activity("callback")
+            dispatched = await self._router.dispatch(client, callback_query)
+            if dispatched:
+                return
 
         builder = SCREENS.get(data)
         if builder is None:

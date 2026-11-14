@@ -17,6 +17,7 @@ from pyrogram.handlers import MessageHandler
 
 from ..platform.manifest import PluginManifest
 from ..ui.tables import Table, panel
+from ..utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +52,12 @@ def watch(ctx):
             text = getattr(message, "text", "") or ""
             if not text or text.startswith("/"):
                 return
-            reply = ctx.chats.match_filter(message.chat.id, text)
-            if reply is None:
+            matched = ctx.chats.match_filter(message.chat.id, text)
+            if matched is None:
                 return
             # Escaped on the way out: replies are sent with HTML parsing on, so an
             # unescaped tag would be injected into the group (or rejected).
-            await message.reply(html.escape(reply))
+            await reply(message, html.escape(matched))
         except Exception:  # noqa: BLE001 - watchers must never break the client
             logger.exception("filter watcher failed")
 
@@ -71,7 +72,7 @@ def build(ctx):
     async def _guard(client, message) -> bool:
         if await _is_manager(client, message, ctx.settings.owner_id):
             return True
-        await message.reply("Only chat administrators can manage filters.")
+        await reply(message, "Only chat administrators can manage filters.")
         return False
 
     async def add(client, message):
@@ -81,23 +82,23 @@ def build(ctx):
         name = " ".join(args[1:2]).strip().lower()
         body = " ".join(args[2:]).strip()
         if not name or not body:
-            await message.reply(
+            await reply(message, 
                 "Usage: <code>/filter name reply text</code>\n"
                 "Anyone saying the name in this group gets the reply."
             )
             return
         if len(name) > MAX_FILTER_NAME:
-            await message.reply(f"Filter names are limited to {MAX_FILTER_NAME} characters.")
+            await reply(message, f"Filter names are limited to {MAX_FILTER_NAME} characters.")
             return
         ctx.chats.set_filter(message.chat.id, name, body, by=message.from_user.id)
-        await message.reply(f"Filter <code>{html.escape(name)}</code> saved.")
+        await reply(message, f"Filter <code>{html.escape(name)}</code> saved.")
 
     async def listing(client, message):
         if not await _guard(client, message):
             return
         stored = ctx.chats.filters(message.chat.id)
         if not stored:
-            await message.reply("This group has no filters yet.")
+            await reply(message, "This group has no filters yet.")
             return
         table = Table(
             headers=("Trigger", "Reply"),
@@ -105,7 +106,7 @@ def build(ctx):
                 (name, reply) for name, reply in sorted(stored.items())
             ),
         )
-        await message.reply(
+        await reply(message, 
             panel(
                 "Filters",
                 icon=ctx.theme.emoji("search"),
@@ -125,11 +126,11 @@ def build(ctx):
         args = _args(message)
         name = " ".join(args[1:2]).strip().lower()
         if not name:
-            await message.reply("Usage: <code>/stopfilter name</code>")
+            await reply(message, "Usage: <code>/stopfilter name</code>")
             return
         if not ctx.chats.remove_filter(message.chat.id, name):
-            await message.reply(f"No filter named <code>{html.escape(name)}</code>.")
+            await reply(message, f"No filter named <code>{html.escape(name)}</code>.")
             return
-        await message.reply(f"Filter <code>{html.escape(name)}</code> removed.")
+        await reply(message, f"Filter <code>{html.escape(name)}</code> removed.")
 
     return MANIFEST, {"filter": add, "filters": listing, "stopfilter": stop}

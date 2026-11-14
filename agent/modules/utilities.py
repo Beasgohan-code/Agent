@@ -14,6 +14,7 @@ import time
 from datetime import datetime, timezone
 
 from ..platform.manifest import PluginManifest
+from ..utils.rich import reply
 
 MANIFEST = PluginManifest(
     slug="utilities",
@@ -46,12 +47,12 @@ def build(ctx):
         thread_id = getattr(message, "message_thread_id", None)
         if thread_id:
             lines.append(f"Topic id: <code>{thread_id}</code>")
-        await message.reply("\n".join(lines))
+        await reply(message, "\n".join(lines))
 
     async def show_info(client, message):
         target = _replied(message) or getattr(message, "from_user", None)
         if target is None:
-            await message.reply("Reply to a member, or run this in a chat where I can see you.")
+            await reply(message, "Reply to a member, or run this in a chat where I can see you.")
             return
         name = " ".join(
             part
@@ -85,12 +86,12 @@ def build(ctx):
                 lines.append(f"Warnings: {warnings}")
             if ctx.chats.is_trusted(message.chat.id, target.id):
                 lines.append("Trusted: yes")
-        await message.reply("\n".join(lines))
+        await reply(message, "\n".join(lines))
 
     async def show_time(_client, message):
         now = datetime.now(timezone.utc)
         local = time.localtime()
-        await message.reply(
+        await reply(message, 
             "<b>Time</b>\n"
             f"UTC: <code>{now:%Y-%m-%d %H:%M:%S}</code>\n"
             f"Server: <code>{time.strftime('%Y-%m-%d %H:%M:%S', local)}</code> ({time.tzname[0]})"

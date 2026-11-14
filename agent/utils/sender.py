@@ -24,6 +24,13 @@ from ..ui.theme import Theme, strip_custom_emoji
 
 logger = logging.getLogger(__name__)
 
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _visible_text(html_text: str) -> str:
+    """What the user actually sees, for Telegram's length limits."""
+    return _TAG_RE.sub("", html_text or "")
+
 
 #: Blocks whose inner whitespace is significant. richgram's normaliser collapses
 #: runs of spaces for chat text, which is right for prose and fatal for a table
@@ -73,6 +80,31 @@ class ScreenSender:
             logger.warning("Custom emoji rejected (%s); retrying with unicode.", exc)
             self._theme.disable_custom_emoji()
             return await self._post(chat_id, strip_custom_emoji(text), screen.keyboard)
+
+    async def send_photo(self, chat_id, screen: Screen, photo: str | None, *, caption_limit: int = 1024):
+        """Send a screen as the caption of *photo*, falling back to plain text.
+
+        Telegram caps captions at 1024 characters, and a picture that cannot be
+        fetched must never cost the user the screen — both cases fall back to
+        :meth:`send` instead of raising.
+        """
+        text = to_safe_html(screen.rich_text)
+        if not photo:
+            return await self.send(chat_id, screen)
+        if len(_visible_text(text)) > caption_limit:
+            logger.info("Screen is longer than a caption; sending it as text.")
+            return await self.send(chat_id, screen)
+        try:
+            return await self._client.send_photo(
+                chat_id=chat_id,
+                photo=photo,
+                caption=text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=screen.keyboard,
+            )
+        except Exception as exc:  # noqa: BLE001 - the picture is decoration
+            logger.warning("Start image failed (%s); sending text instead.", exc)
+            return await self.send(chat_id, screen)
 
     async def edit(self, callback_query, screen: Screen) -> bool:
         """Edit the message a callback query points at."""

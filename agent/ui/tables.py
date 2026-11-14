@@ -1,22 +1,31 @@
-"""Agent — monospace tables for Telegram messages.
+"""Agent — tables for Telegram, native when the client supports them.
 
-Standard Telegram HTML has no table element, so a table that actually lines up
-has to be monospace text inside ``<pre>``. That is what this module builds: the
-caller passes plain cells, the renderer pads them to a shared width and draws
-box-drawn borders.
+Telegram Bot API 10.3 introduced *rich messages*: real ``<table>``, ``<h1>``-``<h6>``,
+``<details>`` and friends. wzgram ships ``send_rich_message``, so a table here is a
+real table — columns, borders and all — instead of ASCII art.
 
-Two consequences are baked in rather than left to chance:
+Two paths, one API:
 
-* **Cells are escaped, never formatted.** Telegram does not parse nested tags
-  inside ``<pre>``, so a cell that arrives with ``<b>`` in it would be shown
-  literally. Tags are stripped and the text re-escaped.
-* **Width is display width, not ``len()``.** East-Asian characters and emoji
-  occupy two columns in a monospace font; counting them as one is what makes
-  hand-written tables drift out of alignment.
+* :meth:`Table.rich_block` is the native ``<table>`` markup used when a rich
+  message can be delivered;
+* :meth:`Table.render` / :meth:`Table.block` keep the monospace ``<pre>`` grid,
+  which is what a deployment without rich support falls back to (and what the
+  edit path still uses, because Telegram has no way to *edit* a rich message).
 
-Custom emoji are deliberately not used inside tables for the same reason: their
-rendered width is the client's choice, so a premium glyph in a cell would break
-the grid. Premium glyphs belong in headings, notes and footers, which
+:func:`set_rich` flips the default for everything rendered afterwards; the
+sender calls it when Telegram rejects a rich message, so one rejection turns the
+whole UI back into the monospace grid instead of failing message by message.
+
+Cell rules:
+
+* a plain string cell is **escaped** before it goes into ``<td>``;
+* :func:`markup` marks a cell that is already HTML (a ``<code>`` hint, a bold
+  label) and passes it through untouched;
+* the monospace fallback strips tags instead, because Telegram does not parse
+  nested tags inside ``<pre>``.
+
+Custom emoji are deliberately not used inside cells: their rendered width is the
+client's choice. Premium glyphs belong in headings, notes and footers, which
 :func:`panel` handles.
 """
 
@@ -28,7 +37,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
-from richgram import rich_footer, rich_heading, rich_hr, rich_note
+from richgram import rich_footer, rich_heading, rich_hr, rich_note, rich_table
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _ZERO_WIDTH = {"\u200b", "\u200c", "\u200d", "\u200e", "\u200f", "\ufeff", "\u00ad"}
@@ -43,6 +52,46 @@ BOX = {
 
 STYLES = ("box", "plain")
 ALIGNMENTS = ("left", "right", "center")
+
+#: Whether new panels are rendered as native rich tables. Flipped off for good by
+#: :func:`set_rich` when Telegram refuses a rich message.
+_RICH = True
+
+
+def rich_enabled() -> bool:
+    return _RICH
+
+
+def set_rich(enabled: bool) -> None:
+    """Choose the rendering used from now on (called by the sender on failure)."""
+    global _RICH
+    _RICH = bool(enabled)
+
+
+class Markup(str):
+    """A cell value that is already HTML and must not be escaped."""
+
+
+def markup(value: object) -> Markup:
+    """Mark a cell as HTML, e.g. ``markup(f"<code>{escaped}</code>")``."""
+    return Markup("" if value is None else str(value))
+
+
+class Panel(str):
+    """A rendered panel that knows how to degrade.
+
+    The string value is the rich form; ``classic`` is the same content as HTML
+    Telegram has always accepted. :mod:`agent.utils.rich` picks between them, so
+    a deployment without rich messages still gets a properly drawn table instead
+    of a flattened one.
+    """
+
+    classic: str
+
+    def __new__(cls, rich: str, classic: str) -> "Panel":
+        panel = super().__new__(cls, rich)
+        panel.classic = classic
+        return panel
 
 
 def plain(text: object) -> str:
@@ -131,8 +180,10 @@ class Table:
             [len(self.headers)] + [len(row) for row in self.rows] or [0]
         )
 
-    def _cells(self, row: Sequence[object]) -> list[str]:
-        cells = ["" if cell is None else str(cell) for cell in row]
+    def _cells(self, row: Sequence[object]) -> list[object]:
+        # Objects, not strings: a Markup cell has to keep its type through
+        # padding so the native renderer can tell HTML from text.
+        cells = ["" if cell is None else cell for cell in row]
         while len(cells) < self.columns:
             cells.append("")
         return cells[: self.columns]
@@ -201,17 +252,70 @@ class Table:
             lines.append(self._rule(widths, BOX["bl"], BOX["bm"], BOX["br"]))
         return "\n".join(lines)
 
-    def block(self) -> str:
-        """The table as Telegram-safe ``<pre>`` markup."""
+    def classic_block(self) -> str:
+        """The table as Telegram-safe ``<pre>`` markup (the fallback grid)."""
         body = self.render()
         if not body:
             return ""
         return f"<pre>{html.escape(body, quote=False)}</pre>"
 
+    def _cell_html(self, cell: object) -> str:
+        if isinstance(cell, Markup):
+            return str(cell)
+        return html.escape("" if cell is None else str(cell), quote=False)
+
+    def rich_block(self) -> str:
+        """The table as a native rich-message ``<table>``."""
+        if not self.columns:
+            return ""
+        headers = [self._cell_html(cell) for cell in self._cells(self.headers)] if self.headers else None
+        rows = [
+            tuple(self._cell_html(cell) for cell in self._cells(row))
+            for row in self.rows
+        ]
+        return rich_table(headers, rows, border=1)
+
+    def block(self) -> str:
+        """The table in whichever form this deployment can deliver."""
+        return self.rich_block() if rich_enabled() else self.classic_block()
+
 
 def kv_table(pairs: Iterable[tuple[object, object]], **kwargs) -> Table:
     """Two-column label/value table."""
     return Table(rows=tuple((label, value) for label, value in pairs), **kwargs)
+
+
+def _compose(
+    heading: str,
+    subtitle: str | None,
+    table: Table | None,
+    lines: Sequence[str],
+    note: str | None,
+    footer: str | None,
+    *,
+    rich: bool,
+) -> str:
+    parts: list[str] = [rich_heading(heading, 2)]
+    if subtitle:
+        parts.append(subtitle)
+    if table is not None:
+        block = table.rich_block() if rich else table.classic_block()
+        if block:
+            parts.append(block)
+    parts.extend(lines)
+    if note:
+        parts.append(rich_note(note))
+    if footer:
+        parts.append(rich_hr())
+        parts.append(rich_footer(footer))
+    body = "\n".join(part for part in parts if part)
+    if rich:
+        return body
+    # Classic path: rich_caption turns the heading/note/footer into the tags
+    # Telegram has always accepted, and the <pre> table passes through intact.
+    from ..utils.sender import to_safe_html
+
+    return to_safe_html(body)
 
 
 def panel(
@@ -223,28 +327,18 @@ def panel(
     lines: Sequence[str] = (),
     note: str | None = None,
     footer: str | None = None,
-) -> str:
-    """Compose a title, table and closing lines into standard Telegram HTML.
+) -> Panel:
+    """Compose a heading, a table and closing lines into one message body.
 
-    The result is ready for ``message.reply``: the rich-only blocks (headings,
-    rules, footers) are normalised into tags Telegram accepts while the ``<pre>``
-    table is passed through with its whitespace intact.
+    Returns a :class:`Panel`: rich by default (a native ``<h2>`` over a native
+    ``<table>``) with the monospace form kept as ``.classic`` for a client that
+    cannot send rich messages.
     """
-    # Imported lazily: agent.utils.sender pulls in the screen layer, which in
-    # turn uses Table for its key/value panels.
-    from ..utils.sender import to_safe_html
-
-    parts: list[str] = [rich_heading(f"{icon} {title}".strip(), 2)]
-    if subtitle:
-        parts.append(subtitle)
-    if table is not None:
-        block = table.block()
-        if block:
-            parts.append(block)
-    parts.extend(lines)
-    if note:
-        parts.append(rich_note(note))
-    if footer:
-        parts.append(rich_hr())
-        parts.append(rich_footer(footer))
-    return to_safe_html("\n".join(part for part in parts if part))
+    heading = f"{icon} {title}".strip()
+    if rich_enabled():
+        return Panel(
+            _compose(heading, subtitle, table, lines, note, footer, rich=True),
+            _compose(heading, subtitle, table, lines, note, footer, rich=False),
+        )
+    classic = _compose(heading, subtitle, table, lines, note, footer, rich=False)
+    return Panel(classic, classic)

@@ -92,10 +92,14 @@ def welcome_screen(user, theme: Theme) -> Screen:
             "Use the buttons below to look around."
         )
         + "\n"
-        + table.block()
+        # Classic grid on purpose: this screen is *edited* when the user taps a
+        # button, and Telegram cannot edit a rich message.
+        + table.classic_block()
         + "\n"
         + rich_hr()
-        + rich_footer(f"{theme.emoji('bot')} Agent · wzgram + richgram")
+        + rich_footer(
+            f"{theme.emoji('bot')} Agent · wzgram + richgram · credits in /about"
+        )
     )
     return Screen(text, keyboards.home_keyboard())
 
@@ -168,7 +172,12 @@ def help_screen(user, theme: Theme) -> Screen:
         blocks.append(rich_list(lines))
     blocks.append("")
     blocks.append(rich_hr())
-    blocks.append(rich_footer(f"{theme.emoji('help')} Tap a button below to keep going."))
+    blocks.append(
+        rich_footer(
+            f"{theme.emoji('help')} Built on the projects credited in /about — "
+            "tap a button below to keep going."
+        )
+    )
     return Screen("\n".join(blocks), keyboards.help_keyboard())
 
 
@@ -194,7 +203,7 @@ def info_screen(user, theme: Theme) -> Screen:
         + "\n"
         + f"{theme.emoji('user')} This is what Telegram shares with the bot."
         + "\n"
-        + kv_table(rows).block()
+        + kv_table(rows).classic_block()
         + "\n"
         + rich_hr()
         + rich_footer(f"{theme.emoji('id')} Nothing is stored — details are read live.")
@@ -245,7 +254,7 @@ def ping_screen(monitor, theme: Theme) -> Screen:
         + "\n"
         + f"{theme.emoji('bolt')} Live status of this instance."
         + "\n"
-        + kv_table(rows).block()
+        + kv_table(rows).classic_block()
         + ("\n" + error_line if error_line else "")
         + "\n"
         + rich_hr()

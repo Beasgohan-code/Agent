@@ -153,8 +153,13 @@ def handlers(ctx):
     return group.build(ctx)[1]
 
 
+CELL_RE = re.compile(r"<t[dh][^>]*>(.*?)</t[dh]>", re.S)
+
+
 def pre(markup: str) -> str:
-    """The table body as the client will render it (entities resolved)."""
+    """The table content (entities resolved), native ``<table>`` or ``<pre>`` grid."""
+    if "<table" in markup:
+        return html.unescape(" ".join(CELL_RE.findall(markup)))
     match = PRE_RE.search(markup)
     return html.unescape(match.group(1)) if match else ""
 

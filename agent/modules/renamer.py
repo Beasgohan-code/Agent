@@ -17,6 +17,7 @@ import html
 import re
 
 from ..platform.manifest import PluginManifest
+from ..utils.rich import reply
 
 MANIFEST = PluginManifest(
     slug="renamer",
@@ -181,7 +182,7 @@ def build(ctx):
         args = (getattr(message, "text", "") or "").split(maxsplit=1)
         if len(args) < 2:
             current = ctx.chats.get(message.chat.id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
-            await message.reply(
+            await reply(message, 
                 "<b>Auto-rename template</b>\n"
                 f"Current: <code>{html.escape(current)}</code>\n\n"
                 "Set one with <code>/autorename {title} S{season:02d}E{episode:02d} [{quality}]</code>.\n"
@@ -190,14 +191,14 @@ def build(ctx):
             return
         template = args[1].strip()
         if "{" not in template:
-            await message.reply(
+            await reply(message, 
                 "A template needs at least one field, e.g. "
                 "<code>{title} S{season:02d}E{episode:02d} [{quality}]</code>."
             )
             return
         ctx.chats.put(message.chat.id, TEMPLATE_KEY, template)
         preview, _warnings = plan_name("Show.Name.S02E05.1080p.WEB-DL.mkv", template)
-        await message.reply(
+        await reply(message, 
             f"Template saved.\nPreview: <code>{html.escape(preview)}</code>"
         )
 
@@ -206,7 +207,7 @@ def build(ctx):
         media = _media(message)
         filename = args[1].strip() if len(args) > 1 else getattr(media, "file_name", None)
         if not filename:
-            await message.reply(
+            await reply(message, 
                 "Usage: <code>/testrename Movie.2023.1080p.mkv</code> "
                 "or reply to a file with <code>/testrename</code>."
             )
@@ -220,19 +221,19 @@ def build(ctx):
         )
         if warnings:
             body += "\n" + "\n".join(f"· {html.escape(w)}" for w in warnings)
-        await message.reply(body)
+        await reply(message, body)
 
     async def rename(client, message):
         media = _media(message)
         if media is None:
-            await message.reply("Reply to a file with <code>/rename</code>.")
+            await reply(message, "Reply to a file with <code>/rename</code>.")
             return
         original = getattr(media, "file_name", None) or "file"
         template = ctx.chats.get(message.chat.id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
         planned, warnings = plan_name(original, template)
         file_id = getattr(media, "file_id", None)
         if not file_id:
-            await message.reply("Telegram did not send a file id for that file.")
+            await reply(message, "Telegram did not send a file id for that file.")
             return
         try:
             await client.send_document(
@@ -242,7 +243,7 @@ def build(ctx):
                 caption=getattr(media, "caption", None) or "",
             )
         except Exception as exc:  # noqa: BLE001 - reported to the user
-            await message.reply(f"Rename failed: {type(exc).__name__}")
+            await reply(message, f"Rename failed: {type(exc).__name__}")
             return
         body = (
             "<b>Renamed</b>\n"
@@ -251,18 +252,18 @@ def build(ctx):
         )
         if warnings:
             body += "\n" + "\n".join(f"· {html.escape(w)}" for w in warnings)
-        await message.reply(body)
+        await reply(message, body)
 
     async def clean(_client, message):
         args = (getattr(message, "text", "") or "").split(maxsplit=1)
         media = _media(message)
         filename = args[1].strip() if len(args) > 1 else getattr(media, "file_name", None)
         if not filename:
-            await message.reply(
+            await reply(message, 
                 "Usage: <code>/clean Some.Release.1080p.x264.mkv</code>"
             )
             return
-        await message.reply(
+        await reply(message, 
             f"<b>Cleaned</b>\n<code>{html.escape(clean_filename(filename))}</code>"
         )
 

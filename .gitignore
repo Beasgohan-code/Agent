@@ -18,3 +18,13 @@ data/
 !.env.example
 *.session
 *.session-journal
+
+# Reference checkouts: upstream repositories cloned for study only.
+# They are never imported by the bot and never shipped in the image.
+/refs/
+/music/
+/saver/
+/Encoder/
+/Filestore/
+/Linkshare/
+/leech/

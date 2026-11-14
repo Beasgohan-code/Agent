@@ -21,6 +21,7 @@ from pathlib import Path
 from ..platform.jobs import Job
 from ..platform.manifest import PluginManifest
 from ..ui.tables import Table, kv_table, panel
+from ..utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +187,7 @@ def build(ctx):
     async def encode(_client, message):
         media = _source_media(message)
         if media is None:
-            await message.reply(
+            await reply(message, 
                 "Reply to a video or document with /encode.\n"
                 "Optional: /encode <preset>  (fast, balanced, quality)"
             )
@@ -195,19 +196,19 @@ def build(ctx):
         parts = (getattr(message, "text", "") or "").split()
         preset = parts[1].lower() if len(parts) > 1 else "balanced"
         if preset not in PRESETS:
-            await message.reply(f"Unknown preset {preset!r}. Choose: {', '.join(PRESETS)}")
+            await reply(message, f"Unknown preset {preset!r}. Choose: {', '.join(PRESETS)}")
             return
 
         owner = message.from_user.id
-        await message.reply(f"Downloading and queueing ({preset})…")
+        await reply(message, f"Downloading and queueing ({preset})…")
         try:
             source = await message.reply_to_message.download()
         except Exception as exc:  # noqa: BLE001 - reported to the user
             logger.exception("Download failed for encoder")
-            await message.reply(f"Could not download that file: {type(exc).__name__}")
+            await reply(message, f"Could not download that file: {type(exc).__name__}")
             return
         if not source:
-            await message.reply("Telegram returned no file to encode.")
+            await reply(message, "Telegram returned no file to encode.")
             return
 
         src = Path(source)
@@ -217,28 +218,28 @@ def build(ctx):
             lambda j: encode_job(j, ctx, src, preset, "h264"),
             label=src.name,
         )
-        await message.reply(
+        await reply(message, 
             f"Encoding job <code>{job.id}</code> started ({preset}). "
             "Use <code>/enccancel</code> to stop it."
         )
         await job.task
 
         if job.state.value == "done":
-            await message.reply(f"Encode finished: {html.escape(job.label)} → MP4, validated.")
+            await reply(message, f"Encode finished: {html.escape(job.label)} → MP4, validated.")
         elif job.state.value == "cancelled":
-            await message.reply("Encode cancelled.")
+            await reply(message, "Encode cancelled.")
         else:
-            await message.reply(f"Encode failed: {html.escape(str(job.error))}")
+            await reply(message, f"Encode failed: {html.escape(str(job.error))}")
 
     async def encinfo(_client, message):
         media = _source_media(message)
         if media is None:
-            await message.reply("Reply to a video or document with /encinfo.")
+            await reply(message, "Reply to a video or document with /encinfo.")
             return
         try:
             source = await message.reply_to_message.download()
         except Exception as exc:  # noqa: BLE001
-            await message.reply(f"Could not download that file: {type(exc).__name__}")
+            await reply(message, f"Could not download that file: {type(exc).__name__}")
             return
         info = await probe(Path(source))
         rows = [
@@ -248,7 +249,7 @@ def build(ctx):
             ("Duration", f"{info['duration']:.2f}s"),
             ("Streams", describe(info)),
         ]
-        await message.reply(
+        await reply(message, 
             panel(
                 "Media info",
                 icon=ctx.theme.emoji("gear"),
@@ -269,7 +270,7 @@ def build(ctx):
             if target and job.id != target:
                 continue
             stopped += bool(ctx.jobs.cancel(job.id, owner_id=owner))
-        await message.reply(
+        await reply(message, 
             f"Cancelled {stopped} job(s)." if stopped else "Nothing of yours was running."
         )
 
@@ -281,7 +282,7 @@ def build(ctx):
             ),
             aligns=("left", "right", "left"),
         )
-        await message.reply(
+        await reply(message, 
             panel(
                 "Encoding presets",
                 icon=ctx.theme.emoji("fire"),
