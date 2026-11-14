@@ -75,7 +75,7 @@ DESCRIPTIONS: dict[str, str] = {
     # filestore
     "fsave": "Save a replied file to your vault",
     "get": "Re-send a file from your vault",
-    "files": "List your vault",
+    "files": "Browse your vault: /files [page]",
     "batch": "Save a run of files into your vault",
     "check": "Everything about one vault entry",
     "del": "Delete one vault entry",

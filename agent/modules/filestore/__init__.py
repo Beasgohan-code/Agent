@@ -11,6 +11,7 @@ answered with "not in your vault", never with the file.
 
 from __future__ import annotations
 
+import html
 import logging
 import time
 
@@ -100,8 +101,10 @@ def build(ctx):
                 "vault save user=%s id=%s size=%s", message.from_user.id, stored.id, stored.size
             )
         except Exception as exc:  # noqa: BLE001 - quota errors and IO reach the user
-            logger.exception("fsave failed")
-            await reply(message, f"Could not save that file: {type(exc).__name__}: {exc}")
+            logger.warning("fsave failed (%s)", type(exc).__name__)
+            await reply(message, panel("Save unconfirmed", icon=ctx.theme.emoji("warn"),
+                lines=[f"Could not confirm that save ({type(exc).__name__}). Check /files and /storequota before retrying."],
+                note="No raw file paths or provider errors are displayed."))
             return
         rows = [
             ("Name", stored.name),
@@ -112,9 +115,9 @@ def build(ctx):
             panel(
                 "Saved to your vault",
                 icon=ctx.theme.emoji("check"),
-                subtitle="Retrieve it any time with <code>/get &lt;id&gt;</code>.",
+                subtitle="Retrieve with <code>/get &lt;id&gt;</code> while local or archived bytes remain available.",
                 table=kv_table(rows),
-                footer="Files are private to you; nobody else can fetch them.",
+                footer="Retrieval checks your identity; replies and files are visible in the current chat.",
             )
         )
 
@@ -122,7 +125,7 @@ def build(ctx):
 
     async def get(client, message):
         args = _args(message)
-        if len(args) < 2:
+        if len(args) != 2:
             await reply(message, 
                 "Usage: <code>/get &lt;id&gt;</code> — see <code>/files</code> for your ids."
             )
@@ -151,10 +154,11 @@ def build(ctx):
     async def batch(client, message):
         """Save a run of consecutive files, starting at the replied one."""
         parts = _args(message)
-        if len(parts) > 1 and not parts[1].isdigit():
-            await reply(message, "Usage: <code>/batch [count]</code> — reply to the first file.")
+        if len(parts) > 2 or (len(parts) == 2 and (not parts[1].isascii() or not parts[1].isdecimal()
+                or len(parts[1]) > 2 or not 1 <= int(parts[1]) <= MAX_BATCH)):
+            await reply(message, f"Usage: <code>/batch [count]</code> — choose 1–{MAX_BATCH} and reply to the first file.")
             return
-        count = max(1, min(MAX_BATCH, int(parts[1]))) if len(parts) > 1 else 10
+        count = int(parts[1]) if len(parts) > 1 else 10
         replied = getattr(message, "reply_to_message", None)
         start = getattr(replied, "id", None)
         if start is None:
@@ -168,7 +172,7 @@ def build(ctx):
         try:
             messages = await client.get_messages(message.chat.id, message_ids=ids)
         except Exception as exc:  # noqa: BLE001 - the reason is the answer
-            await reply(message, f"Could not read those messages: {type(exc).__name__}: {exc}")
+            await reply(message, f"Could not read those messages ({type(exc).__name__}). Check access and retry.")
             return
         saved: list = []
         skipped = failed = 0
@@ -191,7 +195,7 @@ def build(ctx):
                     quota_bytes=allowance(message.from_user.id),
                 )
             except Exception:  # noqa: BLE001 - one bad file must not stop the batch
-                logger.exception("batch item failed")
+                logger.warning("batch item save unconfirmed")
                 failed += 1
                 continue
             saved.append(stored)
@@ -239,7 +243,7 @@ def build(ctx):
     async def check(_client, message):
         """Everything this vault knows about one id."""
         parts = _args(message)
-        if len(parts) < 2:
+        if len(parts) != 2:
             await reply(message, "Usage: <code>/check &lt;id&gt;</code>")
             return
         stored = storage.get(parts[1].strip())
@@ -264,16 +268,28 @@ def build(ctx):
                         ("Size", human_bytes(stored.size)),
                         ("On disk", "yes" if path.exists() else "missing"),
                         ("Links", str(len(links))),
+                        ("Telegram reference", "recorded" if stored.telegram_file_id else "not recorded"),
                     ]
                 ),
-                footer="A missing file can be deleted with <code>/del</code> and saved again.",
+                note="A recorded Telegram reference may allow retrieval after local bytes disappear; it is not a live availability check.",
+                footer="/get id · /del id · deleting metadata does not erase delivered copies.",
             ),
         )
 
     # -- /files ------------------------------------------------------------
 
     async def files(client, message):
+        parts = _args(message)
+        if len(parts) > 2 or (len(parts) == 2 and (not parts[1].isascii() or not parts[1].isdecimal()
+                or len(parts[1]) > 8 or int(parts[1]) < 1)):
+            await reply(message, "Usage: <code>/files [page]</code>, starting at page 1.")
+            return
+        page = int(parts[1]) if len(parts) == 2 else 1
         owned = storage.list_owned(message.from_user.id)
+        pages = max(1, (len(owned) + PAGE_SIZE - 1) // PAGE_SIZE)
+        if page > pages:
+            await reply(message, f"Choose a vault page from 1 to {pages}.")
+            return
         if not owned:
             await reply(message, 
                 panel(
@@ -292,20 +308,24 @@ def build(ctx):
                 human_bytes(stored.size),
                 format_uptime(now - stored.created_at),
             )
-            for stored in owned[:PAGE_SIZE]
+            for stored in owned[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]
         )
-        more = len(owned) - len(rows)
+        navigation = []
+        if page > 1:
+            navigation.append(f"<code>/files {page - 1}</code> previous")
+        if page < pages:
+            navigation.append(f"<code>/files {page + 1}</code> next")
         await reply(message, 
             panel(
                 "Your vault",
                 icon=ctx.theme.emoji("stats"),
-                subtitle=f"<b>{len(owned)}</b> file(s), newest first.",
+                subtitle=f"{ctx.theme.emoji('diamond')} Page <b>{page}/{pages}</b> · <b>{len(owned)}</b> file(s), newest first.",
                 table=Table(
                     headers=("Id", "Name", "Size", "Age"),
                     rows=rows,
                     aligns=("left", "left", "right", "right"),
                 ),
-                lines=[f"Plus {more} older file(s)."] if more > 0 else [],
+                lines=[" · ".join(navigation)] if navigation else [],
                 note="<code>/get &lt;id&gt;</code> re-sends one, <code>/del &lt;id&gt;</code> removes it.",
             )
         )
@@ -314,7 +334,7 @@ def build(ctx):
 
     async def delete(client, message):
         args = _args(message)
-        if len(args) < 2:
+        if len(args) != 2:
             await reply(message, "Usage: <code>/del &lt;id&gt;</code>")
             return
         file_id = args[1].strip()
@@ -325,7 +345,9 @@ def build(ctx):
         storage.delete(file_id, owner_id=message.from_user.id)
         logger.info("vault delete user=%s id=%s", message.from_user.id, file_id)
         await reply(message, 
-            f"Deleted <code>{stored.id}</code> ({stored.name}, {human_bytes(stored.size)})."
+            panel("Vault entry deleted", icon=ctx.theme.emoji("check"),
+                table=kv_table([("Id", stored.id), ("Name", stored.name), ("Size", human_bytes(stored.size))]),
+                note="Removed from your vault. Previously delivered or archived copies are not remotely erased.", footer="/files · /storequota")
         )
 
     # -- /storestats and /storequota ---------------------------------------
@@ -337,17 +359,17 @@ def build(ctx):
         lines = []
         if newest is not None:
             lines.append(
-                f"Newest: <code>{newest.id}</code> — {newest.name} "
+                f"Newest: <code>{html.escape(newest.id)}</code> — {html.escape(newest.name)} "
                 f"({human_bytes(newest.size)})"
             )
         await reply(message, 
             panel(
                 "Vault statistics",
                 icon=ctx.theme.emoji("stats"),
-                subtitle="Measured from the store on disk, not counted separately.",
+                subtitle=f"{ctx.theme.emoji('diamond')} Your vault in this bot · metadata accounting",
                 table=kv_table(_quota_rows(owner_id)),
-                lines=lines + [f"Tier: <b>{_tier_label(ctx, owner_id)}</b>"],
-                footer="One vault per user id.",
+                lines=lines + [f"Tier: <b>{html.escape(_tier_label(owner_id))}</b>"],
+                footer="One vault per user in this bot. Responses are visible in the current chat.",
             )
         )
 
@@ -375,7 +397,16 @@ def build(ctx):
             )
         )
 
-    return MANIFEST, {
+    def identified(handler):
+        async def wrapped(client, message):
+            user_id = getattr(getattr(message, "from_user", None), "id", None)
+            if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+                await reply(message, "Use your personal Telegram user identity for vault commands.")
+                return
+            return await handler(client, message)
+        return wrapped
+
+    handlers = {
         "fsave": fsave,
         "get": get,
         "files": files,
@@ -385,3 +416,4 @@ def build(ctx):
         "storestats": storestats,
         "storequota": storequota,
     }
+    return MANIFEST, {name: identified(handler) for name, handler in handlers.items()}

@@ -162,3 +162,12 @@ and distinguish ambiguous send failures from acknowledged sends with failed
 audit writes. Upgraded studio/template/status UI and added default-layout reset.
 Template writes still use older background-flushed ChatStore; do not claim full
 confirmed-write durability. Preview is group-visible, not a private draft.
+
+### FileStore increment and live health observation
+
+Continued beyond Music/Post Maker with FileStore pagination, personal-identity
+checks, strict bounded command arguments, escaped metadata, richer archive/delete
+status and sanitized failure feedback. Fixed the `/storestats` tier helper crash.
+No changes to live plugin activation or persistence semantics. A user-requested
+one-shot GET of the deployment's `/health` returned healthy at that instant;
+it is not proof of historical uptime or end-to-end feature readiness.
