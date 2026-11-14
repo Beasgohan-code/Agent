@@ -6,9 +6,10 @@ from ..moderation import is_moderator
 from ...utils.rich import reply
 from ...ui.tables import Table, kv_table, panel
 from ...platform.voice import VoiceUnavailable
+from .seeking import USAGE as SEEK_USAGE, seek_target
 
 COMMANDS = ('loop', 'shuffle', 'clear', 'clearqueue', 'remove', 'move', 'jump',
-            'replay', 'volume', 'volumeup', 'volumedown', 'history')
+            'replay', 'seek', 'volume', 'volumeup', 'volumedown', 'history')
 
 
 def build_controls(ctx, queues, history, volumes, advance):
@@ -68,6 +69,19 @@ def build_controls(ctx, queues, history, volumes, advance):
                         raise
                 said = ('Selected track started after voice-engine acknowledgement.' if name == 'jump'
                         else 'Upcoming queue updated; current playback is unchanged.')
+            elif name == 'seek':
+                if len(args) != 1:
+                    raise ValueError(SEEK_USAGE)
+                playback = engine.playback(chat_id)
+                if playback is None:
+                    raise ValueError('Nothing is playing here.')
+                if playback.paused:
+                    raise ValueError('Resume playback before seeking.')
+                target = seek_target(args[0], playback.elapsed)
+                acknowledged = await engine.seek(chat_id, target)
+                if acknowledged is False:
+                    raise VoiceUnavailable('Seek was not acknowledged.')
+                said = f'Seek acknowledged at {target // 60}:{target % 60:02d}. Queue order is unchanged.'
             elif name == 'replay':
                 if args:
                     raise ValueError('Use /replay without arguments.')

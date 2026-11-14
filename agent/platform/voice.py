@@ -234,6 +234,32 @@ class VoiceEngine:
             title=title, source=source, requested_by=requested_by
         )
 
+    async def seek(self, chat_id: int, seconds: int) -> None:
+        """Restart this source at an offset, committing the clock only on ack.
+
+        MediaStream ffmpeg_parameters/video_flags verified against py-tgcalls
+        2.2.11's wheel. Actual installed API availability is checked at use.
+        """
+        if type(seconds) is not int or not 0 <= seconds <= 86400:
+            raise VoiceUnavailable("Seek position must be 0–86400 whole seconds.")
+        call = self._require()
+        playback = self.playback(chat_id)
+        if playback is None:
+            raise VoiceUnavailable("Nothing is playing here.")
+        if playback.paused:
+            raise VoiceUnavailable("Resume playback before seeking.")
+        try:
+            from pytgcalls.types import MediaStream
+            stream = MediaStream(playback.source, video_flags=MediaStream.Flags.IGNORE,
+                                 ffmpeg_parameters=f"-ss {seconds}")
+            acknowledged = await asyncio.wait_for(call.play(int(chat_id), stream), timeout=START_TIMEOUT)
+            if acknowledged is False:
+                raise VoiceUnavailable("Seek was not acknowledged.")
+        except Exception as error:
+            raise VoiceUnavailable(f"Seek was not confirmed ({type(error).__name__}).") from None
+        playback.started_at = time.time() - seconds
+        playback.paused_total = 0.0
+
     async def pause(self, chat_id: int) -> None:
         call = self._require()
         try:
