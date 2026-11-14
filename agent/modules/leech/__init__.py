@@ -22,6 +22,10 @@ from ...platform.net import LinkError, check_target, human_bytes, parse_url
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
 from .transfer import _destination, download
+from urllib.parse import urlsplit
+from pathlib import Path
+from .options import parse_request
+from ...platform.media_rules import transform
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,10 @@ def backends() -> list[tuple[str, str, str]]:
             (label, "yes" if path else "no", path or "not installed — not offered")
         )
     return rows
+
+
+def _destination_name(url):
+    return Path(urlsplit(url).path).name or "download.bin"
 
 
 def build(ctx):
@@ -110,8 +118,7 @@ def build(ctx):
     # -- /leech and /mirror ------------------------------------------------
 
     async def _submit(client, message, *, keep: bool) -> None:
-        parts = (getattr(message, "text", "") or "").split(maxsplit=1)
-        raw = parts[1].strip() if len(parts) > 1 else ""
+        raw, output_name = parse_request(getattr(message, "text", "") or "")
         try:
             url = parse_url(raw)
             await check_target(url)
@@ -150,54 +157,65 @@ def build(ctx):
         _message_id, report = await _progress_message(client, message, label)
 
         async def runner(job):
-            destination = _destination(url)
-            job.detail = "downloading"
-            written = await download(url, destination, on_progress=report)
-            job.progress = 1.0
-            job.detail = f"downloaded {human_bytes(written)}"
-            if keep:
-                book = getattr(ctx, "premium", None)
-                allowance = (
-                    book.tier(job.owner_id).quota_bytes if book is not None else None
-                )
-                stored = ctx.storage.save_path(
-                    job.owner_id,
-                    destination,
-                    name=destination.name,
-                    quota_bytes=allowance,
-                )
-                job.detail = f"stored as {stored.id} ({human_bytes(stored.size)})"
-                await reply(message, 
-                    panel(
-                        "Mirrored",
-                        icon=ctx.theme.emoji("check"),
-                        table=kv_table(
-                            [
-                                ("File", stored.name),
-                                ("Size", human_bytes(stored.size)),
-                                ("Id", stored.id),
-                            ]
-                        ),
-                        note="Fetch it later with <code>/get &lt;id&gt;</code>.",
+            name = output_name or _destination_name(url)
+            name = transform(ctx.chats, message.chat.id, name)
+            destination = _destination(url, name)
+            try:
+                job.detail = "downloading"
+                written = await download(url, destination, on_progress=report)
+                job.progress = 1.0
+                job.detail = f"downloaded {human_bytes(written)}"
+                if keep:
+                    book = getattr(ctx, "premium", None)
+                    allowance = (
+                        book.tier(job.owner_id).quota_bytes if book is not None else None
                     )
-                )
-                return
-            await client.send_document(
-                message.chat.id,
-                str(destination),
-                file_name=destination.name,
-                **attachment_kwargs(
-                    ctx.chats,
+                    stored = ctx.storage.save_path(
+                        job.owner_id,
+                        destination,
+                        name=destination.name,
+                        quota_bytes=allowance,
+                    )
+                    job.detail = f"stored as {stored.id} ({human_bytes(stored.size)})"
+                    await reply(message,
+                        panel(
+                            "Mirrored",
+                            icon=ctx.theme.emoji("check"),
+                            table=kv_table(
+                                [
+                                    ("File", stored.name),
+                                    ("Size", human_bytes(stored.size)),
+                                    ("Id", stored.id),
+                                ]
+                            ),
+                            note="Fetch it later with <code>/get &lt;id&gt;</code>.",
+                        )
+                    )
+                    return
+                await client.send_document(
                     message.chat.id,
-                    name=destination.name,
-                    size=human_bytes(destination.stat().st_size),
-                ),
-            )
+                    str(destination),
+                    file_name=destination.name,
+                    **attachment_kwargs(
+                        ctx.chats,
+                        message.chat.id,
+                        name=destination.name,
+                        size=human_bytes(destination.stat().st_size),
+                        apply_rules=False,
+                    ),
+                )
+
+            finally:
+                destination.unlink(missing_ok=True)
+                try:
+                    destination.parent.rmdir()
+                except OSError:
+                    logger.warning("Could not remove transfer temporary directory")
 
         job = ctx.jobs.submit("leech", message.from_user.id, runner, label=label[:60])
-        await reply(message, 
+        await reply(message,
             f"Job <code>{job.id}</code> started. "
-            "to watch it, <code>/cancel</code> to stop it."
+            "Use <code>/cancel</code> to stop it."
         )
 
     async def leech(client, message):
@@ -215,11 +233,12 @@ def build(ctx):
             if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
                 await reply(message, 'Use your personal Telegram user identity for transfer commands.')
                 return
-            args = (getattr(message, 'text', '') or '').split()[1:]
-            if name in ('leech', 'mirror') and len(args) != 1:
+            try:
+                parse_request(getattr(message, 'text', '') or '')
+            except ValueError:
                 await reply(message, panel('Transfer options', icon=ctx.theme.emoji('info'),
-                    lines=[f'Usage: <code>/{name} &lt;public_http_url&gt;</code>. Supply exactly one URL.'],
-                    note='Transfers and task responses are visible in the current chat. Do not submit secret links.'))
+                    lines=[f'Usage: <code>/{name} &lt;public_http_url&gt; [-n "output name.ext"]</code>.'],
+                    note='Choose a filename without paths or control characters. Requests are visible in this chat; do not submit secret links.'))
                 return
             return await handler(client, message)
         return wrapped

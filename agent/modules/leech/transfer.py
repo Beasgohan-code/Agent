@@ -26,8 +26,8 @@ CHUNK = 1024 * 256
 
 PROGRESS_INTERVAL = 2.0
 
-def _destination(url: str) -> Path:
-    name = Path(urlsplit(url).path).name or "download.bin"
+def _destination(url: str, name: str | None = None) -> Path:
+    name = name or Path(urlsplit(url).path).name or "download.bin"
     safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)[:80]
     if not safe or safe in (".", ".."):
         safe = "download.bin"
