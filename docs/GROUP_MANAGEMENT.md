@@ -513,3 +513,31 @@ this increment: **772 passed** against disposable PostgreSQL with the optional
 Telethon parser installed; compileall, pyflakes and whitespace checks passed.
 No live Telegram deployment, voice call, Render configuration or production
 lease was changed or tested.
+
+### Alive and Music command expansion
+
+Alive JSON reporting at `/` and `/alive` follows measured Telegram probe age,
+with separate `/health/ready` readiness (healthy only) and unchanged process
+liveness. Telegram `/alive` reads the status screen. No self-pinging, no extra
+Flask/threaded server, and no claim that HTTP prevents Render free-tier sleep.
+
+Music now registers 24 commands when capable. The original controls module adds
+repeat modes, shuffle, upcoming edits/jump, replay, bounded session history and
+acknowledged volume adjustments. Play-next is admin-only. Per-group locks cover
+commands, transport callbacks, stream completion and activation cleanup; checks
+are repeated after source resolution. Queue transitions restore local order on
+failed starts; explicit skip overrides repeat-one. Queues cap at 50 tracks and
+displays at 15 entries; title notifications are HTML-escaped. The plugin still
+occupies one optional slot and still needs global approval/local activation.
+
+[Music behavior migration](MUSIC_PARITY.md) lists reviewed reference command
+families and the remaining gaps. There are no fake seek/effects/download/search
+handlers and no claim of full reference parity. Lifecycle, external extraction,
+recording/privacy and licensing boundaries remain in effect. Static extraction
+across all repositories is not a complete manual audit or blanket reuse grant.
+
+Validation: **793 tests passed** with disposable PostgreSQL; compileall,
+pyflakes and whitespace checks passed. This includes alive/readiness HTTP
+responses, queue/volume permissions, repeat modes, queue rollback, per-group
+concurrency and isolation, bounded queues and escaping. No live Telegram voice
+call, Render redeploy or external media-provider test was performed.

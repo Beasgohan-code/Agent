@@ -401,3 +401,17 @@ rejected before any connection. Parent assistant credentials are never reused.
 Changing to a legacy profile clears the stored assistant session. Revoke it in
 Telegram Devices to invalidate account access; deleting local ciphertext alone
 does not revoke Telegram authorization.
+
+### Alive reporting and expanded Music controls
+
+`/` and `/alive` now report measured heartbeat age, uptime and UTC time as JSON.
+`/health/ready` returns 200 only once Telegram probes are healthy; the existing
+`/health/live` remains process liveness. Telegram `/alive` opens the live status
+screen. This does not self-ping or prevent free-tier service sleep.
+
+Music now has 24 real group commands when its dependencies and assistant are
+configured, including queue editing, repeat modes, shuffle, replay, volume,
+play-next and recent session titles. Song-name search, YouTube watch-page
+extraction, effects, seeking and linked-channel playback are **not** claimed as
+supported yet. See [Music behavior migration](docs/MUSIC_PARITY.md) for exact
+commands, permissions, source limits and the remaining reference command list.

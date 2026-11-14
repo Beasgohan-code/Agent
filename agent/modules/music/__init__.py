@@ -11,6 +11,10 @@ must not offer ``/play``.
 from __future__ import annotations
 
 import logging
+import asyncio
+import html
+from collections import deque
+from weakref import WeakValueDictionary
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -23,6 +27,7 @@ from ...platform.voice import VoiceUnavailable, capability
 from ...ui.tables import Panel, Table, kv_table, panel
 from ..moderation import is_moderator
 from .queue import QueueBook, Track
+from .controls import COMMANDS as EXTRA_COMMANDS, build_controls
 from .sources import SourceError, resolve
 from ...utils import rich as rich_ui
 from ...utils.rich import reply
@@ -34,7 +39,8 @@ MANIFEST = PluginManifest(
     name="Music · VC player",
     version="1.0.0",
     description="Stream audio into the group's voice chat (needs SESSION_STRING).",
-    commands=("play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave"),
+    commands=("play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
+              "q", "end", "resetplayer", "playnext", *EXTRA_COMMANDS),
     permissions=("messages.read", "messages.send", "voice.stream"),
     scope="group",
 )
@@ -73,12 +79,28 @@ def build(ctx):
         )
 
     queues = QueueBook()
+    history, volumes = {}, {}
+    locks = WeakValueDictionary()
+
+    def remember(chat_id, title):
+        if chat_id not in history and len(history) >= 200:
+            history.pop(next(iter(history)))
+        history.setdefault(chat_id, deque(maxlen=15)).append(title[:160])
+
+    def chat_lock(chat_id):
+        return locks.setdefault(chat_id, asyncio.Lock())
     gate = getattr(ctx, "plugin_gate", None)
 
-    async def cleanup_group(chat_id):
+    async def _cleanup_group(chat_id):
         queues.drop(chat_id)
+        history.pop(chat_id, None)
+        volumes.pop(chat_id, None)
         if engine.playback(chat_id) is not None:
             await engine.leave(chat_id)
+
+    async def cleanup_group(chat_id):
+        async with chat_lock(chat_id):
+            await _cleanup_group(chat_id)
 
     if gate is not None:
         gate.cleanup_hook("music", cleanup_group)
@@ -87,19 +109,25 @@ def build(ctx):
         chat = getattr(message, "chat", None)
         return getattr(chat, "type", None) in (ChatType.GROUP, ChatType.SUPERGROUP)
 
-    async def _play_next(chat_id: int) -> str | None:
+    async def _play_next(chat_id: int, *, force=False) -> str | None:
         """Advance the queue; returns the title that started, or None."""
         if gate is not None and not await gate.allowed(chat_id, "music"):
-            await cleanup_group(chat_id)
+            await _cleanup_group(chat_id)
             return None
         queue = queues.for_chat(chat_id)
-        track = queue.advance()
+        previous, waiting = queue.current, list(queue.waiting)
+        track = queue.advance(force=force)
         if track is None:
             queues.drop(chat_id)
             return None
-        await engine.play(
-            chat_id, track.source, title=track.title, requested_by=track.requested_by
-        )
+        try:
+            await engine.play(
+                chat_id, track.source, title=track.title, requested_by=track.requested_by
+            )
+        except BaseException:
+            queue.current, queue.waiting = previous, waiting
+            raise
+        remember(chat_id, track.title)
         logger.info(
             "now playing chat=%s title=%r requested_by=%s", chat_id, track.title, track.requested_by
         )
@@ -108,7 +136,9 @@ def build(ctx):
     async def on_stream_end(chat_id: int) -> None:
         """Called by the engine when a stream finishes on its own."""
         try:
-            await _play_next(chat_id)
+            async with chat_lock(chat_id):
+                if await _play_next(chat_id) is None:
+                    await engine.leave(chat_id)
         except Exception:  # noqa: BLE001 - an ended stream must not kill the handler
             logger.exception("could not advance the queue in chat %s", chat_id)
 
@@ -195,7 +225,7 @@ def build(ctx):
                 await engine.resume(chat_id)
                 said = "Resumed."
             elif action == "skip":
-                started = await _play_next(chat_id)
+                started = await _play_next(chat_id, force=True)
                 if started is None:
                     try:
                         await engine.leave(chat_id)
@@ -241,19 +271,34 @@ def build(ctx):
             await reply(message, "Voice chat only exists in groups.")
             return
         rest = _args(message)
+        if rest[0].split('@')[0].lower() == '/playnext' and not await is_moderator(client, message, owner_id=ctx.settings.owner_id):
+            await reply(message, "Only group administrators can insert ahead of other queued requests.")
+            return
         argument = rest[1].strip() if len(rest) > 1 else ""
         try:
             source, title = await resolve(message, argument or None)
         except SourceError as exc:
-            await reply(message, f"<b>Cannot play that</b>\n{exc}.")
+            await reply(message, f"<b>Cannot play that</b>\n{html.escape(str(exc))}.")
             return
+        if gate is not None and not await gate.allowed(message.chat.id, "music"):
+            await _cleanup_group(message.chat.id)
+            await reply(message, "Music is no longer active in this group.")
+            return
+        title = title[:160]
         queue = queues.for_chat(message.chat.id)
         track = Track(title=title, source=source, requested_by=message.from_user.id)
         playback = engine.playback(message.chat.id)
         if playback is not None or queue.current is not None:
-            position = queue.add(track)
+            try:
+                position = queue.add(track)
+                if _args(message)[0].split('@')[0].lower() == '/playnext':
+                    queue.waiting.insert(0, queue.waiting.pop())
+                    position = 1
+            except ValueError as error:
+                await reply(message, str(error))
+                return
             await reply(message, 
-                f"Queued <b>{title}</b> at position {position}.\n"
+                f"Queued <b>{html.escape(title)}</b> at position {position}.\n"
                 f"<code>/queue</code> shows the list."
             )
             return
@@ -272,6 +317,7 @@ def build(ctx):
             await reply(message, f"<b>Could not start playback</b>\n{exc}")
             return
         queue.current = track
+        remember(message.chat.id, track.title)
         await reply(
             message,
             _card(message.chat.id),
@@ -305,9 +351,9 @@ def build(ctx):
         if not await _can_control(client, message):
             return
         try:
-            started = await _play_next(message.chat.id)
+            started = await _play_next(message.chat.id, force=True)
         except Exception as exc:  # noqa: BLE001 - the engine's reason reaches the chat
-            await reply(message, f"Could not skip: {type(exc).__name__}: {exc}")
+            await reply(message, f"Could not skip ({type(exc).__name__}). No queue change was confirmed.")
             return
         if started is None:
             try:
@@ -316,7 +362,7 @@ def build(ctx):
                 logger.debug("leave after empty skip failed", exc_info=True)
             await reply(message, "Queue finished — left the voice chat.")
             return
-        await reply(message, f"Now playing <b>{started}</b>.")
+        await reply(message, f"Now playing <b>{html.escape(started)}</b>.")
 
     async def stop(client, message):
         if not await _can_control(client, message):
@@ -338,6 +384,7 @@ def build(ctx):
         except VoiceUnavailable as exc:
             await reply(message, f"I am not in a voice chat here ({exc}).")
             return
+        queues.drop(message.chat.id)
         await reply(message, "Left the voice chat.")
 
     # -- reporting ---------------------------------------------------------
@@ -358,13 +405,13 @@ def build(ctx):
         rows = []
         if playback is not None:
             rows.append(("now", playback.title, "playing" if not playback.paused else "paused"))
-        for position, track in enumerate(queue.waiting, start=1):
+        for position, track in enumerate(queue.waiting[:max(0, 15 - len(rows))], start=1):
             rows.append((str(position), track.title, f"by {track.requested_by or '—'}"))
         await reply(message, 
             panel(
                 "Queue",
                 icon=ctx.theme.emoji("stats"),
-                subtitle=f"<b>{len(rows)}</b> item(s).",
+                subtitle=f"Showing <b>{len(rows)}</b> of {len(queue.waiting) + (1 if playback else 0)} item(s).",
                 table=Table(headers=("#", "Track", "State"), rows=tuple(rows)),
                 note="<code>/skip</code> advances, <code>/stop</code> clears everything.",
             )
@@ -381,15 +428,34 @@ def build(ctx):
             reply_markup=_transport(message.chat.id),
         )
 
+    def serialized(handler):
+        async def wrapped(client, message):
+            if not _in_group(message):
+                await reply(message, "Music commands are available in groups only.")
+                return
+            if getattr(message, "from_user", None) is None:
+                await reply(message, "Use your personal Telegram user identity for music commands.")
+                return
+            async with chat_lock(message.chat.id):
+                return await handler(client, message)
+        return wrapped
+
+    async def transport_locked(client, query, rest):
+        chat_id = getattr(getattr(getattr(query, "message", None), "chat", None), "id", None)
+        if chat_id is None:
+            return await query.answer("That control is no longer available.", show_alert=True)
+        async with chat_lock(chat_id):
+            return await on_transport(client, query, rest)
+
     if hasattr(engine, "set_stream_end_handler"):
         engine.set_stream_end_handler(on_stream_end)
 
     router = getattr(ctx, "actions", None)
     if router is not None and not router.handles(f"{TRANSPORT}:x"):
-        router.register(TRANSPORT, on_transport)
+        router.register(TRANSPORT, transport_locked)
 
-    logger.info("Music plugin ready (voice-chat engine connected)")
-    return MANIFEST, {
+    logger.info("Music handlers registered; engine startup is checked by the bot lifecycle")
+    handlers = {
         "play": play,
         "pause": pause,
         "resume": resume,
@@ -398,4 +464,10 @@ def build(ctx):
         "queue": show_queue,
         "nowplaying": nowplaying,
         "leave": leave,
+        "q": show_queue,
+        "end": stop,
+        "resetplayer": stop,
+        "playnext": play,
+        **build_controls(ctx, queues, history, volumes, _play_next),
     }
+    return MANIFEST, {name: serialized(handler) for name, handler in handlers.items()}

@@ -208,24 +208,34 @@ class VoiceEngine:
         """Join the call in *chat_id* if needed and start streaming *source*."""
         call = self._require()
         try:
-            await call.play(int(chat_id), source)
+            acknowledged = await call.play(int(chat_id), source)
+            if acknowledged is False:
+                raise VoiceUnavailable("Playback was not acknowledged.")
         except Exception as exc:  # noqa: BLE001 - the command reports the reason
-            logger.exception("play failed in chat %s", chat_id)
-            raise VoiceUnavailable(f"{type(exc).__name__}: {exc}") from exc
+            logger.warning("play failed in chat %s (%s)", chat_id, type(exc).__name__)
+            raise VoiceUnavailable(f"Playback was not confirmed ({type(exc).__name__}).") from None
         self.playbacks[int(chat_id)] = Playback(
             title=title, source=source, requested_by=requested_by
         )
 
     async def pause(self, chat_id: int) -> None:
         call = self._require()
-        await call.pause(int(chat_id))
+        try:
+            if await call.pause(int(chat_id)) is False:
+                raise VoiceUnavailable("Pause was not acknowledged.")
+        except Exception as error:
+            raise VoiceUnavailable(f"Pause was not confirmed ({type(error).__name__}).") from None
         playback = self.playbacks.get(int(chat_id))
         if playback is not None and playback.paused_at is None:
             playback.paused_at = time.time()
 
     async def resume(self, chat_id: int) -> None:
         call = self._require()
-        await call.resume(int(chat_id))
+        try:
+            if await call.resume(int(chat_id)) is False:
+                raise VoiceUnavailable("Resume was not acknowledged.")
+        except Exception as error:
+            raise VoiceUnavailable(f"Resume was not confirmed ({type(error).__name__}).") from None
         playback = self.playbacks.get(int(chat_id))
         if playback is not None and playback.paused_at is not None:
             playback.paused_total += time.time() - playback.paused_at
@@ -240,7 +250,9 @@ class VoiceEngine:
 
     async def volume(self, chat_id: int, volume: int) -> None:
         call = self._require()
-        await call.change_volume_call(int(chat_id), max(1, min(200, int(volume))))
+        acknowledged = await call.change_volume_call(int(chat_id), max(1, min(200, int(volume))))
+        if acknowledged is False:
+            raise VoiceUnavailable("Voice volume was not acknowledged.")
 
     def playback(self, chat_id: int) -> Playback | None:
         return self.playbacks.get(int(chat_id))

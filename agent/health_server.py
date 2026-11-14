@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Callable
 
 import logging
+from datetime import datetime, timezone
 
 from . import __version__
 from .health import DEGRADED, DOWN, STARTING, HealthMonitor
@@ -52,7 +53,19 @@ def build_app(monitor: HealthMonitor, extra: Callable[[], dict] | None = None):
         raise RuntimeError("aiohttp is required for the health endpoint.")
 
     async def root(_request):
-        return web.Response(text=f"Agent {__version__} is running.")
+        snapshot = monitor.snapshot()
+        return web.json_response({
+            "bot": "Agent", "version": __version__,
+            "status": {"healthy": "alive", "down": "stale"}.get(snapshot.state, snapshot.state),
+            "uptime": round(snapshot.uptime_seconds, 1),
+            "heartbeat_age": snapshot.seconds_since_ok,
+            "time": datetime.now(timezone.utc).isoformat(),
+        })
+
+    async def ready(_request):
+        state = monitor.state()
+        return web.json_response({"ok": state == "healthy", "state": state},
+                                 status=200 if state == "healthy" else 503)
 
     async def health(_request):
         state = monitor.state()
@@ -71,6 +84,8 @@ def build_app(monitor: HealthMonitor, extra: Callable[[], dict] | None = None):
 
     app = web.Application()
     app.router.add_get("/", root)
+    app.router.add_get("/alive", root)
+    app.router.add_get("/health/ready", ready)
     app.router.add_get("/health", health)
     app.router.add_get("/health/live", live)
     return app

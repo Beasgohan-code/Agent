@@ -145,3 +145,23 @@ def test_busy_account_never_starts_voice_call(clients):
         client.disconnect.assert_awaited_once()
         guard.release.assert_awaited_once()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('method', ['pause', 'resume', 'volume'])
+def test_unacknowledged_controls_never_update_playback_state(clients, method):
+    async def scenario():
+        _, call = clients
+        worker = engine()
+        await worker.start()
+        playback = voice.Playback('track', 'source', paused_at=123 if method == 'resume' else None)
+        worker.playbacks[1] = playback
+        before = playback.paused_at
+        setattr(call, 'change_volume_call' if method == 'volume' else method, AsyncMock(return_value=False))
+        with pytest.raises(voice.VoiceUnavailable):
+            if method == 'volume':
+                await worker.volume(1, 120)
+            else:
+                await getattr(worker, method)(1)
+        assert playback.paused_at == before
+        await worker.shutdown()
+    asyncio.run(scenario())

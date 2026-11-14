@@ -28,7 +28,7 @@ MANIFEST = PluginManifest(
     name="Core extras",
     version="1.0.0",
     description="Menu, about, runtime status, job cancellation and the owner panel.",
-    commands=("menu", "about", "status", "cancel", "owner"),
+    commands=("menu", "about", "status", "alive", "cancel", "owner"),
     permissions=("messages.read",),
     scope="all",
 )
@@ -204,6 +204,7 @@ def build(ctx):
         "menu": menu,
         "about": about,
         "status": status,
+        "alive": status,
         "cancel": cancel,
         "owner": owner,
     }

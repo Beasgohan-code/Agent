@@ -134,7 +134,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "bolt",
         "Essentials",
-        ("start", "help", "menu", "about", "status", "ping", "cancel", "owner",
+        ("start", "help", "menu", "about", "status", "alive", "ping", "cancel", "owner",
          "id", "info", "time", "repo"),
     ),
     (
@@ -160,7 +160,9 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "music",
         "Music (voice chat)",
-        ("play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave"),
+        ("play", "playnext", "pause", "resume", "skip", "stop", "end", "resetplayer",
+         "queue", "q", "nowplaying", "leave", "loop", "shuffle", "clearqueue", "clear",
+         "remove", "move", "jump", "replay", "volume", "volumeup", "volumedown", "history"),
     ),
     (
         "lock",

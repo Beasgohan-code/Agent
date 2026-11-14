@@ -282,3 +282,29 @@ def test_bot_marks_fatal_when_watchdog_fires():
 
     assert bot.fatal_reason == "telegram unreachable"
     assert stop.is_set()
+
+
+def test_alive_json_and_readiness_reflect_real_probe_state():
+    from aiohttp.test_utils import TestClient, TestServer
+    async def scenario():
+        clock = FakeClock()
+        monitor = HealthMonitor(clock=clock, degraded_after=60, down_after=120)
+        async with TestClient(TestServer(build_app(monitor))) as client:
+            response = await client.get('/')
+            body = await response.json()
+            assert body['bot'] == 'Agent' and body['status'] == 'starting'
+            assert body['heartbeat_age'] is None
+            assert (await client.get('/health/ready')).status == 503
+            monitor.record_success()
+            body = await (await client.get('/alive')).json()
+            assert body['status'] == 'alive' and body['heartbeat_age'] == 0
+            assert 'time' in body and body['uptime'] == 0
+            assert (await client.get('/health/ready')).status == 200
+            clock.advance(61)
+            assert (await client.get('/health/ready')).status == 503
+            clock.advance(60)
+            body = await (await client.get('/alive')).json()
+            assert body['status'] == 'stale'
+            assert (await client.get('/health')).status == 503
+            assert (await client.get('/health/live')).status == 200
+    asyncio.run(scenario())

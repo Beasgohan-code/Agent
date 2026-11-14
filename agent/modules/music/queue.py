@@ -31,22 +31,28 @@ class ChatQueue:
     current: Track | None = None
     waiting: list[Track] = field(default_factory=list)
     loop: bool = False
+    repeat_all: bool = False
 
     def add(self, track: Track) -> int:
         """Queue *track*; returns its 1-based position in the waiting list."""
+        if self.size >= 50:
+            raise ValueError("The music queue is full (50 tracks).")
         self.waiting.append(track)
         return len(self.waiting)
 
-    def advance(self) -> Track | None:
+    def advance(self, *, force: bool = False) -> Track | None:
         """Move to the next track; returns it, or ``None`` when the queue ends."""
-        if self.current is not None and self.loop:
+        if self.current is not None and self.loop and not force:
             return self.current
+        if self.current is not None and self.repeat_all:
+            self.waiting.append(self.current)
         self.current = self.waiting.pop(0) if self.waiting else None
         return self.current
 
     def stop(self) -> None:
         self.current = None
         self.waiting.clear()
+        self.loop = self.repeat_all = False
 
     def remove(self, position: int) -> Track | None:
         """Remove the 1-based *position* from the waiting list."""
