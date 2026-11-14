@@ -123,7 +123,7 @@ DESCRIPTIONS: dict[str, str] = {
     "leave": "Leave the voice chat",
     # reports / posts / security
     "report": "Report a message to the moderators",
-    "reports": "Work the report queue",
+    "reports": "Review reports: pages, closed, show or close number",
     "appeal": "Appeal a moderation action",
     "post": "Publish a formatted post",
     "postpreview": "Preview a post before publishing",

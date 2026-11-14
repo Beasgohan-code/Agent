@@ -261,7 +261,7 @@ class ChatStore:
     def reports(self, chat_id: int, *, state: str = "open", limit: int = 20) -> list[dict]:
         entries = self._chat(chat_id)["settings"].get("reports") or []
         matching = [entry for entry in entries if entry.get("state") == state]
-        return matching[-max(0, limit) :]
+        return matching[-limit:] if limit > 0 else []
 
     def close_report(self, chat_id: int, report_id: int, *, by: int | None = None) -> bool:
         entries = self._chat(chat_id)["settings"].get("reports") or []

@@ -183,3 +183,12 @@ still background-flushes, and redemption caps are not newly made cross-process
 atomic. Current token construction can reuse the same token for same file/owner
 and expiry second; unique-grant token design remains a separate compatibility
 upgrade, not solved by this UI increment.
+
+### Reports & Appeals review increment
+
+Added paged open/closed queues and full retained details, stricter close parsing,
+personal-identity checks and premium review panels. Fixed zero-limit ChatStore
+report slicing and escaped appeal owner notifications with explicit chat context.
+Moderator command permissions do not make responses private. Background-flushed
+storage, cross-process report sequencing and report-abuse throttling remain
+unfinished; no “all bugs fixed” or reference-parity claim is justified.

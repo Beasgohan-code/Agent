@@ -17,14 +17,15 @@ Two things are deliberately explicit:
 
 from __future__ import annotations
 
+import html
 import logging
 import time
 
 from ...platform.manifest import PluginManifest
-from ...ui.tables import Table, panel
+from ...ui.tables import Table, kv_table, panel
 from ..moderation import is_moderator
 from ...utils.rich import reply
-from .queue import _args, _reason, _notify_owner, replicated
+from .queue import _args, _reason, _notify_owner
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ def build(ctx):
         parts = _args(message)
         rest = parts[1].split() if len(parts) > 1 else []
         if rest and rest[0].lower() == "close":
-            if len(rest) < 2 or not rest[1].isdigit():
+            if len(rest) != 2 or not rest[1].isascii() or not rest[1].isdecimal() or len(rest[1]) > 12 or int(rest[1]) < 1:
                 await reply(message, "Usage: <code>/reports close &lt;number&gt;</code>")
                 return
             number = int(rest[1])
@@ -118,45 +119,67 @@ def build(ctx):
                 number,
                 message.from_user.id,
             )
-            await reply(message, f"Report #{number} closed.")
+            await reply(message, panel("Report closed", icon=ctx.theme.emoji("check"),
+                lines=[f"Report #{number} closed."],
+                note="Updated in this process; older chat settings use background persistence.", footer="/reports · /reports closed"))
             return
 
-        open_reports = ctx.chats.reports(message.chat.id, state="open")
-        if not open_reports:
-            await reply(message, 
-                panel(
-                    "Reports",
-                    icon=ctx.theme.emoji("shield"),
-                    lines=["No open reports in this chat."],
-                    footer="Members file them with <code>/report</code>.",
-                )
-            )
+        usage = "Use <code>/reports [page]</code>, <code>/reports closed [page]</code>, <code>/reports show number</code> or <code>/reports close number</code>."
+        def positive(value):
+            return value.isascii() and value.isdecimal() and len(value) <= 12 and int(value) > 0
+        if rest and rest[0].lower() == 'show':
+            if len(rest) != 2 or not positive(rest[1]):
+                await reply(message, usage)
+                return
+            number = int(rest[1])
+            entries = ctx.chats.reports(message.chat.id, state='open', limit=100) + ctx.chats.reports(message.chat.id, state='closed', limit=100)
+            entry = next((entry for entry in entries if entry.get('id') == number), None)
+            if entry is None:
+                await reply(message, f"No retained report #{number} in this chat.")
+                return
+            await reply(message, panel('Report details', icon=ctx.theme.emoji('eyes'),
+                table=kv_table([
+                    ('Report', f'#{number}'), ('Kind', entry.get('kind', 'report')),
+                    ('State', entry.get('state', 'unknown')), ('Reporter', str(entry.get('reporter') or '—')),
+                    ('Target', str(entry.get('target') or '—')), ('Message', str(entry.get('message_id') or '—')),
+                    ('Closed by', str(entry.get('closed_by') or '—')),
+                ]),
+                lines=['<b>Reason</b>\n' + html.escape(entry.get('reason') or '—')],
+                note=f"{ctx.theme.emoji('lock')} Moderator-gated, but visible to this chat. Details are retained metadata, not a copy of the original message.",
+                footer=f'/reports close {number} · /reports'))
             return
-        rows = tuple(
-            (
-                f"#{entry.get('id')}",
-                entry.get("kind", "report"),
-                str(entry.get("reporter") or "—"),
-                entry.get("reason") or "—",
-                time.strftime("%d %b %H:%M", time.gmtime(entry.get("at", 0))),
-            )
-            for entry in replicated(open_reports)
-        )
-        await reply(message, 
-            panel(
-                "Reports",
-                icon=ctx.theme.emoji("shield"),
-                subtitle=f"<b>{len(open_reports)}</b> open — newest last.",
-                table=Table(
-                    headers=("No", "Kind", "Reporter", "Reason", "When"),
-                    rows=rows,
-                    aligns=("left", "left", "right", "left", "left"),
-                    total_width=56,
-                ),
-                note="Close one with <code>/reports close &lt;number&gt;</code>.",
-                footer="Moderators only.",
-            )
-        )
+        state = 'open'
+        if rest and rest[0].lower() == 'closed':
+            state, rest = 'closed', rest[1:]
+        if len(rest) > 1 or (rest and not positive(rest[0])):
+            await reply(message, usage)
+            return
+        page = int(rest[0]) if rest else 1
+        entries = ctx.chats.reports(message.chat.id, state=state, limit=100)
+        pages = max(1, (len(entries) + 9) // 10)
+        if page > pages:
+            await reply(message, f"Choose a reports page from 1 to {pages}.")
+            return
+        if not entries:
+            await reply(message, panel('Reports', icon=ctx.theme.emoji('shield'),
+                lines=[f'No {state} reports in this chat.'], footer='Members file them with /report.'))
+            return
+        rows = tuple((f"#{entry.get('id')}", entry.get('kind', 'report'), str(entry.get('reporter') or '—'),
+                      entry.get('reason') or '—', time.strftime('%d %b %H:%M', time.gmtime(entry.get('at', 0))))
+                     for entry in entries[(page - 1) * 10:page * 10])
+        prefix = '/reports' if state == 'open' else '/reports closed'
+        navigation = []
+        if page > 1:
+            navigation.append(f'<code>{prefix} {page - 1}</code> previous')
+        if page < pages:
+            navigation.append(f'<code>{prefix} {page + 1}</code> next')
+        await reply(message, panel('Reports', icon=ctx.theme.emoji('shield'),
+            subtitle=f"{ctx.theme.emoji('stats')} Page <b>{page}/{pages}</b> · {len(entries)} {state} · oldest first",
+            table=Table(headers=('No', 'Kind', 'Reporter', 'Reason', 'When UTC'), rows=rows,
+                        aligns=('left', 'left', 'right', 'left', 'left'), total_width=56),
+            lines=[' · '.join(navigation)] if navigation else (),
+            note='Full text: <code>/reports show number</code> · Close: <code>/reports close number</code>.',
+            footer='Moderator-gated commands · responses visible in this chat · up to 100 retained reports/appeals'))
 
     # -- /appeal -----------------------------------------------------------
 
@@ -196,6 +219,16 @@ def build(ctx):
             )
         )
 
-    return MANIFEST, {"report": report, "reports": reports, "appeal": appeal}
+    def identified(handler):
+        async def wrapped(client, message):
+            user_id = getattr(getattr(message, 'from_user', None), 'id', None)
+            if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+                await reply(message, 'Use your personal Telegram user identity for reports and appeals.')
+                return
+            return await handler(client, message)
+        return wrapped
+
+    return MANIFEST, {name: identified(handler) for name, handler in
+                      {"report": report, "reports": reports, "appeal": appeal}.items()}
 
 
