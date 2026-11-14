@@ -97,6 +97,24 @@ def help_screen(user, theme: Theme) -> Screen:
             [
                 "<code>/start</code> — open the main menu",
                 "<code>/help</code> — show this help",
+                "<code>/ping</code> — live health of this instance",
+            ]
+        )
+        + "\n"
+        + rich_list(
+            [
+                "<code>/encinfo</code> — probe a replied video",
+                "<code>/encode</code> — encode it (fast · balanced · quality)",
+                "<code>/encpreset</code> — list presets",
+                "<code>/enccancel</code> — stop your jobs",
+            ]
+        )
+        + "\n"
+        + rich_list(
+            [
+                "<code>/genlink</code> — share a replied file",
+                "<code>/links</code> — list your links",
+                "<code>/revoke</code> — revoke one",
             ]
         )
         + "\n"

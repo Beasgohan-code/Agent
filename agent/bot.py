@@ -13,6 +13,9 @@ from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
 from .config import Settings
 from .handlers import CallbackHandlers, CommandHandlers
 from .health import HealthMonitor
+from .modules import MODULES
+from .platform.context import ModuleContext
+from .platform.manifest import PluginRegistry
 from .health_server import start_health_server, stop_health_server
 from .ui.theme import Theme
 from .utils.sender import ScreenSender
@@ -36,6 +39,8 @@ class AgentBot:
         self.fatal_reason: str | None = None
         self._client: Client | None = None
         self._handlers: list = []
+        self.modules: ModuleContext | None = None
+        self.registry = PluginRegistry()
 
     @property
     def client(self) -> Client | None:
@@ -82,8 +87,35 @@ class AgentBot:
             CallbackQueryHandler(callbacks.on_callback),
             ErrorHandler(self._on_error),
         ]
+
+        # --- feature modules (plugins) -----------------------------------
+        # Shared services are built once and handed to every module.
+        self.modules = ModuleContext.build(
+            self.settings, self.theme, sender, root=self.settings.data_dir
+        )
+        for module in MODULES:
+            manifest, handlers = module.build(self.modules)
+            self.registry.register(manifest, handlers)
+
+        # Only *enabled* plugins contribute handlers. A disabled plugin
+        # registers nothing at all, which is the lifecycle rule that matters.
+        for command in self.registry.active_commands():
+            callback = self.registry.handler_for(command)
+            if callback is None:  # pragma: no cover - active_commands guarantees this
+                continue
+            self._handlers.append(
+                MessageHandler(callback, filters.command(command) & filters.private)
+            )
+
         for handler in self._handlers:
             client.add_handler(handler)
+
+        enabled = [m.slug for m in self.registry.manifests() if self.registry.is_enabled(m.slug)]
+        logger.info(
+            "Modules active: %s (%d commands)",
+            ", ".join(enabled) or "none",
+            len(self.registry.active_commands()),
+        )
 
     async def _on_error(self, client, exception, handler, update, users, chats) -> None:
         """Catch anything a handler let escape; the bot keeps polling."""

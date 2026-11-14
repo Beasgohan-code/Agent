@@ -9,6 +9,9 @@ venv/
 .coverage
 htmlcov/
 
+# Runtime data (storage index, links, temp files)
+data/
+
 # Secrets and local state
 .env
 .env.*

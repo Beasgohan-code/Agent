@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+import hashlib
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Mapping
 
 BOT_TOKEN_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
@@ -31,6 +33,10 @@ class Settings:
     api_hash: str
     session_name: str = "agent"
     # Optional operational knobs; every one has a working default.
+    data_dir: Path = field(default_factory=lambda: Path("data"))
+    #: Derived from the bot token so links stay valid across restarts without
+    #: introducing another required variable.
+    link_secret: str = ""
     health_port: int | None = None
     watchdog_interval: float = 30.0
     watchdog_timeout: float = 20.0
@@ -88,6 +94,8 @@ class Settings:
             bot_token=bot_token,
             api_id=api_id,
             api_hash=api_hash,
+            data_dir=Path((source.get("DATA_DIR") or "data").strip() or "data"),
+            link_secret=hashlib.sha256(bot_token.encode()).hexdigest(),
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),

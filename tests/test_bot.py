@@ -78,10 +78,10 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    assert bot.handler_count == 5
+    assert bot.handler_count == 12   # 5 core + 7 module commands
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 3
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 10   # 3 core + 7 module
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -99,7 +99,7 @@ def test_commands_are_private_only_and_named_correctly():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 3
+    assert len(messages) == 10
     assert all(h.filters is not None for h in messages)
 
 

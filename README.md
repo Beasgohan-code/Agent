@@ -105,6 +105,24 @@ WATCHDOG_FATAL_AFTER=5
 Not implemented yet: Videl1's cross-instance lease (it needs shared storage to
 be meaningful — see the no-database rule for this phase).
 
+## Modules
+
+Each module is a plugin (manifest + real handlers) sharing one job queue,
+storage and link signer. A plugin that is disabled registers **nothing**.
+
+| Module | Commands | State |
+| --- | --- | --- |
+| `encoder` | `/encode`, `/encinfo`, `/encpreset`, `/enccancel` | ✅ real FFmpeg (probe → encode → decode-validate) |
+| `linkshare` | `/genlink`, `/links`, `/revoke` | ✅ real storage + HMAC-signed, expiring, revocable links |
+| `music` | — | ⏸ needs voice-chat (MTProto/pytgcalls) |
+| `filestore` | — | ⏸ needs the multi-bot worker layer |
+| `leech` | — | ⏸ needs Telegram upload + external services |
+| `saver` | — | ⏸ blocked by the authorized-backup rules |
+
+Commands come from the reference projects where they do not clash:
+`/encode` and friends follow `ENCODING-BOT`; `/genlink` follows
+`LINK-SHAREBOT`. Nothing is registered before it actually works.
+
 ## Layout
 
 ```
@@ -114,6 +132,8 @@ agent/bot.py          client lifecycle, handler wiring, signals
 agent/handlers/       commands (/start, /help) and callbacks
 agent/ui/             theme, screens, inline keyboards
 agent/utils/sender.py delivery with HTML + custom-emoji fallbacks
+agent/platform/        plugin registry, job queue, storage, signed links
+agent/modules/        encoder, linkshare (real handlers)
 tests/                config, UI and bot tests
 ```
 
