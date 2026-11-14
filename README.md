@@ -105,7 +105,17 @@ and no menu entries, so it cannot half-work; `PLUGINS=*` turns everything on.
 
 Buttons use the Bot API 10.3 `style` field (primary / success / danger) and the
 info screen carries a `copy_text` button, so the user id can be pasted without
-selecting text on a phone.
+selecting text on a phone. Panels that answer a question — `/about`, `/status`,
+`/premium`, the owner panel — end with one row back to the menu or the
+reference, so reading one is never a dead end.
+
+### The player card
+
+`/play` and `/nowplaying` answer with a card, not a sentence, and the card is
+the remote: pause/resume (one button that says which way it goes), skip, and a
+red stop-and-clear. The rule is the same as the commands it replaces — staff or
+whoever queued the track — and a press edits the card in place, so a paused
+track shows "Resume" the moment it pauses.
 
 ## Layout
 
@@ -429,7 +439,17 @@ and no menu entries, so it cannot half-work; `PLUGINS=*` turns everything on.
 
 Buttons use the Bot API 10.3 `style` field (primary / success / danger) and the
 info screen carries a `copy_text` button, so the user id can be pasted without
-selecting text on a phone.
+selecting text on a phone. Panels that answer a question — `/about`, `/status`,
+`/premium`, the owner panel — end with one row back to the menu or the
+reference, so reading one is never a dead end.
+
+### The player card
+
+`/play` and `/nowplaying` answer with a card, not a sentence, and the card is
+the remote: pause/resume (one button that says which way it goes), skip, and a
+red stop-and-clear. The rule is the same as the commands it replaces — staff or
+whoever queued the track — and a press edits the card in place, so a paused
+track shows "Resume" the moment it pauses.
 
 ## Layout
 
