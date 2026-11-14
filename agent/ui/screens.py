@@ -163,7 +163,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         ("play", "playnext", "pause", "resume", "skip", "stop", "end", "resetplayer",
          "queue", "q", "nowplaying", "voicehealth", "leave", "loop", "shuffle", "clearqueue", "clear",
          "remove", "move", "jump", "replay", "volume", "volumeup", "volumedown", "history",
-         "saveplaylist", "playlist", "playlists", "deleteplaylist"),
+         "saveplaylist", "playlist", "playlists", "deleteplaylist", "playlistinfo"),
     ),
     (
         "lock",

@@ -164,3 +164,21 @@ Group permissions, per-group serialization and the sender's rich/classic
 fallback are unchanged. UI reads do not probe voice connectivity; queue and
 volume state still reset with the process. No live Telegram rendering or audio
 streaming was exercised here.
+
+## Saved library UI and read-only preview
+
+`/playlistinfo name` shows up to 20 stored track titles from the authenticated
+user's list in this bot/group. It is admin/tenant-Owner gated like the other
+playlist commands and only exists when Music and PostgreSQL playlists register.
+The query selects bounded titles, not media source fields. Preview does not
+resolve DNS, download, enqueue, join a call or mutate the list. A preview is not
+proof that sources are currently playable; `/playlist name` still revalidates
+addresses before enqueueing. Titles are escaped but may contain personal text
+or user-entered links; this group-visible response is not a private vault.
+
+`/playlists` now shows quota/empty guidance. Save/delete/load success, validation
+and unconfirmed results have native premium-themed panels, preserving warnings
+about replacement, duplicate loading and session-only queues. Confirmed save
+means the awaited SQL write completed; ambiguous failures still ask users to
+check before retrying. With playlist preview the total Music surface is now
+30 commands when PostgreSQL playlists are available (25 without playlists).

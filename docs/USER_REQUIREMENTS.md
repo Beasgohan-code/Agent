@@ -144,3 +144,11 @@ Upgraded `/queue`/`/q` with validated pagination and stable positions,
 with premium-themed native panels and Unicode fallback. Continue auditing the
 remaining commands one by one; this is not a universal UI/parity completion.
 No merge without the separately confirmed PR-specific second approval.
+
+### Saved library increment
+
+Add `/playlistinfo name` for read-only, group/user/tenant-scoped saved title
+previews, without selecting media source fields or probing media addresses.
+Upgrade all saved-playlist result panels with premium theming, quota and empty
+state guidance. Existing admin permissions, confirmed SQL saves and whole-list
+load validation remain unchanged. Full Music/reference parity is still pending.

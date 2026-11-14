@@ -128,6 +128,13 @@ def test_real_pg_playlist_quota_is_atomic_and_data_is_scoped(monkeypatch):
             name = records[0]['name']
             await service.save(-100, OWNER, name, [track('replacement')])
             assert (await service.load(-100, OWNER, name))[0]['title'] == 'replacement'
+            preview = await service.inspect(-100, OWNER, name)
+            assert preview['titles'] == ['replacement']
+            assert 'source' not in str(preview) and 'https://' not in str(preview)
+            for preview_service, group, user in [(service, -200, OWNER), (service, -100, STRANGER),
+                                                   (MusicPlaylists(other), -100, OWNER)]:
+                with pytest.raises(PlaylistError):
+                    await preview_service.inspect(group, user, name)
             assert not await service.list(-200, OWNER)
             assert not await service.list(-100, STRANGER)
             assert not await MusicPlaylists(other).list(-100, OWNER)
@@ -142,6 +149,8 @@ def test_real_pg_playlist_quota_is_atomic_and_data_is_scoped(monkeypatch):
             monkeypatch.setattr(music_lists, 'check_target', AsyncMock(side_effect=RuntimeError('private target')))
             with pytest.raises(PlaylistError):
                 await service.load(-100, OWNER, name)
+            # Metadata preview works even when media DNS fails; no fetch/play implied.
+            assert (await service.inspect(-100, OWNER, name))['titles'] == ['replacement']
             assert await service.delete(-100, OWNER, name)
             assert len(await service.list(-100, OWNER)) == 9
         finally:
@@ -161,6 +170,6 @@ def test_saved_playlist_commands_are_capability_gated(tmp_path, monkeypatch):
     assert not set(playlists.COMMANDS).intersection(handlers)
     ctx.db = SimpleNamespace(connected=True, _pool=object(), scope='test')
     manifest, handlers = music.build(ctx)
-    assert len(handlers) == 29
+    assert len(handlers) == 30
     assert set(manifest.commands) == set(handlers)
     assert set(playlists.COMMANDS).issubset(handlers)
