@@ -140,7 +140,7 @@ def test_encode_runs_a_real_job(ctx, media_file):
     run(handlers["encode"], ctx, message)
 
     assert any("Encoding job" in r for r in message.replies)
-    assert any("Encode finished" in r for r in message.replies)
+    assert any("finished" in r for r in message.replies)
 
 
 def test_enccancel_reports_nothing_running(ctx):

@@ -118,8 +118,13 @@ embedded credentials, no address that only resolves from inside the host — and
 the transfers are ordinary jobs, so `/cancel` stops them and `/tasklist` shows
 them.
 
-`/encode` runs real FFmpeg (system binary, or the `imageio-ffmpeg` wheel) with
-presets and live progress. The music player drives `pytgcalls` with a Telethon
+The encoder plugin runs real FFmpeg (system binary, or the `imageio-ffmpeg`
+wheel): `/encode` with presets and live progress, `/compress` for the fast
+preset by name, `/sample [start] [length]` for a stream-copied clip, `/toaudio`
+for the audio track as MP3, `/screens` for a 3×3 contact sheet, and `/encinfo`
+to probe what a file actually is. Every tool feeds the same job queue, so
+`/enccancel` kills the child process instead of politely forgetting it, and every
+produced file comes back with the chat's caption and thumbnail attached. The music player drives `pytgcalls` with a Telethon
 user session, and is gated on capability: without `SESSION_STRING` the module
 registers zero commands and `/plugins` says why. `/play` and `/nowplaying` answer
 with a card, and the card is the remote — pause/resume, skip, and a red
@@ -179,7 +184,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 412 tests
+pytest -q                      # 416 tests
 python -m pyflakes agent tests # no unused names
 ```
 

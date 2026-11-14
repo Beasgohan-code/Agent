@@ -87,13 +87,13 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    # 3 built-in commands + 94 module commands (music registers nothing without
+    # 3 built-in commands + 98 module commands (music registers nothing without
     # SESSION_STRING) + callback + error handler, plus four watchers (anti-spam,
     # filters, joins/leaves, new-group log), each in its own group.
-    assert bot.handler_count == 104
+    assert bot.handler_count == 108
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 97
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 101
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -123,7 +123,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 97
+    assert len(messages) == 101
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -131,7 +131,11 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     group = {c for c, scope in scopes.items() if scope == "group"}
 
     # Media commands stay in private chats; moderation only makes sense in groups.
-    assert private == {"encode", "encinfo", "enccancel", "encpreset", "genlink", "links", "revoke"}
+    assert private == {
+        "encode", "compress", "sample", "toaudio", "screens",
+        "encinfo", "enccancel", "encpreset",
+        "genlink", "links", "revoke",
+    }
     assert group == {
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "unban", "purge", "note", "trust", "antispam", "modlog",

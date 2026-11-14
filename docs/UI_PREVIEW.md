@@ -182,8 +182,8 @@ Owner only.
 ┌──────────┬────────┬────────────────────────────┐
 │ Time     │ Kind   │ Detail                     │
 ├──────────┼────────┼────────────────────────────┤
-│ 10:24:33 │ plugin │ slug=group action=on by=11 │
-│ 10:24:33 │ start  │ version=0.1.0              │
+│ 10:26:13 │ plugin │ slug=group action=on by=11 │
+│ 10:26:13 │ start  │ version=0.1.0              │
 └──────────┴────────┴────────────────────────────┘
 
 Every entry is written when the action happened — none are simulated.
@@ -200,8 +200,8 @@ Owner only. Times are UTC.
 ┌─────┬──────────────────────┬─────┬──────────────┐
 │   # │ Reason               │  By │ When         │
 ├─────┼──────────────────────┼─────┼──────────────┤
-│   1 │ ignoring staff       │  11 │ 14 Nov 10:24 │
-│   2 │ posting invite links │  11 │ 14 Nov 10:24 │
+│   1 │ ignoring staff       │  11 │ 14 Nov 10:26 │
+│   2 │ posting invite links │  11 │ 14 Nov 10:26 │
 └─────┴──────────────────────┴─────┴──────────────┘
 
 Member: Meiko — 2 active warning(s).
@@ -221,8 +221,8 @@ Newest first.
 ┌────────┬────────┬─────────────────────┬──────────────┐
 │ Action │ Target │ Reason              │ When         │
 ├────────┼────────┼─────────────────────┼──────────────┤
-│ MUTE   │     22 │ flood               │ 14 Nov 10:24 │
-│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:24 │
+│ MUTE   │     22 │ flood               │ 14 Nov 10:26 │
+│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:26 │
 └────────┴────────┴─────────────────────┴──────────────┘
 
 ─────

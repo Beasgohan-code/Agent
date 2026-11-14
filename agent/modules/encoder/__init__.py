@@ -14,10 +14,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from ...platform.attachments import attachment_kwargs
 from ...platform.jobs import Job
 from ...platform.manifest import PluginManifest
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
+from ..filestore.vault import human_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,16 @@ MANIFEST = PluginManifest(
     name="Encoder",
     version="1.0.0",
     description="FFmpeg video/audio encoding with presets, live progress and output validation.",
-    commands=("encode", "encinfo", "enccancel", "encpreset"),
+    commands=(
+        "encode",
+        "compress",
+        "sample",
+        "toaudio",
+        "screens",
+        "encinfo",
+        "enccancel",
+        "encpreset",
+    ),
     permissions=("messages.read", "files.write", "process.spawn"),
 )
 
@@ -104,9 +115,12 @@ def build_command(src: Path, dst: Path, *, preset: str = "balanced", codec: str 
     ]
 
 
-async def run_ffmpeg(job: Job, src: Path, dst: Path, *, preset: str, codec: str, duration: float) -> Path:
-    """Run the encode, feeding progress into *job*. Kills the child on cancel."""
-    command = build_command(src, dst, preset=preset, codec=codec)
+async def run_tool(job: Job, command: list[str], dst: Path, *, duration: float) -> Path:
+    """Run any ffmpeg command line, feeding progress into *job*.
+
+    One runner for every tool keeps cancellation honest: whatever is running,
+    cancelling the job kills the child instead of leaving it to finish.
+    """
     process = await asyncio.create_subprocess_exec(
         *command,
         stdout=asyncio.subprocess.PIPE,
@@ -134,6 +148,86 @@ async def run_ffmpeg(job: Job, src: Path, dst: Path, *, preset: str, codec: str,
         stderr = (await process.stderr.read()).decode(errors="ignore")[-400:] if process.stderr else ""
         raise RuntimeError(f"ffmpeg exited {process.returncode}: {stderr.strip()}")
     return dst
+
+
+async def run_ffmpeg(job: Job, src: Path, dst: Path, *, preset: str, codec: str, duration: float) -> Path:
+    """The encode itself, on the shared runner."""
+    return await run_tool(
+        job, build_command(src, dst, preset=preset, codec=codec), dst, duration=duration
+    )
+
+
+def clip_command(src: Path, dst: Path, *, start: float, length: float) -> list[str]:
+    """A short cut, stream-copied: no re-encode, so it is fast and lossless."""
+    return [
+        ffmpeg_path(),
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostats",
+        "-progress",
+        "pipe:1",
+        "-y",
+        "-ss",
+        str(start),
+        "-i",
+        str(src),
+        "-t",
+        str(length),
+        "-c",
+        "copy",
+        "-map",
+        "0",
+        str(dst),
+    ]
+
+
+def audio_command(src: Path, dst: Path) -> list[str]:
+    """The audio track, as MP3 at 192 kbit/s — playable everywhere."""
+    return [
+        ffmpeg_path(),
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostats",
+        "-progress",
+        "pipe:1",
+        "-y",
+        "-i",
+        str(src),
+        "-vn",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        "192k",
+        str(dst),
+    ]
+
+
+def screens_command(src: Path, dst: Path, *, count: int = 9, duration: float = 0.0) -> list[str]:
+    """A contact sheet: *count* frames laid out in a 3x3 grid."""
+    columns = 3
+    rows = max(1, (count + columns - 1) // columns)
+    every = max(1.0, duration / (count + 1)) if duration else 10.0
+    return [
+        ffmpeg_path(),
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostats",
+        "-progress",
+        "pipe:1",
+        "-y",
+        "-i",
+        str(src),
+        "-vf",
+        f"select='not(mod(n,{int(max(1, every * 25))}))',scale=320:-1,tile={columns}x{rows}",
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        str(dst),
+    ]
 
 
 async def validate_output(path: Path) -> bool:
@@ -220,11 +314,149 @@ def build(ctx):
         await job.task
 
         if job.state.value == "done":
-            await reply(message, f"Encode finished: {html.escape(job.label)} → MP4, validated.")
+            await _deliver(_client, message, job, Path(job.result))
         elif job.state.value == "cancelled":
             await reply(message, "Encode cancelled.")
         else:
             await reply(message, f"Encode failed: {html.escape(str(job.error))}")
+
+    async def _deliver(client, message, job: Job, produced: Path) -> None:
+        """Send the file a tool produced, with the chat's caption/thumbnail."""
+        size = human_bytes(produced.stat().st_size)
+        if client is None or not hasattr(client, "send_document"):
+            await reply(
+                message,
+                f"<b>{html.escape(job.label)} finished</b>\n"
+                f"<code>{html.escape(produced.name)}</code> · {size}",
+            )
+            return
+        try:
+            await client.send_document(
+                message.chat.id,
+                str(produced),
+                file_name=produced.name,
+                **attachment_kwargs(
+                    ctx.chats,
+                    message.chat.id,
+                    name=produced.name,
+                    size=human_bytes(produced.stat().st_size),
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - the job still happened
+            logger.exception("could not deliver %s", produced)
+            await reply(message, f"The job finished but sending it failed: {type(exc).__name__}")
+
+    async def _run_tool(client, message, *, kind: str, label: str, make) -> None:
+        """Shared body for the tools: download, queue, report, deliver."""
+        media = _source_media(message)
+        if media is None:
+            await reply(message, f"Reply to a video or document with /{kind}.")
+            return
+        try:
+            source = await message.reply_to_message.download()
+        except Exception as exc:  # noqa: BLE001
+            await reply(message, f"Could not download that file: {type(exc).__name__}")
+            return
+        if not source:
+            await reply(message, "Telegram returned no file to work on.")
+            return
+        src = Path(source)
+        job = ctx.jobs.submit("encoder", message.from_user.id, make(src), label=label)
+        await reply(
+            message,
+            f"Job <code>{job.id}</code> started ({html.escape(label)}). "
+            "<code>/enccancel</code> stops it.",
+        )
+        await job.task
+        if job.state.value != "done":
+            reason = "cancelled" if job.state.value == "cancelled" else str(job.error)
+            await reply(message, f"<b>{html.escape(label)} failed</b>\n{html.escape(reason)}")
+            return
+        await _deliver(client, message, job, Path(job.result))
+
+    async def compress(client, message):
+        """A smaller file, quickly — /encode fast with the name people expect."""
+        media = _source_media(message)
+        if media is None:
+            await reply(message, "Reply to a video with /compress.")
+            return
+        try:
+            source = await message.reply_to_message.download()
+        except Exception as exc:  # noqa: BLE001
+            await reply(message, f"Could not download that file: {type(exc).__name__}")
+            return
+        src = Path(source)
+        job = ctx.jobs.submit(
+            "encoder",
+            message.from_user.id,
+            lambda j: encode_job(j, ctx, src, "fast", "h264"),
+            label=f"{src.stem}-compressed",
+        )
+        await reply(message, f"Compressing as <code>{job.id}</code> (fast preset).")
+        await job.task
+        if job.state.value != "done":
+            await reply(message, f"Compression failed: {html.escape(str(job.error))}")
+            return
+        await _deliver(client, message, job, Path(job.result))
+
+    def _seconds(parts: list[str], index: int, default: float) -> float:
+        try:
+            return max(0.0, float(parts[index]))
+        except (IndexError, ValueError):
+            return default
+
+    async def sample(client, message):
+        """``/sample [start] [length]`` — a stream-copied clip."""
+        parts = (getattr(message, "text", "") or "").split()
+        start = _seconds(parts, 1, 0.0)
+        length = min(300.0, _seconds(parts, 2, 30.0)) or 30.0
+
+        def make(src: Path):
+            async def run(job: Job) -> Path:
+                info = await probe(src)
+                dst = Path(tempfile.mkdtemp(prefix="sample-")) / f"{src.stem}-sample{src.suffix}"
+                job.detail = f"{length:.0f}s from {start:.0f}s"
+                return await run_tool(
+                    job, clip_command(src, dst, start=start, length=length), dst,
+                    duration=min(length, info["duration"] or length),
+                )
+
+            return run
+
+        await _run_tool(client, message, kind="sample", label=f"sample {length:.0f}s", make=make)
+
+    async def toaudio(client, message):
+        """The audio track as MP3."""
+
+        def make(src: Path):
+            async def run(job: Job) -> Path:
+                info = await probe(src)
+                dst = Path(tempfile.mkdtemp(prefix="audio-")) / f"{src.stem}.mp3"
+                job.detail = "extracting audio"
+                return await run_tool(job, audio_command(src, dst), dst, duration=info["duration"])
+
+            return run
+
+        await _run_tool(client, message, kind="toaudio", label="audio", make=make)
+
+    async def screens(client, message):
+        """/screens [count] — a contact sheet of the replied video."""
+
+        def make(src: Path):
+            async def run(job: Job) -> Path:
+                info = await probe(src)
+                dst = Path(tempfile.mkdtemp(prefix="screens-")) / f"{src.stem}-screens.jpg"
+                job.detail = "building the sheet"
+                return await run_tool(
+                    job,
+                    screens_command(src, dst, duration=info["duration"]),
+                    dst,
+                    duration=info["duration"],
+                )
+
+            return run
+
+        await _run_tool(client, message, kind="screens", label="contact sheet", make=make)
 
     async def encinfo(_client, message):
         media = _source_media(message)
@@ -290,6 +522,10 @@ def build(ctx):
 
     return MANIFEST, {
         "encode": encode,
+        "compress": compress,
+        "sample": sample,
+        "toaudio": toaudio,
+        "screens": screens,
         "encinfo": encinfo,
         "enccancel": enccancel,
         "encpreset": encpreset,

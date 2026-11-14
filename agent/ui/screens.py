@@ -142,7 +142,8 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "gear",
         "Encoding & files",
         (
-            "encode", "encinfo", "encpreset", "enccancel",
+            "encode", "compress", "sample", "toaudio", "screens",
+            "encinfo", "encpreset", "enccancel",
             "autorename", "rename", "testrename", "clean",
             "setthumb", "delthumb", "viewthumb",
             "setcaption", "delcaption", "viewcaption",

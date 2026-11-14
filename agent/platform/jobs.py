@@ -34,6 +34,8 @@ class Job:
     progress: float = 0.0
     detail: str = ""
     error: str | None = None
+    #: Whatever the runner returned — a produced file's path, usually.
+    result: Any = None
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
@@ -51,6 +53,7 @@ class Job:
             "progress": round(self.progress, 3),
             "detail": self.detail,
             "error": self.error,
+            "result": None if self.result is None else str(self.result),
             "label": self.label,
         }
 
@@ -89,7 +92,7 @@ class JobQueue:
             job.state = JobState.RUNNING
             job.started_at = time.time()
             try:
-                await runner(job)
+                job.result = await runner(job)
             except asyncio.CancelledError:
                 job.state = JobState.CANCELLED
                 job.finished_at = time.time()

@@ -123,6 +123,10 @@ DESCRIPTIONS: dict[str, str] = {
     "repo": "Where this bot's source lives",
     # encoder
     "encode": "Encode a replied video",
+    "compress": "Make a replied video smaller (fast preset)",
+    "sample": "Cut a short clip from a replied video",
+    "toaudio": "Extract the audio track as MP3",
+    "screens": "Contact sheet of frames from a video",
     "encinfo": "Probe a replied video",
     "encpreset": "List encoding presets",
     "enccancel": "Cancel your encoding jobs",
