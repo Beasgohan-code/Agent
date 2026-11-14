@@ -1,6 +1,4 @@
-"""The Meikoagent-derived plugins: leech safety, vault, reports, posts, verify.
-
-Everything here runs offline. The parts that need Telegram (restrict, send) are
+"""Everything here runs offline. The parts that need Telegram (restrict, send) are
 faked; the parts that decide things — URL validation, numbering, escaping,
 queue order — are the real code.
 """

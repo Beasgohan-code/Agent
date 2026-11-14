@@ -3,8 +3,6 @@
 Probes the Telegram link on a timer, records the outcome and, when the link
 stays down beyond the tolerance, asks the supervisor for a restart.
 
-Deliberate design choices (learned from Videl1 and Meikoagent):
-
 * **No self-ping.** Nothing here calls the bot's own HTTP endpoint to fake
   traffic; probes are genuine Telegram API calls.
 * **Recovery is observable.** Every probe is recorded, and state transitions

@@ -48,8 +48,9 @@ def help_keyboard() -> Keyboard:
 def nav_keyboard() -> Keyboard:
     """One row for a panel that is not the menu: the two ways back.
 
-    A panel answers a question ("what is my tier?", "is it healthy?") and then
-    leaves the user on a dead end; this is the second half of that sentence.
+        A panel answers a question ("what is my tier?", "is it healthy?") and then
+        leaves the user on a dead end; this is the second half of that sentence.
+        
     """
     return Keyboard(
         [

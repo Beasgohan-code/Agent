@@ -10,6 +10,10 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024
 
 PAGE_SIZE = 10
 
+#: One batch is bounded: Telegram returns at most 200 messages per request and a
+#: longer run would hold a job open for minutes.
+MAX_BATCH = 50
+
 
 def human_bytes(count: float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
@@ -28,6 +32,17 @@ def media_of(message):
         media = getattr(replied, attribute, None)
         if media is not None:
             return replied, media
+    return None
+
+
+def media_in(message):
+    """The media object carried by a message (not by its reply), if any."""
+    if message is None:
+        return None
+    for attribute in ("document", "video", "audio", "voice", "animation", "photo"):
+        media = getattr(message, attribute, None)
+        if media is not None:
+            return media
     return None
 
 

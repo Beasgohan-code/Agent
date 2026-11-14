@@ -1,10 +1,5 @@
 """Agent — delivery helpers.
 
-Screens are authored as rich markup and delivered as standard Telegram HTML
-assembled by richgram's public rich→HTML normaliser, which keeps the tags
-Telegram accepts and drops the rich-only ones. Inline keyboards ride along as
-native reply markup, so callback navigation never depends on rich rendering.
-
 If Telegram rejects a custom emoji, the message is retried once with plain
 unicode so a premium glyph can never break a command.
 """
@@ -32,7 +27,6 @@ def _visible_text(html_text: str) -> str:
     return _TAG_RE.sub("", html_text or "")
 
 
-#: Blocks whose inner whitespace is significant. richgram's normaliser collapses
 #: runs of spaces for chat text, which is right for prose and fatal for a table
 #: drawn in <pre>: it squeezes every column to two spaces. Monospace blocks are
 #: therefore lifted out before normalising and put back untouched.
@@ -43,7 +37,6 @@ def to_safe_html(rich_text: str) -> str:
     """Convert rich markup into HTML that standard parse mode accepts."""
     text = rich_text or ""
     if "<pre>" not in text.lower():
-        # rich_caption is richgram's public rich->standard-HTML normaliser.
         return rich_caption(text)
     pieces: list[str] = []
     cursor = 0
@@ -84,9 +77,10 @@ class ScreenSender:
     async def send_photo(self, chat_id, screen: Screen, photo: str | None, *, caption_limit: int = 1024):
         """Send a screen as the caption of *photo*, falling back to plain text.
 
-        Telegram caps captions at 1024 characters, and a picture that cannot be
-        fetched must never cost the user the screen — both cases fall back to
-        :meth:`send` instead of raising.
+                Telegram caps captions at 1024 characters, and a picture that cannot be
+                fetched must never cost the user the screen — both cases fall back to
+                :meth:`send` instead of raising.
+                
         """
         text = to_safe_html(screen.rich_text)
         if not photo:

@@ -1,29 +1,25 @@
-"""Core module — the everyday commands Meikoagent's core and owner routers expose.
+"""Core — the commands that explain the bot to whoever is using it.
 
-``menu``, ``about``, ``status``, ``cancel`` and ``owner`` join the existing
-``/start``, ``/help`` and ``/ping``. Two of them are implemented more strictly
-than the reference, because the reference version would be a fake control:
+``/menu`` redraws the start screen, ``/about`` says what is loaded and how much
+each module adds, ``/status`` reads this process's live counters, ``/cancel``
+stops the caller's own jobs, and ``/owner`` is the owner's panel.
 
-* ``/cancel`` there answers "Cancelled" without cancelling anything; here it
-  cancels the caller's real jobs and reports how many actually stopped.
-* ``/status`` reports this process's real counters (uptime, probes, failures,
-  queued jobs) read from the live health monitor, not placeholder numbers.
-
-``/owner`` needs ``OWNER_ID``. Without it the command says so instead of
-guessing an owner.
+Two of them are stricter than a placeholder would be: ``/cancel`` reports only
+what it actually stopped, and ``/status`` reads the health monitor instead of
+quoting numbers nobody measured. ``/owner`` needs ``OWNER_ID`` and says so
+rather than guessing.
 """
 
 from __future__ import annotations
 
 import logging
 
-from .. import __version__
-from ..platform.manifest import PluginManifest
-from ..ui.keyboards import nav_keyboard
-from ..ui.screens import format_uptime, welcome_screen
-from ..platform.credits import NOTICE, rows
-from ..ui.tables import Table, kv_table, panel
-from ..utils.rich import reply
+from ... import __version__
+from ...platform.manifest import PluginManifest
+from ...ui.keyboards import nav_keyboard
+from ...ui.screens import format_uptime, welcome_screen
+from ...ui.tables import Table, kv_table, panel
+from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +64,17 @@ def build(ctx):
             message.chat.id, welcome_screen(user, ctx.theme, active=active)
         )
 
+    def _module_rows() -> tuple[tuple[str, str], ...]:
+        """What is actually loaded, and how much each module adds."""
+        registry = getattr(ctx, "registry", None)
+        if registry is None:  # pragma: no cover - always set by the bot
+            return ()
+        return tuple(
+            (manifest.name, str(len(manifest.commands)))
+            for manifest in registry.manifests()
+            if manifest.commands and registry.is_enabled(manifest.slug)
+        )
+
     async def about(_client, message):
         modules, commands = _registry_summary()
         await reply(
@@ -82,14 +89,14 @@ def build(ctx):
                     "them instead of running their own.",
                 ],
                 table=Table(
-                    headers=("Project", "What it gave"),
-                    rows=tuple(rows()),
+                    headers=("Module", "Commands"),
+                    rows=_module_rows(),
                 ),
-                note=NOTICE,
-                footer=(
-                    "Full list with licences: <code>docs/CREDITS.md</code> · "
-                    "runtime: wzgram + richgram"
+                note=(
+                    "Every module shares the same queue, store and link signer, so "
+                    "a file saved in one can be fetched by another."
                 ),
+                footer="<code>/plugins</code> shows what is on; <code>/help</code> shows every command.",
             ),
             reply_markup=nav_keyboard(),
         )

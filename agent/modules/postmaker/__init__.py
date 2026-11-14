@@ -1,13 +1,9 @@
-"""Post Maker — Meikoagent's ``post_maker`` without the scheduler.
+"""Post maker — one layout per chat, one command per post.
 
 ``/posttemplate`` stores a per-chat layout, ``/postpreview`` renders it, and
 ``/post`` publishes it. The template is trusted input (an administrator writes
 it, and it is the only place formatting can come from); the *values* substituted
 into it are escaped, so a title containing ``<b>`` cannot break the post.
-
-Meikoagent also schedules posts. That needs a queue that survives a restart and a
-tick that fires on time; this module does not ship one, and it does not pretend
-to — there is no ``/schedule`` command until there is a scheduler behind it.
 """
 
 from __future__ import annotations

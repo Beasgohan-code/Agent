@@ -1,14 +1,12 @@
-"""Renamer module — predictable filenames for media.
+"""Renamer — predictable filenames for media.
 
-Command names follow Meikoagent's renamer plugin (``autorename``, ``rename``,
-``testrename``, ``clean``) and the default template is the same shape:
-``{title} S{season:02d}E{episode:02d} [{quality}]``.
+``/rename`` renames a replied file with the chat's template, ``/testrename``
+shows the result without touching anything, ``/autorename`` applies it to a
+batch and ``/clean`` tidies a name in place.
 
-The parsing rules are implemented independently; only the observable contract
-is shared. ``renamemode`` is deliberately **not** registered: it exists there to
-switch automatic renaming of files flowing through an upload pipeline, and this
-bot has no upload pipeline, so the command would be a switch with nothing
-behind it.
+``/renamemode`` is deliberately absent: it would switch automatic renaming on a
+pipeline this bot does not have, and a switch with nothing behind it is worse
+than no switch.
 """
 
 from __future__ import annotations
@@ -16,15 +14,28 @@ from __future__ import annotations
 import html
 import re
 
-from ..platform.manifest import PluginManifest
-from ..utils.rich import reply
+from ...platform.manifest import PluginManifest
+from ...ui.tables import kv_table, panel
+from ...utils.rich import reply
+from ...platform.attachments import CAPTION_KEY, MAX_CAPTION, THUMB_KEY, render_caption
 
 MANIFEST = PluginManifest(
     slug="renamer",
     name="Renamer",
     version="1.0.0",
     description="Template-driven filenames: preview, rename and clean.",
-    commands=("autorename", "rename", "testrename", "clean"),
+    commands=(
+        "autorename",
+        "rename",
+        "testrename",
+        "clean",
+        "setthumb",
+        "delthumb",
+        "viewthumb",
+        "setcaption",
+        "delcaption",
+        "viewcaption",
+    ),
     permissions=("messages.read", "messages.send"),
     scope="all",
 )
@@ -267,7 +278,133 @@ def build(ctx):
             f"<b>Cleaned</b>\n<code>{html.escape(clean_filename(filename))}</code>"
         )
 
+    # -- thumbnails and captions ------------------------------------------
+    chats = getattr(ctx, "chats", None)
+
+    def _unavailable() -> str:
+        return "This deployment has no per-chat store, so thumbnails and captions cannot be saved."
+
+    def _thumb_id(message):
+        """The file id of the replied image, or None with a reason."""
+        replied = getattr(message, "reply_to_message", None)
+        if replied is None:
+            return None, "Reply to a photo or an image file."
+        photo = getattr(replied, "photo", None)
+        if photo is not None:
+            file_id = getattr(photo, "file_id", None)
+            if file_id is None and isinstance(photo, list) and photo:
+                file_id = getattr(photo[-1], "file_id", None)
+            return (file_id, "") if file_id else (None, "That photo has no file id I can reuse.")
+        document = getattr(replied, "document", None)
+        if document is not None:
+            mime = str(getattr(document, "mime_type", "") or "")
+            if not mime.startswith("image/"):
+                return None, "That document is not an image."
+            return getattr(document, "file_id", None), ""
+        return None, "Reply to a photo or an image file."
+
+    async def setthumb(_client, message):
+        if chats is None:
+            await reply(message, _unavailable())
+            return
+        file_id, reason = _thumb_id(message)
+        if file_id is None:
+            await reply(message, reason)
+            return
+        chats.put(message.chat.id, THUMB_KEY, file_id)
+        await reply(
+            message,
+            panel(
+                "Thumbnail saved",
+                icon=ctx.theme.emoji("check"),
+                table=kv_table([("Applies to", "this chat"), ("Files", "sent by /get, /leech, /rename")]),
+                footer="Replace it by replying to another image; <code>/delthumb</code> clears it.",
+            ),
+        )
+
+    async def delthumb(_client, message):
+        if chats is None:
+            await reply(message, _unavailable())
+            return
+        had = chats.get(message.chat.id, THUMB_KEY)
+        chats.put(message.chat.id, THUMB_KEY, None)
+        await reply(message, "Thumbnail cleared." if had else "There was no thumbnail to clear.")
+
+    async def viewthumb(client, message):
+        if chats is None:
+            await reply(message, _unavailable())
+            return
+        file_id = chats.get(message.chat.id, THUMB_KEY)
+        if not file_id:
+            await reply(message, "No thumbnail is set here. Reply to an image with <code>/setthumb</code>.")
+            return
+        try:
+            await client.send_photo(message.chat.id, file_id, caption="This is the thumbnail this chat uses.")
+        except Exception as exc:  # noqa: BLE001 - a stale file id is a real answer
+            await reply(message, f"Telegram would not re-send that thumbnail: {type(exc).__name__}: {exc}")
+
+    async def setcaption(_client, message):
+        if chats is None:
+            await reply(message, _unavailable())
+            return
+        parts = (getattr(message, "text", "") or "").split(maxsplit=1)
+        if len(parts) < 2 or not parts[1].strip():
+            await reply(
+                message,
+                "Usage: <code>/setcaption 📁 {name} — {size}</code>. "
+                "Fields: <code>{name}</code>, <code>{stem}</code>, <code>{size}</code>.",
+            )
+            return
+        template = parts[1].strip()
+        if len(template) > MAX_CAPTION:
+            await reply(message, f"That caption is longer than Telegram's {MAX_CAPTION}-character cap.")
+            return
+        chats.put(message.chat.id, CAPTION_KEY, template)
+        example = render_caption(template, name="Show.S01E01.1080p.mkv", size="1.2 GB")
+        await reply(
+            message,
+            panel(
+                "Caption saved",
+                icon=ctx.theme.emoji("check"),
+                table=kv_table([("Template", html.escape(template)), ("Example", html.escape(example or ""))]),
+                footer="It is attached to files this chat receives from /get, /leech and /rename.",
+            ),
+        )
+
+    async def delcaption(_client, message):
+        if chats is None:
+            await reply(message, _unavailable())
+            return
+        had = chats.get(message.chat.id, CAPTION_KEY)
+        chats.put(message.chat.id, CAPTION_KEY, None)
+        await reply(message, "Caption cleared." if had else "There was no caption to clear.")
+
+    async def viewcaption(_client, message):
+        if chats is None:
+            await reply(message, _unavailable())
+            return
+        template = chats.get(message.chat.id, CAPTION_KEY)
+        if not template:
+            await reply(message, "No caption is set here. Set one with <code>/setcaption</code>.")
+            return
+        example = render_caption(template, name="Show.S01E01.1080p.mkv", size="1.2 GB")
+        await reply(
+            message,
+            panel(
+                "Caption for this chat",
+                icon=ctx.theme.emoji("info"),
+                table=kv_table([("Template", html.escape(template)), ("Example", html.escape(example or ""))]),
+                footer="<code>/delcaption</code> removes it.",
+            ),
+        )
+
     return MANIFEST, {
+        "setthumb": setthumb,
+        "delthumb": delthumb,
+        "viewthumb": viewthumb,
+        "setcaption": setcaption,
+        "delcaption": delcaption,
+        "viewcaption": viewcaption,
         "autorename": autorename,
         "rename": rename,
         "testrename": testrename,

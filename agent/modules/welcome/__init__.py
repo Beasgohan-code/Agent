@@ -1,10 +1,4 @@
-"""Welcome module — greetings for joins and farewells for leaves.
-
-The command names come from ``CBML``/``WZML-X`` and ``Meikoagent``'s welcome
-plugin (``setwelcome``, ``welcome``, ``goodbye``). The behaviour here is driven
-by real ``ChatMemberUpdated`` events, so a greeting only ever fires when
-Telegram actually reports a join or a leave.
-"""
+"""Welcome module — greetings for joins and farewells for leaves."""
 
 from __future__ import annotations
 
@@ -14,8 +8,8 @@ import logging
 from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.handlers import ChatMemberUpdatedHandler
 
-from ..platform.manifest import PluginManifest
-from ..utils.rich import reply
+from ...platform.manifest import PluginManifest
+from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +34,11 @@ def _args(message) -> list[str]:
 def render(template: str, *, user, chat, count: int | None) -> str:
     """Fill the small, documented placeholder set — nothing dynamic is invented.
 
-    The stored template is escaped first. Replies are sent with HTML parsing on,
-    so an unescaped ``<`` in a greeting would either inject markup into the group
-    or make Telegram reject the message outright. The only markup that reaches
-    the chat is the mention link built below.
+        The stored template is escaped first. Replies are sent with HTML parsing on,
+        so an unescaped ``<`` in a greeting would either inject markup into the group
+        or make Telegram reject the message outright. The only markup that reaches
+        the chat is the mention link built below.
+        
     """
     name = getattr(user, "first_name", None) or "there"
     mention = (
@@ -117,7 +112,7 @@ def extra_handlers(ctx):
 
 def build(ctx):
     async def _guard(client, message) -> bool:
-        from .moderation import is_moderator
+        from ..moderation import is_moderator
 
         if await is_moderator(client, message, need="can_change_info", owner_id=ctx.settings.owner_id):
             return True

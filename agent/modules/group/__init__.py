@@ -16,10 +16,6 @@ running a group:
 ``/warnlimit`` is not a stored preference without effect: the value is read by
 ``/warn`` when it escalates, so the number shown in ``/settings`` is the number
 that acts.
-
-Command names: ``/admins`` and ``/settings`` mirror Videl1 (``core/admins.py``,
-``core/menus.py``); the rest are this repository's own and were added because a
-group panel without rules or pinning would be incomplete rather than smaller.
 """
 
 from __future__ import annotations
@@ -30,9 +26,9 @@ import logging
 from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from pyrogram.types import ChatPermissions
 
-from ..platform.manifest import PluginManifest
-from ..ui.tables import Table, kv_table, panel
-from .moderation import (
+from ...platform.manifest import PluginManifest
+from ...ui.tables import Table, kv_table, panel
+from ..moderation import (
     DENIED,
     WARN_ACTIONS,
     is_moderator,
@@ -40,7 +36,7 @@ from .moderation import (
     target_is_protected,
     warn_policy,
 )
-from ..utils.rich import reply
+from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 

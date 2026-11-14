@@ -54,9 +54,10 @@ class HealthSnapshot:
 class HealthMonitor:
     """Records probe outcomes and derives a health state.
 
-    ``degraded_after`` / ``down_after`` are ages (in seconds) since the last
-    successful probe. ``failure_threshold`` short-circuits: that many
-    consecutive failures marks the bot down without waiting for the clock.
+        ``degraded_after`` / ``down_after`` are ages (in seconds) since the last
+        successful probe. ``failure_threshold`` short-circuits: that many
+        consecutive failures marks the bot down without waiting for the clock.
+        
     """
 
     def __init__(

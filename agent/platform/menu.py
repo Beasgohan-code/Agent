@@ -40,6 +40,11 @@ DESCRIPTIONS: dict[str, str] = {
     "cancel": "Stop your running jobs",
     "owner": "Owner control panel",
     "ping": "Health and latency of this instance",
+    # clone
+    "clone": "Clone this bot onto another token",
+    "mybots": "Your clones and their controls",
+    "delclone": "Delete one of your clones",
+    "clonestats": "Clone counts (owner)",
     # moderation
     "warn": "Warn a member",
     "warnings": "List a member's warnings",
@@ -69,6 +74,8 @@ DESCRIPTIONS: dict[str, str] = {
     "fsave": "Save a replied file to your vault",
     "get": "Re-send a file from your vault",
     "files": "List your vault",
+    "batch": "Save a run of files into your vault",
+    "check": "Everything about one vault entry",
     "del": "Delete one vault entry",
     "storestats": "Vault usage statistics",
     "storequota": "Vault quota and what is left",
@@ -96,8 +103,9 @@ DESCRIPTIONS: dict[str, str] = {
     "postpreview": "Preview a post before publishing",
     "posttemplate": "Set this group's post template",
     "verify": "Mute new members until they verify",
-    # premium (Videl1's tier)
     "premium": "Your tier, its limits and what is left today",
+    "myplan": "Your tier and what is left, short form",
+    "plans": "Compare the free and premium tiers",
     "addpremium": "Grant premium to a user (owner)",
     "delpremium": "Take premium away (owner)",
     "premiumusers": "Everyone with premium (owner)",
@@ -112,6 +120,7 @@ DESCRIPTIONS: dict[str, str] = {
     "id": "Show chat and user ids",
     "info": "Details about a member",
     "time": "Current time here and in UTC",
+    "repo": "Where this bot's source lives",
     # encoder
     "encode": "Encode a replied video",
     "encinfo": "Probe a replied video",
@@ -126,6 +135,12 @@ DESCRIPTIONS: dict[str, str] = {
     "rename": "Rename a replied file",
     "testrename": "Preview a rename",
     "clean": "Tidy a filename",
+    "setthumb": "Use a replied image as this chat's thumbnail",
+    "delthumb": "Stop attaching a thumbnail",
+    "viewthumb": "Show the thumbnail this chat uses",
+    "setcaption": "Set the caption files are sent with",
+    "delcaption": "Stop adding a caption",
+    "viewcaption": "Show the caption with an example",
     # ops (owner)
     "restart": "Restart the process (owner)",
     "watchdog": "Health and cleanup sweeps (owner)",
@@ -178,8 +193,9 @@ def build_commands(names: Iterable[str], *, group: bool = False) -> list[BotComm
 async def publish(client, names: Iterable[str]) -> tuple[int, int]:
     """Publish both scopes. Returns (private_count, group_count).
 
-    Failure is logged, never raised: a bot that cannot set its menu must still
-    answer commands.
+        Failure is logged, never raised: a bot that cannot set its menu must still
+        answer commands.
+        
     """
     names = list(names)
     private = build_commands(names, group=False)

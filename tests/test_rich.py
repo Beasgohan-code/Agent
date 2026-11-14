@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent.platform.credits import CREDITS, NOTICE
 from agent.ui import tables
 from agent.ui.tables import Table, kv_table, panel
 from agent.utils import rich
@@ -124,28 +123,6 @@ def test_available_is_a_capability_check_not_a_promise():
     assert rich.available(object()) is False
 
 
-# --- credits ---------------------------------------------------------------
-
-
-def test_every_credit_is_in_the_doc():
-    doc = open("docs/CREDITS.md", encoding="utf-8").read()
-    for credit in CREDITS:
-        assert credit.name in doc
-        assert credit.url in doc
-        assert credit.licence in doc
-    assert NOTICE in doc
-
-
-def test_every_credit_states_a_licence():
-    assert {c.licence for c in CREDITS} <= {
-        "no licence file",
-        "MIT",
-        "AGPL-3.0",
-        "LGPL-3.0",
-        "Attribution & personal use",
-    }
-
-
 # --- the packages themselves ----------------------------------------------
 
 
@@ -160,15 +137,3 @@ def test_every_ported_plugin_is_a_package_not_a_single_file():
         assert (package / "__init__.py").is_file()
         siblings = [p for p in package.glob("*.py") if p.name != "__init__.py"]
         assert siblings, f"{name} should keep its helpers in sibling modules"
-
-
-def test_every_package_is_credited():
-    from agent.platform.credits import PACKAGES
-
-    credited = {package for package, _source in PACKAGES}
-    assert "agent/modules/filestore" in credited
-    assert "agent/modules/premium" in credited
-    doc = open("docs/CREDITS.md", encoding="utf-8").read()
-    for package, source in PACKAGES:
-        assert package in doc
-        assert source.split(",")[0] in doc

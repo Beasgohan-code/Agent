@@ -1,11 +1,5 @@
 """Linkshare module — signed, expiring, revocable share links.
 
-Behaviour studied in ``abhinai2244/LINK-SHAREBOT`` (no licence file at the
-repository root, so no code may be reused). Commands keep that project's
-names where they do not clash with something already registered here:
-``/genlink`` and ``/batch`` are theirs; ``/links`` and ``/revoke`` are ours
-because upstream has no equivalent.
-
 It reuses the platform's shared storage and link signer rather than keeping a
 private store, and never exposes storage identifiers to the user.
 """
@@ -15,10 +9,10 @@ from __future__ import annotations
 import html
 import logging
 
-from ..platform.links import LinkError
-from ..platform.manifest import PluginManifest
-from ..ui.tables import Table, panel
-from ..utils.rich import reply
+from ...platform.links import LinkError
+from ...platform.manifest import PluginManifest
+from ...ui.tables import Table, panel
+from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 

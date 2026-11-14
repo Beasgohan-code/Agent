@@ -1,4 +1,4 @@
-"""Owner log channel — the Videl1 pattern.
+"""Agent — the owner log channel.
 
 Every notable event is posted to one channel, tagged with a searchable hashtag
 (``#NewUser``, ``#NewGroup``, ``#Restart`` …). When no channel is configured the

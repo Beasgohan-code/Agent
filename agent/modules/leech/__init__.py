@@ -1,12 +1,4 @@
-"""Leech — HTTP(S) downloads that actually land, from Meikoagent's ``leech``.
-
-Meikoagent ships a transfer engine with pluggable backends (local, aria2,
-qBittorrent, rclone). Only the *local* backend can be honest here: aria2, rclone
-and qBittorrent are external daemons that this image does not run, so
-``/taskbackend`` reports which of them exist on the host instead of pretending
-to use them.
-
-What is real without any of them:
+"""Leech — HTTP(S) downloads that land on disk and come back as a file.
 
 * ``/leech <url>`` streams an ``http(s)`` file to disk with progress, then sends
   it to the chat as a document;
@@ -27,6 +19,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from ...platform.attachments import attachment_kwargs
 from ...platform.manifest import PluginManifest
 from ...platform.net import LinkError, check_target, human_bytes, parse_url
 from ...ui.tables import Table, kv_table, panel
@@ -52,7 +45,6 @@ MANIFEST = PluginManifest(
 
 
 def backends() -> list[tuple[str, str, str]]:
-    """(backend, available, note) for every backend Meikoagent can drive."""
     rows = [("local", "yes", "built in — streams with aiohttp")]
     for binary, label in (
         ("aria2c", "aria2"),
@@ -198,7 +190,15 @@ def build(ctx):
                 )
                 return
             await client.send_document(
-                message.chat.id, str(destination), file_name=destination.name
+                message.chat.id,
+                str(destination),
+                file_name=destination.name,
+                **attachment_kwargs(
+                    ctx.chats,
+                    message.chat.id,
+                    name=destination.name,
+                    size=human_bytes(destination.stat().st_size),
+                ),
             )
 
         job = ctx.jobs.submit("leech", message.from_user.id, runner, label=label[:60])

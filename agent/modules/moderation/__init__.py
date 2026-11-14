@@ -1,14 +1,6 @@
-"""Moderation module — the command surface Meikoagent's group router exposes.
+"""Moderation — the group commands, and the rules that keep them honest.
 
-Command semantics were studied in ``Meikoagent`` (``telegram/routers/
-moderation.py``): warn/warnings/unwarn, mute/unmute, kick, ban/unban, purge,
-note, trust, antispam and modlog, with the same argument shapes and the same
-defaults (a mute is 600 seconds unless a duration is given, a purge removes 10
-messages unless told otherwise). The implementation here is independent: it
-runs on this repository's shared chat store instead of SQLAlchemy, and every
-action goes through pyrogram's own chat methods.
-
-Two deliberate differences from the reference, both to avoid fake behaviour:
+Two deliberate rules, both to avoid fake behaviour:
 
 * every destructive command verifies the caller's admin rights **and** that the
   target is not an administrator before it calls Telegram;
@@ -31,10 +23,10 @@ from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
-from ..platform.chats import SPAM_ACTIONS
-from ..platform.manifest import PluginManifest
-from ..ui.tables import Table, kv_table, panel
-from ..utils.rich import reply
+from ...platform.chats import SPAM_ACTIONS
+from ...platform.manifest import PluginManifest
+from ...ui.tables import Table, kv_table, panel
+from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -162,8 +154,9 @@ async def _member_of(client, chat_id: int, user_id: int):
 async def is_moderator(client, message, *, need: str | None = None, owner_id: int | None = None) -> bool:
     """True when the caller may act here.
 
-    The bot owner always may; an administrator may when they hold the specific
-    privilege the command needs (Telegram grants exactly these).
+        The bot owner always may; an administrator may when they hold the specific
+        privilege the command needs (Telegram grants exactly these).
+        
     """
     user = getattr(message, "from_user", None)
     if user is None:
@@ -193,8 +186,9 @@ async def target_is_protected(client, chat_id: int, target_id: int) -> bool:
 async def escalate_warning(client, ctx, message, target_id: int, action: str) -> str:
     """Apply the group's warn action. Returns a line for the report.
 
-    A failure is reported, never swallowed: if the bot lacks the right to mute,
-    saying "warned, muted" would be a lie.
+        A failure is reported, never swallowed: if the bot lacks the right to mute,
+        saying "warned, muted" would be a lie.
+        
     """
     chat_id = message.chat.id
     try:

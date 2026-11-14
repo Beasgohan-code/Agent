@@ -1,9 +1,5 @@
 """Encoder module — real FFmpeg encoding.
 
-Behaviour studied in ``abhinai2244/ENCODING-BOT`` (AGPL-3.0): its source was
-read for workflow and command semantics only; none of its code is copied, so
-nothing here inherits that licence.
-
 The binary comes from ``imageio-ffmpeg`` when the host has no ``ffmpeg`` on
 PATH. ``ffprobe`` is not assumed: streams are parsed from ffmpeg's own banner.
 """
@@ -18,10 +14,10 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from ..platform.jobs import Job
-from ..platform.manifest import PluginManifest
-from ..ui.tables import Table, kv_table, panel
-from ..utils.rich import reply
+from ...platform.jobs import Job
+from ...platform.manifest import PluginManifest
+from ...ui.tables import Table, kv_table, panel
+from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +30,6 @@ MANIFEST = PluginManifest(
     permissions=("messages.read", "files.write", "process.spawn"),
 )
 
-#: name -> (crf, x264 preset). Mirrors the preset idea from ENCODING-BOT.
 PRESETS: dict[str, tuple[int, str]] = {
     "fast": (28, "veryfast"),
     "balanced": (23, "medium"),

@@ -1,12 +1,9 @@
-"""Premium — Videl1's tier, with allowances this bot actually enforces.
+"""Premium — the tier, its allowances, and the owner commands that grant it.
 
-Videl1 sells premium; here it is granted by the owner (``/addpremium``) and it
-buys exactly three things: a bigger vault, more transfers per day and more
-encodes per day. Those are the numbers in :mod:`agent.platform.premium`, and
-``filestore`` and ``leech`` read them before they spend anything — a tier that
-changed a badge and no limit would be a fake feature.
-
-Lifetime is ``/addpremium <id> 0``, the same spelling Videl1 uses.
+``/premium`` shows the caller's tier, today's usage and what a raise would buy;
+``/addpremium``, ``/delpremium`` and ``/premiumusers`` are owner-only, and
+lifetime is ``/addpremium <id> 0``. Nothing here is a badge: the same numbers
+are enforced by the filestore and the leech module.
 """
 
 from __future__ import annotations
@@ -28,7 +25,7 @@ MANIFEST = PluginManifest(
     name="Premium",
     version="1.0.0",
     description="Owner-granted premium that raises the real vault and daily limits.",
-    commands=("premium", "addpremium", "delpremium", "premiumusers"),
+    commands=("premium", "myplan", "plans", "addpremium", "delpremium", "premiumusers"),
     permissions=("messages.read", "messages.send"),
     scope="all",
 )
@@ -95,6 +92,44 @@ def build(ctx):
             reply_markup=nav_keyboard(),
         )
         logger.info("premium status user=%s premium=%s", user.id, book.is_premium(user.id))
+
+    # -- /myplan -----------------------------------------------------------
+
+    async def myplan(_client, message):
+        """The short version of /premium: tier, what is left, nothing else."""
+        user = getattr(message, "from_user", None)
+        if user is None:
+            return
+        tier = book.tier(user.id)
+        rows = [row for row in usage_rows(book, user.id) if row[0] != "Tier"]
+        await reply(
+            message,
+            panel(
+                "Your plan",
+                icon=ctx.theme.emoji("crown"),
+                subtitle=f"<b>{tier.label}</b> — {until_text(book.until(user.id))}.",
+                table=kv_table(rows),
+                note="<code>/plans</code> compares the two tiers; <code>/premium</code> shows the full table.",
+            ),
+            reply_markup=nav_keyboard(),
+        )
+
+    # -- /plans ------------------------------------------------------------
+
+    async def plans(_client, message):
+        """What a raise actually buys, in one table."""
+        await reply(
+            message,
+            panel(
+                "Plans",
+                icon=ctx.theme.emoji("star"),
+                subtitle="Premium raises three numbers. It hides no features.",
+                table=Table(headers=("Allowance", "Free → Premium"), rows=tuple(rows())),
+                note=pitch(),
+                footer="Owners grant premium with <code>/addpremium &lt;id&gt; [days]</code>.",
+            ),
+            reply_markup=nav_keyboard(),
+        )
 
     # -- /addpremium -------------------------------------------------------
 
@@ -203,6 +238,8 @@ def build(ctx):
     logger.info("premium plugin wired with %d tier(s), %d premium user(s)", len(TIERS), book.count())
     return MANIFEST, {
         "premium": premium,
+        "myplan": myplan,
+        "plans": plans,
         "addpremium": addpremium,
         "delpremium": delpremium,
         "premiumusers": premiumusers,

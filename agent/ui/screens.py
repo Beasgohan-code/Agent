@@ -1,9 +1,5 @@
 """Agent — screen builders.
 
-Layout is composed from richgram's block builders plus the monospace tables in
-:mod:`agent.ui.tables`. ``Screen.rich_text`` is rich markup; the sender converts
-it to standard Telegram HTML and protects ``<pre>`` blocks while doing so.
-
 Two rules keep the screens readable on a phone: prose stays in lists and
 quotes, and anything with more than one column of data is a table. Command
 references stay prose — a table would truncate the sentence that explains the
@@ -72,9 +68,10 @@ def _username(user) -> str:
 def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
     """The first thing a user sees — and the caption of the /start picture.
 
-    It has to survive the 1024-character caption cap and still say what the bot
-    is, so it is three parts: a greeting, a small table of facts, and three
-    commands worth trying. Nothing here is decoration that costs a line.
+        It has to survive the 1024-character caption cap and still say what the bot
+        is, so it is three parts: a greeting, a small table of facts, and three
+        commands worth trying. Nothing here is decoration that costs a line.
+        
     """
     name = display_name(user)
     greeting = (
@@ -121,8 +118,8 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
         + "\n"
         + rich_hr()
         + rich_footer(
-            f"{theme.emoji('bot')} wzgram + richgram · "
-            "everything credited in <code>/about</code>"
+            f"{theme.emoji('bot')} <code>/help</code> for every command · "
+            "<code>/about</code> for what this is"
         )
     )
     return Screen(text, keyboards.home_keyboard())
@@ -138,7 +135,8 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "bolt",
         "Essentials",
-        ("start", "help", "menu", "about", "status", "ping", "cancel", "owner", "id", "info", "time"),
+        ("start", "help", "menu", "about", "status", "ping", "cancel", "owner",
+         "id", "info", "time", "repo"),
     ),
     (
         "gear",
@@ -146,6 +144,8 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (
             "encode", "encinfo", "encpreset", "enccancel",
             "autorename", "rename", "testrename", "clean",
+            "setthumb", "delthumb", "viewthumb",
+            "setcaption", "delcaption", "viewcaption",
             "genlink", "links", "revoke",
         ),
     ),
@@ -153,7 +153,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "box",
         "Vault & downloads",
         (
-            "fsave", "get", "files", "del", "storestats", "storequota",
+            "fsave", "get", "files", "batch", "check", "del", "storestats", "storequota",
             "leech", "mirror", "tasklist", "taskstatus", "leechstats", "taskbackend",
         ),
     ),
@@ -186,8 +186,13 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (
             "report", "reports", "appeal",
             "post", "postpreview", "posttemplate", "verify",
-            "premium", "addpremium", "delpremium", "premiumusers",
+            "premium", "myplan", "plans", "addpremium", "delpremium", "premiumusers",
         ),
+    ),
+    (
+        "search",
+        "Clones",
+        ("clone", "mybots", "delclone", "clonestats"),
     ),
     (
         "bot",
@@ -214,11 +219,12 @@ def help_visible(commands, active: set[str] | None) -> list[str]:
 def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
     """The command reference, one section per button.
 
-    *active* is the set of commands the registry actually registered. A plugin
-    that could not start (music without a session string) must not appear in the
-    reference — an entry for a command that does not exist is the same lie as a
-    fake command — and with 79 commands the whole list no longer fits a message,
-    so the overview stays short and each section has its own screen.
+        *active* is the set of commands the registry actually registered. A plugin
+        that could not start (music without a session string) must not appear in the
+        reference — an entry for a command that does not exist is the same lie as a
+        fake command — and with 79 commands the whole list no longer fits a message,
+        so the overview stays short and each section has its own screen.
+        
     """
     blocks = [
         rich_heading("Command reference", 2),

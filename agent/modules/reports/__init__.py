@@ -1,4 +1,4 @@
-"""Reports and appeals — Meikoagent's ``reports`` plugin, without the database.
+"""Reports and appeals — a queue a moderator can close by number.
 
 ``/report`` records a member's complaint about a message, ``/reports`` is the
 moderator queue, and ``/appeal`` is the member's way to contest a moderation

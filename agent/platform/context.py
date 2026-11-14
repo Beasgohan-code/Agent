@@ -19,8 +19,9 @@ from .storage import Storage
 class ModuleContext:
     """Shared infrastructure handed to every module.
 
-    Modules never build their own queue, storage or link signer — that is the
-    whole point of the shared layer.
+        Modules never build their own queue, storage or link signer — that is the
+        whole point of the shared layer.
+        
     """
 
     settings: Settings
@@ -44,6 +45,10 @@ class ModuleContext:
     runtime: object | None = None
     lease: object | None = None
     logbook: object | None = None
+    #: Running clones; set by the clone module when it is enabled.
+    clones: object | None = None
+    #: Builds the bot a clone runs; None means "the real AgentBot".
+    clone_factory: object | None = None
 
     @classmethod
     def build(cls, settings: Settings, theme: Theme, sender: ScreenSender, *, root: Path) -> "ModuleContext":

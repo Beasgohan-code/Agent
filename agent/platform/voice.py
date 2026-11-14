@@ -1,19 +1,9 @@
 """Agent — voice-chat streaming, on real libraries.
 
-The player is built on three packages whose APIs were read from the installed
-wheels, not guessed:
-
-* ``telethon`` — the MTProto client that actually joins the group call. It is a
-  **second, separate** client (a user session string), because a bot token
-  cannot join a voice chat on its own. Commands keep coming through wzgram; only
-  audio goes through this one.
-* ``py-tgcalls`` — the bridge that joins a call and streams into it.
-* ``ntgcalls`` — the native engine py-tgcalls drives.
-
-Why Telethon and not pyrogram: py-tgcalls 3.0's pyrogram adapter imports
-``pyrogrammod`` (``GroupcallForbidden`` and friends), which this project does not
-install — wzgram owns the ``pyrogram`` package. Telethon is a separate package,
-so nothing is overwritten and both clients can live in one process.
+The engine drives ``pytgcalls``/``ntgcalls`` for the audio stream and
+``telethon`` for the user session a group call requires; every call is against
+the installed package, so :func:`capability` decides whether the player exists
+at all rather than failing later.
 
 Everything here is optional. Without ``SESSION_STRING`` the capability check
 fails, :class:`VoiceEngine` is never constructed, and the music module registers
@@ -76,9 +66,10 @@ def capability(session_string: str | None) -> tuple[bool, str]:
 class VoiceEngine:
     """Thin, honest wrapper around ``py-tgcalls``.
 
-    The wrapper exists for two reasons: the library is imported only when a
-    session exists, and every failure is reported with the exception type instead
-    of being swallowed into a silent "nothing is playing".
+        The wrapper exists for two reasons: the library is imported only when a
+        session exists, and every failure is reported with the exception type instead
+        of being swallowed into a silent "nothing is playing".
+        
     """
 
     def __init__(

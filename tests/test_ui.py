@@ -155,13 +155,12 @@ def test_the_shipped_theme_carries_real_premium_ids():
     theme = Theme()
 
     assert theme.custom_emoji_enabled is True
-    # A vetted id from Videl0's packs, never an invented number.
     assert 'emoji-id="5084979757905347540"' in theme.emoji("check")
     # Glyphs without a vetted id stay unicode rather than render broken.
     assert "<tg-emoji" not in theme.emoji("wave")
 
 
-def test_premium_can_be_switched_off_like_videl(monkeypatch):
+def test_premium_emoji_can_be_switched_off(monkeypatch):
     import importlib
 
     from agent.ui import premium

@@ -1,8 +1,4 @@
-"""Agent — plugin manifest and registry.
-
-Mirrors Meikoagent's lifecycle rule: a plugin that is installed but disabled
-registers **nothing** — no commands, no handlers, no background work.
-"""
+"""Agent — plugin manifest and registry."""
 
 from __future__ import annotations
 

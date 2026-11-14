@@ -1,13 +1,4 @@
-"""Single-instance lease.
-
-Behaviour mirrored from Videl1's ``core/instance.py``: with MTProto every copy
-of a bot receives every update, so two live copies encode twice and reply
-twice. Railway/Render start the new deploy *before* stopping the old one, so
-"just don't deploy twice" is not protection.
-
-Videl1 keeps the lease in MongoDB. This repository has no database, so the same
-contract — owner, expiry, heartbeat, graceful handover — is kept in a small
-JSON file. Nothing else about the semantics changes:
+"""Agent — single-instance lease, so one bot token is served by one process.
 
 * a copy takes the lease when it is absent, expired, or already ours;
 * a heartbeat renews it; a copy that loses it stops instead of double-serving;
@@ -131,10 +122,9 @@ class InstanceLease:
         return False
 
     async def acquire(self, *, wait_seconds: float = 90.0, poll: float = POLL) -> bool:
-        """Wait for a departing deploy to release, like Videl1 does.
-
-        Returning False is not an error: it means another copy is still live
-        and this one must not serve updates.
+        """        Returning False is not an error: it means another copy is still live
+                and this one must not serve updates.
+                
         """
         deadline = time.monotonic() + max(0.0, wait_seconds)
         announced = False

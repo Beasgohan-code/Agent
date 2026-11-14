@@ -33,6 +33,7 @@ class ConfigError(RuntimeError):
 DEFAULT_PLUGINS: tuple[str, ...] = (
     "ops",
     "core",
+    "clone",
     "filestore",
     "leech",
     "linkshare",
@@ -84,6 +85,8 @@ class Settings:
     #: START_IMAGE=0 removes it. Nothing depends on it: an unreachable image
     #: falls back to the plain text screen.
     start_image: str | None = None
+    #: How many clones this deployment will run at once (CLONE_LIMIT).
+    clone_limit: int = 5
     #: Which plugins register at startup (PLUGINS=..., or * for every module).
     plugins: tuple[str, ...] = DEFAULT_PLUGINS
     health_port: int | None = None
@@ -101,8 +104,9 @@ class Settings:
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
         """Build settings from *env* (defaults to ``os.environ``).
 
-        Every problem is reported at once so a misconfigured deploy does not
-        need one restart per missing variable.
+                Every problem is reported at once so a misconfigured deploy does not
+                need one restart per missing variable.
+                
         """
         source = os.environ if env is None else env
         problems: list[str] = []
@@ -152,6 +156,7 @@ class Settings:
             start_image=_optional_image(source.get("START_IMAGE")),
             session_string=(source.get("SESSION_STRING") or "").strip() or None,
             plugins=_plugins(source.get("PLUGINS")),
+            clone_limit=_bounded_int(source.get("CLONE_LIMIT"), 5, 0, 50),
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),
@@ -190,11 +195,21 @@ def _optional_float(raw: str | None, default: float) -> float:
     return value if value > 0 else default
 
 
+def _bounded_int(raw: str | None, default: int, minimum: int, maximum: int) -> int:
+    """A small integer from the environment, clamped, never raised over."""
+    try:
+        value = int((raw or "").strip())
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
+
+
 def _optional_port(env: Mapping[str, str]) -> int | None:
     """``HEALTH_PORT`` wins; a platform-provided ``PORT`` enables it too.
 
-    Returns ``None`` when neither is usable, which keeps the bot a pure
-    background worker with no HTTP server.
+        Returns ``None`` when neither is usable, which keeps the bot a pure
+        background worker with no HTTP server.
+        
     """
     for key in ("HEALTH_PORT", "PORT"):
         raw = (env.get(key) or "").strip()

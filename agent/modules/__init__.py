@@ -16,6 +16,7 @@ twice, so adding a module can never silently shadow another.
 """
 
 from . import (
+    clone,
     core,
     encoder,
     filestore,
@@ -40,6 +41,7 @@ from . import (
 ORDER = (
     "ops",
     "core",
+    "clone",
     "encoder",
     "filestore",
     "filters",
@@ -64,6 +66,7 @@ SHELL = ("ops", "core")
 ALL_MODULES = {
     "ops": ops,
     "core": core,
+    "clone": clone,
     "encoder": encoder,
     "filestore": filestore,
     "filters": filters,
@@ -85,10 +88,11 @@ ALL_MODULES = {
 def select(slugs) -> tuple:
     """The modules to register for *slugs*, in :data:`ORDER`.
 
-    ``("*",)`` selects everything compiled in. Otherwise *slugs* plus
-    :data:`SHELL`. Unknown slugs are returned in :func:`unknown` rather than
-    raising, so a typo in ``PLUGINS`` costs one plugin and a log line, not the
-    whole bot.
+        ``("*",)`` selects everything compiled in. Otherwise *slugs* plus
+        :data:`SHELL`. Unknown slugs are returned in :func:`unknown` rather than
+        raising, so a typo in ``PLUGINS`` costs one plugin and a log line, not the
+        whole bot.
+        
     """
     requested = tuple(slugs or ())
     if requested == ("*",):

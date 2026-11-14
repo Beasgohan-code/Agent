@@ -39,8 +39,9 @@ def health_payload(monitor: HealthMonitor, extra: dict | None = None) -> dict:
 def status_code(state: str) -> int:
     """HTTP status for a health state.
 
-    ``503`` when down so the platform's own health check restarts the
-    container — the honest alternative to pinging ourselves awake.
+        ``503`` when down so the platform's own health check restarts the
+        container — the honest alternative to pinging ourselves awake.
+        
     """
     return 503 if state == DOWN else 200
 

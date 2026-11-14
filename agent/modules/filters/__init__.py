@@ -1,10 +1,8 @@
-"""Filters module — keyword auto-replies, from the filter plugins shared by
-``CBML``/``WZML-X`` and ``Meikoagent``.
+"""Filters — one keyword, one stored answer, per group.
 
-Command names follow Meikoagent's filter plugin (``filter``, ``filters``,
-``stopfilter``); the storage is this repository's chat store rather than the
-reference's database. A filter is a name plus a reply: when a message in the
-group contains the name, the bot answers with the stored text.
+``/filter <word> <reply>`` stores the reply, ``/filters`` lists what is stored
+and ``/stopfilter`` removes one. The watcher that answers with them lives in
+this module, so a stored filter is never decoration.
 """
 
 from __future__ import annotations
@@ -15,9 +13,9 @@ import logging
 from pyrogram import filters as tg_filters
 from pyrogram.handlers import MessageHandler
 
-from ..platform.manifest import PluginManifest
-from ..ui.tables import Table, panel
-from ..utils.rich import reply
+from ...platform.manifest import PluginManifest
+from ...ui.tables import Table, panel
+from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +37,7 @@ def _args(message) -> list[str]:
 
 
 async def _is_manager(client, message, owner_id: int | None) -> bool:
-    from .moderation import is_moderator
+    from ..moderation import is_moderator
 
     return await is_moderator(client, message, need="can_change_info", owner_id=owner_id)
 

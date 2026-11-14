@@ -64,7 +64,6 @@ class AgentBot:
         self.registry = PluginRegistry()
         self.events = EventLog()
         self.users = UserIndex(settings.data_dir)
-        #: Videl1-style log channel: every event, hashtag-tagged, or owner DMs.
         self.logbook = LogBook(
             settings.data_dir,
             channel_id=settings.log_channel,
@@ -285,6 +284,16 @@ class AgentBot:
             except Exception:  # noqa: BLE001 - the music commands report the reason
                 logger.exception("Voice chat engine failed to start; the player is inert.")
 
+        # Clones that were running when this process last stopped are started
+        # again here, one at a time: a revoked token must not take the main bot
+        # down with it.
+        clones = getattr(self.modules, "clones", None)
+        if clones is not None:
+            try:
+                await clones.restore()
+            except Exception:  # noqa: BLE001 - clones are a feature, not the bot
+                logger.exception("Could not restore clones; continuing without them.")
+
         # A completed handshake is a successful probe.
         self.health.record_success()
         self.events.emit("start", version=__version__)
@@ -336,6 +345,9 @@ class AgentBot:
             await stop_health_server(health_runner)
             if self.voice is not None:
                 await self.voice.shutdown()
+            clones = getattr(self.modules, "clones", None)
+            if clones is not None:
+                await clones.stop_all()
             await self._shutdown(client)
             await self.lease.stop_heartbeat()
             # Releasing lets a replacement process start immediately (this is

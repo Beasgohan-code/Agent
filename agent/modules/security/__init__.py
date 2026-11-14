@@ -1,6 +1,4 @@
-"""Security — member verification, from Meikoagent's ``security`` plugin.
-
-A new member is muted on arrival and asked to press one button. When they press
+"""A new member is muted on arrival and asked to press one button. When they press
 it, the mute is lifted. If they never press it, they are removed after the
 configured timeout. That is the whole feature, and every part of it is real:
 a restriction Telegram applies, a button Telegram delivers, a timer this process

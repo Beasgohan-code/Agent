@@ -21,7 +21,7 @@ Agent
 
 ┌──────────┬────────────────────────┐
 │ Version  │ 0.1.0                  │
-│ Commands │ 49                     │
+│ Commands │ 61                     │
 │ Status   │ online                 │
 │ Privacy  │ no message text stored │
 └──────────┴────────────────────────┘
@@ -32,7 +32,7 @@ Agent
 • /leech — fetch a link and get the file back
 
 ─────
-🤖 wzgram + richgram · everything credited in /about
+🤖 /help for every command · /about for what this is
 ```
 
 ## /help
@@ -46,10 +46,11 @@ Command reference
 │ Section                │ Commands │
 ├────────────────────────┼──────────┤
 │ ⚡ Essentials          │ 8        │
-│ ⚙️ Encoding & files    │ 7        │
-│ 📦 Vault & downloads   │ 12       │
+│ ⚙️ Encoding & files    │ 13       │
+│ 📦 Vault & downloads   │ 14       │
 │ 🔒 Moderation          │ 14       │
 │ 🔥 Community & premium │ 3        │
+│ 🔍 Clones              │ 4        │
 │ 🤖 Operations (owner)  │ 8        │
 └────────────────────────┴──────────┘
 
@@ -80,31 +81,28 @@ The watchdog probes Telegram on a timer.
 ```
 ✨ About Agent
 
-Version 0.1.0 · 49 commands
-┌────────────────────┬─────────────────────┐
-│ Project            │ What it gave        │
-├────────────────────┼─────────────────────┤
-│ Meikoagent         │ the built-in plugi… │
-│ Videl0             │ queue and music co… │
-│ Videl1             │ keep-alive, gracef… │
-│ CBML               │ leech and mirror t… │
-│ WZML-X             │ transfer status la… │
-│ Multi-FileStoreBot │ file-store command… │
-│ LINK-SHAREBOT      │ link protection co… │
-│ ENCODING-BOT       │ encoding command s… │
-│ save-restricted-c… │ saving protected m… │
-│ Playeon            │ music panel layout  │
-│ richgram           │ the rich layer thi… │
-│ wzgram             │ the Telegram client │
-└────────────────────┴─────────────────────┘
+Version 0.1.0 · 61 commands
+┌─────────────┬──────────┐
+│ Module      │ Commands │
+├─────────────┼──────────┤
+│ Operations  │ 8        │
+│ Core extras │ 5        │
+│ Clone       │ 4        │
+│ Filestore   │ 8        │
+│ Leech       │ 6        │
+│ Linkshare   │ 3        │
+│ Moderation  │ 14       │
+│ Post maker  │ 3        │
+│ Renamer     │ 10       │
+└─────────────┴──────────┘
 
-Modules: Operations, Core extras, Filestore, Leech, Linkshare, Moderation, Music · VC player, Post maker, Renamer
+Modules: Operations, Core extras, Clone, Filestore, Leech, Linkshare, Moderation, Music · VC player, Post maker, Renamer
 One job queue, one file store, one link signer — modules share them instead of running their own.
-Written for this bot, not copied: these projects were read for command names, defaults and layout.
+Every module shares the same queue, store and link signer, so a file saved in one can be fetched by another.
 
 ─────
 
-Full list with licences: docs/CREDITS.md · runtime: wzgram + richgram
+/plugins shows what is on; /help shows every command.
 ```
 
 ## /status
@@ -117,7 +115,7 @@ Read from this process, not from a cache.
 │ Version      │ 0.1.0                     │
 │ Jobs running │ 0                         │
 │ Modules      │ Operations, Core extras,… │
-│ Commands     │ 49                        │
+│ Commands     │ 61                        │
 │ Your storage │ 0 B                       │
 └──────────────┴───────────────────────────┘
 
@@ -131,19 +129,20 @@ Read from this process, not from a cache.
 ```
 ⚙️ Plugin runtime
 
-9 of 9 plugins enabled. A disabled plugin registers nothing at all.
+10 of 10 plugins enabled. A disabled plugin registers nothing at all.
 ┌────────────┬─────────────┬──────┐
 │ Plugin     │ State       │ Cmds │
 ├────────────┼─────────────┼──────┤
 │ ops        │ on (locked) │    8 │
 │ core       │ on (locked) │    5 │
-│ filestore  │ on          │    6 │
+│ clone      │ on          │    4 │
+│ filestore  │ on          │    8 │
 │ leech      │ on          │    6 │
 │ linkshare  │ on          │    3 │
 │ moderation │ on          │   14 │
 │ music      │ idle        │    0 │
 │ postmaker  │ on          │    3 │
-│ renamer    │ on          │    4 │
+│ renamer    │ on          │   10 │
 └────────────┴─────────────┴──────┘
 
 Idle (enabled, no commands):
@@ -183,8 +182,8 @@ Owner only.
 ┌──────────┬────────┬────────────────────────────┐
 │ Time     │ Kind   │ Detail                     │
 ├──────────┼────────┼────────────────────────────┤
-│ 10:17:51 │ plugin │ slug=group action=on by=11 │
-│ 10:17:51 │ start  │ version=0.1.0              │
+│ 10:24:33 │ plugin │ slug=group action=on by=11 │
+│ 10:24:33 │ start  │ version=0.1.0              │
 └──────────┴────────┴────────────────────────────┘
 
 Every entry is written when the action happened — none are simulated.
@@ -201,8 +200,8 @@ Owner only. Times are UTC.
 ┌─────┬──────────────────────┬─────┬──────────────┐
 │   # │ Reason               │  By │ When         │
 ├─────┼──────────────────────┼─────┼──────────────┤
-│   1 │ ignoring staff       │  11 │ 14 Nov 10:17 │
-│   2 │ posting invite links │  11 │ 14 Nov 10:17 │
+│   1 │ ignoring staff       │  11 │ 14 Nov 10:24 │
+│   2 │ posting invite links │  11 │ 14 Nov 10:24 │
 └─────┴──────────────────────┴─────┴──────────────┘
 
 Member: Meiko — 2 active warning(s).
@@ -222,8 +221,8 @@ Newest first.
 ┌────────┬────────┬─────────────────────┬──────────────┐
 │ Action │ Target │ Reason              │ When         │
 ├────────┼────────┼─────────────────────┼──────────────┤
-│ MUTE   │     22 │ flood               │ 14 Nov 10:17 │
-│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:17 │
+│ MUTE   │     22 │ flood               │ 14 Nov 10:24 │
+│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:24 │
 └────────┴────────┴─────────────────────┴──────────────┘
 
 ─────

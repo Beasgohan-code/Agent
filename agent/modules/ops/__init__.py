@@ -1,10 +1,5 @@
 """Operations module — restart, watchdog, plugin control and the event log.
 
-This is the "keep-alive like Videl1" half of the bot: the single-instance lease,
-the cleanup sweeps Videl1 exposes through ``/watchdog run|clean``, a restart
-that actually stops the process so its supervisor can bring it back, and
-runtime plugin switching.
-
 Nothing here reports success it did not verify: a sweep reports the bytes it
 actually removed, a restart says plainly that an unsupervised process will stay
 down, and disabling a plugin detaches its handlers rather than hiding it.
@@ -23,11 +18,11 @@ from pyrogram.handlers import ChatMemberUpdatedHandler
 from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
-from ..platform.logbook import tag_for
-from ..platform.manifest import PluginManifest
-from ..ui.screens import format_uptime
-from ..ui.tables import Table, kv_table, panel
-from ..utils.rich import reply
+from ...platform.logbook import tag_for
+from ...platform.manifest import PluginManifest
+from ...ui.screens import format_uptime
+from ...ui.tables import Table, kv_table, panel
+from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
@@ -251,8 +246,9 @@ def build(ctx):
     def _plugin_panel() -> tuple[str, Keyboard]:
         """The runtime panel plus one button per plugin.
 
-        Rendered in the classic form on purpose: a button press edits this
-        message in place, and Telegram cannot edit a rich message.
+                Rendered in the classic form on purpose: a button press edits this
+                message in place, and Telegram cannot edit a rich message.
+                
         """
         state = runtime.state()
         idle = [row for row in state if row["enabled"] and not row["commands"]]

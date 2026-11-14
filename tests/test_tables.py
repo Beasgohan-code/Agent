@@ -1,4 +1,4 @@
-"""Monospace tables: geometry, escaping and delivery through richgram."""
+"""Agent — implementation detail."""
 
 import html
 import re

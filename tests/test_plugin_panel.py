@@ -1,4 +1,4 @@
-"""The plugin runtime as a panel you can press, after Videl1's plugin buttons."""
+"""Agent — implementation detail."""
 
 import asyncio
 from types import SimpleNamespace
@@ -66,13 +66,14 @@ def buttons(keyboard):
 # --- the build's plugin selection -----------------------------------------
 
 
-def test_the_default_build_ships_the_eight_plugins_plus_the_shell(tmp_path):
+def test_the_default_build_ships_nine_plugins_plus_the_shell(tmp_path):
     bot = make_bot(tmp_path, PLUGINS="")
     registered = {m.slug for m in bot.registry.manifests()}
 
     assert registered == {
         "ops",
         "core",
+        "clone",
         "filestore",
         "leech",
         "linkshare",
@@ -81,7 +82,7 @@ def test_the_default_build_ships_the_eight_plugins_plus_the_shell(tmp_path):
         "postmaker",
         "renamer",
     }
-    # The nine the deployment left out are absent, not idle or hidden.
+    # The eight the deployment left out are absent, not idle or hidden.
     assert {"encoder", "filters", "group", "premium", "reports", "security",
             "utilities", "welcome"} <= set(not_selected(bot.settings.plugins))
     assert "encode" not in set(bot.registry.active_commands())
@@ -115,7 +116,7 @@ def test_an_unknown_slug_costs_one_plugin_not_the_bot():
 
 
 def test_star_selects_everything_compiled():
-    assert len(select(("*",))) == 17
+    assert len(select(("*",))) == 18
 
 
 # --- the panel ------------------------------------------------------------

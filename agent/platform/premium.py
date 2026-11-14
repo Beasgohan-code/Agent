@@ -1,11 +1,6 @@
-"""Agent — a real premium tier, after Videl1's.
+"""Agent — the premium tier: its numbers, and where they are stored.
 
-Videl1's premium is not a badge: it buys a bigger allowance. That is the only
-kind of premium worth having here too, so this file holds two things — who has
-premium, and what the two tiers actually allow — and the modules that spend
-those allowances ask it before they spend them.
-
-What premium changes (both numbers are enforced, not advertised):
+Both columns are enforced, not advertised:
 
 ===================  ==========  =========
 Allowance            free        premium

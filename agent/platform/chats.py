@@ -25,7 +25,6 @@ MAX_TRACKS = 200
 #: Lower-cased actions an anti-spam hit may take.
 SPAM_ACTIONS = ("delete", "warn", "mute", "kick", "ban")
 
-#: Anti-spam defaults, matching the policy Meikoagent documents.
 DEFAULT_ANTISPAM: dict[str, Any] = {
     "flood_enabled": True,
     "flood_messages": 7,

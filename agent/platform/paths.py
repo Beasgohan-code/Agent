@@ -33,9 +33,10 @@ def is_writable(path: Path) -> bool:
 def resolve_data_dir(preferred: Path) -> tuple[Path, bool]:
     """Return (directory, preferred_was_usable).
 
-    The fallback is under the system temp directory. It is honest about what it
-    is: writable, but ephemeral — links and stored files will not survive a
-    restart, so the caller logs a warning rather than pretending otherwise.
+        The fallback is under the system temp directory. It is honest about what it
+        is: writable, but ephemeral — links and stored files will not survive a
+        restart, so the caller logs a warning rather than pretending otherwise.
+        
     """
     preferred = Path(preferred)
     if is_writable(preferred):

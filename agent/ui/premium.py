@@ -1,21 +1,13 @@
-"""Premium (custom) emoji.
+"""Agent — the custom-emoji map, and the switch that turns it off.
 
-The IDs below are **real**, taken from ``Beasgohan-code/Videl0``'s curated map
-(``videl/utils/premium_emojis.py``), which documents the four packs they come
-from: NewsEmoji, Telegram iOS Icons, @rijif and SoLo_HaMiD. Nothing here is
-invented — a fabricated ID renders a broken glyph, which is worse than a
-unicode one.
-
-Videl0's own comment applies unchanged: *IDs alone do not grant Premium
-rendering*. A bot may be refused, so :mod:`agent.utils.sender` retries once with
-plain unicode, and ``USE_PREMIUM_EMOJI=0`` turns the whole layer off.
+Custom emoji are a cosmetic layer: every name here has a unicode fallback, so a
+client or a deployment without them renders the plain glyph instead of a gap.
 """
 
 from __future__ import annotations
 
 import os
 
-#: name -> (unicode fallback, custom emoji id)  — ids from Videl0's packs.
 PREMIUM: dict[str, tuple[str, str]] = {
     "sparkles": ("\u2728", "5325547803936572038"),      # ✨ NewsEmoji
     "bolt": ("\u26a1", "5042334757040423886"),          # ⚡ @rijif
@@ -63,7 +55,6 @@ PLAIN: dict[str, str] = {
 
 
 def premium_enabled() -> bool:
-    """``USE_PREMIUM_EMOJI=0`` disables the layer, matching Videl0."""
     raw = os.getenv("USE_PREMIUM_EMOJI", "1").strip().lower()
     return raw not in ("0", "false", "no", "off")
 

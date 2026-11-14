@@ -57,7 +57,7 @@ class FakeSender:
 # --- formatting ------------------------------------------------------------
 
 
-def test_events_are_tagged_like_videl():
+def test_events_are_tagged_with_a_searchable_hashtag():
     assert tag_for("new_user") == "NewUser"
     assert tag_for("new_group") == "NewGroup"
     assert tag_for("start") == "BotStarted"

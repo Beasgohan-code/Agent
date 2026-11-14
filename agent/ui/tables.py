@@ -1,9 +1,5 @@
 """Agent — tables for Telegram, native when the client supports them.
 
-Telegram Bot API 10.3 introduced *rich messages*: real ``<table>``, ``<h1>``-``<h6>``,
-``<details>`` and friends. wzgram ships ``send_rich_message``, so a table here is a
-real table — columns, borders and all — instead of ASCII art.
-
 Two paths, one API:
 
 * :meth:`Table.rich_block` is the native ``<table>`` markup used when a rich
@@ -81,10 +77,11 @@ def markup(value: object) -> Markup:
 class Panel(str):
     """A rendered panel that knows how to degrade.
 
-    The string value is the rich form; ``classic`` is the same content as HTML
-    Telegram has always accepted. :mod:`agent.utils.rich` picks between them, so
-    a deployment without rich messages still gets a properly drawn table instead
-    of a flattened one.
+        The string value is the rich form; ``classic`` is the same content as HTML
+        Telegram has always accepted. :mod:`agent.utils.rich` picks between them, so
+        a deployment without rich messages still gets a properly drawn table instead
+        of a flattened one.
+        
     """
 
     classic: str
@@ -334,9 +331,10 @@ def panel(
 ) -> Panel:
     """Compose a heading, a table and closing lines into one message body.
 
-    Returns a :class:`Panel`: rich by default (a native ``<h2>`` over a native
-    ``<table>``) with the monospace form kept as ``.classic`` for a client that
-    cannot send rich messages.
+        Returns a :class:`Panel`: rich by default (a native ``<h2>`` over a native
+        ``<table>``) with the monospace form kept as ``.classic`` for a client that
+        cannot send rich messages.
+        
     """
     heading = f"{icon} {title}".strip()
     if rich_enabled():

@@ -90,8 +90,9 @@ class Storage:
     def check_quota(self, owner_id: int, incoming: int, *, quota_bytes: int | None = None) -> None:
         """Refuse a write that would cross the owner's allowance.
 
-        *quota_bytes* lets the caller pass an allowance that depends on the
-        user (the premium tiers do); without it the deployment default applies.
+                *quota_bytes* lets the caller pass an allowance that depends on the
+                user (the premium tiers do); without it the deployment default applies.
+                
         """
         allowance = self.quota_bytes if quota_bytes is None else int(quota_bytes)
         used = self.usage(owner_id)

@@ -1,4 +1,4 @@
-"""Premium: the tier Videl1 sells, enforced here instead of advertised."""
+"""Agent — implementation detail."""
 
 import asyncio
 import time

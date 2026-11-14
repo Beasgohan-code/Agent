@@ -9,7 +9,6 @@ CUSTOM_EMOJI_RE = re.compile(
     r'<tg-emoji\s+emoji-id="[^"]*"\s*>(.*?)</tg-emoji>', re.IGNORECASE | re.DOTALL
 )
 
-# Real IDs, sourced from Beasgohan-code/Videl0's curated map (see
 # agent/ui/premium.py for packs and attribution). Inventing an id renders a
 # broken glyph, so unknown names stay unicode.
 from .premium import emoji_table

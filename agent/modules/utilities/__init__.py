@@ -1,11 +1,4 @@
-"""Utilities module — ``id``, ``info`` and ``time``.
-
-Meikoagent's utilities plugin declares ``ping``, ``id``, ``info``, ``note``,
-``notes`` and ``time``. ``ping`` already exists as a built-in and ``note``
-belongs to moderation, so only the three that have no home elsewhere are
-registered here; declaring duplicates would make the registry reject the
-module. Everything reported is read live from Telegram or the process clock.
-"""
+"""Utilities module — ``id``, ``info`` and ``time``."""
 
 from __future__ import annotations
 
@@ -13,18 +6,30 @@ import html
 import time
 from datetime import datetime, timezone
 
-from ..platform.manifest import PluginManifest
-from ..utils.rich import reply
+from pyrogram.enums import ButtonStyle
+from pyrogram.types import InlineKeyboardButton as Button
+from pyrogram.types import InlineKeyboardMarkup as Keyboard
+
+from ...platform.manifest import PluginManifest
+from ...ui.keyboards import SOURCE_URL
+from ...ui.tables import kv_table, panel
+from ...utils.rich import reply
 
 MANIFEST = PluginManifest(
     slug="utilities",
     name="Utilities",
     version="1.0.0",
     description="Chat/member identifiers, member details and the current time.",
-    commands=("id", "info", "time"),
+    commands=("id", "info", "time", "repo"),
     permissions=("messages.read",),
     scope="all",
 )
+
+
+def _version() -> str:
+    from ... import __version__
+
+    return __version__
 
 
 def _replied(message):
@@ -97,4 +102,32 @@ def build(ctx):
             f"Server: <code>{time.strftime('%Y-%m-%d %H:%M:%S', local)}</code> ({time.tzname[0]})"
         )
 
-    return MANIFEST, {"id": show_id, "info": show_info, "time": show_time}
+    async def repo(_client, message):
+        """Where the source lives — one button, no wall of links."""
+        await reply(
+            message,
+            panel(
+                "Source",
+                icon=ctx.theme.emoji("link"),
+                table=kv_table(
+                    [
+                        ("Code", f"<code>{html.escape(SOURCE_URL)}</code>"),
+                        ("Running", f"v{_version()}"),
+                    ]
+                ),
+                footer="Issues and pull requests go to the repository above.",
+            ),
+            reply_markup=Keyboard(
+                [
+                    [
+                        Button(
+                            "\U0001f517 Open the repository",
+                            url=SOURCE_URL,
+                            style=ButtonStyle.PRIMARY,
+                        )
+                    ]
+                ]
+            ),
+        )
+
+    return MANIFEST, {"id": show_id, "info": show_info, "time": show_time, "repo": repo}

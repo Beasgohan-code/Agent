@@ -1,20 +1,11 @@
 """Music — a voice-chat player built on py-tgcalls and Telethon.
 
-The playback surface follows Playeon and Videl0 (``play``, ``pause``, ``resume``,
-``skip``, ``stop``, ``queue``, ``nowplaying``, ``leave``) but the implementation
-is this repository's: one engine on the shared context, one queue book, and one
-place where a failure is turned into a sentence.
-
 It is **gated on capability**, not on hope. ``agent.platform.voice.capability``
 answers two questions — is a ``SESSION_STRING`` configured, and are ``telethon``,
 ``pytgcalls`` and ``ntgcalls`` importable? When either answer is no, ``build()``
 returns a manifest with **zero commands**: the plugin shows up in ``/plugins``
 with the reason, and none of its buttons exist. A player that cannot join a call
 must not offer ``/play``.
-
-Why a second session: a bot token cannot join a group call by itself, so audio
-goes through a user session (the "assistant" every voice-chat bot uses) while
-commands stay on wzgram. Nothing about the bot's identity changes.
 """
 
 from __future__ import annotations

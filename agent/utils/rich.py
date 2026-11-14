@@ -119,8 +119,9 @@ def _cannot(client) -> None:
 def _classic_form(text, payload: str) -> str:
     """The best classic rendering available for *text*.
 
-    A :class:`agent.ui.tables.Panel` carries its own monospace form, which keeps
-    the table aligned; anything else is normalised from its rich markup.
+        A :class:`agent.ui.tables.Panel` carries its own monospace form, which keeps
+        the table aligned; anything else is normalised from its rich markup.
+        
     """
     return getattr(text, "classic", None) or classic(payload)
 
