@@ -153,6 +153,15 @@ class CloneManager:
     async def start(self, clone: Clone) -> str:
         """Start one clone and return its username (``""`` when Telegram hides it)."""
         async with self._lock:
+            if self._store._db is not None:
+                try:
+                    await self._store.aall()
+                except RuntimeError:
+                    raise CloneError("Authoritative clone state unavailable") from None
+                current = self._store.get(clone.bot_id)
+                if current is None:
+                    raise CloneError("Clone is no longer recorded")
+                clone = current
             if self.eligible is not None and not await self._eligible(clone.owner_id):
                 raise CloneError("Clone owner no longer has bot premium eligibility.")
             if clone.bot_id in self._running:
@@ -315,7 +324,7 @@ class CloneManager:
             record = self._store.get(bot_id)
             if record is not None and self.eligible is not None and not await self._eligible(record.owner_id):
                 await self.stop(bot_id)
-                self._store.update(bot_id, disabled=True)
+                await self._store.aupdate(bot_id, disabled=True)
                 continue
             client = self._running[bot_id][1]
             if getattr(client, "is_connected", True):
@@ -359,7 +368,7 @@ class CloneManager:
     async def restore(self) -> tuple[int, ...]:
         """Start every clone that was running when the process last stopped."""
         started: list[int] = []
-        for clone in self._store.all():
+        for clone in await self._store.aall():
             if (clone.disabled or self.is_running(clone.bot_id)
                     or (self.eligible is not None and not await self._eligible(clone.owner_id))):
                 continue

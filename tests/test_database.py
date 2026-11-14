@@ -175,9 +175,10 @@ def test_clone_records_are_shared_through_the_database(tmp_path):
     store = CloneStore(tmp_path, db=database)
     assert store.get(1).owner_id == 2
 
-    store.add(Clone(bot_id=3, owner_id=4, token="3:def"))
-    assert len(database.saved["clones"]) == 2
-    assert CloneStore(tmp_path, db=database).count() == 2
+    with pytest.raises(RuntimeError, match="Awaited"):
+        store.add(Clone(bot_id=3, owner_id=4, token="3:def"))
+    assert not database.saved
+    assert store.count() == 1
 
 
 def test_a_store_refuses_file_fallback_when_configured_database_is_down(tmp_path):

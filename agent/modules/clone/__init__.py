@@ -287,6 +287,7 @@ def build(ctx):
         if bot_id == ctx.settings.bot_id:
             await reply(message, "The main bot cannot clone itself.")
             return
+        await store.aall()
         existing = store.get(bot_id)
         if existing is not None:
             await reply(
@@ -317,22 +318,28 @@ def build(ctx):
             )
             return
 
-        record = store.add(
-            Clone(
-                bot_id=bot_id,
-                owner_id=user.id,
-                managed_owner=True,
-                token=parts[1].strip(),
-                profile=profile,
+        try:
+            record = await store.aadd(
+                Clone(
+                    bot_id=bot_id,
+                    owner_id=user.id,
+                    managed_owner=True,
+                    token=parts[1].strip(),
+                    profile=profile,
+                ),
+                owner_limit=allowed,
+                total_limit=ctx.settings.clone_limit,
             )
-        )
+        except RuntimeError:
+            await reply(message, "Clone capacity or persistence was not confirmed. Check /mybots before retrying.")
+            return
         try:
             username = await manager.start(record)
         except CloneError:
-            store.remove(bot_id)
+            await store.aremove(bot_id)
             await reply(message, "<b>Could not start that clone</b>\nTelegram or deployment startup failed. Check bot credentials and try again.")
             return
-        store.update(bot_id, username=username)
+        await store.aupdate(bot_id, username=username)
         if events is not None:
             events.emit("clone:add", bot_id=bot_id, by=user.id)
         logger.info("clone %s added by %s as @%s", bot_id, user.id, username or "?")
@@ -363,6 +370,7 @@ def build(ctx):
 
     # -- /mybots -----------------------------------------------------------
     async def mybots(_client, message):
+        await store.aall()
         user = getattr(message, "from_user", None)
         if user is None:
             return
@@ -371,6 +379,7 @@ def build(ctx):
 
     # -- /delclone ---------------------------------------------------------
     async def delclone(_client, message):
+        await store.aall()
         user = getattr(message, "from_user", None)
         if user is None:
             return
@@ -386,13 +395,14 @@ def build(ctx):
             await reply(message, "That clone belongs to somebody else.")
             return
         await manager.stop(target.bot_id)
-        store.remove(target.bot_id)
+        await store.aremove(target.bot_id)
         if events is not None:
             events.emit("clone:delete", bot_id=target.bot_id, by=user.id)
         await reply(message, f"Deleted the clone <b>{target.handle}</b> and stopped it.")
 
     # -- /clonestats -------------------------------------------------------
     async def clonestats(_client, message):
+        await store.aall()
         owner = ctx.settings.owner_id
         user = getattr(message, "from_user", None)
         if owner is None or user is None or int(user.id) != int(owner):
@@ -440,7 +450,7 @@ def build(ctx):
         if profiles.clean(extra) != extra or extra not in profiles.ORDER:
             await query.answer("That profile does not exist.", show_alert=True)
             return
-        store.update(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None)
+        await store.aupdate(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None)
         said = f"{target.handle} is on {extra}."
         if manager.is_running(target.bot_id):
             try:
@@ -448,7 +458,7 @@ def build(ctx):
             except CloneError as exc:
                 await query.answer(str(exc), show_alert=True)
                 return
-            store.update(target.bot_id, username=username or target.username)
+            await store.aupdate(target.bot_id, username=username or target.username)
             said = f"{target.handle} restarted on {extra}."
         if events is not None:
             events.emit("clone:profile", bot_id=target.bot_id, by=presser)
@@ -471,6 +481,7 @@ def build(ctx):
                 await rich_ui.send(client, chat_id, text, reply_markup=keyboard)
 
     async def on_clone_press(client, query, rest: str):
+        await store.aall()
         """``<bot_id>:<start|stop|delete|profile|p|back>[:<profile>]``."""
         parts = (rest or "").split(":")
         if len(parts) < 2 or not parts[0].isdigit():
@@ -498,17 +509,17 @@ def build(ctx):
             except CloneError as exc:
                 await query.answer(str(exc), show_alert=True)
                 return
-            store.update(bot_id, username=username or target.username, disabled=False)
+            await store.aupdate(bot_id, username=username or target.username, disabled=False)
             said = f"{target.handle} is running."
         elif action == "stop":
             if not await manager.stop(bot_id):
                 await query.answer("It was already stopped.", show_alert=True)
                 return
-            store.update(bot_id, disabled=True)
+            await store.aupdate(bot_id, disabled=True)
             said = f"{target.handle} is stopped."
         elif action == "delete":
             await manager.stop(bot_id)
-            store.remove(bot_id)
+            await store.aremove(bot_id)
             said = f"{target.handle} was deleted."
             if events is not None:
                 events.emit("clone:delete", bot_id=bot_id, by=presser)

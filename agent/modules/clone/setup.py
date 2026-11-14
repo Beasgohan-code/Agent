@@ -383,11 +383,11 @@ class CloneSetup:
                 record = Clone(bot_id=state.bot_id, owner_id=user_id, token=state.token,
                     username=state.username, assistant_session=state.assistant_session or None, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=(TEMPLATES[state.template][0],), managed_owner=True,
                     log_channel=state.log_channel, storage_channel=state.storage_channel)
-                self.store.add(record)
+                await self.store.aadd(record, owner_limit=limit, total_limit=self.ctx.settings.clone_limit)
                 try:
                     username = await self.manager.start(record)
                 except (Exception, asyncio.CancelledError) as exc:
-                    self.store.remove(record.bot_id)
+                    await self.store.aremove(record.bot_id)
                     if isinstance(exc, asyncio.CancelledError):
                         self.cancel(user_id)
                         raise
