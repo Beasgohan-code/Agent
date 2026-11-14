@@ -148,8 +148,8 @@ DESCRIPTIONS: dict[str, str] = {
     "encode": "Encode a replied video",
     "compress": "Make a replied video smaller (fast preset)",
     "sample": "Cut a short clip from a replied video",
-    "toaudio": "Extract the audio track as MP3",
-    "screens": "Contact sheet of frames from a video",
+    "toaudio": "Extract audio as MP3, M4A or FLAC",
+    "screens": "Create a 4, 9 or 16-frame contact sheet",
     "mediainfo": "Probe a replied video",
 
     # linkshare

@@ -21,7 +21,7 @@ from ...platform.manifest import PluginManifest
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
 from ..filestore.vault import human_bytes
-from .options import USAGE, VideoOptions, parse_options
+from .options import USAGE, VideoOptions, parse_options, audio_options, screen_count
 
 logger = logging.getLogger(__name__)
 
@@ -205,8 +205,11 @@ def clip_command(src: Path, dst: Path, *, start: float, length: float) -> list[s
     ]
 
 
-def audio_command(src: Path, dst: Path) -> list[str]:
-    """The audio track, as MP3 at 192 kbit/s — playable everywhere."""
+def audio_command(src: Path, dst: Path, *, kind: str = "mp3", bitrate: int = 192) -> list[str]:
+    """Extract one audio stream with bounded container-specific options."""
+    if kind not in ("mp3", "m4a", "flac") or type(bitrate) is not int or bitrate not in (128, 192, 256, 320):
+        raise ValueError("Invalid audio format or bitrate.")
+    codec = {"mp3": "libmp3lame", "m4a": "aac", "flac": "flac"}[kind]
     return [
         ffmpeg_path(),
         "-hide_banner",
@@ -220,18 +223,22 @@ def audio_command(src: Path, dst: Path) -> list[str]:
         str(src),
         "-vn",
         "-c:a",
-        "libmp3lame",
-        "-b:a",
-        "192k",
+        codec,
+        *(["-b:a", f"{bitrate}k"] if kind != "flac" else []),
+        *(["-movflags", "+faststart"] if kind == "m4a" else []),
         str(dst),
     ]
 
 
 def screens_command(src: Path, dst: Path, *, count: int = 9, duration: float = 0.0) -> list[str]:
     """A contact sheet: *count* frames laid out in a 3x3 grid."""
-    columns = 3
-    rows = max(1, (count + columns - 1) // columns)
-    every = max(1.0, duration / (count + 1)) if duration else 10.0
+    if type(count) is not int or count not in (4, 9, 16):
+        raise ValueError("Choose 4, 9 or 16 frames.")
+    if not math.isfinite(duration) or duration < 0:
+        raise ValueError("Invalid media duration.")
+    columns = int(math.isqrt(count))
+    rows = columns
+    rate = count / duration if duration else 0.1
     return [
         ffmpeg_path(),
         "-hide_banner",
@@ -244,7 +251,7 @@ def screens_command(src: Path, dst: Path, *, count: int = 9, duration: float = 0
         "-i",
         str(src),
         "-vf",
-        f"select='not(mod(n,{int(max(1, every * 25))}))',scale=320:-1,tile={columns}x{rows}",
+        f"fps={rate:.8f},scale=320:-2,tile={columns}x{rows}",
         "-frames:v",
         "1",
         "-q:v",
@@ -462,6 +469,8 @@ def build(ctx):
         def make(src: Path):
             async def run(job: Job) -> Path:
                 info = await probe(src)
+                if info["duration"] > 0 and start >= info["duration"]:
+                    raise ValueError("Sample start must be before the end of the media.")
                 dst = Path(tempfile.mkdtemp(prefix="sample-")) / f"{src.stem}-sample{src.suffix}"
                 job.detail = f"{length:.0f}s from {start:.0f}s"
                 return await run_tool(
@@ -474,30 +483,36 @@ def build(ctx):
         await _run_tool(client, message, kind="sample", label=f"sample {length:.0f}s", make=make)
 
     async def toaudio(client, message):
-        """The audio track as MP3."""
+        """Extract MP3, M4A or FLAC without accepting shell fragments."""
+        kind, bitrate = audio_options((getattr(message, "text", "") or "").split()[1:])
 
         def make(src: Path):
             async def run(job: Job) -> Path:
                 info = await probe(src)
-                dst = Path(tempfile.mkdtemp(prefix="audio-")) / f"{src.stem}.mp3"
+                if not info.get("has_audio"):
+                    raise ValueError("No audio stream was found.")
+                dst = Path(tempfile.mkdtemp(prefix="audio-")) / f"{src.stem}.{kind}"
                 job.detail = "extracting audio"
-                return await run_tool(job, audio_command(src, dst), dst, duration=info["duration"])
+                return await run_tool(job, audio_command(src, dst, kind=kind, bitrate=bitrate), dst, duration=info["duration"])
 
             return run
 
-        await _run_tool(client, message, kind="toaudio", label="audio", make=make)
+        await _run_tool(client, message, kind="toaudio", label=f"{kind.upper()} audio", make=make)
 
     async def screens(client, message):
-        """/screens — a fixed-layout contact sheet of the replied video."""
+        """/screens [4|9|16] — timestamp-sampled contact sheet."""
+        count = screen_count((getattr(message, "text", "") or "").split()[1:])
 
         def make(src: Path):
             async def run(job: Job) -> Path:
                 info = await probe(src)
+                if not info.get("has_video"):
+                    raise ValueError("No video stream was found.")
                 dst = Path(tempfile.mkdtemp(prefix="screens-")) / f"{src.stem}-screens.jpg"
                 job.detail = "building the sheet"
                 return await run_tool(
                     job,
-                    screens_command(src, dst, duration=info["duration"]),
+                    screens_command(src, dst, count=count, duration=info["duration"]),
                     dst,
                     duration=info["duration"],
                 )
@@ -550,8 +565,13 @@ def build(ctx):
                 return
             args = (getattr(message, 'text', '') or '').split()[1:]
             problem = None
-            if name in ('compress', 'toaudio', 'screens', 'mediainfo') and args:
+            if name in ('compress', 'mediainfo') and args:
                 problem = f'Use /{name} without arguments.'
+            elif name in ('toaudio', 'screens'):
+                try:
+                    (audio_options if name == 'toaudio' else screen_count)(args)
+                except ValueError as error:
+                    problem = str(error)
             elif name == 'encode':
                 try:
                     parse_options(args)
