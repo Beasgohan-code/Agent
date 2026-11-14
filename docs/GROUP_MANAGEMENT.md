@@ -120,3 +120,13 @@ Flood waits are reported without blocking the update handler for a long sleep or
 automatically replaying a destructive action. Tests verify failed requests do
 not create success log entries. A kick remains two Telegram requests: if unban
 fails after ban succeeds, the operation is partial, not transactional.
+
+### Partial kick recovery
+
+All three kick paths (manual command, warning escalation and anti-spam) now share
+one implementation. A confirmed ban followed by an unconfirmed unban records
+`kick:incomplete`, not a successful kick. The notice states that the member may
+still be banned and provides `/unban <id>` as a recovery action. Flood-wait
+failures include the retry delay. The bot does not automatically replay the ban.
+The anti-spam watcher contains recovery-notice failures as well. This improves
+observability and recovery, not atomicity across the two Telegram requests.

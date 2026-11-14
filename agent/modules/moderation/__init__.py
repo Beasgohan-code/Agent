@@ -177,6 +177,28 @@ async def target_is_protected(client, chat_id: int, target_id: int) -> bool:
     return member is not None and getattr(member, "status", None) in _ADMIN_STATUSES
 
 
+class PartialKickError(RuntimeError):
+    """Ban was confirmed, but the unban request was not confirmed."""
+
+
+async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source="manual"):
+    """Use one recovery path for every kick; never retry the ban blindly."""
+    await client.ban_chat_member(chat_id, target_id)
+    try:
+        await client.unban_chat_member(chat_id, target_id)
+    except Exception as exc:
+        ctx.chats.log(
+            chat_id, "kick:incomplete", actor_id=actor_id, target_id=target_id,
+            reason=f"{source}: ban confirmed; unban unconfirmed ({type(exc).__name__})",
+        )
+        delay = f" Wait {int(exc.value)} seconds before retrying." if isinstance(exc, FloodWait) else ""
+        raise PartialKickError(
+            f"Kick incomplete: the ban succeeded, but unban was not confirmed "
+            f"({type(exc).__name__}). Member {int(target_id)} may still be banned."
+            f"{delay} An administrator can check and use <code>/unban {int(target_id)}</code>."
+        ) from exc
+
+
 async def escalate_warning(client, ctx, message, target_id: int, action: str) -> str:
     """Apply the group's warn action. Returns a line for the report.
 
@@ -195,12 +217,13 @@ async def escalate_warning(client, ctx, message, target_id: int, action: str) ->
             )
             outcome = f"muted for {duration_label(DEFAULT_MUTE_SECONDS)}"
         elif action == "kick":
-            await client.ban_chat_member(chat_id, target_id)
-            await client.unban_chat_member(chat_id, target_id)
+            await kick_member(client, ctx, chat_id, target_id, source="warnlimit")
             outcome = "kicked"
         else:
             await client.ban_chat_member(chat_id, target_id)
             outcome = "banned"
+    except PartialKickError as exc:
+        return str(exc)
     except Exception as exc:  # noqa: BLE001 - the moderator needs the real reason
         logger.exception("warn escalation failed")
         return f"Escalation failed: {type(exc).__name__}. Check my rights."
@@ -280,8 +303,7 @@ async def _punish(client, ctx, message, action: str, *, policy: dict) -> None:
         )
         await reply(message, f"Anti-spam: member muted for {policy.get('mute_seconds', 300)}s.")
     elif action == "kick":
-        await client.ban_chat_member(chat_id, user_id)
-        await client.unban_chat_member(chat_id, user_id)
+        await kick_member(client, ctx, chat_id, user_id, source="antispam")
         await reply(message, "Anti-spam: member kicked.")
     elif action == "ban":
         await client.ban_chat_member(chat_id, user_id)
@@ -329,6 +351,11 @@ def watch(ctx):
             ctx.chats.log(
                 chat.id, f"antispam:{action}", actor_id=None, target_id=int(user.id), reason=violation
             )
+        except PartialKickError as exc:
+            try:
+                await reply(message, str(exc))
+            except Exception:
+                logger.exception("Could not send partial-kick recovery notice.")
         except Exception:  # noqa: BLE001 - a watcher must never break the client
             import logging
 
@@ -505,8 +532,10 @@ def build(ctx):
         target_id, mention = target
         if await _protected(client, message, target_id):
             return
-        await client.ban_chat_member(message.chat.id, target_id)
-        await client.unban_chat_member(message.chat.id, target_id)
+        await kick_member(
+            client, ctx, message.chat.id, target_id,
+            actor_id=message.from_user.id, source="manual",
+        )
         ctx.chats.log(
             message.chat.id, "kick", actor_id=message.from_user.id, target_id=target_id
         )
@@ -723,6 +752,8 @@ def build(ctx):
         async def guarded(client, message):
             try:
                 return await handler(client, message)
+            except PartialKickError as exc:
+                await reply(message, str(exc))
             except FloodWait as exc:
                 await reply(message, f"Telegram rate limit: try again in {int(exc.value)} seconds. The action was not confirmed.")
             except RPCError as exc:

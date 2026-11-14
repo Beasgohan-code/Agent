@@ -434,3 +434,58 @@ def test_ban_reports_flood_wait_without_blocking_or_retry(ctx):
     run(handlers(ctx)['ban'], client, message)
     assert '42 seconds' in message.replies[-1]
     assert not client.calls
+
+
+class PartialKickClient(FakeClient):
+    async def unban_chat_member(self, chat_id, user_id, **kwargs):
+        from pyrogram.errors import ChatAdminRequired
+        self.calls.append(('unban_failed', int(user_id)))
+        raise ChatAdminRequired()
+
+
+def test_partial_manual_kick_shows_recovery_and_logs_partial_result(ctx):
+    client = PartialKickClient()
+    message = FakeMessage('/kick', reply=True)
+    run(handlers(ctx)['kick'], client, message)
+    assert client.calls == [('ban', 22), ('unban_failed', 22)]
+    assert 'Kick incomplete' in message.replies[-1]
+    assert '/unban 22' in message.replies[-1]
+    assert [e['action'] for e in ctx.chats.history(-100500)] == ['kick:incomplete']
+
+
+def test_warning_escalation_does_not_claim_partial_kick_succeeded(ctx):
+    client = PartialKickClient()
+    message = FakeMessage('/warn', reply=True)
+    result = asyncio.run(moderation.escalate_warning(client, ctx, message, 22, 'kick'))
+    assert 'Kick incomplete' in result
+    assert '/unban 22' in result
+    assert [e['action'] for e in ctx.chats.history(-100500)] == ['kick:incomplete']
+
+
+def test_antispam_partial_kick_records_recovery_not_success(ctx):
+    client = PartialKickClient()
+    message = FakeMessage('spam')
+    with pytest.raises(moderation.PartialKickError, match='may still be banned'):
+        asyncio.run(moderation._punish(client, ctx, message, 'kick', policy={}))
+    assert [e['action'] for e in ctx.chats.history(-100500)] == ['kick:incomplete']
+    assert not any('member kicked' in text for text in message.replies)
+
+
+def test_partial_kick_flood_wait_includes_retry_delay(ctx):
+    from pyrogram.errors import FloodWait
+    class Limited(FakeClient):
+        async def unban_chat_member(self, *args, **kwargs):
+            raise FloodWait(31)
+    message = FakeMessage('/kick', reply=True)
+    run(handlers(ctx)['kick'], Limited(), message)
+    assert 'Wait 31 seconds' in message.replies[-1]
+    assert '/unban 22' in message.replies[-1]
+
+
+def test_antispam_watcher_reports_partial_result_and_avoids_success_log(ctx):
+    policy = ctx.chats.antispam(-100500)
+    ctx.chats.save_antispam(-100500, {**policy, 'action': 'kick', 'links_enabled': True})
+    message = FakeMessage('https://spam.example')
+    run(moderation.watch(ctx), PartialKickClient(caller=MEMBER), message)
+    assert 'Kick incomplete' in message.replies[-1]
+    assert [e['action'] for e in ctx.chats.history(-100500)] == ['kick:incomplete']
