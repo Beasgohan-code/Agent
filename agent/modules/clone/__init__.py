@@ -27,6 +27,7 @@ from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
 from ...platform.manifest import PluginManifest
+from ...platform.secrets import SecretError, box_from
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils import rich as rich_ui
@@ -53,7 +54,14 @@ PREFIX = "clone"
 
 def build(ctx):
     """Wire the clone commands and their buttons to the shared context."""
-    store = CloneStore(ctx.settings.data_dir, db=getattr(ctx, "db", None))
+    try:
+        box = box_from(ctx.settings)
+    except SecretError as exc:
+        # A key that cannot be used is a deployment error, and the clone module
+        # says so instead of quietly writing tokens in plaintext.
+        logger.error("Clone tokens will not be stored: %s", exc)
+        box = None
+    store = CloneStore(ctx.settings.data_dir, db=getattr(ctx, "db", None), box=box)
     # A deployment (or a test) may hand in its own bot factory; the default
     # builds a real AgentBot for the clone's token.
     manager = CloneManager(ctx.settings, store, getattr(ctx, "clone_factory", None))

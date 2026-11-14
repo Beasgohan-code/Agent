@@ -68,7 +68,13 @@ class AgentBot:
         #: PostgreSQL, when the deployment provides DATABASE_URL. Connected (and
         #: loaded) in run(), before the client starts, so the stores are built
         #: against the database rather than filling up from files first.
-        self.database = Database(settings.database_url) if settings.database_url else None
+        # Every row this instance writes is prefixed with its scope, so a
+        # clone's ``runtime`` can never overwrite the main bot's.
+        self.database = (
+            Database(settings.database_url, scope=settings.db_scope)
+            if settings.database_url
+            else None
+        )
         db = self.database
         self.users = UserIndex(settings.data_dir, db=db)
         self.logbook = LogBook(
@@ -275,6 +281,15 @@ class AgentBot:
                     hydrate = getattr(store, "hydrate", None)
                     if hydrate is not None:
                         hydrate()
+            elif self.settings.db_required:
+                # The deployment said the database is the source of truth; two
+                # competing ones (database and files) are worse than not starting.
+                self.fatal_reason = (
+                    "DATABASE_URL is required but unusable: "
+                    f"{self.database.error or 'no reason given'}"
+                )
+                logger.critical(self.fatal_reason)
+                return
             else:
                 logger.warning(
                     "Continuing with JSON files: DATABASE_URL is set but unusable (%s).",

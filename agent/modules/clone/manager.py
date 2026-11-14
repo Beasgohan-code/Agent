@@ -57,6 +57,10 @@ class CloneManager:
             # The owner id belongs to the deployment, not to the clone: a clone
             # must not hand owner commands to whoever created it.
             owner_id=None,
+            # Its own rows in PostgreSQL. Without this every clone would write
+            # the same ``runtime``/``premium``/``chats`` documents as the main
+            # bot and the last writer would silently win.
+            db_scope=f"clone:{clone.bot_id}",
         )
 
     # -- lifecycle --------------------------------------------------------

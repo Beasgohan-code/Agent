@@ -38,5 +38,9 @@ services:
       # which a redeploy wipes.
       - key: DATABASE_URL
         sync: false
+      # Encrypts the clone tokens at rest. Generate with:
+      #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: TOKEN_KEY
+        sync: false
       - key: OWNER_ID
         sync: false

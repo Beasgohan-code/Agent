@@ -23,6 +23,15 @@ Writes are batched: a mutation queues the document and one background task
 flushes the queue, so a handler never waits on the network. A database that is
 missing or unreachable is logged once and the bot keeps running on its files —
 losing the database must not take the bot down with it.
+
+**Every row is scoped to one bot.** The main bot and each clone connect to the
+same database, and they all keep a document called ``runtime``, ``premium`` or
+``chats`` — unscoped, the last writer would silently win and a clone's plugin
+switch could turn off the main bot's. So a :class:`Database` is constructed with
+a *scope* (``main:<bot id>`` or ``clone:<bot id>``) and every document name and
+lease name is stored as ``<scope>:<name>``. The stores keep using plain names;
+the prefix exists only in the SQL. ``scope="global"`` is there for data that is
+genuinely deployment-wide.
 """
 
 from __future__ import annotations
@@ -109,8 +118,16 @@ def normalise_url(raw: str | None) -> str | None:
 class Database:
     """The connection, the document cache and the write-behind queue."""
 
-    def __init__(self, url: str | None, *, flush_interval: float = 0.05) -> None:
+    def __init__(
+        self,
+        url: str | None,
+        *,
+        scope: str = "global",
+        flush_interval: float = 0.05,
+    ) -> None:
         self.url = normalise_url(url)
+        #: Which bot owns these rows: ``main:<id>``, ``clone:<id>``, ``global``.
+        self.scope = _clean_scope(scope)
         self.connected = False
         self.error: str | None = None
         self._pool = None
@@ -119,6 +136,22 @@ class Database:
         self._writer: asyncio.Task | None = None
         self._warned = False
         self._flush_interval = flush_interval
+
+    # -- scoping -----------------------------------------------------------
+    def name_for(self, name: str) -> str:
+        """The stored name of *name*: the scope prefix is the whole trick."""
+        return f"{self.scope}:{name}"
+
+    def lease_key(self, name: str) -> str:
+        """A lease is per scope too: two bots of one deployment never contend."""
+        return f"{self.scope}:{name}"
+
+    def _pattern(self) -> str:
+        """``LIKE`` pattern matching only this scope's rows."""
+        escaped = (
+            self.scope.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        return f"{escaped}:%"
 
     # -- capability --------------------------------------------------------
     @property
@@ -177,13 +210,22 @@ class Database:
             return 0
         try:
             async with self._pool.acquire() as connection:
-                rows = await connection.fetch("SELECT name, value FROM agent_documents")
+                rows = await connection.fetch(
+                    "SELECT name, value FROM agent_documents WHERE name LIKE $1",
+                    self._pattern(),
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not read documents from PostgreSQL: %s", exc)
             return 0
         self._docs = {}
+        prefix = f"{self.scope}:"
         for row in rows:
-            self._docs[row["name"]] = _decode(row["value"])
+            # Only this scope's rows were asked for, but strip the prefix anyway
+            # so the stores keep seeing the plain names they have always used.
+            name = str(row["name"])
+            if not name.startswith(prefix):
+                continue
+            self._docs[name[len(prefix) :]] = _decode(row["value"])
         if self._docs:
             logger.info("Loaded %d document(s) from PostgreSQL", len(self._docs))
         return len(self._docs)
@@ -246,7 +288,9 @@ class Database:
         async with self._pool.acquire() as connection:
             async with connection.transaction():
                 for name, value in batch.items():
-                    await connection.execute(UPSERT_DOCUMENT, name, json.dumps(value))
+                    await connection.execute(
+                        UPSERT_DOCUMENT, self.name_for(name), json.dumps(value)
+                    )
 
     async def flush(self) -> int:
         """Write everything queued right now. Returns how many documents went."""
@@ -271,11 +315,13 @@ class Database:
         now = time.time()
         try:
             async with self._pool.acquire() as connection:
-                row = await connection.fetchrow(TAKE_LEASE, name, holder, now + ttl, now)
+                row = await connection.fetchrow(
+                    TAKE_LEASE, self.lease_key(name), holder, now + ttl, now
+                )
                 if row is None:
-                    other = await connection.fetchrow(READ_LEASE, name)
+                    other = await connection.fetchrow(READ_LEASE, self.lease_key(name))
                     return "held" if other else "taken"
-                current = await connection.fetchrow(READ_LEASE, name)
+                current = await connection.fetchrow(READ_LEASE, self.lease_key(name))
         except Exception as exc:  # noqa: BLE001
             logger.warning("Lease query failed: %s", exc)
             return "unavailable"
@@ -288,7 +334,9 @@ class Database:
             return False
         try:
             async with self._pool.acquire() as connection:
-                result = await connection.execute(RELEASE_LEASE, name, holder)
+                result = await connection.execute(
+                    RELEASE_LEASE, self.lease_key(name), holder
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not release the lease: %s", exc)
             return False
@@ -299,12 +347,20 @@ class Database:
             return None, 0.0
         try:
             async with self._pool.acquire() as connection:
-                row = await connection.fetchrow(READ_LEASE, name)
+                row = await connection.fetchrow(READ_LEASE, self.lease_key(name))
         except Exception:  # noqa: BLE001
             return None, 0.0
         if row is None:
             return None, 0.0
         return row["holder"], float(row["expires_at"] or 0.0)
+
+
+def _clean_scope(scope: str) -> str:
+    """A scope is a name: letters, digits, dash, underscore and one colon."""
+    text = "".join(
+        char for char in str(scope or "").strip() if char.isalnum() or char in "-_:"
+    )
+    return text[:80] or "global"
 
 
 def _decode(value: Any) -> Any:

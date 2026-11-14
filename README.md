@@ -23,7 +23,9 @@ built from the live state of this process rather than a stored copy of it.
 | `SESSION_STRING` | for music | A user session is the only thing that can join a group call. |
 | `LOG_CHANNEL` | no | Where the bot posts its event log; without it, the owner's DM. |
 | `DATA_DIR` | no | Where local state (vault files, and JSON stores without a database) lives. Default `data`. |
-| `DATABASE_URL` | no | PostgreSQL DSN. Set it and every store is kept in the database. |
+| `DATABASE_URL` | no | PostgreSQL DSN. Set it and every store is kept in the database, scoped per bot. |
+| `TOKEN_KEY` | no | Encrypts clone tokens at rest (Fernet). Unset ⇒ plaintext, announced. |
+| `DB_REQUIRED` | no | `1` makes an unreachable `DATABASE_URL` a startup failure. |
 | `CLONE_LIMIT` | no | How many clones this deployment will run at once. Default `5`. |
 | `START_IMAGE` | no | Picture above `/start`; `0` keeps the text only. |
 | `HEALTH_PORT` / `PORT` | no | Exposes `/health` and `/health/live`. |
@@ -176,6 +178,29 @@ database must not take the bot down. `/db` (owner) states which backend is live,
 the host, how many documents are loaded and whether writes are queued; `/status`
 carries the same answer in one row.
 
+### One database, many bots
+
+Every bot sharing the database keeps documents with the same names — `runtime`,
+`premium`, `chats`, `links` — so an unscoped store would let a clone's plugin
+switch turn off the main bot's. Each `Database` therefore carries a **scope**
+(`main:<bot id>`, `clone:<bot id>`, or `global`) and every row and lease is
+written as `<scope>:<name>`. The stores keep using plain names; the prefix exists
+only in SQL. `clone:…` is applied by `CloneManager.settings_for`, so a clone's
+vault, premium ledger and plugin state are its own *and* survive a redeploy on
+any instance.
+
+`DB_REQUIRED=1` turns "the URL is set but unreachable" into a startup failure
+instead of a silent fall back to files — two competing sources of truth are worse
+than a bot that refuses to start.
+
+**Clone tokens are encrypted at rest.** With `TOKEN_KEY` set, records are written
+as Fernet ciphertext (`v1:` prefix, AES-CBC + HMAC) and decrypted only in memory;
+masking a token in a panel was never protection for the database. A key that
+cannot be used is an error rather than a quiet downgrade, a record written before
+encryption existed is rewritten as ciphertext on the next save, and a record this
+key cannot read is skipped with a logged reason instead of taking the bot down.
+Without a key the store still works in plaintext and says so once at startup.
+
 **The vault is the exception.** Files live on the host's disk under `DATA_DIR`;
 the database holds the index and the links. A multi-instance deployment that
 wants shared *files* needs object storage, and this bot does not pretend
@@ -235,7 +260,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 465 tests
+pytest -q                      # 482 tests
 python -m pyflakes agent tests # no unused names
 ```
 

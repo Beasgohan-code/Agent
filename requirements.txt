@@ -13,3 +13,5 @@ aiohttp==3.14.5
 asyncpg==0.30.0
 # Static ffmpeg for the encoder module when the host has none on PATH.
 imageio-ffmpeg==0.8.1
+# Token encryption at rest (agent/platform/secrets.py).
+cryptography>=42.0

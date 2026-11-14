@@ -89,6 +89,17 @@ class Settings:
     database_url: str | None = None
     #: How many clones this deployment will run at once (CLONE_LIMIT).
     clone_limit: int = 5
+    #: The Telegram bot id inside the token: every stored row is scoped by it.
+    bot_id: int = 0
+    #: Which rows this instance owns. ``main:<bot id>`` for the bot itself;
+    #: :meth:`agent.modules.clone.manager.CloneManager.settings_for` overrides it
+    #: with ``clone:<bot id>`` so two bots sharing one database never collide.
+    db_scope: str = "global"
+    #: TOKEN_KEY: the Fernet key clone tokens are encrypted with at rest.
+    token_key: str | None = None
+    #: DB_REQUIRED=1 makes an unreachable DATABASE_URL a startup failure instead
+    #: of a quiet fall back to JSON files.
+    db_required: bool = False
     #: Which plugins register at startup (PLUGINS=..., or * for every module).
     plugins: tuple[str, ...] = DEFAULT_PLUGINS
     health_port: int | None = None
@@ -159,6 +170,11 @@ class Settings:
             session_string=(source.get("SESSION_STRING") or "").strip() or None,
             plugins=_plugins(source.get("PLUGINS")),
             clone_limit=_bounded_int(source.get("CLONE_LIMIT"), 5, 0, 50),
+            bot_id=_bot_id(bot_token),
+            db_scope=f"main:{_bot_id(bot_token)}",
+            token_key=(source.get("TOKEN_KEY") or "").strip() or None,
+            db_required=(source.get("DB_REQUIRED") or "0").strip().lower()
+            in ("1", "true", "yes", "on"),
             database_url=(source.get("DATABASE_URL") or "").strip() or None,
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
@@ -167,6 +183,16 @@ class Settings:
                 _optional_float(source.get("WATCHDOG_FATAL_AFTER"), 5.0)
             ),
         )
+
+
+def _bot_id(token: str) -> int:
+    """The id inside ``<id>:<secret>``; ``0`` when it cannot be read."""
+    head, _, _ = (token or "").partition(":")
+    try:
+        value = int(head)
+    except ValueError:
+        return 0
+    return value if value > 0 else 0
 
 
 #: The picture the owner asked for. Kept in code so a fresh deploy looks right
