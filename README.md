@@ -175,6 +175,20 @@ old one — so "we deploy carefully" is not protection.
 * **`/health`** now carries the lease state, disabled plugins and event count,
   so a platform health check can see what the bot sees.
 
+## The command menu
+
+On start the bot publishes its command list to Telegram, split by scope: 30
+private/anywhere commands in the default scope and 20 group-only ones
+(moderation, filters, greetings) in the group scope, so nobody sees `/ban` in a
+DM. The list is built from the live registry, so a disabled plugin disappears
+from the menu at the same time as it disappears from the dispatcher.
+
+`/menubutton` does not exist because it does not need to: the chat menu button is
+reset to the command list automatically. **The Bot API cannot hide the menu
+button entirely** — the options are a web-app launcher, the command list, or the
+default. "Deleted" here means it no longer points at anything custom, and
+`SYNC_COMMANDS=0` skips the whole step.
+
 ## Premium emoji and the UI layer
 
 Screens are rich markup composed with **richgram**'s block builders and delivered

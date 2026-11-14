@@ -22,6 +22,7 @@ from .platform.audience import UserIndex
 from .platform.events import EventLog
 from .platform.instance import InstanceLease
 from .platform.logbook import LogBook, subscribe
+from .platform.menu import publish as publish_menu, reset_menu_button
 from .platform.runtime import PluginRuntime
 from .ui.theme import Theme
 from .utils.sender import ScreenSender
@@ -227,6 +228,17 @@ class AgentBot:
         # A completed handshake is a successful probe.
         self.health.record_success()
         self.events.emit("start", version=__version__)
+
+        # Make Telegram's own command menu match what this process actually
+        # registered — a disabled plugin must not linger in the menu either.
+        if self.settings.sync_commands:
+            try:
+                await reset_menu_button(client)
+                await publish_menu(
+                    client, ["start", "help", "ping", *self.registry.active_commands()]
+                )
+            except Exception:  # noqa: BLE001 - menu cosmetics never stop the bot
+                logger.exception("Command menu sync failed; continuing without it.")
 
         me = client.me
         logger.info(
