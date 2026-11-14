@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 #: How long a stop may take before the process continues anyway.
 STOP_TIMEOUT = 10.0
+START_TIMEOUT = 30.0
 
 
 class VoiceUnavailable(RuntimeError):
@@ -80,6 +81,7 @@ class VoiceEngine:
         api_hash: str,
         on_stream_end=None,
     ) -> None:
+        self._lifecycle_lock = asyncio.Lock()
         self._session_string = session_string
         self._api_id = api_id
         self._api_hash = api_hash
@@ -98,9 +100,21 @@ class VoiceEngine:
         self._on_stream_end = handler
 
     async def start(self) -> None:
-        """Build both clients and start streaming support."""
-        if self._connected:
-            return
+        """Bound startup and clean partial clients, including on cancellation."""
+        async with self._lifecycle_lock:
+            if self._connected:
+                return
+            try:
+                await asyncio.wait_for(self._start(), timeout=START_TIMEOUT)
+            except BaseException as exc:
+                await self._stop()
+                if isinstance(exc, asyncio.CancelledError):
+                    raise
+                if not isinstance(exc, Exception):
+                    raise
+                raise VoiceUnavailable(f"Voice startup failed ({type(exc).__name__}). Check assistant authorization and voice dependencies.") from None
+
+    async def _start(self) -> None:
         try:
             from pytgcalls import PyTgCalls
             from pytgcalls import filters as vc_filters
@@ -117,14 +131,18 @@ class VoiceEngine:
             # Quiet: the library logs every raw update at INFO by default.
             sequential_updates=True,
         )
+        self._client = client
         await client.connect()
         if not await client.is_user_authorized():
-            await client.disconnect()
             raise VoiceUnavailable(
                 "the session string is not authorised; generate a new one with "
                 "the documented script"
             )
+        identity = await client.get_me()
+        if identity is None or getattr(identity, "bot", False):
+            raise VoiceUnavailable("the assistant must be an authorized user account, not a bot")
         call = PyTgCalls(client)
+        self._call = call
 
         ended = StreamEnded.Type.AUDIO
 
@@ -145,21 +163,27 @@ class VoiceEngine:
         logger.info("Voice chat engine connected (telethon + py-tgcalls)")
 
     async def stop(self) -> None:
+        async with self._lifecycle_lock:
+            await self._stop()
+
+    async def _stop(self) -> None:
         self._connected = False
         call, client = self._call, self._client
         self._call = None
         self._client = None
         self.playbacks.clear()
-        if call is not None:
-            try:
-                await call.stop()
-            except Exception:  # noqa: BLE001 - shutdown keeps going
-                logger.debug("py-tgcalls stop failed", exc_info=True)
-        if client is not None:
-            try:
-                await client.disconnect()
-            except Exception:  # noqa: BLE001
-                logger.debug("telethon disconnect failed", exc_info=True)
+        try:
+            if call is not None:
+                try:
+                    await asyncio.wait_for(call.stop(), timeout=STOP_TIMEOUT)
+                except Exception:  # shutdown continues after timeout/failure
+                    logger.debug("py-tgcalls stop failed")
+        finally:
+            if client is not None:
+                try:
+                    await asyncio.wait_for(client.disconnect(), timeout=STOP_TIMEOUT)
+                except Exception:
+                    logger.debug("telethon disconnect failed")
 
     def _require(self):
         if not self._connected or self._call is None:
@@ -209,9 +233,7 @@ class VoiceEngine:
 
     async def shutdown(self) -> None:
         """Stop without letting a wedged library hold the process open."""
-        if not self._connected:
-            return
         try:
-            await asyncio.wait_for(self.stop(), timeout=STOP_TIMEOUT)
+            await asyncio.wait_for(self.stop(), timeout=START_TIMEOUT + 2 * STOP_TIMEOUT + 1)
         except Exception:  # noqa: BLE001 - shutdown continues regardless
-            logger.warning("voice engine did not stop cleanly", exc_info=True)
+            logger.warning("voice engine did not stop cleanly")

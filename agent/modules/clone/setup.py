@@ -287,8 +287,11 @@ class CloneSetup:
                 self.store.add(record)
                 try:
                     username = await self.manager.start(record)
-                except Exception:
+                except (Exception, asyncio.CancelledError) as exc:
                     self.store.remove(record.bot_id)
+                    if isinstance(exc, asyncio.CancelledError):
+                        self.cancel(user_id)
+                        raise
                     raise SetupError('The clone did not start. The draft was discarded; check bot credentials and deployment availability.') from None
                 self.cancel(user_id)
                 await reply(query.message, panel('Clone ready', icon=self.ctx.theme.emoji('sparkles'),

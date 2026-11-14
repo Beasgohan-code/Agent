@@ -396,3 +396,26 @@ agent. Music remains the only primary feature without a guided clone template.
 Validation for AI clone setup: **726 tests passed** with disposable PostgreSQL;
 compileall, pyflakes and whitespace checks passed. Paid provider calls and live
 Telegram credential/session behavior have not been tested in this environment.
+
+### Music lifecycle prerequisites
+
+Music credential collection remains gated. Voice startup now has a 30-second
+bound, serialized start/stop transitions, explicit user-account authorization
+checks and cleanup for partial connection, initialization failure, timeout and
+cancellation. Assistant bots are refused. Each stop/disconnect operation has a
+10-second bound; call shutdown failure cannot skip Telegram disconnect. Startup
+errors expose the exception category, not provider/library exception text which
+could contain credentials. Shutdown also cleans partial, not-yet-connected
+engines. This does not provide an OS-level sandbox or a guarantee against a
+third-party library that suppresses cancellation indefinitely.
+
+The clone manager now starts a configured voice engine after bot login, and
+cleans voice, bot, database and lease on startup cancellation/failure. Guided
+creation cancellation also removes the newly saved record and clears its draft
+secrets. Music assistant credential verification, account-level exclusivity and
+a safe private session workflow still need implementation before exposing the
+Music template; no assistant credentials are being accepted prematurely.
+
+Validation: **741 tests passed** with disposable PostgreSQL; compileall, pyflakes
+and whitespace checks passed. Voice-library lifecycle tests use mock clients,
+not live Telegram calls. No real assistant account was connected.

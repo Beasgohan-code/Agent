@@ -386,3 +386,25 @@ def test_cancelling_during_key_message_deletion_cannot_restore_secret(tmp_path):
         assert state.ai_api_key == ''
         assert wizard.active(MEMBER) is None
     asyncio.run(scenario())
+
+
+def test_cancelled_creation_removes_record_and_clears_draft_secrets(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        await wizard.press(None, query(state), state.nonce + ':leech')
+        await wizard.receive(None, FakeMessage('skip'))
+        entered = asyncio.Event()
+        async def blocked(record):
+            entered.set()
+            await asyncio.Event().wait()
+        wizard.manager.start = AsyncMock(side_effect=blocked)
+        task = asyncio.create_task(wizard.press(None, query(state), state.nonce + ':create'))
+        await entered.wait()
+        task.cancel()
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], asyncio.CancelledError)
+        assert wizard.store.count() == 0
+        assert wizard.active(MEMBER) is None
+        assert not state.token and not state.ai_api_key
+    asyncio.run(scenario())

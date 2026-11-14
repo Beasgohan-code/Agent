@@ -173,17 +173,28 @@ class CloneManager:
                         raise CloneError("A selected clone plugin is unavailable.")
                 self._states.move(clone.bot_id, State.STARTING)
                 await client.start()
-            except Exception as exc:  # noqa: BLE001 - the reason is the message
+                voice = getattr(bot, "voice", None)
+                if voice is not None:
+                    await voice.start()
+            except (Exception, asyncio.CancelledError) as exc:  # noqa: BLE001 - the reason is the message
                 category = "UNAUTHORIZED" if "UNAUTHORIZED" in str(exc).upper() else type(exc).__name__
                 reason = f"Clone {clone.bot_id} could not start ({category})."
                 self._states.move(clone.bot_id, State.FAILED, error=reason)
                 logger.warning("clone %s failed to start (%s)", clone.bot_id, type(exc).__name__)
+                voice = getattr(bot, "voice", None)
+                if voice is not None:
+                    try:
+                        await voice.shutdown()
+                    except Exception:
+                        pass
                 if client is not None:
                     try:
                         await client.stop()
                     except Exception:
                         pass
                 await self._release_worker(bot)
+                if isinstance(exc, asyncio.CancelledError):
+                    raise
                 raise CloneError(reason) from None
             username = ""
             identity = True
