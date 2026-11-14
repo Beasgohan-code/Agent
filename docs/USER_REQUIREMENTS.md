@@ -230,3 +230,14 @@ command/event reads. Atomic enabled-only updates preserve newer text against
 stale caller state; explicit off survives reconnect. Legacy PostgreSQL document
 layouts remain only until first explicit row creation, never as outage fallback.
 Filters/reports/audits still need their own confirmed-write upgrades.
+
+### Clone workflow polish
+
+Repeated `/clone` now resumes the existing private draft without resetting its
+expiry, nonce or credentials. Resume restores appropriate feature/consent/create
+controls and gives stage-specific guidance without echoing secrets. Confirmation
+uses a structured premium review card with isolated destinations and clear Owner
+semantics. A starting draft is protected against lazy expiry/replacement while
+manager startup owns it; explicit lifecycle completion still clears secrets.
+Broader clone persistence/rollback/recovery work remains pending; no full workflow
+redesign or live assistant validation is claimed.

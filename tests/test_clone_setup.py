@@ -408,3 +408,46 @@ def test_cancelled_creation_removes_record_and_clears_draft_secrets(tmp_path):
         assert wizard.active(MEMBER) is None
         assert not state.token and not state.ai_api_key
     asyncio.run(scenario())
+
+
+def test_clone_command_resumes_draft_without_echoing_or_extending_secrets(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        nonce, expiry = state.nonce, state.expires
+        request = FakeMessage('/clone')
+        await wizard.begin(request)
+        assert wizard.active(MEMBER) is state
+        assert state.token == TOKEN_A and state.nonce == nonce and state.expires == expiry
+        assert TOKEN_A not in str(request.replies)
+        assert 'Resume clone setup' in str(request.replies)
+        state.step = 'confirm'
+        state.ai_api_key = 'SECRET_AI_KEY'
+        state.assistant_session = 'SECRET_ASSISTANT'
+        request = FakeMessage('/clone')
+        await wizard.begin(request)
+        body = str(request.replies)
+        assert 'Clone review' in body and 'not configured' in body
+        assert all(secret not in body for secret in [TOKEN_A, 'SECRET_AI_KEY', 'SECRET_ASSISTANT'])
+    asyncio.run(scenario())
+
+
+def test_starting_draft_is_not_expired_or_replaced(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        state.step = 'starting'
+        state.expires = 0
+        assert wizard.active(MEMBER) is state
+        request = FakeMessage('/clone')
+        await wizard.begin(request)
+        assert wizard.active(MEMBER) is state
+        assert state.token == TOKEN_A
+        assert 'already starting' in str(request.replies)
+        request = FakeMessage('/cancel')
+        await wizard.receive(None, request)
+        assert wizard.active(MEMBER) is state
+        # Explicit lifecycle completion still clears all secret fields.
+        wizard.cancel(MEMBER)
+        assert wizard.active(MEMBER) is None and state.token == ''
+    asyncio.run(scenario())

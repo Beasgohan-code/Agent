@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 import aiohttp
 from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
 
-from ...ui.tables import panel
+from ...ui.tables import kv_table, panel
 from ...utils.rich import reply, edit
 from .store import Clone, parse_token
 from .catalog import TEMPLATES
@@ -67,7 +67,7 @@ class CloneSetup:
 
     def active(self, user_id):
         state = self.sessions.get(user_id)
-        if state and state.expires <= time.monotonic():
+        if state and state.step != 'starting' and state.expires <= time.monotonic():
             self.sessions.pop(user_id, None)
             state.token = ''
             state.ai_api_key = ''
@@ -87,6 +87,50 @@ class CloneSetup:
         rows.append([Button('Cancel setup', callback_data=f'csetup:{state.nonce}:cancel')])
         return Keyboard(rows)
 
+    def review(self, state):
+        return panel('Clone review', icon=self.ctx.theme.emoji('diamond'),
+            subtitle=f"{self.ctx.theme.emoji('shield')} Verify before creating · isolated bot setup",
+            table=kv_table([
+                ('Bot', '@' + state.username if state.username else str(state.bot_id)),
+                ('Owner', str(state.user_id)), ('Plugin', TEMPLATES[state.template][1]),
+                ('Log channel', str(state.log_channel) if state.log_channel else 'not configured'),
+                ('Archive channel', str(state.storage_channel) if state.storage_channel else 'not configured'),
+                ('Credentials', 'held privately for setup; never displayed'),
+            ]),
+            note='The authenticated token sender becomes Owner. Group use still needs approval and activation. '
+                 'Creating does not prove human BotFather ownership or live voice playback.',
+            footer='Create rechecks identity, channel permissions and capacity · /cancel discards the draft')
+
+    async def resume(self, message, state):
+        if state.step == 'starting':
+            await reply(message, 'Creation is already starting. Do not resend credentials; check /mybots for the result.')
+            return
+        prompts = {
+            'token': 'Send the bot token from @BotFather in this private chat.',
+            'plugin': 'Choose the feature for this isolated clone.',
+            'music_consent': 'Music uses your own authorized assistant session. Continue only with the account holder’s consent.',
+            'music_session': 'Send your authorized assistant session only. Never send a phone number, password or OTP.',
+            'ai_key': 'Send your own provider API key. Never share someone else’s credentials.',
+            'ai_model': 'Send the model name for your provider credentials.',
+            'log': 'Send a log channel ID or skip. You and the clone must administer the channel.',
+            'storage': 'Send the FileStore archive channel ID. You and the clone must administer it.',
+        }
+        options = []
+        if state.step == 'plugin':
+            options = [(value[1], key) for key, value in TEMPLATES.items()]
+        elif state.step == 'music_consent':
+            options = [('I consent · continue', 'music_consent')]
+        elif state.step == 'confirm':
+            options = [('Create clone', 'create')]
+        body = self.review(state) if state.step == 'confirm' else panel(
+            'Resume clone setup', icon=self.ctx.theme.emoji('bot'),
+            table=kv_table([('Current step', state.step.replace('_', ' ')),
+                            ('Time remaining', f'{max(0, int(state.expires - time.monotonic()))} seconds')]),
+            lines=[prompts.get(state.step, 'Use the current setup controls.')],
+            note='Your draft was preserved; expiry was not extended. Credential messages are deleted best-effort, not guaranteed.',
+            footer='/cancel discards this draft · /clone resumes it')
+        await reply(message, body, reply_markup=self.keyboard(state, options))
+
     async def begin(self, message):
         user_id = message.from_user.id
         if message.chat.id != user_id:
@@ -94,6 +138,10 @@ class CloneSetup:
             return
         if not self.entitled(user_id):
             await reply(message, 'Clone setup requires bot premium, sudo access or Owner access.')
+            return
+        existing = self.active(user_id)
+        if existing is not None:
+            await self.resume(message, existing)
             return
         if self.store.count() >= self.ctx.settings.clone_limit or len(self.store.by_owner(user_id)) >= self.quota(user_id):
             await reply(message, 'Clone capacity is reached. No token is needed; use /mybots to manage existing clones.')
@@ -226,11 +274,8 @@ class CloneSetup:
                         await reply(message, 'Send the FileStore archive channel id. Add the clone bot as an administrator with permission to post. You must administer it too.')
                     else:
                         state.step = 'confirm'
-                        await reply(message, panel('Ready to create', icon=self.ctx.theme.emoji('check'), lines=[
-                            f'Owner: <code>{user_id}</code>', f'Plugin: {TEMPLATES[state.template][1]} + mandatory group core',
-                            f'Log channel: {state.log_channel or "not configured"}',
-                            f'Archive channel: {state.storage_channel}',
-                        ]), reply_markup=self.keyboard(state, [('Create clone', 'create')]))
+                        await reply(message, self.review(state),
+                            reply_markup=self.keyboard(state, [('Create clone', 'create')]))
                 else:
                     await reply(message, 'Use the buttons on the latest setup panel, or /cancel.')
             except SetupError as exc:
