@@ -369,6 +369,8 @@ def build(ctx):
                 await engine.leave(message.chat.id)
             except Exception:  # noqa: BLE001 - leaving is best effort here
                 logger.debug("leave after empty skip failed", exc_info=True)
+                await reply(message, "Queue finished, but leaving the voice chat was not confirmed. Check /voicehealth and retry /leave.")
+                return
             await reply(message, "Queue finished — left the voice chat.")
             return
         await reply(message, f"Now playing <b>{html.escape(started)}</b>.")
@@ -379,8 +381,8 @@ def build(ctx):
         queues.for_chat(message.chat.id).stop()
         try:
             await engine.leave(message.chat.id)
-        except VoiceUnavailable as exc:
-            await reply(message, f"Stopped, but the engine was already idle ({exc}).")
+        except VoiceUnavailable:
+            await reply(message, "The queue was cleared, but stopping/leaving was not confirmed. Check /voicehealth and retry /leave.")
             return
         logger.info("stopped chat=%s by=%s", message.chat.id, message.from_user.id)
         await reply(message, "Stopped and left the voice chat. The queue is cleared.")
@@ -390,8 +392,8 @@ def build(ctx):
             return
         try:
             await engine.leave(message.chat.id)
-        except VoiceUnavailable as exc:
-            await reply(message, f"I am not in a voice chat here ({exc}).")
+        except VoiceUnavailable:
+            await reply(message, "Leaving the voice chat was not confirmed. Check /voicehealth before retrying.")
             return
         queues.drop(message.chat.id)
         await reply(message, "Left the voice chat.")

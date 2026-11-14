@@ -224,7 +224,7 @@ class VoiceEngine:
         """Join the call in *chat_id* if needed and start streaming *source*."""
         call = self._require()
         try:
-            acknowledged = await call.play(int(chat_id), source)
+            acknowledged = await asyncio.wait_for(call.play(int(chat_id), source), timeout=START_TIMEOUT)
             if acknowledged is False:
                 raise VoiceUnavailable("Playback was not acknowledged.")
         except Exception as exc:  # noqa: BLE001 - the command reports the reason
@@ -263,7 +263,7 @@ class VoiceEngine:
     async def pause(self, chat_id: int) -> None:
         call = self._require()
         try:
-            if await call.pause(int(chat_id)) is False:
+            if await asyncio.wait_for(call.pause(int(chat_id)), timeout=STOP_TIMEOUT) is False:
                 raise VoiceUnavailable("Pause was not acknowledged.")
         except Exception as error:
             raise VoiceUnavailable(f"Pause was not confirmed ({type(error).__name__}).") from None
@@ -274,7 +274,7 @@ class VoiceEngine:
     async def resume(self, chat_id: int) -> None:
         call = self._require()
         try:
-            if await call.resume(int(chat_id)) is False:
+            if await asyncio.wait_for(call.resume(int(chat_id)), timeout=STOP_TIMEOUT) is False:
                 raise VoiceUnavailable("Resume was not acknowledged.")
         except Exception as error:
             raise VoiceUnavailable(f"Resume was not confirmed ({type(error).__name__}).") from None
@@ -286,15 +286,21 @@ class VoiceEngine:
     async def leave(self, chat_id: int) -> None:
         call = self._require()
         try:
-            await call.leave_call(int(chat_id))
-        finally:
-            self.playbacks.pop(int(chat_id), None)
+            if await asyncio.wait_for(call.leave_call(int(chat_id)), timeout=STOP_TIMEOUT) is False:
+                raise VoiceUnavailable("Leave was not acknowledged.")
+        except Exception as error:
+            raise VoiceUnavailable(f"Leave was not confirmed ({type(error).__name__}).") from None
+        self.playbacks.pop(int(chat_id), None)
 
     async def volume(self, chat_id: int, volume: int) -> None:
         call = self._require()
-        acknowledged = await call.change_volume_call(int(chat_id), max(1, min(200, int(volume))))
-        if acknowledged is False:
-            raise VoiceUnavailable("Voice volume was not acknowledged.")
+        try:
+            acknowledged = await asyncio.wait_for(
+                call.change_volume_call(int(chat_id), max(1, min(200, int(volume)))), timeout=STOP_TIMEOUT)
+            if acknowledged is False:
+                raise VoiceUnavailable("Voice volume was not acknowledged.")
+        except Exception as error:
+            raise VoiceUnavailable(f"Volume was not confirmed ({type(error).__name__}).") from None
 
     def playback(self, chat_id: int) -> Playback | None:
         return self.playbacks.get(int(chat_id))
