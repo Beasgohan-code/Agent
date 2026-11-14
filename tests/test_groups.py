@@ -263,3 +263,36 @@ def test_time_reports_utc(ctx):
     run(utilities.build(ctx)[1]["time"], client, message)
 
     assert "UTC" in message.replies[0]
+
+
+# --- output is escaped now that replies are sent as HTML -------------------
+
+
+def test_a_filter_reply_is_escaped_before_it_is_sent(ctx):
+    ctx.chats.set_filter(-100900, "hello", "Hi <b>there</b> & welcome", by=11)
+    watch = filters_module.watch(ctx)
+    message = FakeMessage("well hello everyone")
+
+    asyncio.run(watch(None, message))
+
+    assert message.replies == ["Hi &lt;b&gt;there&lt;/b&gt; &amp; welcome"]
+
+
+def test_a_greeting_template_is_escaped_except_for_the_mention(ctx):
+    user = SimpleNamespace(id=22, first_name="Ada")
+    chat = SimpleNamespace(title="Test Group")
+
+    text = welcome.render("Hi <b>{name}</b> to {chat}", user=user, chat=chat, count=None)
+
+    assert "&lt;b&gt;" in text
+    assert "Test Group" in text
+
+
+def test_a_greeting_still_links_the_joining_member(ctx):
+    ctx.chats.set_greeting(-100900, "welcome", "Welcome {mention}")
+    client = FakeClient()
+
+    asyncio.run(welcome.watch(ctx)(client, update(new_status=MEMBER, old_status=LEFT)))
+
+    text = [call for call in client.calls if call[0] == "send"][0][2]
+    assert '<a href="tg://user?id=22">' in text

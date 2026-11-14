@@ -55,6 +55,16 @@ DESCRIPTIONS: dict[str, str] = {
     "trust": "Toggle a member's trusted flag",
     "antispam": "Anti-spam policy for this group",
     "modlog": "Recent moderation actions",
+    # group management
+    "settings": "This group's live settings panel",
+    "rules": "Show this group's rules",
+    "setrules": "Publish this group's rules",
+    "pin": "Pin the replied message",
+    "unpin": "Unpin a message, or all of them",
+    "admins": "List this group's administrators",
+    "warnlimit": "Warnings needed to trigger an action",
+    "resetwarns": "Clear all warnings for a member",
+    "lockdown": "Restrict the group to administrators",
     # filters / welcome
     "filter": "Add a keyword auto-reply",
     "filters": "List this group's filters",
@@ -96,6 +106,8 @@ GROUP_ONLY = frozenset(
     {
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "unban", "purge", "note", "trust", "antispam", "modlog",
+        "settings", "rules", "setrules", "pin", "unpin",
+        "admins", "warnlimit", "resetwarns", "lockdown",
         "filter", "filters", "stopfilter",
         "setwelcome", "welcome", "goodbye",
     }

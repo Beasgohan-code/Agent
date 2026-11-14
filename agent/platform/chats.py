@@ -110,6 +110,24 @@ class ChatStore:
                 return True
         return False
 
+    def clear_all_warnings(self, chat_id: int, user_id: int) -> int:
+        """Clear every active warning; return how many were cleared."""
+        member = self._member(chat_id, user_id)
+        cleared = 0
+        now = time.time()
+        for warning in member["warnings"]:
+            if warning.get("active"):
+                warning["active"] = False
+                warning["cleared_at"] = now
+                cleared += 1
+        if cleared:
+            self._save()
+        return cleared
+
+    def trusted_count(self, chat_id: int) -> int:
+        members = self._chat(chat_id)["members"]
+        return sum(1 for member in members.values() if member.get("trusted"))
+
     # -- member metadata ---------------------------------------------------
 
     def set_note(self, chat_id: int, user_id: int, note: str) -> None:

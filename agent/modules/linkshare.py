@@ -12,10 +12,12 @@ private store, and never exposes storage identifiers to the user.
 
 from __future__ import annotations
 
+import html
 import logging
 
 from ..platform.links import LinkError
 from ..platform.manifest import PluginManifest
+from ..ui.tables import Table, panel
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,9 @@ def build(ctx):
             stored = ctx.storage.save_path(owner, source, name=media.file_name or "file.bin")
         except Exception as exc:  # noqa: BLE001 - quota and IO errors reach the user
             logger.exception("genlink failed")
-            await message.reply(f"Could not store that file: {type(exc).__name__}: {exc}")
+            await message.reply(
+                f"Could not store that file: {type(exc).__name__}: {html.escape(str(exc))}"
+            )
             return
 
         record = ctx.links.create(stored.id, owner, ttl_hours=ttl_hours)
@@ -74,13 +78,30 @@ def build(ctx):
             await message.reply("You have no links yet. Reply to a file with /genlink.")
             return
 
-        lines = []
+        rows = []
         for record in records[:15]:
             state = "revoked" if record.revoked else ("expired" if record.expired else "active")
             file = ctx.storage.get(record.file_id)
             name = file.name if file else record.file_id
-            lines.append(f"{state} · {name} · uses {record.uses} · <code>{record.token[:24]}…</code>")
-        await message.reply("<b>Your links</b>\n" + "\n".join(lines))
+            rows.append((state, name, str(record.uses), f"{record.token[:16]}…"))
+        more = len(records) - len(rows)
+        lines = [f"Plus {more} older link(s) not shown."] if more > 0 else []
+        await message.reply(
+            panel(
+                "Your links",
+                icon=ctx.theme.emoji("link"),
+                subtitle=f"<b>{len(records)}</b> link(s), newest first.",
+                table=Table(
+                    headers=("State", "File", "Uses", "Token"),
+                    rows=tuple(rows),
+                    aligns=("left", "left", "right", "left"),
+                    total_width=52,
+                ),
+                lines=lines,
+                note="Revoke one with <code>/revoke &lt;token&gt;</code>.",
+                footer="Tokens are signed; anyone holding one can download the file.",
+            )
+        )
 
     async def revoke(_client, message):
         parts = (getattr(message, "text", "") or "").split(maxsplit=1)
@@ -96,7 +117,7 @@ def build(ctx):
             if str(exc) == "link revoked":
                 await message.reply("That link is already revoked.")
             else:
-                await message.reply(f"Invalid link: {exc}")
+                await message.reply(f"Invalid link: {html.escape(str(exc))}")
             return
 
         if ctx.links.revoke(record.token, owner_id=owner):

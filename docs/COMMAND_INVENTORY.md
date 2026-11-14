@@ -50,3 +50,22 @@ project answers is what keeps us from claiming support we do not have.
 ## playeon
 
 _No Python command registry in this checkout._
+
+## What this bot answers now
+
+Ten plugins, 56 module commands plus `/start`, `/help` and `/ping` — 59 names in
+the Telegram menu (30 private, 29 group). Kept here so a future comparison
+against the references starts from the real number rather than a claim.
+
+| Plugin | Commands |
+| --- | --- |
+| ops | `/restart` `/watchdog` `/plugins` `/plugin` `/events` `/setlog` `/unsetlog` `/log` |
+| core | `/menu` `/about` `/status` `/cancel` `/owner` |
+| encoder | `/encode` `/encinfo` `/encpreset` `/enccancel` |
+| linkshare | `/genlink` `/links` `/revoke` |
+| moderation | `/warn` `/warnings` `/warns` `/unwarn` `/mute` `/unmute` `/kick` `/ban` `/unban` `/purge` `/note` `/trust` `/antispam` `/modlog` |
+| group | `/settings` `/rules` `/setrules` `/pin` `/unpin` `/admins` `/warnlimit` `/resetwarns` `/lockdown` |
+| filters | `/filter` `/filters` `/stopfilter` |
+| welcome | `/setwelcome` `/welcome` `/goodbye` |
+| renamer | `/autorename` `/rename` `/testrename` `/clean` |
+| utilities | `/id` `/info` `/time` |

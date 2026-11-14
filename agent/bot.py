@@ -8,6 +8,8 @@ import signal
 from contextlib import suppress
 
 from pyrogram import Client, filters
+from pyrogram.enums import ParseMode
+from pyrogram.types import LinkPreviewOptions
 from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
 
 from . import __version__
@@ -93,6 +95,13 @@ class AgentBot:
             # Render containers have an ephemeral filesystem and the bot
             # re-authorises cheaply, so no session file is written to disk.
             in_memory=True,
+            # Every reply this bot writes is HTML (bold, code, blockquotes and
+            # the monospace tables in agent.ui.tables). Without a client-level
+            # parse mode pyrogram sends those tags as literal text, which is
+            # what made plain replies look broken.
+            parse_mode=ParseMode.HTML,
+            # A command answer never needs a link preview balloon.
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
         self._register_handlers(client)
         self._client = client
@@ -123,20 +132,23 @@ class AgentBot:
         ]
 
         # --- feature modules (plugins) -----------------------------------
-        # Shared services are built once and handed to every module.
+        # Shared services are built once and handed to every module. They are
+        # attached *before* the first module builds: a module reads its services
+        # from the context while building, so attaching afterwards leaves every
+        # module holding None and the runtime commands answering "unavailable".
         self.modules = ModuleContext.build(
             self.settings, self.theme, sender, root=self.settings.data_dir
         )
-        for module in MODULES:
-            manifest, handlers = module.build(self.modules)
-            self.registry.register(manifest, handlers)
-
-        # Modules can look at the shared services after this.
         self.modules.registry = self.registry
         self.modules.events = self.events
         self.modules.runtime = self.runtime
         self.modules.lease = self.lease
         self.modules.logbook = self.logbook
+        self.modules.client = client
+
+        for module in MODULES:
+            manifest, handlers = module.build(self.modules)
+            self.registry.register(manifest, handlers)
 
         # A plugin disabled in a previous run stays off, and registers nothing.
         for manifest in self.registry.manifests():

@@ -19,6 +19,7 @@ from agent.handlers.callbacks import CallbackHandlers
 from agent.ui.keyboards import CB_HELP
 from agent.ui.screens import welcome_screen
 from agent.ui.theme import Theme
+from pyrogram.enums import ParseMode
 from agent.utils.sender import ScreenSender
 
 ENV = {
@@ -83,13 +84,13 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    # 3 built-in commands + 47 module commands + callback + error handler,
+    # 3 built-in commands + 56 module commands + callback + error handler,
     # plus four watchers (anti-spam, filters, joins/leaves, new-group log),
     # each in its own group.
-    assert bot.handler_count == 56
+    assert bot.handler_count == 65
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 50
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 59
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -119,7 +120,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 50
+    assert len(messages) == 59
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -133,6 +134,8 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
         "unban", "purge", "note", "trust", "antispam", "modlog",
         "filter", "filters", "stopfilter",
         "setwelcome", "welcome", "goodbye",
+        "settings", "rules", "setrules", "pin", "unpin",
+        "admins", "warnlimit", "resetwarns", "lockdown",
     }
 
 
@@ -238,3 +241,86 @@ def test_callback_falls_back_to_a_new_message_when_edit_fails():
     asyncio.run(handlers.on_callback(None, query))
 
     assert [kind for kind, _ in client.calls] == ["html"]
+
+
+# --- the wiring bug that made /plugins answer "runtime is unavailable" ------
+
+
+class OwnerMessage:
+    """A message from the configured owner, with a real reply method."""
+
+    def __init__(self, text):
+        self.text = text
+        self.chat = SimpleNamespace(id=7)
+        self.from_user = SimpleNamespace(id=11, first_name="Owner")
+        self.replies = []
+
+    async def reply(self, text, **kwargs):
+        self.replies.append(text)
+        return SimpleNamespace(delete=lambda: None)
+
+
+def owner_bot(tmp_path):
+    settings = Settings.from_env(
+        {**ENV, "OWNER_ID": "11", "DATA_DIR": str(tmp_path)}
+    )
+    bot = AgentBot(settings)
+    bot.build()
+    return bot
+
+
+def test_the_client_parses_html_so_replies_are_not_shown_as_raw_tags():
+    bot = AgentBot(make_settings())
+
+    client = bot.build()
+
+    assert client.parse_mode is ParseMode.HTML
+
+
+def test_modules_see_the_shared_services_while_they_build(tmp_path):
+    """Attaching the services after the modules built left them holding None."""
+    bot = owner_bot(tmp_path)
+
+    assert bot.modules.runtime is bot.runtime
+    assert bot.modules.events is bot.events
+    assert bot.modules.lease is bot.lease
+    assert bot.modules.logbook is bot.logbook
+    assert bot.modules.registry is bot.registry
+    assert bot.modules.client is bot.client
+
+
+def test_the_plugins_command_answers_instead_of_reporting_no_runtime(tmp_path):
+    bot = owner_bot(tmp_path)
+    handler = bot.registry.handler_for("plugins")
+    message = OwnerMessage("/plugins")
+
+    asyncio.run(handler(None, message))
+
+    body = message.replies[0]
+    assert "Plugin runtime" in body
+    assert "unavailable" not in body
+    assert "renamer" in body
+
+
+def test_the_events_command_sees_the_real_event_log(tmp_path):
+    bot = owner_bot(tmp_path)
+    bot.events.emit("command", name="start")
+    handler = bot.registry.handler_for("events")
+    message = OwnerMessage("/events")
+
+    asyncio.run(handler(None, message))
+
+    assert "No event log in this runtime" not in message.replies[0]
+    assert "command" in message.replies[0]
+
+
+def test_the_watchdog_command_sees_the_lease(tmp_path):
+    bot = owner_bot(tmp_path)
+    handler = bot.registry.handler_for("watchdog")
+    message = OwnerMessage("/watchdog")
+
+    asyncio.run(handler(None, message))
+
+    # The lease is wired, so the panel either reports it or says it is not held;
+    # it must not silently drop the row.
+    assert "Instance" in message.replies[0]

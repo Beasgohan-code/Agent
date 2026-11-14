@@ -20,6 +20,7 @@ import logging
 from .. import __version__
 from ..platform.manifest import PluginManifest
 from ..ui.screens import format_uptime, welcome_screen
+from ..ui.tables import kv_table, panel
 
 logger = logging.getLogger(__name__)
 
@@ -72,26 +73,38 @@ def build(ctx):
 
     async def status(_client, message):
         modules, commands = _registry_summary()
-        lines = ["<b>Runtime status</b>", f"Version: {__version__}"]
+        rows: list[tuple[str, str]] = [("Version", __version__)]
         if ctx.monitor is not None:
             snapshot = ctx.monitor.snapshot()
-            lines.extend(
+            rows.extend(
                 [
-                    f"State: {snapshot.state}",
-                    f"Uptime: {format_uptime(snapshot.uptime_seconds)}",
-                    f"Probes: {snapshot.probes} ({snapshot.failures} failed)",
-                    f"Latency: {snapshot.latency_ms} ms" if snapshot.latency_ms is not None else "Latency: n/a",
+                    ("State", snapshot.state),
+                    ("Uptime", format_uptime(snapshot.uptime_seconds)),
+                    ("Probes", f"{snapshot.probes} ({snapshot.failures} failed)"),
+                    (
+                        "Latency",
+                        f"{snapshot.latency_ms} ms"
+                        if snapshot.latency_ms is not None
+                        else "no probe yet",
+                    ),
                 ]
             )
         if ctx.jobs is not None:
-            active = ctx.jobs.active()
-            lines.append(f"Jobs running: {len(active)}")
-        lines.append(f"Modules: {modules}")
-        lines.append(f"Commands: {commands}")
+            rows.append(("Jobs running", str(len(ctx.jobs.active()))))
+        rows.append(("Modules", modules))
+        rows.append(("Commands", str(commands)))
         user = getattr(message, "from_user", None)
         if user is not None and ctx.storage is not None:
-            lines.append(f"Your storage: {_human_bytes(ctx.storage.usage(user.id))}")
-        await message.reply("\n".join(lines))
+            rows.append(("Your storage", _human_bytes(ctx.storage.usage(user.id))))
+        await message.reply(
+            panel(
+                "Runtime status",
+                icon=ctx.theme.emoji("stats"),
+                subtitle="Read from this process, not from a cache.",
+                table=kv_table(rows),
+                footer="<code>/ping</code> checks the link, <code>/owner</code> shows the owner panel.",
+            )
+        )
 
     async def cancel(_client, message):
         user = getattr(message, "from_user", None)
@@ -121,19 +134,31 @@ def build(ctx):
             await message.reply(OWNER_ONLY)
             return
         modules, commands = _registry_summary()
-        lines = ["<b>Owner panel</b>", f"Version: {__version__}"]
+        rows: list[tuple[str, str]] = [("Version", __version__)]
         if ctx.monitor is not None:
             snapshot = ctx.monitor.snapshot()
-            lines.append(f"Uptime: {format_uptime(snapshot.uptime_seconds)}")
-            lines.append(f"State: {snapshot.state}")
+            rows.append(("Uptime", format_uptime(snapshot.uptime_seconds)))
+            rows.append(("State", snapshot.state))
             if snapshot.last_error:
-                lines.append(f"Last error: {snapshot.last_error[:120]}")
+                rows.append(("Last error", snapshot.last_error[:120]))
         if ctx.jobs is not None:
-            lines.append(f"Jobs running: {len(ctx.jobs.active())}")
-        lines.append(f"Modules: {modules}")
-        lines.append(f"Commands: {commands}")
-        lines.append(f"Data dir: <code>{ctx.settings.data_dir}</code>")
-        await message.reply("\n".join(lines))
+            rows.append(("Jobs running", str(len(ctx.jobs.active()))))
+        rows.append(("Modules", modules))
+        rows.append(("Commands", str(commands)))
+        rows.append(("Data dir", str(ctx.settings.data_dir)))
+        await message.reply(
+            panel(
+                "Owner panel",
+                icon=ctx.theme.emoji("bot"),
+                subtitle="Controls that only the bot owner may use.",
+                table=kv_table(rows),
+                note=(
+                    "<code>/plugins</code> · <code>/plugin &lt;slug&gt; on|off</code> · "
+                    "<code>/events</code> · <code>/watchdog</code> · <code>/restart</code>"
+                ),
+                footer="Owner only.",
+            )
+        )
 
     return MANIFEST, {
         "menu": menu,

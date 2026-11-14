@@ -193,3 +193,17 @@ def test_the_published_names_come_from_the_registry_not_a_stale_list(tmp_path):
 
     assert "rename" in registered
     assert "rename" not in set(bot.registry.active_commands())
+
+
+def test_the_menu_scope_matches_each_module_declared_scope():
+    """A group module must not publish its commands into the default scope."""
+    from agent.modules import MODULES
+    from agent.platform.menu import GROUP_ONLY
+
+    for module in MODULES:
+        scope = module.MANIFEST.scope
+        for command in module.MANIFEST.commands:
+            if scope == "group":
+                assert command in GROUP_ONLY, f"{command} runs only in groups but is not group-scoped"
+            elif scope == "private":
+                assert command not in GROUP_ONLY, f"{command} runs only in private but is group-scoped"

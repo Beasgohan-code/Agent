@@ -37,7 +37,13 @@ def _args(message) -> list[str]:
 
 
 def render(template: str, *, user, chat, count: int | None) -> str:
-    """Fill the small, documented placeholder set — nothing dynamic is invented."""
+    """Fill the small, documented placeholder set — nothing dynamic is invented.
+
+    The stored template is escaped first. Replies are sent with HTML parsing on,
+    so an unescaped ``<`` in a greeting would either inject markup into the group
+    or make Telegram reject the message outright. The only markup that reaches
+    the chat is the mention link built below.
+    """
     name = getattr(user, "first_name", None) or "there"
     mention = (
         f'<a href="tg://user?id={int(user.id)}">{html.escape(name)}</a>'
@@ -46,7 +52,7 @@ def render(template: str, *, user, chat, count: int | None) -> str:
     )
     title = getattr(chat, "title", None) or "the group"
     return (
-        template.replace("{mention}", mention)
+        html.escape(template or "").replace("{mention}", mention)
         .replace("{name}", html.escape(name))
         .replace("{chat}", html.escape(str(title)))
         .replace("{count}", str(count) if count is not None else "?")
@@ -124,7 +130,8 @@ def build(ctx):
         if not text:
             await message.reply(
                 "Usage: <code>/setwelcome Welcome {mention} to {chat}!</code>\n"
-                "Placeholders: {mention} {name} {chat} {count}"
+                "Placeholders: {mention} {name} {chat} {count}. The text is sent "
+                "as plain text, so markup in it is shown, not applied."
             )
             return
         ctx.chats.set_greeting(message.chat.id, "welcome", text)

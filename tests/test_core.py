@@ -104,7 +104,9 @@ def test_status_reports_live_counters(tmp_path):
     body = message.replies[0]
     assert "Uptime" in body
     assert "Probes" in body
-    assert "Jobs running: 0" in body
+    # Rendered as a table row now: label and value are separate cells.
+    assert "Jobs running" in body
+    assert "| 0 " in body or "\u2502 0 " in body
 
 
 def test_cancel_actually_cancels_the_callers_job(tmp_path):
@@ -188,4 +190,4 @@ def test_owner_panel_for_the_owner(tmp_path):
     body = message.replies[0]
     assert "Owner panel" in body
     assert "Uptime" in body
-    assert "Commands:" in body
+    assert "Commands" in body

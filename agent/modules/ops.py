@@ -24,6 +24,7 @@ from pyrogram.handlers import ChatMemberUpdatedHandler
 from ..platform.logbook import tag_for
 from ..platform.manifest import PluginManifest
 from ..ui.screens import format_uptime
+from ..ui.tables import Table, kv_table, panel
 
 logger = logging.getLogger(__name__)
 
@@ -188,29 +189,41 @@ def build(ctx):
             await message.reply("\n".join(lines))
             return
 
-        lines = ["<b>Watchdog</b>"]
+        rows: list[tuple[str, str]] = []
         if lease is not None:
             state = lease.state()
-            lines.append(
-                f"Instance: {'held by this process' if state['held_by_us'] else 'not held'}"
-                + (
-                    f" (expires in {state['expires_in']}s)"
-                    if state["expires_in"]
-                    else ""
+            rows.append(
+                (
+                    "Instance",
+                    ("held by this process" if state["held_by_us"] else "not held")
+                    + (f" (expires in {state['expires_in']}s)" if state["expires_in"] else ""),
                 )
             )
         if ctx.monitor is not None:
             snapshot = ctx.monitor.snapshot()
-            lines.append(f"State: {snapshot.state}")
-            lines.append(f"Uptime: {format_uptime(snapshot.uptime_seconds)}")
-            lines.append(f"Latency: {snapshot.latency_ms} ms" if snapshot.latency_ms is not None else "Latency: n/a")
+            rows.append(("State", snapshot.state))
+            rows.append(("Uptime", format_uptime(snapshot.uptime_seconds)))
+            rows.append(
+                ("Latency", f"{snapshot.latency_ms} ms" if snapshot.latency_ms is not None else "no probe yet")
+            )
         if ctx.jobs is not None:
-            lines.append(f"Jobs running: {len(ctx.jobs.active())}")
+            rows.append(("Jobs running", str(len(ctx.jobs.active()))))
         if runtime is not None:
             disabled = [row["slug"] for row in runtime.state() if not row["enabled"]]
-            lines.append(f"Plugins disabled: {', '.join(disabled) or 'none'}")
-        lines.append("Run <code>/watchdog run</code> to sweep, <code>/watchdog clean</code> for a deeper clean.")
-        await message.reply("\n".join(lines))
+            rows.append(("Plugins disabled", ", ".join(disabled) or "none"))
+        await message.reply(
+            panel(
+                "Watchdog",
+                icon=ctx.theme.emoji("bolt"),
+                subtitle="What this process can see about itself right now.",
+                table=kv_table(rows),
+                note=(
+                    "<code>/watchdog run</code> sweeps stale working directories; "
+                    "<code>/watchdog clean</code> also prunes stored files older than 7 days."
+                ),
+                footer="Owner only.",
+            )
+        )
 
     # -- /plugins and /plugin ---------------------------------------------
 
@@ -220,16 +233,40 @@ def build(ctx):
         if runtime is None:  # pragma: no cover - always wired
             await message.reply("Plugin runtime is unavailable.")
             return
-        lines = ["<b>Plugins</b>"]
-        for row in runtime.state():
-            mark = "on" if row["enabled"] else "off"
-            locked = " · locked" if row["protected"] else ""
-            lines.append(
-                f"<code>{row['slug']}</code> — {row['name']} · {mark}{locked} · "
-                f"{len(row['commands'])} commands"
+        state = runtime.state()
+        # Three columns only: a fourth would squeeze every cell to an ellipsis on
+        # a phone. The display name lives in the note below, the slug (the thing
+        # ``/plugin`` actually needs) keeps the room.
+        rows = tuple(
+            (
+                row["slug"],
+                ("on" if row["enabled"] else "off")
+                + (" (locked)" if row["protected"] else ""),
+                str(len(row["commands"])),
             )
-        lines.append("\nToggle with <code>/plugin &lt;slug&gt; on|off</code>.")
-        await message.reply("\n".join(lines))
+            for row in state
+        )
+        enabled = sum(1 for row in state if row["enabled"])
+        await message.reply(
+            panel(
+                "Plugin runtime",
+                icon=ctx.theme.emoji("gear"),
+                subtitle=(
+                    f"<b>{enabled}</b> of <b>{len(state)}</b> plugins enabled. "
+                    "A disabled plugin registers nothing at all."
+                ),
+                table=Table(
+                    headers=("Plugin", "State", "Cmds"),
+                    rows=rows,
+                    aligns=("left", "left", "right"),
+                ),
+                note=(
+                    "Toggle with <code>/plugin &lt;slug&gt; on|off</code>. "
+                    "<code>ops</code> is locked so the bot cannot lose its own controls."
+                ),
+                footer="Counts come from the live registry, not a stored copy.",
+            )
+        )
 
     async def plugin(_client, message):
         if not await _owner_gate(message):
@@ -286,14 +323,27 @@ def build(ctx):
         if not recent:
             await message.reply("<b>Events</b>\nNothing recorded yet.")
             return
-        lines = [f"<b>Events</b> ({events.count()} recorded)"]
+        rows = []
         for event in recent:
             stamp = time.strftime("%H:%M:%S", time.gmtime(event["at"]))
             fields = " ".join(
                 f"{key}={value}" for key, value in event.items() if key not in ("kind", "at")
             )
-            lines.append(f"{stamp} {event['kind']} {fields}".strip())
-        await message.reply("\n".join(lines))
+            rows.append((stamp, event["kind"], fields or "-"))
+        await message.reply(
+            panel(
+                "Events",
+                icon=ctx.theme.emoji("stats"),
+                subtitle=f"<b>{events.count()}</b> recorded, newest last.",
+                table=Table(
+                    headers=("Time", "Kind", "Detail"),
+                    rows=tuple(rows),
+                    total_width=56,
+                ),
+                note="Every entry is written when the action happened — none are simulated.",
+                footer="Owner only. Times are UTC.",
+            )
+        )
 
     # -- log channel -------------------------------------------------------
 

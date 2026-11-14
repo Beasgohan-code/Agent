@@ -12,6 +12,7 @@ unicode so a premium glyph can never break a command.
 from __future__ import annotations
 
 import logging
+import re
 
 from pyrogram.enums import ParseMode
 from pyrogram.errors import MessageNotModified
@@ -24,10 +25,31 @@ from ..ui.theme import Theme, strip_custom_emoji
 logger = logging.getLogger(__name__)
 
 
+#: Blocks whose inner whitespace is significant. richgram's normaliser collapses
+#: runs of spaces for chat text, which is right for prose and fatal for a table
+#: drawn in <pre>: it squeezes every column to two spaces. Monospace blocks are
+#: therefore lifted out before normalising and put back untouched.
+_PRE_BLOCK_RE = re.compile(r"<pre>[\s\S]*?</pre>", re.IGNORECASE)
+
+
 def to_safe_html(rich_text: str) -> str:
     """Convert rich markup into HTML that standard parse mode accepts."""
-    # rich_caption is richgram's public rich->standard-HTML normaliser.
-    return rich_caption(rich_text)
+    text = rich_text or ""
+    if "<pre>" not in text.lower():
+        # rich_caption is richgram's public rich->standard-HTML normaliser.
+        return rich_caption(text)
+    pieces: list[str] = []
+    cursor = 0
+    for match in _PRE_BLOCK_RE.finditer(text):
+        before = rich_caption(text[cursor:match.start()])
+        if before:
+            pieces.append(before.rstrip("\n") + "\n")
+        pieces.append(match.group(0).strip() + "\n")
+        cursor = match.end()
+    tail = rich_caption(text[cursor:])
+    if tail:
+        pieces.append(tail)
+    return "".join(pieces).strip()
 
 
 def _no_preview() -> LinkPreviewOptions:

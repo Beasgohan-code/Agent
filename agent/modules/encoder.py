@@ -11,6 +11,7 @@ PATH. ``ffprobe`` is not assumed: streams are parsed from ffmpeg's own banner.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import re
 import shutil
@@ -19,6 +20,7 @@ from pathlib import Path
 
 from ..platform.jobs import Job
 from ..platform.manifest import PluginManifest
+from ..ui.tables import Table, kv_table, panel
 
 logger = logging.getLogger(__name__)
 
@@ -215,15 +217,18 @@ def build(ctx):
             lambda j: encode_job(j, ctx, src, preset, "h264"),
             label=src.name,
         )
-        await message.reply(f"Encoding job `{job.id}` started ({preset}). Use /enccancel to stop.")
+        await message.reply(
+            f"Encoding job <code>{job.id}</code> started ({preset}). "
+            "Use <code>/enccancel</code> to stop it."
+        )
         await job.task
 
         if job.state.value == "done":
-            await message.reply(f"Encode finished: {job.label} → MP4, validated.")
+            await message.reply(f"Encode finished: {html.escape(job.label)} → MP4, validated.")
         elif job.state.value == "cancelled":
             await message.reply("Encode cancelled.")
         else:
-            await message.reply(f"Encode failed: {job.error}")
+            await message.reply(f"Encode failed: {html.escape(str(job.error))}")
 
     async def encinfo(_client, message):
         media = _source_media(message)
@@ -236,10 +241,21 @@ def build(ctx):
             await message.reply(f"Could not download that file: {type(exc).__name__}")
             return
         info = await probe(Path(source))
+        rows = [
+            ("Video", info["video_codec"] or "none"),
+            ("Resolution", f"{info['width']}x{info['height']}" if info.get("width") else "n/a"),
+            ("Audio", info["audio_codec"] or "none"),
+            ("Duration", f"{info['duration']:.2f}s"),
+            ("Streams", describe(info)),
+        ]
         await message.reply(
-            f"<b>Media info</b>\n{describe(info)}\n"
-            f"audio: {info['audio_codec'] or 'none'}\n"
-            f"duration: {info['duration']:.2f}s"
+            panel(
+                "Media info",
+                icon=ctx.theme.emoji("gear"),
+                subtitle="Probed from the replied file, not from the caption.",
+                table=kv_table(rows),
+                note="Encode it with <code>/encode fast|balanced|quality</code>.",
+            )
         )
 
     async def enccancel(_client, message):
@@ -258,8 +274,23 @@ def build(ctx):
         )
 
     async def encpreset(_client, message):
-        lines = [f"<code>{name}</code> — CRF {crf}, preset {x264}" for name, (crf, x264) in PRESETS.items()]
-        await message.reply("<b>Encoding presets</b>\n" + "\n".join(lines))
+        table = Table(
+            headers=("Preset", "CRF", "x264 speed"),
+            rows=tuple(
+                (name, str(crf), x264) for name, (crf, x264) in PRESETS.items()
+            ),
+            aligns=("left", "right", "left"),
+        )
+        await message.reply(
+            panel(
+                "Encoding presets",
+                icon=ctx.theme.emoji("fire"),
+                subtitle="Lower CRF means higher quality and a bigger file.",
+                table=table,
+                note="Pick one with <code>/encode &lt;preset&gt;</code>.",
+                footer="H.264 in an MP4 container, validated after encoding.",
+            )
+        )
 
     return MANIFEST, {
         "encode": encode,

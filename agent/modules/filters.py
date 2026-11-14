@@ -16,6 +16,7 @@ from pyrogram import filters as tg_filters
 from pyrogram.handlers import MessageHandler
 
 from ..platform.manifest import PluginManifest
+from ..ui.tables import Table, panel
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,9 @@ def watch(ctx):
             reply = ctx.chats.match_filter(message.chat.id, text)
             if reply is None:
                 return
-            await message.reply(reply)
+            # Escaped on the way out: replies are sent with HTML parsing on, so an
+            # unescaped tag would be injected into the group (or rejected).
+            await message.reply(html.escape(reply))
         except Exception:  # noqa: BLE001 - watchers must never break the client
             logger.exception("filter watcher failed")
 
@@ -96,11 +99,25 @@ def build(ctx):
         if not stored:
             await message.reply("This group has no filters yet.")
             return
-        lines = ["<b>Filters</b>"]
-        for name, reply in sorted(stored.items()):
-            preview = reply if len(reply) <= 60 else reply[:57] + "…"
-            lines.append(f"<code>{html.escape(name)}</code> → {html.escape(preview)}")
-        await message.reply("\n".join(lines))
+        table = Table(
+            headers=("Trigger", "Reply"),
+            rows=tuple(
+                (name, reply) for name, reply in sorted(stored.items())
+            ),
+        )
+        await message.reply(
+            panel(
+                "Filters",
+                icon=ctx.theme.emoji("search"),
+                subtitle=(
+                    f"<b>{len(stored)}</b> keyword "
+                    f"auto-repl{'y' if len(stored) == 1 else 'ies'} in this group."
+                ),
+                table=table,
+                note="Add with <code>/filter name reply text</code>, remove with <code>/stopfilter name</code>.",
+                footer="Replies are stored per group and sent verbatim.",
+            )
+        )
 
     async def stop(client, message):
         if not await _guard(client, message):

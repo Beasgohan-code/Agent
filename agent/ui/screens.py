@@ -1,8 +1,13 @@
 """Agent — screen builders.
 
-Layout is composed with richgram's block builders. ``Screen.rich_text`` is
-rich markup; :mod:`agent.utils.sender` decides how it reaches Telegram and
-always has a standard-HTML rendering available.
+Layout is composed from richgram's block builders plus the monospace tables in
+:mod:`agent.ui.tables`. ``Screen.rich_text`` is rich markup; the sender converts
+it to standard Telegram HTML and protects ``<pre>`` blocks while doing so.
+
+Two rules keep the screens readable on a phone: prose stays in lists and
+quotes, and anything with more than one column of data is a table. Command
+references stay prose — a table would truncate the sentence that explains the
+command, which is the whole point of ``/help``.
 """
 
 from __future__ import annotations
@@ -16,12 +21,13 @@ from richgram import (
     rich_footer,
     rich_heading,
     rich_hr,
-    rich_kv_table,
     rich_list,
     rich_note,
 )
 
+from .. import __version__
 from . import keyboards
+from .tables import kv_table
 from .theme import Theme
 
 
@@ -62,27 +68,31 @@ def _username(user) -> str:
 
 def welcome_screen(user, theme: Theme) -> Screen:
     name = display_name(user)
-    greeting = f"{theme.emoji('wave')} Hello, <b>{rich_esc(name)}</b>!" if name else (
-        f"{theme.emoji('wave')} Hello!"
+    greeting = (
+        f"{theme.emoji('wave')} Hello, <b>{rich_esc(name)}</b>!" if name else f"{theme.emoji('wave')} Hello!"
     )
 
+    # No emoji inside a table: their rendered width is the client's choice, so a
+    # glyph in a cell is what makes a monospace grid drift. Glyphs stay in the
+    # prose around it.
+    table = kv_table(
+        [
+            ("Status", "online"),
+            ("Version", __version__),
+            ("Privacy", "no message text stored"),
+        ]
+    )
     text = (
         rich_heading("Agent", 2)
         + "\n"
         + greeting
-        + "\n\n"
+        + "\n"
         + rich_note(
             f"{theme.emoji('sparkles')} Your always-on Telegram assistant. "
             "Use the buttons below to look around."
         )
-        + "\n\n"
-        + rich_kv_table(
-            [
-                (f"{theme.emoji('check')} Status", "Online"),
-                (f"{theme.emoji('stats')} Version", "Phase 1"),
-                (f"{theme.emoji('shield')} Privacy", "no message text stored"),
-            ]
-        )
+        + "\n"
+        + table.block()
         + "\n"
         + rich_hr()
         + rich_footer(f"{theme.emoji('bot')} Agent · wzgram + richgram")
@@ -90,57 +100,76 @@ def welcome_screen(user, theme: Theme) -> Screen:
     return Screen(text, keyboards.home_keyboard())
 
 
+#: Command reference sections. Names come from the live registry, descriptions
+#: from the same table the Telegram command menu uses, so ``/help`` and the menu
+#: can never drift apart.
+HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "bolt",
+        "Essentials",
+        ("start", "help", "menu", "about", "status", "ping", "cancel", "owner", "id", "info", "time"),
+    ),
+    (
+        "gear",
+        "Encoding & files",
+        (
+            "encode", "encinfo", "encpreset", "enccancel",
+            "autorename", "rename", "testrename", "clean",
+            "genlink", "links", "revoke",
+        ),
+    ),
+    (
+        "lock",
+        "Moderation",
+        (
+            "warn", "warnings", "unwarn", "mute", "unmute", "kick", "ban", "unban",
+            "purge", "note", "trust", "antispam", "modlog",
+        ),
+    ),
+    (
+        "shield",
+        "Group management",
+        (
+            "settings", "rules", "setrules", "pin", "unpin", "admins",
+            "warnlimit", "resetwarns", "lockdown",
+            "filter", "filters", "stopfilter",
+            "setwelcome", "welcome", "goodbye",
+        ),
+    ),
+    (
+        "bot",
+        "Operations (owner)",
+        ("restart", "watchdog", "plugins", "plugin", "events", "setlog", "unsetlog", "log"),
+    ),
+)
+
+
 def help_screen(user, theme: Theme) -> Screen:
-    text = (
-        rich_heading("Help", 2)
-        + "\n"
-        + rich_list(
-            [
-                f"{theme.emoji('sparkles')} <code>/start</code> — open the main menu",
-                f"{theme.emoji('help')} <code>/help</code> — show this help",
-                f"{theme.emoji('stats')} <code>/menu</code> · <code>/about</code> · <code>/status</code>",
-                f"{theme.emoji('bolt')} <code>/ping</code> — live health · <code>/cancel</code> — stop jobs",
-            ]
-        )
-        + "\n"
-        + rich_list(
-            [
-                f"{theme.emoji('gear')} <code>/encinfo</code> — probe a replied video",
-                f"{theme.emoji('fire')} <code>/encode</code> — encode (fast · balanced · quality)",
-                f"{theme.emoji('stats')} <code>/encpreset</code> — list presets",
-                f"{theme.emoji('cross')} <code>/enccancel</code> — stop your jobs",
-                f"{theme.emoji('arrow')} <code>/autorename</code> · <code>/rename</code> · <code>/testrename</code> · <code>/clean</code>",
-            ]
-        )
-        + "\n"
-        + rich_list(
-            [
-                f"{theme.emoji('link')} <code>/genlink</code> — share a replied file",
-                f"{theme.emoji('search')} <code>/links</code> — list your links",
-                f"{theme.emoji('cross')} <code>/revoke</code> — revoke one",
-            ]
-        )
-        + "\n"
-        + rich_list(
-            [
-                "<b>Group moderation</b>",
-                f"{theme.emoji('warn')} <code>/warn</code> <code>/warnings</code> <code>/unwarn</code>",
-                f"{theme.emoji('lock')} <code>/mute</code> <code>/unmute</code> <code>/kick</code>",
-                f"{theme.emoji('ban')} <code>/ban</code> <code>/unban</code> <code>/purge</code>",
-                f"{theme.emoji('pin')} <code>/note</code> <code>/trust</code> <code>/info</code>",
-                f"{theme.emoji('shield')} <code>/antispam</code> <code>/modlog</code>",
-            ]
-        )
-        + "\n"
-        + rich_note(
-            f"{theme.emoji('info')} Phase 1 ships the core interface only. "
-            "New abilities arrive in later phases."
-        )
-        + "\n"
-        + rich_hr()
-        + rich_footer("Tap a button below to keep going.")
-    )
-    return Screen(text, keyboards.help_keyboard())
+    # Imported here so the UI layer keeps no import-time dependency on platform.
+    from ..platform.menu import DESCRIPTIONS
+
+    blocks = [
+        rich_heading("Command reference", 2),
+        rich_note(
+            f"{theme.emoji('info')} Anything marked owner-only needs "
+            "<code>OWNER_ID</code>; group commands need moderator rights."
+        ),
+    ]
+    for icon, title, commands in HELP_SECTIONS:
+        lines = [
+            f"<code>/{name}</code> — {rich_esc(DESCRIPTIONS[name])}"
+            for name in commands
+            if name in DESCRIPTIONS
+        ]
+        if not lines:
+            continue
+        blocks.append("")
+        blocks.append(rich_heading(f"{theme.emoji(icon)} {title}", 3))
+        blocks.append(rich_list(lines))
+    blocks.append("")
+    blocks.append(rich_hr())
+    blocks.append(rich_footer(f"{theme.emoji('help')} Tap a button below to keep going."))
+    return Screen("\n".join(blocks), keyboards.help_keyboard())
 
 
 def info_screen(user, theme: Theme) -> Screen:
@@ -152,7 +181,10 @@ def info_screen(user, theme: Theme) -> Screen:
     rows = [
         ("Name", rich_esc(display_name(user) or "not shared")),
         ("Username", _username(user)),
-        ("User ID", f"<code>{int(user_id)}</code>" if isinstance(user_id, int) else "unknown"),
+        (
+            "User ID",
+            f"<code>{int(user_id)}</code>" if isinstance(user_id, int) else "unknown",
+        ),
         ("Language", rich_esc(language)),
         ("Premium", premium_text),
     ]
@@ -162,7 +194,7 @@ def info_screen(user, theme: Theme) -> Screen:
         + "\n"
         + f"{theme.emoji('user')} This is what Telegram shares with the bot."
         + "\n"
-        + rich_kv_table(rows)
+        + kv_table(rows).block()
         + "\n"
         + rich_hr()
         + rich_footer(f"{theme.emoji('id')} Nothing is stored — details are read live.")
@@ -182,28 +214,39 @@ def ping_screen(monitor, theme: Theme) -> Screen:
     """Live health, as a Telegram reply (works on a Background Worker)."""
     if monitor is None:
         return Screen(
-            rich_heading("Ping", 2) + "\n" + rich_note("Health tracking is not running."),
+            rich_heading("Ping", 2)
+            + "\n"
+            + rich_note("Health tracking is not running."),
             keyboards.info_keyboard(),
         )
 
     snapshot = monitor.snapshot()
     rows = [
-        ("State", f"{theme.emoji('check')} {snapshot.state}"),
+        ("State", snapshot.state),
         ("Uptime", format_uptime(snapshot.uptime_seconds)),
-        ("Telegram latency", f"{snapshot.latency_ms} ms" if snapshot.latency_ms is not None else "no probe yet"),
+        (
+            "Telegram latency",
+            f"{snapshot.latency_ms} ms" if snapshot.latency_ms is not None else "no probe yet",
+        ),
         ("Probes", f"{snapshot.probes} ({snapshot.failures} failed)"),
     ]
     if snapshot.seconds_since_activity is not None:
         rows.append(("Last update", f"{format_uptime(snapshot.seconds_since_activity)} ago"))
-    if snapshot.last_error:
-        rows.append(("Last error", rich_esc(snapshot.last_error)))
+    # The error goes below the table, not in it: a table cell is clipped to the
+    # column width, and "ConnectionResetError: link dow…" is not a useful report.
+    error_line = (
+        f"Last error: <code>{rich_esc(snapshot.last_error[:200])}</code>"
+        if snapshot.last_error
+        else ""
+    )
 
     text = (
         rich_heading("Ping", 2)
         + "\n"
         + f"{theme.emoji('bolt')} Live status of this instance."
         + "\n"
-        + rich_kv_table(rows)
+        + kv_table(rows).block()
+        + ("\n" + error_line if error_line else "")
         + "\n"
         + rich_hr()
         + rich_footer("The watchdog probes Telegram on a timer.")

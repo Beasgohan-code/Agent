@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import logging
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -32,6 +33,9 @@ from pyrogram.types import ChatPermissions
 
 from ..platform.chats import SPAM_ACTIONS
 from ..platform.manifest import PluginManifest
+from ..ui.tables import Table, kv_table, panel
+
+logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
     slug="moderation",
@@ -48,6 +52,10 @@ MANIFEST = PluginManifest(
 
 DENIED = "You need moderator rights to do that."
 DEFAULT_MUTE_SECONDS = 600
+#: Warnings escalate at this threshold unless a group sets its own.
+DEFAULT_WARN_LIMIT = 3
+DEFAULT_WARN_ACTION = "mute"
+WARN_ACTIONS = ("mute", "kick", "ban")
 MAX_PURGE = 100
 PURGE_CONFIRM_TTL = 4.0
 
@@ -118,6 +126,19 @@ def duration_label(seconds: int) -> str:
     return f"{seconds}s"
 
 
+def warn_policy(chats, chat_id: int) -> tuple[int, str]:
+    """(limit, action) for a group. A limit of 0 disables escalation."""
+    limit = chats.get(chat_id, "warn_limit", DEFAULT_WARN_LIMIT)
+    action = chats.get(chat_id, "warn_action", DEFAULT_WARN_ACTION)
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = DEFAULT_WARN_LIMIT
+    if action not in WARN_ACTIONS:
+        action = DEFAULT_WARN_ACTION
+    return max(0, limit), action
+
+
 def _reason(message, *, skip_target: bool) -> str:
     """Everything after the command (and the id, when one was passed)."""
     args = _args(message)
@@ -166,6 +187,39 @@ async def target_is_protected(client, chat_id: int, target_id: int) -> bool:
     """Administrators are not ours to moderate."""
     member = await _member_of(client, chat_id, target_id)
     return member is not None and getattr(member, "status", None) in _ADMIN_STATUSES
+
+
+async def escalate_warning(client, ctx, message, target_id: int, action: str) -> str:
+    """Apply the group's warn action. Returns a line for the report.
+
+    A failure is reported, never swallowed: if the bot lacks the right to mute,
+    saying "warned, muted" would be a lie.
+    """
+    chat_id = message.chat.id
+    try:
+        if action == "mute":
+            await client.restrict_chat_member(
+                chat_id,
+                target_id,
+                MUTE_PERMISSIONS,
+                until_date=datetime.now(timezone.utc) + timedelta(seconds=DEFAULT_MUTE_SECONDS),
+            )
+            outcome = f"muted for {duration_label(DEFAULT_MUTE_SECONDS)}"
+        elif action == "kick":
+            await client.ban_chat_member(chat_id, target_id)
+            await client.unban_chat_member(chat_id, target_id)
+            outcome = "kicked"
+        else:
+            await client.ban_chat_member(chat_id, target_id)
+            outcome = "banned"
+    except Exception as exc:  # noqa: BLE001 - the moderator needs the real reason
+        logger.exception("warn escalation failed")
+        return f"Escalation failed: {type(exc).__name__}. Check my rights."
+    ctx.chats.log(
+        chat_id, f"warnlimit:{action}", actor_id=None, target_id=target_id,
+        reason="warning threshold reached",
+    )
+    return f"Threshold reached: member {outcome}."
 
 
 # -- anti-spam enforcement --------------------------------------------------
@@ -334,8 +388,13 @@ def build(ctx):
         ctx.chats.log(
             message.chat.id, "warn", actor_id=message.from_user.id, target_id=target_id, reason=reason
         )
+        limit, action = warn_policy(ctx.chats, message.chat.id)
+        escalation = ""
+        if limit and count >= limit:
+            escalation = "\n" + await escalate_warning(client, ctx, message, target_id, action)
         await message.reply(
-            f"<b>Warning issued</b>\nMember: {mention}\nWarnings: {count}\nReason: {html.escape(reason)}"
+            f"<b>Warning issued</b>\nMember: {mention}\nWarnings: {count}\n"
+            f"Reason: {html.escape(reason)}{escalation}"
         )
 
     async def warnings(client, message):
@@ -347,17 +406,44 @@ def build(ctx):
         rows = ctx.chats.warnings_of(message.chat.id, target_id)
         note = ctx.chats.note_of(message.chat.id, target_id)
         trusted = ctx.chats.is_trusted(message.chat.id, target_id)
-        lines = [f"<b>Warnings</b>\nMember: {mention}"]
-        if not rows:
-            lines.append("No active warnings.")
-        for index, warning in enumerate(reversed(rows[-10:]), 1):
-            when = time.strftime("%Y-%m-%d", time.gmtime(warning.get("at", 0)))
-            lines.append(f"#{index} {html.escape(warning.get('reason', 'no reason'))} – {when}")
+        limit, action = warn_policy(ctx.chats, message.chat.id)
+        rows_out = tuple(
+            (
+                str(index),
+                warning.get("reason", "no reason"),
+                str(warning.get("by") or "-"),
+                time.strftime("%d %b %H:%M", time.gmtime(warning.get("at", 0))),
+            )
+            for index, warning in enumerate(reversed(rows[-10:]), 1)
+        )
+        lines = [f"Member: {mention} — <b>{len(rows)}</b> active warning(s)."]
+        if limit:
+            lines.append(
+                f"Escalates at <b>{limit}</b> warnings ({action})."
+            )
+        else:
+            lines.append("Warnings do not escalate in this group.")
         if note:
             lines.append(f"Note: {html.escape(note)}")
         if trusted:
             lines.append("Trusted: yes")
-        await message.reply("\n".join(lines))
+        table = Table(
+            headers=("#", "Reason", "By", "When"),
+            rows=rows_out,
+            aligns=("right", "left", "right", "left"),
+            total_width=52,
+        ) if rows_out else None
+        if table is None:
+            lines.append("No active warnings.")
+        await message.reply(
+            panel(
+                "Warnings",
+                icon=ctx.theme.emoji("warn"),
+                lines=lines,
+                table=table,
+                footer="<code>/unwarn</code> clears one, <code>/resetwarns</code> clears all.",
+            )
+        )
 
     async def unwarn(client, message):
         if not await _guard(client, message):
@@ -571,16 +657,31 @@ def build(ctx):
                 chat.id, "antispam", actor_id=message.from_user.id, reason=" ".join(args)
             )
         keywords = policy.get("blocked_keywords") or []
+        table = kv_table(
+            [
+                ("Flood", f"{policy['flood_messages']} per {policy['flood_window_seconds']}s "
+                          f"({'on' if policy['flood_enabled'] else 'off'})"),
+                ("Duplicates", f"threshold {policy['duplicate_threshold']} "
+                               f"({'on' if policy['duplicate_enabled'] else 'off'})"),
+                ("Links", "blocked" if policy["links_enabled"] else "allowed"),
+                ("Invites", "blocked" if policy["invites_enabled"] else "allowed"),
+                ("Keywords", ", ".join(keywords) if keywords else "none"),
+                ("Action", f"{policy['action']} (mute {policy['mute_seconds']}s)"),
+            ]
+        )
         await message.reply(
-            "<b>Anti-spam settings</b>\n"
-            f"Flood: {policy['flood_messages']} / {policy['flood_window_seconds']}s "
-            f"({'on' if policy['flood_enabled'] else 'off'})\n"
-            f"Duplicates: {'on' if policy['duplicate_enabled'] else 'off'} "
-            f"(threshold {policy['duplicate_threshold']})\n"
-            f"Links: {'blocked' if policy['links_enabled'] else 'allowed'}\n"
-            f"Invites: {'blocked' if policy['invites_enabled'] else 'allowed'}\n"
-            f"Keywords: {', '.join(keywords) if keywords else 'none'}\n"
-            f"Action: {policy['action']} (mute {policy['mute_seconds']}s)"
+            panel(
+                "Anti-spam settings",
+                icon=ctx.theme.emoji("shield"),
+                subtitle="Enforced by the watcher that ships with this module.",
+                table=table,
+                note=(
+                    "<code>/antispam on|off</code> · <code>limit 7</code> · <code>action mute</code> · "
+                    "<code>links off</code> · <code>invites off</code> · <code>keyword word</code> · "
+                    "<code>keyword-clear</code>"
+                ),
+                footer="Staff and trusted members are never auto-punished.",
+            )
         )
 
     async def modlog(client, message):
@@ -588,16 +689,38 @@ def build(ctx):
             return
         history = ctx.chats.history(message.chat.id, limit=10)
         if not history:
-            await message.reply("<b>Moderation log</b>\nNo moderation actions recorded yet.")
-            return
-        lines = ["<b>Moderation log</b>"]
-        for record in history:
-            when = time.strftime("%d %b %H:%M", time.gmtime(record.get("at", 0)))
-            lines.append(
-                f"{record.get('action', '?').upper()} • {record.get('target') or '—'} • "
-                f"{html.escape(record.get('reason') or 'no reason')} • {when}"
+            await message.reply(
+                panel(
+                    "Moderation log",
+                    icon=ctx.theme.emoji("stats"),
+                    lines=["No moderation actions recorded yet."],
+                    footer="Actions are appended when they happen.",
+                )
             )
-        await message.reply("\n".join(lines))
+            return
+        table = Table(
+            headers=("Action", "Target", "Reason", "When"),
+            rows=tuple(
+                (
+                    record.get("action", "?").upper(),
+                    str(record.get("target") or "-"),
+                    record.get("reason") or "no reason",
+                    time.strftime("%d %b %H:%M", time.gmtime(record.get("at", 0))),
+                )
+                for record in history
+            ),
+            aligns=("left", "right", "left", "left"),
+            total_width=56,
+        )
+        await message.reply(
+            panel(
+                "Moderation log",
+                icon=ctx.theme.emoji("stats"),
+                subtitle="Newest first.",
+                table=table,
+                footer="Per group, capped at 200 entries, times in UTC.",
+            )
+        )
 
     return MANIFEST, {
         "warn": warn,

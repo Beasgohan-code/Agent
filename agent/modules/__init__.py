@@ -8,6 +8,7 @@ from . import (
     core,
     encoder,
     filters,
+    group,
     linkshare,
     moderation,
     ops,
@@ -16,4 +17,4 @@ from . import (
     welcome,
 )
 
-MODULES = (ops, core, encoder, filters, linkshare, moderation, renamer, utilities, welcome)
+MODULES = (ops, core, encoder, filters, group, linkshare, moderation, renamer, utilities, welcome)

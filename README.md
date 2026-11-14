@@ -107,14 +107,16 @@ be meaningful — see the no-database rule for this phase).
 
 ## Commands
 
-The command surface follows **Meikoagent**: the same 21 commands, the same
-argument shapes, the same defaults (a mute is 600 s, a purge is 10 messages).
-Every one is wired to something real — none is a stub.
+The command surface follows **Meikoagent** and **Videl1**: the same argument
+shapes and defaults (a mute is 600 s, a purge is 10 messages), plus the group
+panel a complete management bot needs. Every command is wired to something real
+— none is a stub.
 
 | Area | Commands |
 | --- | --- |
 | Core | `/start` `/help` `/menu` `/about` `/status` `/cancel` `/ping` `/owner` |
 | Moderation (groups) | `/warn` `/warnings` `/warns` `/unwarn` `/mute` `/unmute` `/kick` `/ban` `/unban` `/purge` `/note` `/trust` `/antispam` `/modlog` |
+| Group management (groups) | `/settings` `/rules` `/setrules` `/pin` `/unpin` `/admins` `/warnlimit` `/resetwarns` `/lockdown` |
 | Filters (groups) | `/filter` `/filters` `/stopfilter` |
 | Welcome (groups) | `/setwelcome` `/welcome` `/goodbye` |
 | Utilities | `/id` `/info` `/time` |
@@ -140,6 +142,34 @@ shipping a fake control:
   guessing an owner. It is optional, like every other knob here.
 * Every moderation command checks the caller's admin rights (and the specific
   privilege the action needs) plus that the target is not an administrator.
+
+### Group management
+
+`/settings` is the panel: anti-spam policy, flood limit, link and invite rules,
+keyword count, warn threshold, greetings, filter count, rules, trusted members
+and the log channel — all read live from `data/chats.json` in one table. Nothing
+in it is a stored copy of state that lives somewhere else.
+
+| Command | What it does | Where it comes from |
+| --- | --- | --- |
+| `/settings` | Live settings panel for this group | Videl1 has `/settings`; this one is per-group |
+| `/rules` `/setrules` | Publish and read the group's rules | ours (Videl1 keeps rules in its database, not in a command) |
+| `/pin` `/unpin` | Pin a replied message, or `/unpin all` | ours |
+| `/admins` | Administrator list read from Telegram | Videl1's `/admins` is bot staff; this is group admins |
+| `/warnlimit` | Warnings needed to escalate, and the action | ours — and it is enforced |
+| `/resetwarns` | Clear every active warning for a member | ours |
+| `/lockdown` | Restrict the group to administrators, `/lockdown off` lifts it | Meikoagent's security plugin ships `lockdown` |
+
+**`/warnlimit` is not decoration.** `/warn` reads the threshold, and when a
+member reaches it the configured action (`mute` by default, or `kick`/`ban`) is
+applied and logged as `warnlimit:<action>`. If the bot lacks the right to do it,
+the reply says `Escalation failed: <ErrorType>` — a warning report never claims
+an action that did not happen. `DEFAULT_WARN_LIMIT` is 3; `/warnlimit off`
+disables escalation entirely.
+
+Every one of these commands checks the caller's rights first (the specific
+privilege Telegram requires, not just "is an admin") and refuses to act on an
+administrator.
 
 Moderation state (warnings, notes, trust, policy, audit log) lives in
 `data/chats.json`. Chat message text is never stored — the anti-spam tracker
@@ -178,9 +208,9 @@ old one — so "we deploy carefully" is not protection.
 ## The command menu
 
 On start the bot publishes its command list to Telegram, split by scope: 30
-private/anywhere commands in the default scope and 20 group-only ones
-(moderation, filters, greetings) in the group scope, so nobody sees `/ban` in a
-DM. The list is built from the live registry, so a disabled plugin disappears
+private/anywhere commands in the default scope and 29 group-only ones
+(moderation, group management, filters, greetings) in the group scope, so nobody
+sees `/ban` in a DM. The list is built from the live registry, so a disabled plugin disappears
 from the menu at the same time as it disappears from the dispatcher.
 
 `/menubutton` does not exist because it does not need to: the chat menu button is
@@ -188,6 +218,45 @@ reset to the command list automatically. **The Bot API cannot hide the menu
 button entirely** — the options are a web-app launcher, the command list, or the
 default. "Deleted" here means it no longer points at anything custom, and
 `SYNC_COMMANDS=0` skips the whole step.
+
+## Tables, headings and rich output
+
+A Telegram message has bold, italic, code, quotes, links — and no table. So a
+table that actually lines up has to be monospace text inside `<pre>`, which is
+what `agent/ui/tables.py` builds:
+
+```
+┌────────────┬─────────────┬──────┐
+│ Plugin     │ State       │ Cmds │
+├────────────┼─────────────┼──────┤
+│ ops        │ on (locked) │    8 │
+│ moderation │ on          │   14 │
+└────────────┴─────────────┴──────┘
+```
+
+Three details make it work rather than almost work:
+
+* **Width is display width.** East-Asian characters and emoji take two columns
+  in a monospace font, so `len()` would drift. `text_width()` counts them and
+  combining marks as zero.
+* **Cells are escaped, never formatted.** Telegram does not parse nested tags
+  inside `<pre>`, so a tag in a cell is stripped instead of shown literally.
+* **Whitespace in `<pre>` survives normalisation.** richgram's rich→HTML
+  normaliser collapses runs of spaces, which is right for prose and fatal for a
+  grid — it squeezes every column to two spaces. `to_safe_html()` lifts `<pre>`
+  blocks out before normalising and puts them back untouched. That is the bug
+  that made the first version of these panels look broken.
+
+Tables are used where there is real grid data (`/plugins`, `/settings`,
+`/admins`, `/warnings`, `/modlog`, `/antispam`, `/events`, `/watchdog`,
+`/status`, `/links`, `/filters`, `/encinfo`, `/encpreset`). Prose stays prose:
+`/help` is a reference, and truncating the sentence that explains a command to
+fit a column would defeat it. Emoji are kept *out* of cells for the same width
+reason and stay in the headings, notes and footers around them.
+
+**The client now runs with `parse_mode=HTML`.** Without it pyrogram sends the
+markup as literal text, so every module reply appeared as `<b>Member muted</b>`
+with the tags visible — the reason plain answers looked wrong.
 
 ## Premium emoji and the UI layer
 
@@ -229,7 +298,8 @@ the command.
 
 ## Plugins you can switch at runtime
 
-`/plugins` lists every module; `/plugin <slug> off` detaches that module's
+`/plugins` is a table of every module with its state and command count;
+`/plugin <slug> off` detaches that module's
 handlers from the dispatcher — not a flag that later code might forget to check
 — and persists the choice, so it stays off across restarts. `ops` cannot disable
 itself. Watchers are detached too, so a disabled `moderation` stops enforcing
@@ -239,14 +309,14 @@ anti-spam rather than quietly continuing.
 
 | Reference | Contributed here | Still missing, and what it needs |
 | --- | --- | --- |
-| **Meikoagent** | the 21-command surface, plugin lifecycle, role checks | its AI/analytics/reports plugins need an API key and a database |
+| **Meikoagent** | the command surface, plugin lifecycle, role checks, `/lockdown` | its AI/analytics/reports plugins need an API key and a database |
 | **CBML** / **WZML-X** | filters, welcome/goodbye, `/id` `/info` `/time` | mirror/leech need aria2, rclone, Google credentials and MongoDB |
 | **ENCODING-BOT** | the encoder module (real FFmpeg) | link downloads and cloud uploads need downloaders and storage creds |
 | **LINK-SHAREBOT** | `/genlink` and the signed-link store | `/batch` needs a multi-file queue; `/broadcast` needs a users table |
 | **Multi-FileStoreBot** | the shared file store behind `/genlink`/`/links` | per-user bots need one isolated client per token — not safe in-process |
 | **playeon** | nothing yet | it is a streaming indexer: needs a web server and a file database |
 | **save-restricted-content-bot** | nothing | it works by session-based access to protected content, which the project rules forbid |
-| **Videl1** | keep-alive, watchdog, **single-instance lease, `/restart`** | — |
+| **Videl1** | keep-alive, watchdog, **single-instance lease, `/restart`**, `/settings` and `/admins` naming | — |
 | **wzgram** | the client itself | — |
 
 Nothing in the "still missing" column is registered as a command. A command
@@ -272,10 +342,11 @@ start.py              entry point ("python start.py")
 agent/config.py       environment loading + validation
 agent/bot.py          client lifecycle, handler wiring, signals
 agent/handlers/       commands (/start, /help) and callbacks
-agent/ui/             theme, screens, inline keyboards
+agent/ui/             theme, screens, tables, premium emoji, inline keyboards
 agent/utils/sender.py delivery with HTML + custom-emoji fallbacks
 agent/platform/        plugin registry, job queue, storage, signed links
-agent/modules/        encoder, linkshare (real handlers)
+agent/modules/        core, moderation, group, filters, welcome, encoder,
+                      linkshare, renamer, utilities, ops
 tests/                config, UI and bot tests
 ```
 
