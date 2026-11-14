@@ -41,6 +41,10 @@ MANIFEST = PluginManifest(
     permissions=("messages.read", "files.write", "process.spawn"),
 )
 
+PROBE_TIMEOUT = 60
+MAX_PROBE_BYTES = 256 * 1024
+INPUT_PROTOCOLS = "file,pipe"
+
 CONVERSION_TIMEOUT = 60 * 60
 VALIDATION_TIMEOUT = 5 * 60
 
@@ -75,12 +79,23 @@ def ffmpeg_path() -> str:
 async def probe(path: Path) -> dict:
     """Read duration and stream info using ffmpeg's banner (no ffprobe)."""
     process = await asyncio.create_subprocess_exec(
-        ffmpeg_path(), "-hide_banner", "-i", str(path),
+        ffmpeg_path(), "-hide_banner", "-nostdin", "-protocol_whitelist", INPUT_PROTOCOLS, "-i", str(path),
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        _, raw = await asyncio.wait_for(process.communicate(), timeout=60)
+        async with asyncio.timeout(PROBE_TIMEOUT):
+            chunks, size = [], 0
+            while True:
+                chunk = await process.stderr.read(8192)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_PROBE_BYTES:
+                    raise ValueError("Media diagnostics exceed the inspection limit.")
+                chunks.append(chunk)
+            await process.wait()
+            raw = b"".join(chunks)
     except BaseException:
         if process.returncode is None:
             process.kill()
@@ -93,6 +108,8 @@ async def probe(path: Path) -> dict:
         duration = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
     video = _VIDEO_RE.search(banner)
     audio = _AUDIO_RE.search(banner)
+    if video is None and audio is None:
+        raise ValueError("No supported audio/video streams were found.")
     return {
         "duration": duration,
         "video_codec": video.group(1) if video else None,
@@ -121,6 +138,7 @@ def build_command(src: Path, dst: Path, *, preset: str = "balanced", codec: str 
         "-nostats",
         "-progress", "pipe:1",
         "-y",
+        "-protocol_whitelist", INPUT_PROTOCOLS,
         "-i", str(src),
         "-c:v", encoder,
         "-crf", str(crf),
@@ -193,6 +211,7 @@ def clip_command(src: Path, dst: Path, *, start: float, length: float) -> list[s
         "-y",
         "-ss",
         str(start),
+        "-protocol_whitelist", INPUT_PROTOCOLS,
         "-i",
         str(src),
         "-t",
@@ -219,6 +238,7 @@ def audio_command(src: Path, dst: Path, *, kind: str = "mp3", bitrate: int = 192
         "-progress",
         "pipe:1",
         "-y",
+        "-protocol_whitelist", INPUT_PROTOCOLS,
         "-i",
         str(src),
         "-vn",
@@ -248,6 +268,7 @@ def screens_command(src: Path, dst: Path, *, count: int = 9, duration: float = 0
         "-progress",
         "pipe:1",
         "-y",
+        "-protocol_whitelist", INPUT_PROTOCOLS,
         "-i",
         str(src),
         "-vf",
@@ -270,6 +291,7 @@ async def validate_output(path: Path) -> bool:
         return False
     process = await asyncio.create_subprocess_exec(
         ffmpeg_path(), "-hide_banner", "-nostdin", "-v", "error", "-xerror",
+        "-protocol_whitelist", INPUT_PROTOCOLS,
         "-i", str(path), "-f", "null", "-",
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,

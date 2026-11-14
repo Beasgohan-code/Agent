@@ -38,10 +38,10 @@ def test_noisy_stderr_cannot_block_conversion_runner(tmp_path):
 def test_cancelled_probe_reaps_child(monkeypatch):
     async def scenario():
         entered = asyncio.Event()
-        async def communicate():
+        async def read(size):
             entered.set()
             await asyncio.Event().wait()
-        process = SimpleNamespace(returncode=None, communicate=communicate, kill=Mock(), wait=AsyncMock())
+        process = SimpleNamespace(returncode=None, stderr=SimpleNamespace(read=read), kill=Mock(), wait=AsyncMock())
         monkeypatch.setattr(encoder, 'ffmpeg_path', lambda: 'ffmpeg')
         monkeypatch.setattr(encoder.asyncio, 'create_subprocess_exec', AsyncMock(return_value=process))
         task = asyncio.create_task(encoder.probe(encoder.Path('input')))
