@@ -28,7 +28,7 @@ from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
 from ...platform.manifest import PluginManifest
 from ...platform.secrets import SecretError, box_from
-from . import profiles
+from . import lifecycle, profiles
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils import rich as rich_ui
@@ -51,6 +51,26 @@ MANIFEST = PluginManifest(
 
 #: Callback prefix for the clone buttons.
 PREFIX = "clone"
+
+
+def _state_summary(manager) -> str:
+    """``2 running, 1 failed`` — only the states that exist, never a zero list."""
+    counts = manager.counts()
+    if not counts:
+        return "nothing started yet"
+    order = (
+        lifecycle.State.RUNNING,
+        lifecycle.State.DEGRADED,
+        lifecycle.State.STARTING,
+        lifecycle.State.FAILED,
+        lifecycle.State.STOPPED,
+    )
+    parts = [
+        f"{counts[state]} {state.value}"
+        for state in order
+        if counts.get(state)
+    ]
+    return ", ".join(parts) or "nothing started yet"
 
 
 def build(ctx):
@@ -90,7 +110,7 @@ def build(ctx):
             (
                 clone.handle,
                 profiles.label(clone.profile),
-                "running" if manager.is_running(clone.bot_id) else "stopped",
+                manager.state(clone.bot_id).label,
             )
             for clone in mine
         )
@@ -103,6 +123,11 @@ def build(ctx):
                 "A clone runs the plugins its profile names, not always the whole bot."
             ),
             table=Table(headers=("Bot", "Profile", "State"), rows=rows),
+            lines=tuple(
+                f"<b>{clone.handle}</b> — {state.last_error[:160]}"
+                for clone in mine
+                if (state := manager.state(clone.bot_id)).state is lifecycle.State.FAILED
+            ),
             note=pitch(),
             footer=(
                 "<b>Profile</b> chooses how much of this bot a clone runs; stopping "
@@ -386,7 +411,10 @@ def build(ctx):
                     f"limit <b>{ctx.settings.clone_limit}</b>."
                 ),
                 table=Table(headers=("Owner", "Clones"), rows=rows, aligns=("left", "right")),
-                footer="Running clones hold a polling loop each; the limit is a real ceiling.",
+                footer=(
+                    "Running clones hold a polling loop each; the limit is a real "
+                    "ceiling. States: " + _state_summary(manager) + "."
+                ),
             ),
             reply_markup=nav_keyboard(),
         )

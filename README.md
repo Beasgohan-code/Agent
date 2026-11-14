@@ -114,6 +114,22 @@ reach this deployment's controls, and a clone must never mint another clone.
 * `/clonestats` is the owner's view: how many clones exist, how many are running,
   and what the deployment's ceiling is.
 
+### A clone has a state, not a boolean
+
+`is_running` answered the wrong question: it could not tell a revoked token from
+a crash from a deliberate stop. Every worker now carries a real state —
+`queued → validating → starting → running`, with `degraded` for a client that is
+connected but cannot be named, `stopping → stopped` for an orderly shutdown, and
+`failed` with Telegram's own sentence attached. Impossible transitions raise
+instead of being absorbed.
+
+A supervisor task looks after the live clients for the life of the process: a
+clone that drops its connection is marked degraded, stopped, and started again
+with a capped backoff (15s doubling to 10 minutes, five attempts), so a revoked
+token stops being retried and a transient blip recovers on its own. `/mybots`
+shows the state in a column, prints the reason under the table for anything
+failed, and `/clonestats` counts them.
+
 Limits are real: one clone on a free account, three with premium (`/premium`),
 and `CLONE_LIMIT` caps the whole deployment. A clone does **not** inherit
 `OWNER_ID`, so adding one never hands anyone owner commands, and its vault is its
@@ -284,7 +300,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 503 tests
+pytest -q                      # 521 tests
 python -m pyflakes agent tests # no unused names
 ```
 

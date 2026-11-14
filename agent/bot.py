@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import signal
 from contextlib import suppress
@@ -371,6 +372,12 @@ class AgentBot:
                 await clones.restore()
             except Exception:  # noqa: BLE001 - clones are a feature, not the bot
                 logger.exception("Could not restore clones; continuing without them.")
+            # Then keep watching: a clone that drops its connection is restarted
+            # with a capped backoff, instead of being reported as up forever.
+            if getattr(clones, "watch", None) is not None and self.settings.clone_limit:
+                self._supervisor = asyncio.create_task(
+                    clones.watch(self.settings.watchdog_interval), name="clone-supervisor"
+                )
 
         # A completed handshake is a successful probe.
         self.health.record_success()
@@ -423,6 +430,12 @@ class AgentBot:
             await stop_health_server(health_runner)
             if self.voice is not None:
                 await self.voice.shutdown()
+            supervisor = getattr(self, "_supervisor", None)
+            if supervisor is not None:
+                supervisor.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await supervisor
+                self._supervisor = None
             clones = getattr(self.modules, "clones", None)
             if clones is not None:
                 await clones.stop_all()
