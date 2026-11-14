@@ -293,3 +293,19 @@ verified reference name `/mediainfo` in place of `/encinfo`. No stored data or
 SQL tables removed. COMMAND_SURFACE_CHANGES.md supersedes older instructions for
 retired commands. Remaining name matches are not proof of behavioral parity;
 continue actual reference review without blindly adding dangerous endpoints.
+
+### Explicit feature-source mapping (latest scope)
+
+User specified Music=Videl0+Playeon, Saver=save-restricted-content-bot,
+Encoder=ENCODING-BOT, FileStore=Multi-FileStoreBot, Linkshare=LINK-SHAREBOT and
+Leech=CBML. Cloned all seven into requested ignored folders, pinned exact
+revisions and added command/collision evidence including TypeScript command
+aliases and CBML's static dictionary. Keep distinct reference commands; only
+resolve actual duplicates deliberately. Wzgram remains the bot client; do not
+install competing pyrogram forks over it. Aiogram only where justified.
+
+No full extraction/parity is claimed. Playeon has restrictive attribution and
+non-commercial terms; unlicensed roots and AGPL components require review.
+Reference startup/installers/secrets remain inert and excluded from deployment.
+Saver work must respect authorized access, consent and content-protection
+controls. See FEATURE_INTEGRATION_PLAN.md for feature-level work queues.
