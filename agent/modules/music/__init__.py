@@ -159,11 +159,19 @@ def build(ctx):
             ("Elapsed", clock(playback.elapsed)),
             ("Requested by", str(playback.requested_by or "\u2014")),
         ]
+        queue = queues.peek(chat_id)
+        rows.extend([
+            ("Upcoming", str(len(queue.waiting)) if queue else "0"),
+            ("Repeat", ("one" if queue.loop else "all" if queue.repeat_all else "off") if queue else "off"),
+            ("Volume", f"{volumes[chat_id]}% acknowledged" if chat_id in volumes else "not set this session"),
+        ])
         return panel(
             "Now playing",
-            icon=ctx.theme.emoji("fire"),
+            icon=ctx.theme.emoji("music"),
+            subtitle=f"{ctx.theme.emoji('speaker')} Your group's live player · "
+                     + ("paused" if playback.paused else "playing"),
             table=kv_table(rows),
-            note="Staff and whoever queued the track get the buttons; everyone else can read it.",
+            note=f"{ctx.theme.emoji('shield')} Staff and whoever queued the track get the buttons; everyone else can read it.",
             footer="Elapsed time is measured by this process, not read back from the call.",
         )
 
@@ -391,32 +399,47 @@ def build(ctx):
     # -- reporting ---------------------------------------------------------
 
     async def show_queue(client, message):
-        queue = queues.for_chat(message.chat.id)
+        args = (getattr(message, "text", "") or "").split()[1:]
+        if len(args) > 1 or (args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0]) > 2 or int(args[0]) < 1)):
+            await reply(message, "Use /queue [page] or /q [page], starting at page 1.")
+            return
+        page = int(args[0]) if args else 1
+        queue = queues.peek(message.chat.id)
+        waiting = queue.waiting if queue else []
         playback = engine.playback(message.chat.id)
-        if playback is None and not queue.waiting:
-            await reply(message, 
-                panel(
-                    "Queue",
-                    icon=ctx.theme.emoji("stats"),
-                    lines=["Nothing queued."],
-                    note="<code>/play &lt;url&gt;</code> or reply with <code>/play</code>.",
-                )
-            )
+        pages = max(1, (len(waiting) + 9) // 10)
+        if page > pages:
+            await reply(message, f"Choose a queue page from 1 to {pages}.")
+            return
+        if playback is None and not waiting:
+            await reply(message, panel(
+                "Queue", icon=ctx.theme.emoji("music"),
+                lines=[f"{ctx.theme.emoji('sparkles')} Nothing queued."],
+                note="<code>/play &lt;url&gt;</code> or reply with <code>/play</code>.",
+            ))
             return
         rows = []
         if playback is not None:
-            rows.append(("now", playback.title, "playing" if not playback.paused else "paused"))
-        for position, track in enumerate(queue.waiting[:max(0, 15 - len(rows))], start=1):
+            rows.append(("now", playback.title, "paused" if playback.paused else "playing"))
+        start = (page - 1) * 10
+        for position, track in enumerate(waiting[start:start + 10], start=start + 1):
             rows.append((str(position), track.title, f"by {track.requested_by or '—'}"))
-        await reply(message, 
-            panel(
-                "Queue",
-                icon=ctx.theme.emoji("stats"),
-                subtitle=f"Showing <b>{len(rows)}</b> of {len(queue.waiting) + (1 if playback else 0)} item(s).",
-                table=Table(headers=("#", "Track", "State"), rows=tuple(rows)),
-                note="<code>/skip</code> advances, <code>/stop</code> clears everything.",
-            )
-        )
+        repeat = ("one" if queue.loop else "all" if queue.repeat_all else "off") if queue else "off"
+        navigation = []
+        if page > 1:
+            navigation.append(f"<code>/queue {page - 1}</code> previous")
+        if page < pages:
+            navigation.append(f"<code>/queue {page + 1}</code> next")
+        await reply(message, panel(
+            "Queue", icon=ctx.theme.emoji("music"),
+            subtitle=f"{ctx.theme.emoji('stats')} Page <b>{page}/{pages}</b> · "
+                     f"{len(waiting)} upcoming · repeat <b>{repeat}</b>",
+            table=Table(headers=("#", "Track", "State"), rows=tuple(rows)),
+            lines=[" · ".join(navigation)] if navigation else (),
+            note=f"{ctx.theme.emoji('shield')} Upcoming positions stay the same across pages. "
+                 "Admins: <code>/move from to</code> · <code>/remove position</code>.",
+            footer="Session queue · /nowplaying for transport · /stop clears everything",
+        ))
 
     async def nowplaying(client, message):
         playback = engine.playback(message.chat.id)

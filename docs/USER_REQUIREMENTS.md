@@ -136,3 +136,11 @@ panel showing allowlisted, group-local cached voice state, repeat/upcoming queue
 and acknowledged volume. It performs no remote probe or mutation and exposes no
 media sources, titles or assistant credentials. Quality settings, active network
 voice tests, durable cleanup recovery and full reference parity remain pending.
+
+### Continued UI pass
+
+Upgraded `/queue`/`/q` with validated pagination and stable positions,
+`/nowplaying` with richer group-local telemetry, and volume/control feedback
+with premium-themed native panels and Unicode fallback. Continue auditing the
+remaining commands one by one; this is not a universal UI/parity completion.
+No merge without the separately confirmed PR-specific second approval.

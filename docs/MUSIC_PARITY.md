@@ -141,3 +141,26 @@ Quality selection and active voice-network probes remain pending.
 
 Current Music surface: 25 commands without saved playlists; 29 with PostgreSQL
 playlist support. External voice streaming remains unvalidated in this sandbox.
+
+## Paged player UI increment
+
+- `/queue [page]` and `/q [page]` show ten upcoming tracks per page and repeat
+  the current track for context. Positions are absolute upcoming queue positions,
+  so `/remove 21` still refers to position 21, not the first item on page 3.
+  Page hints expose every track up to the existing 50-track session queue limit.
+  Invalid/out-of-range pages return guidance without changing playback. Reading
+  an empty queue does not allocate new queue state. Pagination uses commands,
+  not new transport callbacks; stale page numbers are revalidated each time.
+- `/nowplaying` and existing transport-card redraws now include upcoming count,
+  repeat mode and acknowledged volume (or explicitly “not set this session”).
+  No invented duration/progress percentage is shown; elapsed remains local time.
+- `/volume` shows a native settings table with bounds and adjustment size.
+  Music control confirmations, validation and failed-action feedback use themed
+  panels and existing premium emoji with a plain-theme fallback. No new emoji
+  IDs or unvalidated premium button-icon fields were introduced.
+- `/history` rejects unsupported arguments instead of silently ignoring them.
+
+Group permissions, per-group serialization and the sender's rich/classic
+fallback are unchanged. UI reads do not probe voice connectivity; queue and
+volume state still reset with the process. No live Telegram rendering or audio
+streaming was exercised here.

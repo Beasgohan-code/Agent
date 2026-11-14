@@ -4,7 +4,7 @@ import random
 
 from ..moderation import is_moderator
 from ...utils.rich import reply
-from ...ui.tables import Table, panel
+from ...ui.tables import Table, kv_table, panel
 from ...platform.voice import VoiceUnavailable
 
 COMMANDS = ('loop', 'shuffle', 'clear', 'clearqueue', 'remove', 'move', 'jump',
@@ -19,6 +19,9 @@ def build_controls(ctx, queues, history, volumes, advance):
         args = message.text.split()[1:]
         chat_id = message.chat.id
         if name == 'history':
+            if args:
+                await reply(message, 'Use /history without arguments.')
+                return
             records = history.get(chat_id, ())
             await reply(message, panel('Recent playback', icon=ctx.theme.emoji('music'),
                 table=Table(headers=('#', 'Track'), rows=tuple((str(i), title) for i, title in enumerate(reversed(records), 1))),
@@ -77,7 +80,16 @@ def build_controls(ctx, queues, history, volumes, advance):
                 previous = volumes.get(chat_id, 100)
                 if name == 'volume':
                     if not args:
-                        await reply(message, (f'Volume: {previous}% (last setting acknowledged by this process).' if chat_id in volumes else 'No volume change acknowledged this session; adjustments use a 100% baseline.'))
+                        await reply(message, panel('Voice volume', icon=ctx.theme.emoji('speaker'),
+                            subtitle=f"{ctx.theme.emoji('stats')} This group's volume settings",
+                            table=kv_table([
+                                ('Volume', f'{previous}%' if chat_id in volumes else 'not set this session'),
+                                ('Range', '20–200%'),
+                                ('Adjustment', '20% per step'),
+                            ]),
+                            note=(f'Volume: {previous}% (last setting acknowledged by this process).' if chat_id in volumes else
+                                  'No volume change acknowledged this session; adjustments use a 100% baseline.'),
+                            footer='/volume 100 · /volumeup · /volumedown'))
                         return
                     if len(args) != 1 or not args[0].isdecimal() or len(args[0]) > 3:
                         raise ValueError('Use /volume <20-200>.')
@@ -97,11 +109,17 @@ def build_controls(ctx, queues, history, volumes, advance):
                     volumes.pop(next(iter(volumes)))
                 volumes[chat_id] = target
                 said = f'Volume updated to {target}%.'
-            await reply(message, said)
+            await reply(message, panel('Music updated', icon=ctx.theme.emoji('check'),
+                lines=[html.escape(said)],
+                note=f"{ctx.theme.emoji('music')} Changes apply to this group's current session only.",
+                footer='/nowplaying · /queue · /voicehealth'))
         except ValueError as error:
-            await reply(message, html.escape(str(error)))
+            await reply(message, panel('Check this action', icon=ctx.theme.emoji('info'),
+                lines=[html.escape(str(error))], footer=f'/help {name}'))
         except Exception as error:
             # No raw third-party errors or source URLs in the chat.
-            await reply(message, f'The music action was not confirmed ({type(error).__name__}).')
+            await reply(message, panel('Action not confirmed', icon=ctx.theme.emoji('warn'),
+                lines=[f'The music action was not confirmed ({type(error).__name__}).'],
+                note='Check /queue or /nowplaying before retrying; a reply failure does not prove a failed change.'))
 
     return {command: control for command in COMMANDS}
