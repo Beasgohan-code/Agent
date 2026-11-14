@@ -192,3 +192,14 @@ report slicing and escaped appeal owner notifications with explicit chat context
 Moderator command permissions do not make responses private. Background-flushed
 storage, cross-process report sequencing and report-abuse throttling remain
 unfinished; no “all bugs fixed” or reference-parity claim is justified.
+
+### Greeting correctness increment
+
+Fixed single-pass greeting substitution (names/chat titles cannot introduce
+new placeholders), true membership transitions including restricted is_member
+and departing administrators, multiline layout preservation, strict toggles and
+personal-identity checks. Overlong input is rejected before the store's silent
+1500-character truncation; oversized expanded delivery is refused, not sliced.
+Welcome studio and update panels use the current theme. Greeting storage still
+background-flushes; Telegram send failures remain isolated, not automatically
+retried. This does not complete the all-feature bug audit or reference parity.
