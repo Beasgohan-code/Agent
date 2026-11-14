@@ -11,12 +11,14 @@ import argparse
 import asyncio
 import logging
 import sys
+from dataclasses import replace
 
 from dotenv import load_dotenv
 
 from agent.bot import AgentBot
 from agent.config import ConfigError, Settings
 from agent.logging_setup import configure_logging
+from agent.platform.paths import resolve_data_dir
 
 logger = logging.getLogger("agent")
 
@@ -43,11 +45,21 @@ def main(argv: list[str] | None = None) -> int:
         logger.critical("%s", exc)
         return 2
 
-    logger.info(
-        "Configuration loaded (token=%s, api_id=%s)",
-        settings.masked_token,
-        settings.api_id,
-    )
+    # Token is masked and the api_id is not a credential — but it is also not
+    # something a public build log needs, so it is not printed at all.
+    logger.info("Configuration loaded (token=%s)", settings.masked_token)
+
+    # Resolve a writable data directory once, before anything tries to write.
+    # Settings is frozen, so the resolved path replaces it rather than mutating.
+    data_dir, preferred_ok = resolve_data_dir(settings.data_dir)
+    if not preferred_ok:
+        logger.warning(
+            "Running with %s instead of %s; stored data is ephemeral until the "
+            "volume is writable.",
+            data_dir,
+            settings.data_dir,
+        )
+    settings = replace(settings, data_dir=data_dir)
 
     bot = AgentBot(settings)
 

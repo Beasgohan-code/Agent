@@ -220,6 +220,19 @@ anti-spam rather than quietly continuing.
 Nothing in the "still missing" column is registered as a command. A command
 that cannot do its job is worse than a missing one.
 
+## Deployment notes
+
+* The image runs unprivileged (uid 10001), so `/app/data` is created and owned
+  by that user in the Dockerfile. Without it, the very first write fails.
+* If the data directory is still not writable, startup resolves a fallback
+  under the temp directory and **says so** — stored files, links and settings
+  then do not survive a restart. It does not pretend the volume is fine.
+* A lease that cannot be written degrades to running without single-instance
+  protection instead of crashing the deploy; `/watchdog` and `/health` report
+  `degraded` when that happens.
+* Logs carry the token prefix and a mask, never the secret, and never the
+  `api_id`.
+
 ## Layout
 
 ```

@@ -97,9 +97,8 @@ class AgentBot:
         self._client = client
 
         logger.info(
-            "Client initialised (token=%s, api_id=%s, handlers=%d)",
+            "Client initialised (token=%s, handlers=%d)",
             self.settings.masked_token,
-            self.settings.api_id,
             self.handler_count,
         )
         return client

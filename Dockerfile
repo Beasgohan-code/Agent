@@ -19,8 +19,11 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY start.py ./
 COPY agent ./agent
 
-# Run unprivileged.
-RUN useradd --create-home --uid 10001 agent
+# Run unprivileged — and give that user the data directory it writes to.
+# Without the chown, the lease and every store fail with PermissionError.
+RUN useradd --create-home --uid 10001 agent \
+    && mkdir -p /app/data \
+    && chown -R agent:agent /app
 USER agent
 
 # Long polling: the process must stay in the foreground and handle SIGTERM.

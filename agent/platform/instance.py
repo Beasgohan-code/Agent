@@ -55,6 +55,8 @@ class InstanceLease:
         self.beat = beat
         self.held = False
         self.other: str | None = None
+        #: Set when the lease file cannot be written; the bot runs unprotected.
+        self.degraded = False
         self._task: asyncio.Task | None = None
 
     # -- state -------------------------------------------------------------
@@ -70,6 +72,7 @@ class InstanceLease:
         return {
             "owner": current.get("owner"),
             "held_by_us": self.held,
+            "degraded": self.degraded,
             "mine": self.owner,
             "expires_in": max(0.0, round(float(current.get("until", 0)) - time.time(), 1)),
             "host": current.get("host"),
@@ -101,7 +104,22 @@ class InstanceLease:
     def try_acquire(self) -> bool:
         """Take the lease if it is free, expired, or already ours."""
         if self._is_free():
-            self._write()
+            try:
+                self._write()
+            except OSError as exc:
+                # A read-only data directory is a deployment problem, not a
+                # reason to refuse to serve. Say so once and keep going.
+                if not self.degraded:
+                    logger.warning(
+                        "Cannot write the instance lease at %s (%s). Continuing "
+                        "without single-instance protection: overlapping deploys "
+                        "could double-serve updates.",
+                        self.path,
+                        exc,
+                    )
+                self.degraded = True
+                self.held = False
+                return True
             self.held = True
             self.other = None
             try:
@@ -145,7 +163,10 @@ class InstanceLease:
             self.other = current.get("owner")
             return False
         if self.held:
-            self._write()
+            try:
+                self._write()
+            except OSError:
+                self.degraded = True
             return True
         return False
 
