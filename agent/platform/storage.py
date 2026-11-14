@@ -19,7 +19,8 @@ import asyncio
 import hashlib
 import logging
 import re
-import shutil
+import os
+import stat
 import secrets
 import time
 from dataclasses import asdict, dataclass
@@ -149,9 +150,13 @@ class Storage:
             # An archive upload finishing after deletion must not resurrect it.
             return ""
         if file_id:
+            previous = stored.telegram_file_id
             stored.telegram_file_id = str(file_id)
-            self._index[stored.id] = stored
-            self._save()
+            try:
+                self._save()
+            except Exception:
+                stored.telegram_file_id = previous
+                raise
             logger.info("archived %s to the storage channel", stored.name)
         return stored.telegram_file_id
 
@@ -212,22 +217,33 @@ class Storage:
         quota_bytes: int | None = None,
     ) -> StoredFile:
         source = Path(source)
-        size = source.stat().st_size
-        self.check_quota(owner_id, size, quota_bytes=quota_bytes)
-        digest = hashlib.sha256()
-        with source.open("rb") as fh:
-            for chunk in iter(lambda: fh.read(1024 * 256), b""):
-                digest.update(chunk)
-        sha = digest.hexdigest()
-        stored = StoredFile(
-            id=self._new_id(),
-            owner_id=int(owner_id),
-            name=safe_filename(name or source.name),
-            size=size,
-            sha256=sha,
-            created_at=time.time(),
-        )
-        return self._store(stored, lambda path: shutil.copyfile(source, path))
+        if not stat.S_ISREG(source.stat().st_mode):
+            raise ValueError("Only regular files can be saved")
+        # Open once: hash and quota-account the exact bytes being copied, not
+        # a separate pass that could observe a different version of the file.
+        with source.open("rb") as incoming:
+            info = os.fstat(incoming.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError("Only regular files can be saved")
+            self.check_quota(owner_id, info.st_size, quota_bytes=quota_bytes)
+            stored = StoredFile(
+                id=self._new_id(), owner_id=int(owner_id),
+                name=safe_filename(name or source.name), size=0, sha256="",
+                created_at=time.time(),
+            )
+            def copy(path):
+                digest, written = hashlib.sha256(), 0
+                with path.open("wb") as outgoing:
+                    while chunk := incoming.read(256 * 1024):
+                        # Check before writing so growth cannot silently bypass
+                        # the admitted quota or leave over-limit destination data.
+                        self.check_quota(owner_id, written + len(chunk), quota_bytes=quota_bytes)
+                        outgoing.write(chunk)
+                        digest.update(chunk)
+                        written += len(chunk)
+                stored.size = written
+                stored.sha256 = digest.hexdigest()
+            return self._store(stored, copy)
 
     def _new_id(self) -> str:
         # IDs are handles, not content hashes. Identical uploads must never
