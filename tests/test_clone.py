@@ -36,6 +36,7 @@ ENV = {
     "API_ID": "1234567",
     "API_HASH": "0123456789abcdef0123456789abcdef",
     "OWNER_ID": "11",
+    "TOKEN_KEY": "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
 }
 OWNER = 11
 MEMBER = 22
@@ -96,7 +97,7 @@ class FakePremium:
 class FakeMessage:
     def __init__(self, text, *, uid=MEMBER):
         self.text = text
-        self.chat = SimpleNamespace(id=7)
+        self.chat = SimpleNamespace(id=uid)
         self.from_user = SimpleNamespace(id=uid, first_name="Ada")
         self.replies = []
         self.markups = []
@@ -140,7 +141,7 @@ def make_ctx(tmp_path, *, premium=None, clone_limit=5):
         monitor=None,
     )
     ctx.actions = ActionRouter()
-    ctx.premium = premium
+    ctx.premium = premium if premium is not None else FakePremium({MEMBER})
     ctx.clone_factory = factory
     return ctx
 
@@ -196,22 +197,17 @@ def test_a_member_can_clone_once_and_the_clone_runs(tmp_path):
     assert clone_settings.session_name == "agent_clone_111111111"
 
 
-def test_the_free_allowance_is_one_and_premium_raises_it(tmp_path):
-    ctx, _manifest, handlers = build(tmp_path)
-    run(handlers["clone"], ctx, FakeMessage(f"/clone {TOKEN_A}"))
-    second = FakeMessage(f"/clone {TOKEN_B}")
-    run(handlers["clone"], ctx, second)
-
-    assert "Clone limit reached" in second.replies[0]
-    assert len(ctx.clones.current()) == 1
-
-    rich_ctx, _manifest, rich_handlers = build(
-        tmp_path / "rich", premium=FakePremium({MEMBER})
-    )
-    for index, token in enumerate((TOKEN_A, TOKEN_B, "333333333:AAHfakeTokenValueForTests_cccccccc")):
+def test_free_members_cannot_clone_and_premium_allows_three(tmp_path):
+    ctx, _, commands = build(tmp_path, premium=FakePremium())
+    denied = FakeMessage(f"/clone {TOKEN_A}")
+    run(commands["clone"], ctx, denied)
+    assert "requires bot premium" in denied.replies[0]
+    assert not ctx.clones.current()
+    rich_ctx, _, rich_commands = build(tmp_path / "rich", premium=FakePremium({MEMBER}))
+    for token in (TOKEN_A, TOKEN_B, "333333333:AAHfakeTokenValueForTests_cccccccc"):
         message = FakeMessage(f"/clone {token}")
-        run(rich_handlers["clone"], rich_ctx, message)
-        assert "Clone started" in message.replies[0], index
+        run(rich_commands["clone"], rich_ctx, message)
+        assert "Clone started" in message.replies[0]
 
 
 def test_the_deployment_ceiling_is_final(tmp_path):
@@ -334,7 +330,9 @@ def test_the_store_keeps_tokens_out_of_sight_and_off_other_accounts(tmp_path):
     path = tmp_path / "data" / "clones.json"
 
     payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload[0]["token"] == TOKEN_A  # the token has to be usable after a restart
+    from agent.platform.secrets import box_from
+    assert "token" not in payload[0]
+    assert box_from(ctx.settings).decrypt(payload[0]["token_enc"]) == TOKEN_A
     if os.name == "posix":
         assert (path.stat().st_mode & 0o777) == 0o600
 
@@ -363,7 +361,7 @@ def test_the_default_profile_runs_the_deployments_plugins(tmp_path):
     settings = Settings.from_env(ENV)
 
     assert profiles.clean(None) == profiles.STANDARD
-    assert profiles.plugins_for(profiles.STANDARD, settings) == settings.plugins
+    assert profiles.plugins_for(profiles.STANDARD, settings) == tuple(slug for slug in settings.plugins if slug != "clone")
 
 
 def test_a_restricted_profile_never_gets_ops_or_clone():

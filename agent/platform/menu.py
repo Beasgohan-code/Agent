@@ -148,6 +148,7 @@ DESCRIPTIONS: dict[str, str] = {
     "viewcaption": "Show the caption with an example",
     # ops (owner)
     "restart": "Restart the process (owner)",
+    "sudo": "Manage delegated clone access (owner)",
     "watchdog": "Health and cleanup sweeps (owner)",
     "plugins": "List plugins and their state (owner)",
     "plugin": "Enable or disable a plugin (owner)",

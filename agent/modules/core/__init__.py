@@ -146,6 +146,10 @@ def build(ctx):
         if user is None or ctx.jobs is None:
             await reply(message, "Nothing to cancel.")
             return
+        setup = getattr(ctx, "clone_setup", None)
+        if setup is not None and setup.active(user.id) is not None and message.chat.id == user.id:
+            await setup.receive(_client, message)
+            return
         stopped = 0
         for job in ctx.jobs.active():
             if job.owner_id != user.id:

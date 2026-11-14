@@ -40,6 +40,7 @@ MANIFEST = PluginManifest(
     description="Restart, watchdog sweeps, plugin on/off and the event log.",
     commands=(
         "restart",
+        "sudo",
         "watchdog",
         "plugins",
         "plugin",
@@ -126,6 +127,9 @@ def extra_handlers(ctx):
 
 
 def build(ctx):
+    from ...platform.roles import SudoStore
+    if getattr(ctx, "sudo", None) is None:
+        ctx.sudo = SudoStore(ctx.settings.data_dir, owner_id=ctx.settings.owner_id, db=getattr(ctx, "db", None))
     runtime = getattr(ctx, "runtime", None)
     events = getattr(ctx, "events", None)
     lease = getattr(ctx, "lease", None)
@@ -590,7 +594,31 @@ def build(ctx):
     if router is not None and not router.handles(f"{PLUGIN_PREFIX}:x"):
         router.register(PLUGIN_PREFIX, on_plugin_press)
 
+    async def sudo(_client, message):
+        if not await _owner_gate(message):
+            return
+        if message.chat.id != message.from_user.id:
+            await reply(message, "Manage sudo access in a private chat with this bot.")
+            return
+        args = _args(message)[1:]
+        try:
+            if not args or args == ["list"]:
+                members = ctx.sudo.members()
+                await reply(message, panel("Sudo access", icon=ctx.theme.emoji("crown"),
+                    lines=[", ".join(str(uid) for uid in members) or "No sudo users."],
+                    footer="Sudo grants clone eligibility, not Owner or group-administrator rights."))
+                return
+            if len(args) != 2 or args[0] not in ("add", "remove"):
+                raise ValueError("Use /sudo add <user id>, /sudo remove <user id>, or /sudo list.")
+            ctx.sudo.change(message.from_user.id, int(args[1]), add=args[0] == "add")
+            if events is not None:
+                events.emit("sudo", action=args[0], user_id=int(args[1]), by=message.from_user.id)
+            await reply(message, "Sudo access updated.")
+        except (ValueError, PermissionError) as exc:
+            await reply(message, html.escape(str(exc)))
+
     return MANIFEST, {
+        "sudo": sudo,
         "restart": restart,
         "watchdog": watchdog,
         "plugins": plugins,

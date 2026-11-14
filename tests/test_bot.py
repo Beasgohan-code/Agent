@@ -90,24 +90,26 @@ def test_build_creates_client_and_registers_handlers():
     # 3 built-in commands + 100 module commands (music registers nothing without
     # SESSION_STRING) + callback + error handler, plus four watchers (anti-spam,
     # filters, joins/leaves, new-group log), each in its own group.
-    assert bot.handler_count == 110
+    assert bot.handler_count == 112
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 103
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 104
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
     # Watchers must not sit in group 0, where they could shadow a command
     # handler, and each needs its own group: pyrogram runs at most one handler
     # per group per update, so sharing would let one watcher swallow another's.
-    watchers = [client.dispatcher.groups[group][0] for group in (1, 2, 3, 4)]
-    for group in (1, 2, 3, 4):
+    watchers = [handlers[0] for group, handlers in client.dispatcher.groups.items() if group > 0]
+    for group in client.dispatcher.groups:
+        if group == 0:
+            continue
         assert len(client.dispatcher.groups[group]) == 1
     # Two message watchers (anti-spam, filters) and two membership watchers
     # (greetings, new-group log). Which group number each lands in follows the
     # module order, so assert the mix rather than the position.
-    assert sum(isinstance(w, MessageHandler) for w in watchers) == 2
-    assert sum(isinstance(w, ChatMemberUpdatedHandler) for w in watchers) == 2
+    assert sum(isinstance(w, MessageHandler) for w in watchers) == 3
+    assert sum(isinstance(w, ChatMemberUpdatedHandler) for w in watchers) == 3
 
 
 def test_duplicate_initialisation_is_prevented():
@@ -123,7 +125,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 103
+    assert len(messages) == 104
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -135,6 +137,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
         "encode", "compress", "sample", "toaudio", "screens",
         "encinfo", "enccancel", "encpreset",
         "genlink", "share", "links", "revoke",
+        "clone", "mybots", "delclone", "clonestats",
     }
     assert group == {
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",

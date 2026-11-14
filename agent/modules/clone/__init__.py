@@ -1,20 +1,8 @@
-"""Clone — this bot answering on other bot tokens, managed by button.
+"""Private, premium-gated clones with guided setup and lifecycle controls.
 
-``/clone <token>`` adds a clone and starts it immediately: a second
-:class:`agent.bot.AgentBot` on its own token, session and data directory, so it
-answers exactly like this one instead of a cut-down copy. ``/mybots`` is the
-control panel — every clone with a start, stop and delete button — and
-``/delclone`` is the same thing for scripts.
-
-Three facts are stated rather than hidden:
-
-* a clone has its **own vault and its own premium ledger**, because it has its
-  own data directory; sharing one would let one bot's members read another's
-  files;
-* ``OWNER_ID`` is **not** inherited, so the person who added a clone cannot use
-  it to reach owner commands;
-* the deployment caps the total with ``CLONE_LIMIT``, and the member's own
-  allowance comes from :mod:`agent.modules.clone.limits`.
+FileStore is the first guided plugin. Bot token identity is verified; the setup
+user becomes that clone tenant's Owner. Legacy profiles remain supported. No
+clone inherits parent assistant credentials or permits recursive cloning.
 """
 
 from __future__ import annotations
@@ -46,7 +34,7 @@ MANIFEST = PluginManifest(
     description="Run this bot on other bot tokens, and control them by button.",
     commands=("clone", "mybots", "delclone", "clonestats"),
     permissions=("messages.read", "messages.send", "process.spawn"),
-    scope="all",
+    scope="private",
 )
 
 #: Callback prefix for the clone buttons.
@@ -88,6 +76,25 @@ def build(ctx):
     manager = CloneManager(ctx.settings, store, getattr(ctx, "clone_factory", None))
     events = getattr(ctx, "events", None)
     ctx.clones = manager
+    from ...platform.roles import SudoStore
+    from .setup import CloneSetup
+    if getattr(ctx, "sudo", None) is None:
+        ctx.sudo = SudoStore(ctx.settings.data_dir, owner_id=ctx.settings.owner_id, db=getattr(ctx, "db", None))
+
+    def privileged(user_id):
+        return user_id is not None and (user_id == ctx.settings.owner_id or ctx.sudo.contains(user_id))
+
+    def quota(user_id):
+        return ctx.settings.clone_limit if privileged(user_id) else allowance(ctx.premium, user_id)[0]
+
+    def entitled(user_id):
+        return quota(user_id) > 0
+
+    manager.eligible = entitled
+    setup = CloneSetup(ctx, store, manager, entitled, quota)
+    ctx.clone_setup = setup
+    if ctx.actions is not None and not ctx.actions.handles("csetup:x"):
+        ctx.actions.register("csetup", setup.press)
 
     def _when(seconds: float) -> str:
         return time.strftime("%Y-%m-%d", time.gmtime(seconds or 0))
@@ -239,34 +246,18 @@ def build(ctx):
         user = getattr(message, "from_user", None)
         if user is None:
             return
+        if getattr(getattr(message, "chat", None), "id", None) != user.id:
+            await reply(message, "Use /clone privately. Never send bot tokens or session strings in groups; revoke any token you already posted publicly.")
+            return
+        if not entitled(user.id):
+            await reply(message, "Cloning requires bot premium, sudo access or Owner access.")
+            return
         parts = (getattr(message, "text", "") or "").split()
         if len(parts) < 2:
-            await reply(
-                message,
-                panel(
-                    "Start a clone",
-                    icon=ctx.theme.emoji("bot"),
-                    subtitle=(
-                        "Send <code>/clone &lt;bot token&gt;</code> — the token from "
-                        "@BotFather; it starts as soon as Telegram accepts it."
-                    ),
-                    table=Table(
-                        headers=("Profile", "It runs"),
-                        rows=tuple(
-                            (name, profiles.describe(name)) for name in profiles.ORDER
-                        ),
-                        aligns=("left", "left"),
-                        max_column=36,
-                        total_width=56,
-                    ),
-                    note=(
-                        "Add the profile to choose: "
-                        "<code>/clone &lt;token&gt; files</code>. Without one it is "
-                        f"<b>{profiles.label(ctx.settings.plugins and profiles.STANDARD)}</b>."
-                    ),
-                    footer="<code>/mybots</code> changes the profile later, by button.",
-                ),
-            )
+            await setup.begin(message)
+            return
+        if not store.encrypted():
+            await reply(message, "Configure TOKEN_KEY before adding clone credentials.")
             return
         profile = profiles.STANDARD
         if len(parts) > 2:
@@ -279,9 +270,16 @@ def build(ctx):
                 )
                 return
             profile = profiles.clean(parts[2])
+        try:
+            await message.delete()
+        except Exception:
+            pass
         ok, reason, bot_id = parse_token(parts[1])
         if not ok:
             await reply(message, f"<b>Cannot use that token</b>\n{reason}")
+            return
+        if bot_id == ctx.settings.bot_id:
+            await reply(message, "The main bot cannot clone itself.")
             return
         existing = store.get(bot_id)
         if existing is not None:
@@ -291,7 +289,7 @@ def build(ctx):
                 "<code>/mybots</code> shows its state.",
             )
             return
-        allowed, tier = allowance(ctx.premium, user.id)
+        allowed, tier = quota(user.id), ("privileged" if privileged(user.id) else "premium")
         mine = store.by_owner(user.id)
         if len(mine) >= allowed:
             await reply(
@@ -323,9 +321,9 @@ def build(ctx):
         )
         try:
             username = await manager.start(record)
-        except CloneError as exc:
+        except CloneError:
             store.remove(bot_id)
-            await reply(message, f"<b>Could not start that clone</b>\n{exc}")
+            await reply(message, "<b>Could not start that clone</b>\nTelegram or deployment startup failed. Check bot credentials and try again.")
             return
         store.update(bot_id, username=username)
         if events is not None:
@@ -435,7 +433,7 @@ def build(ctx):
         if profiles.clean(extra) != extra or extra not in profiles.ORDER:
             await query.answer("That profile does not exist.", show_alert=True)
             return
-        store.update(target.bot_id, profile=extra)
+        store.update(target.bot_id, profile=extra, selected_plugins=())
         said = f"{target.handle} is on {extra}."
         if manager.is_running(target.bot_id):
             try:
@@ -481,6 +479,9 @@ def build(ctx):
         if not _may_manage(presser, target):
             await query.answer("Only its owner can control this clone.", show_alert=True)
             return
+        if action in ("start", "profile", "p") and not entitled(presser):
+            await query.answer("Starting or reconfiguring clones requires premium, sudo or Owner access.", show_alert=True)
+            return
         if action in ("profile", "p", "back"):
             await _profile_press(client, query, target, action, extra, presser)
             return
@@ -525,3 +526,10 @@ def build(ctx):
         "delclone": delclone,
         "clonestats": clonestats,
     }
+
+
+def extra_handlers(ctx):
+    """Only private setup messages reach the guided clone workflow."""
+    from pyrogram import filters
+    from pyrogram.handlers import MessageHandler
+    return [MessageHandler(ctx.clone_setup.receive, filters.private & filters.text)]

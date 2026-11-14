@@ -9,6 +9,9 @@ from __future__ import annotations
 import os
 
 PREMIUM: dict[str, tuple[str, str]] = {
+    "diamond": ("💎", "5427168083074628963"),
+    "mic": ("🎤", "5224736245665511429"),
+    "speaker": ("🔈", "5388632425314140043"),
     "sparkles": ("\u2728", "5325547803936572038"),      # ✨ NewsEmoji
     "bolt": ("\u26a1", "5042334757040423886"),          # ⚡ @rijif
     "check": ("\u2705", "5084979757905347540"),         # ✅ SoLo

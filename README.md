@@ -126,25 +126,39 @@ full per-group feature-data migration and external process isolation remain open
 
 ## Clones
 
-`/clone <bot token> [profile]` runs this bot on another token: its own client,
-its own session name, its own data directory (`data/clones/<bot_id>`), its own
-database rows, built from the same code — with the plugins its **profile** names.
+Send **`/clone` in private** to open Clone studio. This requires bot premium,
+sudo access or the bot Owner. `TOKEN_KEY` must be configured before credentials
+are requested. The guided flow currently supports **FileStore**, one plugin at a
+time:
 
-| Profile | What it registers |
-| --- | --- |
-| `standard` (default) | this deployment's `PLUGINS` — the clone behaves like the bot |
-| `files` | file store, leech, links, rename, post only |
-| `tiny` | `/start`, `/help`, `/menu` and nothing that touches files |
+1. Send a token from @BotFather. Agent checks `getMe` and the bot id; format alone
+   is not accepted as identity. Secret messages are deleted best-effort.
+2. Choose FileStore with a button. Mandatory group core stays available.
+3. Send a log channel id, or `skip`.
+4. Send the FileStore archive channel id. Both the operator and clone must be
+   channel administrators; the clone needs posting permission. Rights are checked
+   again before creation.
+5. Confirm creation. The signed-in setup user becomes the clone's Owner, in its
+   own bot tenant—not an Owner of this deployment. Telegram does not reveal a
+   bot's human owner from its token, so Agent does not pretend to fetch one.
 
-`ops` and `clone` are stripped from every restricted profile: a clone must not
-reach this deployment's controls, and a clone must never mint another clone.
+Drafts expire after ten minutes; `/cancel` discards one. Draft tokens are held in
+memory, not persisted. Completed tokens are encrypted. Telegram chat history is
+not a credential vault; message deletion cannot guarantee erasure from clients.
+Music assistant-session collection is intentionally not exposed yet.
 
-* `/mybots` is the control panel — every clone you own, with Start, Stop, Profile
-  and Delete buttons; a press edits the panel in place. Choosing a profile
-  restarts a running clone so it takes effect.
-* `/delclone <bot id | @username>` removes the record and stops the client.
-* `/clonestats` is the owner's view: how many clones exist, how many are running,
-  and what the deployment's ceiling is.
+The legacy `/clone <token> [standard|files|tiny]` path remains private, encrypted
+and premium/sudo/Owner-gated. Guided setup selects only FileStore; changing its
+profile later replaces that selection with the chosen legacy template. All
+profiles keep mandatory group core. No clone profile includes recursive cloning.
+
+* `/mybots` controls Start, Stop, Profile and Delete. Starting/reconfiguring
+  rechecks eligibility; users can still stop/delete existing clones after expiry.
+* `/delclone <bot id | @username>` removes a record and stops its client.
+* `/clonestats` is the deployment Owner's summary.
+* Owner-only `/sudo add <user id>`, `/sudo remove <user id>` and `/sudo list`
+  manage delegated clone eligibility in private. Sudo does **not** confer Owner
+  commands, group administrator rights or access to other users' clones.
 
 ### A clone has a state, not a boolean
 
@@ -152,22 +166,23 @@ reach this deployment's controls, and a clone must never mint another clone.
 a crash from a deliberate stop. Every worker now carries a real state —
 `queued → validating → starting → running`, with `degraded` for a client that is
 connected but cannot be named, `stopping → stopped` for an orderly shutdown, and
-`failed` with Telegram's own sentence attached. Impossible transitions raise
+`failed` with a sanitized error category attached. Impossible transitions raise
 instead of being absorbed.
 
-A supervisor task looks after the live clients for the life of the process: a
-clone that drops its connection is marked degraded, stopped, and started again
-with a capped backoff (15s doubling to 10 minutes, five attempts), so a revoked
-token stops being retried and a transient blip recovers on its own. `/mybots`
-shows the state in a column, prints the reason under the table for anything
-failed, and `/clonestats` counts them.
+A supervisor checks live clients, parks ineligible owners' clones, and attempts
+restart after a connection drop. `/mybots` shows states and sanitized failure
+reasons; `/clonestats` counts them. Lease-loss monitoring disconnects the affected
+clone rather than allowing it to continue without confirmed ownership.
 
-Limits are real: one clone on a free account, three with premium (`/premium`),
-and `CLONE_LIMIT` caps the whole deployment. A clone does **not** inherit
-`OWNER_ID`, so adding one never hands anyone owner commands, and its vault is its
-own — two clones cannot read each other's files. Clones that were running are
-started again when the process restarts; a token Telegram refuses is reported
-with Telegram's own sentence and leaves no record behind.
+Free members cannot create or restart clones. Bot premium allows three;
+Owner/sudo users remain subject to `CLONE_LIMIT`. Eligibility is rechecked on
+startup and supervisor passes; an ineligible running clone is stopped and parked.
+
+Each clone has its own bot id, link signer, session name, data directory and
+PostgreSQL scope. It does not inherit the parent assistant session, log/archive
+channels or HTTP port. Clone database loading and exclusive lease acquisition
+happen before Telegram startup; shutdown releases its lease and database.
+Clones are still clients in the parent process, not OS-process isolation.
 
 ## Vault, links, captions
 

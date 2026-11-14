@@ -1,15 +1,14 @@
 """How many clones a member may run, and why that number is not magic.
 
-A clone is a whole second bot: its own polling loop, its own session and its own
-disk. One is free because one is useful; three is what premium buys, and the
-deployment's own ceiling (``CLONE_LIMIT``) still caps the total so a busy
-server cannot be talked into running fifty pollers by fifty strangers.
+Creation requires bot premium, sudo or bot Owner access. The deployment ceiling
+still applies to all users, and existing ineligible clones can be stopped/deleted
+without granting permission to restart them.
 """
 
 from __future__ import annotations
 
-#: Clones a member may run without premium.
-FREE = 1
+#: Free members cannot create or restart clones.
+FREE = 0
 
 #: Clones a premium member may run.
 PREMIUM = 3
@@ -34,6 +33,6 @@ def allowance(premium, user_id: int | None) -> tuple[int, str]:
 def pitch() -> str:
     """The one sentence under the limit, said once."""
     return (
-        f"Free accounts run <b>{FREE}</b> clone; premium runs <b>{PREMIUM}</b>. "
+        f"Cloning requires bot premium, sudo access or bot Owner access. Premium allows <b>{PREMIUM}</b> clones. "
         "<code>/premium</code> shows your tier."
     )

@@ -51,6 +51,8 @@ class ModuleContext:
     clone_factory: object | None = None
     #: PostgreSQL, when DATABASE_URL is set; the stores prefer it over files.
     db: object | None = None
+    clone_setup: object | None = None
+    sudo: object | None = None
     plugin_access: object | None = None
     plugin_gate: object | None = None
     group_plugin_panel: object | None = None

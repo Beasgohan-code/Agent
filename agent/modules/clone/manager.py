@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import hashlib
 from dataclasses import replace
 from typing import Callable
 
@@ -49,28 +50,38 @@ class CloneManager:
         #: What each worker is doing, including the ones that are not running.
         self._states = lifecycle.Registry()
         self._lock = asyncio.Lock()
+        self.eligible = None
+        self._lease_monitors = {}
 
     # -- settings ---------------------------------------------------------
     def settings_for(self, clone: Clone):
         """The settings a clone runs with: its token, directories and profile.
 
-        The profile is what makes a clone small: ``files`` registers the file
-        machinery and nothing else, so a pasted token cannot reach moderation,
-        music or this deployment's controls.
+        Optional features come from a guided selection or legacy profile;
+        mandatory core is added by Agent's module selector. Credentials and
+        resource destinations never fall through to the parent's values.
         """
         return replace(
             self._settings,
             bot_token=clone.token,
+            bot_id=clone.bot_id,
+            link_secret=hashlib.sha256(clone.token.encode()).hexdigest(),
             session_name=f"agent_clone_{clone.bot_id}",
             data_dir=self._settings.data_dir / "clones" / str(clone.bot_id),
             # The owner id belongs to the deployment, not to the clone: a clone
             # must not hand owner commands to whoever created it.
-            owner_id=None,
+            owner_id=clone.owner_id if clone.managed_owner else None,
+            log_channel=clone.log_channel,
+            storage_channel=clone.storage_channel,
+            # Never share the deployment's user-session credential with clones.
+            session_string=None,
+            health_port=None,
             # Its own rows in PostgreSQL. Without this every clone would write
             # the same ``runtime``/``premium``/``chats`` documents as the main
             # bot and the last writer would silently win.
             db_scope=f"clone:{clone.bot_id}",
-            plugins=profiles.plugins_for(clone.profile, self._settings),
+            plugins=tuple(name for name in clone.selected_plugins if name == "filestore")
+            if clone.selected_plugins else profiles.plugins_for(clone.profile, self._settings),
         )
 
     # -- lifecycle --------------------------------------------------------
@@ -120,20 +131,51 @@ class CloneManager:
     async def start(self, clone: Clone) -> str:
         """Start one clone and return its username (``""`` when Telegram hides it)."""
         async with self._lock:
+            if self.eligible is not None and not self.eligible(clone.owner_id):
+                raise CloneError("Clone owner no longer has premium, sudo or Owner eligibility.")
             if clone.bot_id in self._running:
                 return self._running[clone.bot_id][2]
             bot = self._factory(self.settings_for(clone))
             client = None
             self._states.move(clone.bot_id, State.VALIDATING)
             try:
+                database = getattr(bot, "database", None)
+                if database is not None:
+                    if not await database.connect():
+                        raise CloneError("Clone PostgreSQL connection is unavailable.")
+                    await database.load()
+                    if getattr(database, "load_error", None):
+                        raise CloneError("Clone PostgreSQL state could not be loaded.")
+                    for service in (getattr(bot, "users", None), getattr(bot, "premium", None), getattr(bot, "runtime", None)):
+                        if getattr(service, "hydrate", None):
+                            service.hydrate()
+                lease = getattr(bot, "lease", None)
+                if lease is not None and not await lease.acquire(wait_seconds=0):
+                    raise CloneError("Another instance owns this clone's lease.")
+                if lease is not None:
+                    stop_event = asyncio.Event()
+                    lease.start_heartbeat(stop_event)
                 client = bot.build()
+                registry = getattr(bot, "registry", None)
+                if registry is not None and clone.selected_plugins:
+                    manifests = {manifest.slug: manifest for manifest in registry.manifests()}
+                    if any(slug not in manifests or not manifests[slug].commands
+                           or not registry.is_enabled(slug) for slug in clone.selected_plugins):
+                        raise CloneError("A selected clone plugin is unavailable.")
                 self._states.move(clone.bot_id, State.STARTING)
                 await client.start()
             except Exception as exc:  # noqa: BLE001 - the reason is the message
-                reason = f"Telegram refused {clone.handle}: {type(exc).__name__}: {exc}"
-                self._states.move(clone.bot_id, State.FAILED, error=str(exc))
-                logger.warning("clone %s failed to start: %s", clone.bot_id, exc)
-                raise CloneError(reason) from exc
+                category = "UNAUTHORIZED" if "UNAUTHORIZED" in str(exc).upper() else type(exc).__name__
+                reason = f"Clone {clone.bot_id} could not start ({category})."
+                self._states.move(clone.bot_id, State.FAILED, error=reason)
+                logger.warning("clone %s failed to start (%s)", clone.bot_id, type(exc).__name__)
+                if client is not None:
+                    try:
+                        await client.stop()
+                    except Exception:
+                        pass
+                await self._release_worker(bot)
+                raise CloneError(reason) from None
             username = ""
             identity = True
             try:
@@ -141,7 +183,7 @@ class CloneManager:
                 username = getattr(me, "username", "") or ""
             except Exception:  # noqa: BLE001 - a missing username is cosmetic
                 identity = False
-                logger.debug("could not read the clone's identity", exc_info=True)
+                logger.debug("could not read the clone's identity")
             state = self.state(clone.bot_id)
             state.username = username
             if identity:
@@ -155,6 +197,10 @@ class CloneManager:
                 )
             self._states.set(clone.bot_id, state)
             self._running[clone.bot_id] = (bot, client, username)
+            if lease is not None:
+                self._lease_monitors[clone.bot_id] = asyncio.create_task(
+                    self._watch_lease(clone.bot_id, stop_event), name=f"clone-lease-{clone.bot_id}"
+                )
             logger.info("clone %s is running as @%s", clone.bot_id, username or "?")
             return username
 
@@ -164,13 +210,40 @@ class CloneManager:
             if entry is None:
                 return False
             self._states.move(int(bot_id), State.STOPPING)
-            _bot, client, _username = entry
+            bot, client, _username = entry
+            monitor = self._lease_monitors.pop(int(bot_id), None)
+            if monitor is not None and monitor is not asyncio.current_task():
+                monitor.cancel()
+                await asyncio.gather(monitor, return_exceptions=True)
             try:
-                await client.stop()
+                cleanup = getattr(bot, "_cleanup_services", None)
+                if cleanup is not None:
+                    await cleanup(client)
+                else:
+                    await client.stop()
             except Exception:  # noqa: BLE001 - a dead client is still stopped
-                logger.exception("clone %s did not stop cleanly", bot_id)
+                logger.warning("clone %s did not stop cleanly", bot_id)
+            await self._release_worker(bot)
             self._states.move(int(bot_id), State.STOPPED)
             return True
+
+    async def _watch_lease(self, bot_id, stop_event):
+        await stop_event.wait()
+        await self.stop(bot_id)
+
+    @staticmethod
+    async def _release_worker(bot):
+        lease = getattr(bot, "lease", None)
+        try:
+            if lease is not None:
+                try:
+                    await lease.stop_heartbeat()
+                finally:
+                    await lease.release_async()
+        finally:
+            database = getattr(bot, "database", None)
+            if database is not None:
+                await database.close()
 
     async def restart(self, clone: Clone) -> str:
         await self.stop(clone.bot_id)
@@ -189,6 +262,11 @@ class CloneManager:
         """
         restarted: list[int] = []
         for bot_id in tuple(self._running):
+            record = self._store.get(bot_id)
+            if record is not None and self.eligible is not None and not self.eligible(record.owner_id):
+                await self.stop(bot_id)
+                self._store.update(bot_id, disabled=True)
+                continue
             client = self._running[bot_id][1]
             if getattr(client, "is_connected", True):
                 continue
@@ -226,13 +304,14 @@ class CloneManager:
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - one bad pass must not end the loop
-                logger.exception("the clone supervisor failed a pass")
+                logger.warning("the clone supervisor failed a pass")
 
     async def restore(self) -> tuple[int, ...]:
         """Start every clone that was running when the process last stopped."""
         started: list[int] = []
         for clone in self._store.all():
-            if clone.disabled or self.is_running(clone.bot_id):
+            if (clone.disabled or self.is_running(clone.bot_id)
+                    or (self.eligible is not None and not self.eligible(clone.owner_id))):
                 continue
             try:
                 await self.start(clone)

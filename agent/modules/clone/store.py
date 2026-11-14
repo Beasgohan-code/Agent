@@ -65,6 +65,10 @@ class Clone:
     #: How much of this bot the clone runs: ``standard``, ``files`` or ``tiny``
     #: (see :mod:`agent.modules.clone.profiles`). Empty means ``standard``.
     profile: str = "standard"
+    selected_plugins: tuple[str, ...] = ()
+    managed_owner: bool = False
+    log_channel: int | None = None
+    storage_channel: int | None = None
 
     @property
     def handle(self) -> str:
@@ -133,9 +137,13 @@ class CloneStore:
                     created_at=float(entry.get("created_at") or 0.0),
                     disabled=bool(entry.get("disabled")),
                     profile=str(entry.get("profile") or "standard"),
+                    selected_plugins=tuple(entry.get("selected_plugins") or ()),
+                    managed_owner=bool(entry.get("managed_owner")),
+                    log_channel=entry.get("log_channel"),
+                    storage_channel=entry.get("storage_channel"),
                 )
             except (KeyError, TypeError, ValueError):
-                logger.warning("skipping a malformed clone record: %r", entry)
+                logger.warning("skipping a malformed clone record")
                 continue
             items[clone.bot_id] = clone
         return items
@@ -176,6 +184,8 @@ class CloneStore:
 
     # -- writes -----------------------------------------------------------
     def add(self, clone: Clone) -> Clone:
+        if clone.bot_id in self._items:
+            raise ValueError("This bot is already recorded; ownership cannot be overwritten")
         self._items[clone.bot_id] = clone
         self._save()
         return clone

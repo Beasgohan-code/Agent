@@ -261,3 +261,65 @@ and whitespace checks. Added safety tests for stale/cross-group/wrong-prompt
 callbacks, membership changes, failed unrestriction, baseline restoration,
 timeout protection, malformed ids, failed prompt rollback, duplicate join events
 and lookup failure. No new migration, environment variable or dependency.
+
+## Guided clone setup: FileStore first
+
+The user-facing `/clone` flow is now private, expiring and interactive:
+verified token → FileStore selection → optional log channel → required archive
+channel → confirmation → startup. Token format is not identity: `getMe` must
+confirm a matching bot, and identity is checked again on creation. Channel
+configuration verifies both the operator and clone administrator memberships and
+the clone's posting rights; permissions are checked again at confirmation.
+The main bot cannot clone itself; duplicate records cannot overwrite ownership.
+
+New credentials require TOKEN_KEY; setup does not invite secret submission when
+encryption or capacity is unavailable. Drafts are process-local, expire after ten
+minutes and can be cancelled with `/cancel`. Secret messages are deleted best
+effort, but Telegram/client history is not guaranteed to erase them. Completed
+records encrypt the token; draft representations exclude it. Bot tokens do not
+reveal their human creator. The authenticated setup user becomes the Owner of
+that clone tenant, not the parent deployment. Legacy clones keep their previous
+Owner behavior unless created by the guided flow.
+
+Creation/restart/profile changes require bot premium, sudo or deployment Owner
+eligibility. Free allowance is now zero; bot premium allows three clones and
+Owner/sudo remain capped by CLONE_LIMIT. Stop/delete remain available to the
+record owner after premium expiry. The supervisor parks running ineligible
+clones; restore does not start them. This is bot membership, not Telegram's own
+Premium subscription. Owner-only, private `/sudo add|remove <id>` and `/sudo list`
+manage delegated clone eligibility. Sudo does not grant parent Owner operations,
+other users' clone ownership or bypass Telegram group rights.
+
+Clone settings now isolate bot id, link signer, data scope, assistant session,
+channel destinations and HTTP port. No profile includes recursive cloning.
+Worker bootstrap loads its database and acquires its own lease before Telegram
+startup; heartbeat loss stops the clone, and stop/failure releases resources.
+A required selected plugin missing from the built registry refuses startup.
+FileStore uses the supplied clone archive channel; optional group use still
+requires that clone's Owner approval and group activation.
+
+Reference review: Videl1's clone command/manager and Videl0's premium-emoji
+metadata were inspected. Videl0 is an ignored reference checkout, not a shipped
+runtime dependency. Three additional custom-emoji mappings (diamond, microphone,
+speaker) use reference metadata with Unicode fallbacks. Telegram eligibility and
+rendering are not guaranteed by knowing an emoji id.
+
+Not included: Music assistant-session collection, remaining guided templates,
+external-process clone isolation, media-plugin completeness, durable setup drafts
+or the full group-management inventory. Music credentials are deliberately not
+requested until a dedicated isolated assistant lifecycle is implemented.
+
+Deployment: configure TOKEN_KEY before accepting new clone credentials. Existing
+clone records remain readable; new channel, selected-plugin and managed-owner
+fields are additive in the existing encrypted clone store. Sudo uses a scoped
+PostgreSQL document (or standalone file), not environment-wide implicit powers.
+No new application dependency or schema migration. Existing clones no longer
+inherit the parent session or channels; supply their own configuration as needed.
+No live Telegram calls were made during validation: API identity/channel checks
+are tested with controlled responses, while PostgreSQL integration uses a real
+disposable server.
+
+Validation: full suite **681 passed**, compileall, pyflakes and whitespace checks
+clean. Added guided setup, expiry, wrong-presser, channel-rights, revoked-token,
+encryption, sudo authorization, private-only collection, credential isolation,
+duplicate ownership, premium-loss and worker database/lease lifecycle tests.

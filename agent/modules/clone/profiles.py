@@ -50,7 +50,12 @@ def plugins_for(profile: str | None, settings) -> tuple[str, ...]:
     """
     name = clean(profile)
     if name == STANDARD:
-        return tuple(getattr(settings, "plugins", ()) or ())
+        requested = tuple(getattr(settings, "plugins", ()) or ())
+        if requested == ("*",):
+            from ...modules import ORDER as modules
+            requested = modules
+        # Never allow a clone to mint more clones in the same parent process.
+        return tuple(slug for slug in requested if slug != "clone")
     if name == FILES:
         return FILE_PLUGINS
     return TINY_PLUGINS
