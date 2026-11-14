@@ -615,6 +615,12 @@ class AgentBot:
                 await jobs.shutdown()
             except Exception:
                 logger.exception("Job shutdown failed; continuing Telegram disconnect.")
+        storage = getattr(self.modules, "storage", None)
+        if storage is not None and hasattr(storage, "shutdown"):
+            try:
+                await storage.shutdown()
+            except Exception:
+                logger.exception("Archive shutdown failed; continuing Telegram disconnect.")
         # Emit while connected, then drain only this bot's delivery tasks.
         # A bounded log-channel failure must never prevent Telegram shutdown.
         try:

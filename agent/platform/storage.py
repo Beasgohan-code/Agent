@@ -25,10 +25,13 @@ import secrets
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from weakref import WeakValueDictionary
 
 from .db import load_document, save_document
 
 logger = logging.getLogger(__name__)
+
+ARCHIVE_TIMEOUT = 120.0
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -91,6 +94,10 @@ class Storage:
         self._db = db
         #: ``async (path, name) -> telegram file_id``, set once a client exists.
         self._archive = archive
+        self._archive_tasks = {}
+        self._archive_locks = WeakValueDictionary()
+        self._archive_slots = asyncio.Semaphore(2)
+        self._archive_closed = False
         self._index: dict[str, StoredFile] = self._load()
 
     # -- index -------------------------------------------------------------
@@ -135,14 +142,23 @@ class Storage:
         return self._archive is not None
 
     async def archive(self, stored: StoredFile) -> str:
-        """Send one file to the archive and remember its ``file_id``."""
+        """Coordinate all callers so one entry cannot be uploaded twice."""
+        lock = self._archive_locks.setdefault(stored.id, asyncio.Lock())
+        async with lock:
+            if self._archive_closed or self._index.get(stored.id) is not stored:
+                return ""
+            return await self._archive_one(stored)
+
+    async def _archive_one(self, stored: StoredFile) -> str:
         if self._archive is None or stored.telegram_file_id:
             return stored.telegram_file_id
         path = self.path_for(stored)
         if not path.exists():
             return ""
         try:
-            file_id = await self._archive(path, stored.name)
+            async with asyncio.timeout(ARCHIVE_TIMEOUT):
+                async with self._archive_slots:
+                    file_id = await self._archive(path, stored.name)
         except Exception:  # noqa: BLE001 - a failed archive must not lose the file
             logger.warning("could not archive %s", stored.name, exc_info=True)
             return ""
@@ -162,7 +178,8 @@ class Storage:
 
     def schedule_archive(self, stored: StoredFile) -> None:
         """Archive in the background; a store used without a loop stays quiet."""
-        if self._archive is None or stored.telegram_file_id:
+        if (self._archive_closed or self._archive is None or stored.telegram_file_id
+                or stored.id in self._archive_tasks):
             return
         try:
             loop = asyncio.get_running_loop()
@@ -171,7 +188,26 @@ class Storage:
             # the file stays on disk and the next hydrated store still lists it.
             logger.debug("no event loop; %s stays on disk", stored.name)
             return
-        loop.create_task(self.archive(stored), name=f"archive-{stored.id}")
+        task = loop.create_task(self.archive(stored), name=f"archive-{stored.id}")
+        self._archive_tasks[stored.id] = task
+        def completed(done):
+            if self._archive_tasks.get(stored.id) is done:
+                self._archive_tasks.pop(stored.id, None)
+            if not done.cancelled():
+                error = done.exception()
+                if error is not None:
+                    logger.error("Archive persistence failed (%s)", type(error).__name__)
+        task.add_done_callback(completed)
+
+    async def shutdown(self):
+        """Stop scheduled uploads before their Telegram client disconnects."""
+        self._archive_closed = True
+        tasks = list(self._archive_tasks.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._archive_tasks.clear()
 
     # -- usage -------------------------------------------------------------
 
