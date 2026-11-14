@@ -18,6 +18,7 @@ from ...platform.manifest import PluginManifest
 from ...platform.media_rules import transform
 from ...platform.attachments import attachment_kwargs
 from .rules import COMMANDS as RULE_COMMANDS, build_rules
+from ..moderation import is_moderator
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
 from ...platform.attachments import CAPTION_KEY, MAX_CAPTION, THUMB_KEY, caption_for
@@ -348,7 +349,7 @@ def build(ctx):
         try:
             await client.send_photo(message.chat.id, file_id, caption="This is the thumbnail this chat uses.")
         except Exception as exc:  # noqa: BLE001 - a stale file id is a real answer
-            await reply(message, f"Telegram would not re-send that thumbnail: {type(exc).__name__}: {exc}")
+            await reply(message, f"Telegram could not confirm that thumbnail ({type(exc).__name__}). No raw file references are displayed.")
 
     async def setcaption(_client, message):
         if chats is None:
@@ -401,7 +402,25 @@ def build(ctx):
             ),
         )
 
-    return MANIFEST, {
+    def guarded(name, handler):
+        async def wrapped(client, message):
+            user_id = getattr(getattr(message, "from_user", None), "id", None)
+            if type(user_id) is not int or user_id <= 0:
+                await reply(message, "Use your personal Telegram user identity for media commands.")
+                return
+            chat_id = message.chat.id
+            mutates = name in ("setcaption", "setthumb", "delthumb") or (
+                name == "autorename" and len((getattr(message, "text", "") or "").split(maxsplit=1)) > 1)
+            if chat_id < 0 and mutates and not await is_moderator(client, message, owner_id=ctx.settings.owner_id):
+                await reply(message, "Only group administrators can change shared media settings.")
+                return
+            if chats is None and name in ("autorename", "rename", "testrename"):
+                await reply(message, _unavailable())
+                return
+            return await handler(client, message)
+        return wrapped
+
+    handlers = {
         **build_rules(ctx),
         "setthumb": setthumb,
         "delthumb": delthumb,
@@ -414,3 +433,4 @@ def build(ctx):
         "testrename": testrename,
         "clean": clean,
     }
+    return MANIFEST, {name: guarded(name, handler) for name, handler in handlers.items()}

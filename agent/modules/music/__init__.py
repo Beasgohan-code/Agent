@@ -240,6 +240,8 @@ def build(ctx):
                         await engine.leave(chat_id)
                     except VoiceUnavailable:
                         logger.debug("leave after an empty skip failed", exc_info=True)
+                        await query.answer("Queue finished, but leaving was not confirmed. Check /voicehealth.", show_alert=True)
+                        return
                     said = "Queue finished \u2014 left the voice chat."
                 else:
                     said = f"Now playing {started}."
@@ -247,8 +249,8 @@ def build(ctx):
                 queues.for_chat(chat_id).stop()
                 await engine.leave(chat_id)
                 said = "Stopped and left the voice chat."
-        except VoiceUnavailable as exc:
-            await query.answer(str(exc), show_alert=True)
+        except VoiceUnavailable:
+            await query.answer("The voice action was not confirmed. Check /voicehealth before retrying.", show_alert=True)
             return
         logger.info(
             "transport %s chat=%s by=%s", action, chat_id, getattr(presser, "id", None)
