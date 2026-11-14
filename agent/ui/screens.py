@@ -98,8 +98,8 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
         + greeting
         + "\n"
         + rich_note(
-            f"{theme.emoji('sparkles')} One bot for files, moderation and music — "
-            "one job queue, one store, one link signer underneath."
+            f"{theme.emoji('shield')} Professional group management first — "
+            "moderation always available, optional tools under your control."
         )
         + "\n"
         + table.block()
@@ -130,6 +130,7 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
 BUILTIN = frozenset({"start", "help", "ping"})
 
 HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("sparkles", "AI Agent", ("ask",)),
     (
         "bolt",
         "Essentials",
@@ -198,7 +199,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Operations (owner)",
         (
             "restart", "watchdog", "plugins", "plugin", "events", "db",
-            "setlog", "unsetlog", "log",
+            "setlog", "unsetlog", "log", "sudo",
         ),
     ),
 )

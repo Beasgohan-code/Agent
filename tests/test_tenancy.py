@@ -244,4 +244,4 @@ def test_a_clone_runs_in_its_own_database_scope(tmp_path):
 
     assert clone_settings.db_scope == "clone:99"
     assert clone_settings.bot_token == "99:AAx"
-    assert clone_settings.owner_id is None
+    assert clone_settings.owner_id == 1

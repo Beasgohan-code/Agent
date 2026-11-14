@@ -225,3 +225,21 @@ def test_setup_secret_is_excluded_from_representation(tmp_path):
         wizard.cancel(MEMBER)
         assert not wizard.sessions
     asyncio.run(scenario())
+
+
+def test_clone_owner_always_comes_from_recorded_token_sender(tmp_path):
+    from agent.modules.clone.store import Clone
+    ctx, _, _ = build(tmp_path)
+    # Even an older record's compatibility flag must not substitute the parent.
+    record = Clone(bot_id=111111111, owner_id=33, token=TOKEN_A, managed_owner=False)
+    assert ctx.clones.settings_for(record).owner_id == 33
+
+
+def test_clone_does_not_inherit_parent_ai_credentials(tmp_path):
+    from dataclasses import replace
+    from agent.modules.clone.store import Clone
+    ctx, _, _ = build(tmp_path)
+    ctx.clones._settings = replace(ctx.settings, ai_api_key='PARENT_PRIVATE_AI_KEY', ai_model='parent-model')
+    settings = ctx.clones.settings_for(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A))
+    assert settings.ai_api_key is None
+    assert settings.ai_model is None

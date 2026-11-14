@@ -24,12 +24,8 @@ class ConfigError(RuntimeError):
     """Raised when the environment does not describe a runnable bot."""
 
 
-#: Which plugins register at startup. The default is the eight a file bot is
-#: actually used for; everything else is compiled in but silent until a
-#: deployment names it. ``PLUGINS=*`` registers every module for development.
-#: An unselected plugin registers nothing at all, it does not half-work;
-#: ``agent.modules.SHELL`` (``ops`` and ``core``) always registers, because a
-#: bot without its own controls has no way back.
+#: Primary optional features plus the platform controls. Mandatory group core
+#: is added by module selection and does not consume optional slots.
 DEFAULT_PLUGINS: tuple[str, ...] = (
     "ops",
     "core",
@@ -40,7 +36,8 @@ DEFAULT_PLUGINS: tuple[str, ...] = (
     "moderation",
     "music",
     "postmaker",
-    "renamer",
+    "encoder",
+    "ai_agent",
 )
 
 
@@ -105,6 +102,8 @@ class Settings:
     db_required: bool = False
     #: Which plugins register at startup (PLUGINS=..., or * for every module).
     plugins: tuple[str, ...] = DEFAULT_PLUGINS
+    ai_api_key: str | None = field(default=None, repr=False)
+    ai_model: str | None = None
     health_port: int | None = None
     watchdog_interval: float = 30.0
     watchdog_timeout: float = 20.0
@@ -180,6 +179,8 @@ class Settings:
             db_required=(source.get("DB_REQUIRED") or "0").strip().lower()
             in ("1", "true", "yes", "on"),
             database_url=(source.get("DATABASE_URL") or "").strip() or None,
+            ai_api_key=(source.get("AI_API_KEY") or "").strip() or None,
+            ai_model=(source.get("AI_MODEL") or "").strip() or None,
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),

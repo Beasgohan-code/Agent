@@ -190,9 +190,9 @@ def test_a_member_can_clone_once_and_the_clone_runs(tmp_path):
     record = ctx.clones.current()[0]
     assert record.bot_id == 111111111 and record.owner_id == MEMBER
     assert ctx.clones.is_running(111111111)
-    # The clone got its own directory and did not inherit the owner id.
+    # The token sender owns this clone, not the parent deployment.
     clone_settings = FakeBot.made[0].settings
-    assert clone_settings.owner_id is None
+    assert clone_settings.owner_id == MEMBER
     assert str(clone_settings.data_dir).endswith("clones/111111111")
     assert clone_settings.session_name == "agent_clone_111111111"
 

@@ -189,10 +189,10 @@ def test_the_published_names_come_from_the_registry_not_a_stale_list(tmp_path):
     registered = set(bot.registry.active_commands())
 
     # A disabled plugin disappears from the menu as well as from the dispatcher.
-    bot.runtime.disable("renamer")
+    bot.runtime.disable("encoder")
 
-    assert "rename" in registered
-    assert "rename" not in set(bot.registry.active_commands())
+    assert "encode" in registered
+    assert "encode" not in set(bot.registry.active_commands())
 
 
 def test_the_menu_scope_matches_each_module_declared_scope():

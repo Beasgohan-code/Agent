@@ -149,6 +149,7 @@ DESCRIPTIONS: dict[str, str] = {
     # ops (owner)
     "restart": "Restart the process (owner)",
     "sudo": "Manage delegated clone access (owner)",
+    "ask": "Ask AI Agent; question goes to an external provider",
     "watchdog": "Health and cleanup sweeps (owner)",
     "plugins": "List plugins and their state (owner)",
     "plugin": "Enable or disable a plugin (owner)",

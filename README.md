@@ -80,7 +80,7 @@ beside it. The mandatory modules are `ops`, `core`, `moderation`, `group`,
 `filters`, `welcome`, `reports` and `security`. They always register.
 
 Default optional modules are `filestore`, `leech`, `linkshare`, `music`,
-`postmaker`, `renamer` and `clone`. `encoder`, `premium` and `utilities` are
+`postmaker`, `encoder`, `ai_agent` and `clone`. `renamer`, `premium` and `utilities` are
 available through `PLUGINS`. An unselected optional module has no commands or
 watchers. `PLUGINS=*` includes everything compiled in.
 
@@ -354,3 +354,22 @@ python -m pyflakes agent tests # no unused names
 State is JSON on disk (`data/`), never a database: the surface is small enough
 that a schema and a migration tool would be overhead, and the files are easy to
 inspect and back up.
+
+## Primary feature catalog and AI Agent
+
+The primary catalog is Encoder, Moderation, Post maker, Music, Linkshare,
+FileStore, Leech and AI Agent. Moderation is mandatory and slot-free; optional
+features still require global Owner approval and group-admin activation, with
+at most three active per group. Dependency availability is shown honestly.
+
+AI Agent provides explicit `/ask <question>` text completions when both
+`AI_API_KEY` and `AI_MODEL` are configured. It sends that question to OpenAI,
+not group history. It has no tools, moderation authority or autonomous actions.
+Obvious token/key patterns are rejected, but this is not a comprehensive secret
+scanner: never include private information. Responses are untrusted AI output.
+Requests have bounded size, concurrency, timeout and a per-user cooldown.
+No key means no `/ask` handler. Parent AI credentials never pass into clones.
+
+Every clone uses its recorded token sender as its own tenant Owner, including
+legacy records. This does not grant ownership of the parent bot. Telegram token
+validation confirms a bot identity, not the human BotFather account owner.

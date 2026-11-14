@@ -323,3 +323,25 @@ Validation: full suite **681 passed**, compileall, pyflakes and whitespace check
 clean. Added guided setup, expiry, wrong-presser, channel-rights, revoked-token,
 encryption, sudo authorization, private-only collection, credential isolation,
 duplicate ownership, premium-loss and worker database/lease lifecycle tests.
+
+### Primary catalog and sender-owned clones
+
+Primary presentation order: Encoder, Moderation, Post maker, Music, Linkshare,
+FileStore, Leech, AI Agent. Moderation remains mandatory and slot-free. Renamer
+is still available explicitly; it is no longer in the default optional set.
+AI Agent is a credential-gated `/ask` completion adapter, not an autonomous
+operator. Parent AI keys/models are cleared in clone settings. The recorded
+token sender is now the Owner for all clone records, including legacy ones,
+scoped to the clone's database namespace.
+
+Validation for this increment: **700 tests passed with disposable PostgreSQL**
+(699 passed and one database test skipped without PostgreSQL); compileall,
+pyflakes and diff whitespace checks passed. Provider tests use mocked HTTP;
+no live Telegram or paid AI request was made.
+
+Reference-review status: clone submission and manager behavior were inspected,
+including sender ownership, token verification, duplicate handling, session
+cleanup and client ownership. The remaining reference repository has **not**
+received a complete behavioral/security audit yet. Guided clone selection is
+still FileStore-only; the eight-feature catalog must not be mistaken for eight
+finished guided clone templates. Music assistant setup remains outstanding.

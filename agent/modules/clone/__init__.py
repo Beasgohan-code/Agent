@@ -315,6 +315,7 @@ def build(ctx):
             Clone(
                 bot_id=bot_id,
                 owner_id=user.id,
+                managed_owner=True,
                 token=parts[1].strip(),
                 profile=profile,
             )

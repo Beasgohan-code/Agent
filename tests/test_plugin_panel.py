@@ -81,11 +81,12 @@ def test_the_default_build_ships_nine_plugins_plus_the_shell(tmp_path):
         "moderation",
         "music",
         "postmaker",
-        "renamer",
+        "encoder",
+        "ai_agent",
     } | set(GROUP_CORE)
     # Optional modules left out by the deployment register nothing.
-    assert {"encoder", "premium", "utilities"} <= set(not_selected(bot.settings.plugins))
-    assert "encode" not in set(bot.registry.active_commands())
+    assert {"renamer", "premium", "utilities"} <= set(not_selected(bot.settings.plugins))
+    assert "encode" in set(bot.registry.active_commands())
     assert {"fsave", "leech", "ban", "plugins"} <= set(bot.registry.active_commands())
 
 
@@ -116,7 +117,7 @@ def test_an_unknown_slug_costs_one_plugin_not_the_bot():
 
 
 def test_star_selects_everything_compiled():
-    assert len(select(("*",))) == 18
+    assert len(select(("*",))) == 19
 
 
 # --- the panel ------------------------------------------------------------

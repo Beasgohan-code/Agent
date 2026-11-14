@@ -9,11 +9,11 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 
-from .policy import PROTECTED_PLUGINS, OPTIONAL_SLOTS
+from .policy import PROTECTED_PLUGINS, OPTIONAL_SLOTS, PRIMARY_FEATURES
 
 OPTIONAL = frozenset({
     "music", "filestore", "encoder", "leech", "linkshare", "postmaker",
-    "renamer", "clone", "utilities", "premium",
+    "renamer", "clone", "utilities", "premium", "ai_agent",
 })
 
 SCHEMA = (
@@ -214,7 +214,7 @@ class PluginAccess:
             )
         state = {row["slug"]: dict(row) for row in rows}
         return [state.get(slug, {"slug": slug, "approved": False, "active": False})
-                for slug in sorted(OPTIONAL)]
+                for slug in sorted(OPTIONAL, key=lambda slug: (PRIMARY_FEATURES.index(slug) if slug in PRIMARY_FEATURES else len(PRIMARY_FEATURES), slug))]
 
     async def eligible(self, group_id, slug):
         self._group(group_id)

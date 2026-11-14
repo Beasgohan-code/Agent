@@ -12,6 +12,7 @@ twice, so adding a module can never silently shadow another.
 from ..platform.policy import GROUP_CORE
 
 from . import (
+    ai_agent,
     clone,
     core,
     encoder,
@@ -37,6 +38,7 @@ from . import (
 ORDER = (
     "ops",
     "core",
+    "ai_agent",
     "clone",
     "encoder",
     "filestore",
@@ -60,6 +62,7 @@ ORDER = (
 SHELL = ("ops", "core")
 
 ALL_MODULES = {
+    "ai_agent": ai_agent,
     "ops": ops,
     "core": core,
     "clone": clone,

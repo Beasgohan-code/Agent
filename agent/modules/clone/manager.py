@@ -68,13 +68,14 @@ class CloneManager:
             link_secret=hashlib.sha256(clone.token.encode()).hexdigest(),
             session_name=f"agent_clone_{clone.bot_id}",
             data_dir=self._settings.data_dir / "clones" / str(clone.bot_id),
-            # The owner id belongs to the deployment, not to the clone: a clone
-            # must not hand owner commands to whoever created it.
-            owner_id=clone.owner_id if clone.managed_owner else None,
+            # The recorded token sender owns this bot tenant, not the parent.
+            owner_id=clone.owner_id,
             log_channel=clone.log_channel,
             storage_channel=clone.storage_channel,
             # Never share the deployment's user-session credential with clones.
             session_string=None,
+            ai_api_key=None,
+            ai_model=None,
             health_port=None,
             # Its own rows in PostgreSQL. Without this every clone would write
             # the same ``runtime``/``premium``/``chats`` documents as the main
