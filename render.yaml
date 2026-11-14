@@ -13,6 +13,7 @@
 #    dockerfilePath: ./Dockerfile
 #    plan: starter
 #    healthCheckPath: /health/live
+#    # Use liveness here: the replacement may wait for the old token lease.
 #    envVars:
 #      - { key: BOT_TOKEN, sync: false }
 #      - { key: API_ID, sync: false }

@@ -61,3 +61,18 @@ Narrow builds and clone profiles now retain the mandatory group core. `tiny`
 means no optional tools, not no moderation. Existing optional deployment choices
 remain unchanged. Previously disabled core modules become available on startup.
 No new commands, external services or credentials are introduced.
+
+## Render rolling deployment handover
+
+For a Render **web service**, set its Health Check Path to `/health/live`.
+The HTTP server binds to `0.0.0.0:$PORT` before database and Telegram startup.
+This is process liveness, not a claim that Telegram is connected. A replacement
+may remain in standby while the previous process owns the token lease. Once
+Render retires the predecessor and it releases the lease (or its lease expires),
+the replacement connects. Never delete or steal a live lease to force a deploy:
+that risks duplicate bot sessions. A genuinely separate service using the same
+token must be stopped. Background workers retain the bounded lease wait.
+
+The shutdown wrapper closes HTTP, stops the heartbeat, releases only its own
+lease and closes PostgreSQL even after startup failure. The heartbeat starts
+immediately after acquisition, before Telegram, voice or clone initialization.

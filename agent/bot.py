@@ -314,7 +314,51 @@ class AgentBot:
         )
 
     async def run(self) -> None:
-        """Connect, poll until a stop signal arrives, then disconnect."""
+        """Expose process liveness before waiting for a rolling-deploy handover."""
+        runner = None
+        try:
+            if self.settings.health_port:
+                runner = await start_health_server(
+                    self.health, self.settings.health_port, extra=self._health_detail
+                )
+            else:
+                logger.info("No HEALTH_PORT/PORT set: running without an HTTP health endpoint.")
+            await self._run()
+        finally:
+            await stop_health_server(runner)
+            # Includes lease refusal and Telegram startup errors, not just normal
+            # shutdown. Release is owner-checked; never delete another holder.
+            await self.lease.stop_heartbeat()
+            await self.lease.release_async()
+            if self.database is not None:
+                await self.database.close()
+
+    async def _acquire_lease(self, stop_event) -> bool:
+        """A web replacement may wait while Render retires its predecessor."""
+        while not stop_event.is_set():
+            attempt = asyncio.create_task(self.lease.acquire())
+            stopped = asyncio.create_task(stop_event.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    (attempt, stopped), return_when=asyncio.FIRST_COMPLETED
+                )
+                if stopped in done:
+                    return False
+                if attempt.result():
+                    return True
+                if not self.settings.health_port:
+                    return False
+                logger.warning("Standby: waiting for the previous bot instance to release its lease.")
+            finally:
+                for task in (attempt, stopped):
+                    task.cancel()
+                for task in (attempt, stopped):
+                    with suppress(asyncio.CancelledError):
+                        await task
+        return False
+
+    async def _run(self) -> None:
+        """Connect only after obtaining exclusive ownership of this bot token."""
         if self.database is not None:
             if await self.database.connect():
                 await self.database.load()
@@ -354,13 +398,16 @@ class AgentBot:
         # Two copies of one token would answer every update twice. Take the
         # lease first; wait for a departing deploy, then give up rather than
         # double-serve.
-        if not await self.lease.acquire():
+        if not await self._acquire_lease(stop_event):
+            if stop_event.is_set():
+                return
             self.fatal_reason = "instance lease held by another process"
             logger.critical(
                 "Another instance holds the lease for this bot; not connecting."
             )
             return
 
+        heartbeat_task = self.lease.start_heartbeat(stop_event)
         logger.info("Starting Agent (token=%s)", self.settings.masked_token)
         try:
             await client.start()
@@ -424,15 +471,6 @@ class AgentBot:
             on_fatal=lambda: self._request_restart(stop_event),
         )
         watchdog_task = asyncio.create_task(watchdog.run(stop_event), name="agent-watchdog")
-        heartbeat_task = self.lease.start_heartbeat(stop_event)
-
-        health_runner = None
-        if self.settings.health_port:
-            health_runner = await start_health_server(
-                self.health, self.settings.health_port, extra=self._health_detail
-            )
-        else:
-            logger.info("No HEALTH_PORT/PORT set: running without an HTTP health endpoint.")
 
         try:
             await stop_event.wait()
@@ -443,7 +481,6 @@ class AgentBot:
                 await watchdog_task
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
-            await stop_health_server(health_runner)
             if self.voice is not None:
                 await self.voice.shutdown()
             supervisor = getattr(self, "_supervisor", None)
@@ -456,12 +493,6 @@ class AgentBot:
             if clones is not None:
                 await clones.stop_all()
             await self._shutdown(client)
-            await self.lease.stop_heartbeat()
-            # Releasing lets a replacement process start immediately (this is
-            # what makes /restart a fast handover rather than a 60s timeout).
-            await self.lease.release_async()
-            if self.database is not None:
-                await self.database.close()
             self.events.emit("stop")
 
     def _health_detail(self) -> dict:

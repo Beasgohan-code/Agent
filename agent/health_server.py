@@ -87,7 +87,7 @@ async def start_health_server(
         logger.warning("HEALTH_PORT is set but aiohttp is not installed; skipping health server.")
         return None
 
-    runner = web.AppRunner(build_app(monitor), access_log=None)
+    runner = web.AppRunner(build_app(monitor, extra=extra), access_log=None)
     await runner.setup()
     await web.TCPSite(runner, host, port).start()
     logger.info("Health endpoint listening on http://%s:%d/health", host, port)
