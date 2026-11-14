@@ -43,6 +43,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .sudo_access import SCHEMA as SUDO_SCHEMA
 from .entitlements import SCHEMA as ENTITLEMENT_SCHEMA
 from .plugin_access import SCHEMA as PLUGIN_SCHEMA
 from .music_lists import SCHEMA as MUSIC_SCHEMA
@@ -71,7 +72,7 @@ SCHEMA: tuple[str, ...] = (
     """,
 )
 
-SCHEMA += ENTITLEMENT_SCHEMA + PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + POST_TEMPLATE_SCHEMA + GREETING_SCHEMA + (
+SCHEMA += SUDO_SCHEMA + ENTITLEMENT_SCHEMA + PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + POST_TEMPLATE_SCHEMA + GREETING_SCHEMA + (
     """CREATE TABLE IF NOT EXISTS agent_log_settings (
         tenant TEXT PRIMARY KEY,
         channel_id BIGINT CHECK (channel_id IS NULL OR channel_id < 0),

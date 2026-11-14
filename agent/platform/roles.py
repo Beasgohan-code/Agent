@@ -1,4 +1,8 @@
-"""Owner-managed sudo privileges; never a bypass for Telegram group rights."""
+"""Legacy sudo ID storage retained for compatibility, not authorization.
+
+Runtime delegation uses PostgreSQL SudoAccess capabilities. These IDs grant
+neither Premium clone eligibility nor Owner/Telegram administrator rights.
+"""
 from .db import load_document, save_document
 
 

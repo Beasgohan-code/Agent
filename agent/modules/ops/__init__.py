@@ -42,6 +42,7 @@ MANIFEST = PluginManifest(
     commands=(
         "restart",
         "sudo",
+        "addsudo", "delsudo", "sudolist", "sudoperms",
         "watchdog",
         "plugins",
         "plugin",
@@ -131,6 +132,9 @@ def build(ctx):
     from ...platform.roles import SudoStore
     if getattr(ctx, "sudo", None) is None:
         ctx.sudo = SudoStore(ctx.settings.data_dir, owner_id=ctx.settings.owner_id, db=getattr(ctx, "db", None))
+    from ...platform.sudo_access import SudoAccess
+    from .sudo_commands import build as sudo_commands
+    capabilities = SudoAccess(getattr(ctx, "db", None), owner_id=ctx.settings.owner_id)
     runtime = getattr(ctx, "runtime", None)
     events = getattr(ctx, "events", None)
     lease = getattr(ctx, "lease", None)
@@ -377,8 +381,15 @@ def build(ctx):
         return rows
 
     async def db(_client, message):
-        """The store, stated plainly: which one, where, and is it answering."""
-        if not await _owner_gate(message):
+        """Owner diagnostics; delegates see only a bounded, sanitized status."""
+        if not _is_owner(message):
+            user_id = getattr(getattr(message, "from_user", None), "id", None)
+            chat_id = getattr(getattr(message, "chat", None), "id", 0)
+            if not await capabilities.allowed(user_id, "diagnostics.read", chat_id if chat_id < 0 else 0):
+                await reply(message, OWNER_ONLY)
+                return
+            database = getattr(ctx, "db", None)
+            await reply(message, "Database connection: " + ("available" if database is not None and database.connected else "unavailable") + ". No credentials or private metadata are included.")
             return
         await reply(
             message,
@@ -386,15 +397,15 @@ def build(ctx):
                 "Database",
                 icon=ctx.theme.emoji("stats"),
                 subtitle=(
-                    "Every store (chats, premium, links, clones, plugins) is one "
-                    "document; the vault's files stay on this host's disk."
+                    "PostgreSQL stores relational records and scoped "
+                    "documents; durable media requires configured remote archives."
                 ),
                 table=kv_table(_database_rows()),
                 note=(
                     "Set <code>DATABASE_URL</code> to a PostgreSQL URL to share state "
                     "between instances and survive a redeploy."
                 ),
-                footer="Writes are queued and flushed in the background; a handler never waits.",
+                footer="Critical transactional writes are awaited; legacy settings still use queued writes.",
             ),
             reply_markup=nav_keyboard(),
         )
@@ -627,31 +638,8 @@ def build(ctx):
     if router is not None and not router.handles(f"{PLUGIN_PREFIX}:x"):
         router.register(PLUGIN_PREFIX, on_plugin_press)
 
-    async def sudo(_client, message):
-        if not await _owner_gate(message):
-            return
-        if message.chat.id != message.from_user.id:
-            await reply(message, "Manage sudo access in a private chat with this bot.")
-            return
-        args = _args(message)[1:]
-        try:
-            if not args or args == ["list"]:
-                members = ctx.sudo.members()
-                await reply(message, panel("Sudo access", icon=ctx.theme.emoji("crown"),
-                    lines=[", ".join(str(uid) for uid in members) or "No sudo users."],
-                    footer="Sudo grants clone eligibility, not Owner or group-administrator rights."))
-                return
-            if len(args) != 2 or args[0] not in ("add", "remove"):
-                raise ValueError("Use /sudo add <user id>, /sudo remove <user id>, or /sudo list.")
-            ctx.sudo.change(message.from_user.id, int(args[1]), add=args[0] == "add")
-            if events is not None:
-                events.emit("sudo", action=args[0], user_id=int(args[1]), by=message.from_user.id)
-            await reply(message, "Sudo access updated.")
-        except (ValueError, PermissionError) as exc:
-            await reply(message, html.escape(str(exc)))
-
     return MANIFEST, {
-        "sudo": sudo,
+        **sudo_commands(capabilities, _owner_gate),
         "restart": restart,
         "watchdog": watchdog,
         "plugins": plugins,

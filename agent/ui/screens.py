@@ -199,7 +199,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Operations (owner)",
         (
             "restart", "watchdog", "plugins", "plugin", "events", "errors", "db",
-            "setlog", "log", "sudo",
+            "setlog", "log", "sudo", "addsudo", "delsudo", "sudolist", "sudoperms",
         ),
     ),
 )

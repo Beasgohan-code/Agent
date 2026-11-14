@@ -177,7 +177,11 @@ DESCRIPTIONS: dict[str, str] = {
     "viewcaption": "Show the caption with an example",
     # ops (owner)
     "restart": "Restart the process (owner)",
-    "sudo": "Manage delegated clone access (owner)",
+    "sudo": "Manage scoped diagnostic access (owner)",
+    "addsudo": "Grant an expiring capability (owner)",
+    "delsudo": "Revoke a scoped capability (owner)",
+    "sudolist": "List capability grants or history (owner)",
+    "sudoperms": "Inspect user capability grants (owner)",
     "ask": "Ask AI Agent; question goes to an external provider",
     "watchdog": "Health and cleanup sweeps (owner)",
     "plugins": "List plugins and their state (owner)",
