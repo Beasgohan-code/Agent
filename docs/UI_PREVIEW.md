@@ -22,7 +22,7 @@ Agent
 
 ┌──────────┬────────────────────────┐
 │ Version  │ 0.1.0                  │
-│ Commands │ 62                     │
+│ Commands │ 63                     │
 │ Status   │ online                 │
 │ Privacy  │ no message text stored │
 └──────────┴────────────────────────┘
@@ -41,13 +41,13 @@ Agent
 ```
 Help
 
-ℹ️ 65 commands in 7 sections. Owner-only commands need OWNER_ID; group commands need moderator rights.
+ℹ️ 66 commands in 7 sections. Owner-only commands need OWNER_ID; group commands need moderator rights.
 
 ┌────────────────────────┬──────────┐
 │ Section                │ Commands │
 ├────────────────────────┼──────────┤
 │ ⚡ Essentials          │ 8        │
-│ ⚙️ Encoding & files    │ 13       │
+│ ⚙️ Encoding & files    │ 14       │
 │ 📦 Vault & downloads   │ 14       │
 │ 🔒 Moderation          │ 14       │
 │ 🔥 Community & premium │ 3        │
@@ -138,12 +138,52 @@ The watchdog probes Telegram on a timer.
 💡 /help lists every section.
 ```
 
+## /share
+
+```
+🔗 Share link
+
+Anyone with this link can fetch the file until it expires or runs out of uses.
+┌─────────┬────────────────┐
+│ File    │ lecture-03.mp4 │
+│ Size    │ 5,120 bytes    │
+│ Expires │ in 24h         │
+│ Uses    │ 5 of 5 left    │
+└─────────┴────────────────┘
+
+https://t.me/agent_bot?start=link_f658345a2856005d.11.1794739847.XrE5JRbz_wYJkcXdJwRUdw
+Opening the link sends the file straight to that chat — no command to type.
+
+─────
+
+/links lists every live link; the button above kills this one.
+```
+
+## /links
+
+```
+🔗 Your links
+
+1 link(s), 1 still live, newest first.
+┌───────┬────────────────┬─────────────┬─────────┐
+│ State │ File           │ Uses        │ Expires │
+├───────┼────────────────┼─────────────┼─────────┤
+│ live  │ lecture-03.mp4 │ 5 of 5 left │  in 24h │
+└───────┴────────────────┴─────────────┴─────────┘
+
+Revoke one with /revoke <token> or its own button.
+
+─────
+
+Tokens are signed; anyone holding one can download the file.
+```
+
 ## /about
 
 ```
 ✨ About Agent
 
-Version 0.1.0 · 62 commands
+Version 0.1.0 · 63 commands
 ┌─────────────┬──────────┐
 │ Module      │ Commands │
 ├─────────────┼──────────┤
@@ -152,7 +192,7 @@ Version 0.1.0 · 62 commands
 │ Clone       │ 4        │
 │ Filestore   │ 8        │
 │ Leech       │ 6        │
-│ Linkshare   │ 3        │
+│ Linkshare   │ 4        │
 │ Moderation  │ 14       │
 │ Post maker  │ 3        │
 │ Renamer     │ 10       │
@@ -178,8 +218,8 @@ Read from this process, not from a cache.
 │ Jobs running │ 0                         │
 │ State store  │ json files                │
 │ Modules      │ Operations, Core extras,… │
-│ Commands     │ 62                        │
-│ Your storage │ 0 B                       │
+│ Commands     │ 63                        │
+│ Your storage │ 5.0 KB                    │
 └──────────────┴───────────────────────────┘
 
 ─────
@@ -201,7 +241,7 @@ Read from this process, not from a cache.
 │ clone      │ on          │    4 │
 │ filestore  │ on          │    8 │
 │ leech      │ on          │    6 │
-│ linkshare  │ on          │    3 │
+│ linkshare  │ on          │    4 │
 │ moderation │ on          │   14 │
 │ music      │ idle        │    0 │
 │ postmaker  │ on          │    3 │
@@ -241,12 +281,13 @@ Owner only.
 ```
 📊 Events
 
-2 recorded, newest last.
+3 recorded, newest last.
 ┌──────────┬────────┬────────────────────────────┐
 │ Time     │ Kind   │ Detail                     │
 ├──────────┼────────┼────────────────────────────┤
-│ 10:43:33 │ plugin │ slug=group action=on by=11 │
-│ 10:43:33 │ start  │ version=0.1.0              │
+│ 10:50:47 │ link   │ owner=11 uses=5            │
+│ 10:50:47 │ plugin │ slug=group action=on by=11 │
+│ 10:50:47 │ start  │ version=0.1.0              │
 └──────────┴────────┴────────────────────────────┘
 
 Every entry is written when the action happened — none are simulated.
@@ -263,8 +304,8 @@ Owner only. Times are UTC.
 ┌─────┬──────────────────────┬─────┬──────────────┐
 │   # │ Reason               │  By │ When         │
 ├─────┼──────────────────────┼─────┼──────────────┤
-│   1 │ ignoring staff       │  11 │ 14 Nov 10:43 │
-│   2 │ posting invite links │  11 │ 14 Nov 10:43 │
+│   1 │ ignoring staff       │  11 │ 14 Nov 10:50 │
+│   2 │ posting invite links │  11 │ 14 Nov 10:50 │
 └─────┴──────────────────────┴─────┴──────────────┘
 
 Member: Meiko — 2 active warning(s).
@@ -284,8 +325,8 @@ Newest first.
 ┌────────┬────────┬─────────────────────┬──────────────┐
 │ Action │ Target │ Reason              │ When         │
 ├────────┼────────┼─────────────────────┼──────────────┤
-│ MUTE   │     22 │ flood               │ 14 Nov 10:43 │
-│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:43 │
+│ MUTE   │     22 │ flood               │ 14 Nov 10:50 │
+│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:50 │
 └────────┴────────┴─────────────────────┴──────────────┘
 
 ─────

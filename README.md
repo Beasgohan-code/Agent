@@ -115,12 +115,28 @@ with Telegram's own sentence and leaves no record behind.
 | `/fsave` | Keep a replied file in your vault (20 MB cap — the Bot API's, not ours). |
 | `/batch [n]` | Save a run of consecutive files, starting at the replied one. |
 | `/files`, `/check <id>`, `/get <id>`, `/del <id>` | List, inspect, re-send and delete vault entries. |
-| `/genlink`, `/links`, `/revoke` | Signed, expiring, revocable links to a file you own. |
+| `/genlink [hours] [uses]` | Store the replied file and answer with a share link (deep link + copy button). |
+| `/share <id> [hours] [uses]` | The same, for a file already in your vault — no second copy. |
+| `/links`, `/revoke` | Every live link with the uses and hours it has left; revoke by token or button. |
 | `/setcaption`, `/viewcaption`, `/delcaption` | The caption attached to files this chat receives; `{name}`, `{stem}`, `{size}`. |
 | `/setthumb`, `/viewthumb`, `/delthumb` | The thumbnail attached to those files. |
 
 A saved caption or thumbnail is applied by the sender (`/get`, `/leech`,
 `/rename`), so it is a setting with an effect rather than a stored string.
+
+### A share link is a workflow, not a string
+
+`t.me/<bot>?start=link_<token>` is a real deep link: whoever opens it lands on
+`/start` with a payload, `agent.platform.deeplinks` hands that payload to the
+module that owns the `link` prefix, and the file arrives in the chat — no command
+to type. The order of checks is fixed and each outcome has its own sentence:
+signature, revocation, expiry, then the use cap. A link with `uses` set is
+`consume`d *before* delivery, so a link that allows five downloads delivers five
+and then says it is used up.
+
+The router is the part worth copying: a payload prefix belongs to one module
+(`link`, and later `verify`, `gift`, `ref`), registering it twice raises, and a
+handler that throws is logged without taking `/start` down.
 
 ## Downloads, encoding, music
 
@@ -219,7 +235,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 442 tests
+pytest -q                      # 465 tests
 python -m pyflakes agent tests # no unused names
 ```
 

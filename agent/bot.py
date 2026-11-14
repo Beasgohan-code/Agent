@@ -21,6 +21,7 @@ from .platform.context import ModuleContext
 from .platform.manifest import PluginRegistry
 from .health_server import start_health_server, stop_health_server
 from .platform.actions import ActionRouter
+from .platform.deeplinks import DeepLinkRouter
 from .platform.audience import UserIndex
 from .platform.db import Database
 from .platform.events import EventLog
@@ -83,6 +84,8 @@ class AgentBot:
         )
         #: Module-owned callback prefixes (member verification today).
         self.actions = ActionRouter()
+        #: Module-owned ``/start <payload>`` prefixes (share links today).
+        self.deeplinks = DeepLinkRouter()
         #: Premium membership and the tier allowances the modules enforce.
         self.premium = PremiumBook(settings.data_dir, db=db)
         #: Voice-chat streaming is optional: without a session string there is no
@@ -150,6 +153,7 @@ class AgentBot:
             users=self.users,
             start_image=self.settings.start_image,
             active_commands=self.registry.active_commands,
+            deeplinks=self.deeplinks,
         )
         callbacks = CallbackHandlers(
             sender,
@@ -181,6 +185,7 @@ class AgentBot:
         )
         self.modules.registry = self.registry
         self.modules.actions = self.actions
+        self.modules.deeplinks = self.deeplinks
         self.modules.voice = self.voice
         self.modules.premium = self.premium
         self.modules.events = self.events

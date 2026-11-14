@@ -145,7 +145,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
             "autorename", "rename", "testrename", "clean",
             "setthumb", "delthumb", "viewthumb",
             "setcaption", "delcaption", "viewcaption",
-            "genlink", "links", "revoke",
+            "genlink", "share", "links", "revoke",
         ),
     ),
     (

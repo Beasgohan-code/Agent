@@ -1,6 +1,7 @@
 """Module handlers driven by fake Telegram messages."""
 
 import asyncio
+import re
 import subprocess
 from types import SimpleNamespace
 
@@ -9,7 +10,7 @@ import pytest
 from agent.modules import encoder, linkshare
 from agent.platform.context import ModuleContext
 from agent.platform.jobs import JobQueue
-from agent.platform.links import LinkStore
+from agent.platform.links import LinkError, LinkStore
 from agent.platform.storage import Storage
 from agent.config import Settings
 from agent.ui.theme import Theme
@@ -27,9 +28,19 @@ class FakeMessage:
         self.reply_to_message = reply_to
         self.from_user = SimpleNamespace(id=uid)
         self.replies: list[str] = []
+        #: (kind, path, caption) for every file this fake delivered.
+        self.sent_files: list[tuple[str, str, str]] = []
 
     async def reply(self, text, **_kwargs):
         self.replies.append(text)
+
+    async def reply_document(self, document=None, caption=None, **_kwargs):
+        self.sent_files.append(("document", str(document), caption or ""))
+        return SimpleNamespace(id=1)
+
+    async def reply_video(self, video=None, caption=None, **_kwargs):
+        self.sent_files.append(("video", str(video), caption or ""))
+        return SimpleNamespace(id=1)
 
 
 class FakeMedia:
@@ -79,8 +90,9 @@ def run(handler, ctx, message):
 
 
 def token_from(reply: str) -> str:
-    """The token is the last line, wrapped in <code> for copyability."""
-    return reply.splitlines()[-1].replace("<code>", "").replace("</code>", "").strip()
+    """The token inside the share card's deep link (``?start=link_<token>``)."""
+    match = re.search(r"(?:start=link_|link_)([^\s<&]+)", reply)
+    return match.group(1) if match else ""
 
 
 # --- encoder ---------------------------------------------------------------
@@ -177,9 +189,31 @@ def test_genlink_creates_a_resolvable_link(ctx, media_file):
 
     run(handlers["genlink"], ctx, message)
 
-    assert "Link created" in message.replies[0]
+    assert "Share link" in message.replies[0]
+    assert "t.me/" in message.replies[0] or "link_" in message.replies[0]
     token = token_from(message.replies[0])
-    assert ctx.links.resolve(token).file_id
+    record = ctx.links.resolve(token)
+    assert record.file_id
+    assert record.max_uses == 0          # no cap unless one is asked for
+
+
+def test_genlink_takes_a_use_cap_and_the_cap_is_real(ctx, media_file):
+    _, handlers = linkshare.build(ctx)
+    message = FakeMessage("/genlink 6 2", reply_to=FakeReply(FakeMedia(media_file)))
+
+    run(handlers["genlink"], ctx, message)
+
+    token = token_from(message.replies[0])
+    record = ctx.links.resolve(token)
+    assert record.max_uses == 2
+    assert record.remaining == 2
+    assert "2 of 2 left" in message.replies[0]
+
+    ctx.links.consume(token)
+    ctx.links.consume(token)
+    assert ctx.links.get(token).remaining == 0
+    with pytest.raises(LinkError):
+        ctx.links.resolve(token)
 
 
 def test_genlink_rejects_a_bad_ttl(ctx, media_file):
@@ -209,7 +243,8 @@ def test_links_lists_a_created_link(ctx, media_file):
     listing = FakeMessage("/links")
     run(handlers["links"], ctx, listing)
 
-    assert "active" in listing.replies[0]
+    assert "live" in listing.replies[0]
+    assert "clip.mp4" in listing.replies[0]
 
 
 def test_revoke_requires_a_token(ctx):

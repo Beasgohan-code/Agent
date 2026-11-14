@@ -51,6 +51,8 @@ class ModuleContext:
     clone_factory: object | None = None
     #: PostgreSQL, when DATABASE_URL is set; the stores prefer it over files.
     db: object | None = None
+    #: ``/start <payload>`` router: a module owns a prefix, not the UI layer.
+    deeplinks: object | None = None
 
     @classmethod
     def build(

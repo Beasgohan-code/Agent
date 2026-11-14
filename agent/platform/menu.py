@@ -132,6 +132,7 @@ DESCRIPTIONS: dict[str, str] = {
     "enccancel": "Cancel your encoding jobs",
     # linkshare
     "genlink": "Create a signed link for a file",
+    "share": "Link a file already in your vault",
     "links": "List your links",
     "revoke": "Revoke one of your links",
     # renamer

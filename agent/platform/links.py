@@ -6,6 +6,11 @@ small JSON file.
 
 Nothing here exposes storage identifiers to the user: the token *is* the
 handle, and it is opaque.
+
+A token is also the thing a link button carries: ``t.me/<bot>?start=link_<token>``
+hands it back to :func:`agent.handlers.commands.CommandHandlers.start`, which
+routes it to the module that owns the ``link`` prefix. Expiry, revocation and
+the use cap are all checked there, in that order, before a file is sent.
 """
 
 from __future__ import annotations
@@ -38,10 +43,21 @@ class LinkRecord:
     expires_at: float
     revoked: bool = False
     uses: int = 0
+    #: How many times the link may be redeemed; ``0`` means unlimited.
+    max_uses: int = 0
 
     @property
     def expired(self) -> bool:
         return time.time() >= self.expires_at
+
+    @property
+    def exhausted(self) -> bool:
+        return bool(self.max_uses) and self.uses >= self.max_uses
+
+    @property
+    def remaining(self) -> int | None:
+        """Uses left, or ``None`` for a link with no cap."""
+        return None if not self.max_uses else max(0, self.max_uses - self.uses)
 
 
 def _b64(raw: bytes) -> str:
@@ -88,7 +104,14 @@ class LinkStore:
     def _sign(self, payload: str) -> str:
         return _b64(hmac.new(self._secret, payload.encode(), hashlib.sha256).digest()[:16])
 
-    def create(self, file_id: str, owner_id: int, *, ttl_hours: int | None = None) -> LinkRecord:
+    def create(
+        self,
+        file_id: str,
+        owner_id: int,
+        *,
+        ttl_hours: int | None = None,
+        max_uses: int = 0,
+    ) -> LinkRecord:
         # ``ttl_hours=0`` means "expires now"; only None falls back to the default.
         hours = self.default_ttl // 3600 if ttl_hours is None else ttl_hours
         ttl = hours * 3600
@@ -100,6 +123,7 @@ class LinkStore:
             owner_id=int(owner_id),
             created_at=time.time(),
             expires_at=time.time() + ttl,
+            max_uses=max(0, int(max_uses or 0)),
         )
         self._links[token] = record
         self._save()
@@ -113,6 +137,8 @@ class LinkStore:
                 raise LinkError("link revoked")
             if record.expired:
                 raise LinkError("link expired")
+            if record.exhausted:
+                raise LinkError("link used up")
             return record
 
         # Not in the index: still verify the signature so a forged token of the
@@ -135,13 +161,21 @@ class LinkStore:
         )
 
     def consume(self, token: str) -> LinkRecord:
-        """Like :meth:`resolve`, incrementing the use counter."""
+        """Like :meth:`resolve`, incrementing the use counter.
+
+        ``resolve`` has already refused a revoked, expired or exhausted link, so
+        the increment below can only happen on a link that may still be used.
+        """
         record = self.resolve(token)
         stored = self._links.get(token)
         if stored is not None:
             stored.uses += 1
             self._save()
         return record
+
+    def get(self, token: str) -> LinkRecord | None:
+        """The stored record for *token*, without validating it."""
+        return self._links.get(token)
 
     def revoke(self, token: str, *, owner_id: int | None = None) -> bool:
         record = self._links.get(token)
