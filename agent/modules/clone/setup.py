@@ -140,7 +140,7 @@ class CloneSetup:
             await reply(message, 'Open this bot privately and send /clone. Never send tokens in groups.')
             return
         if not self.entitled(user_id):
-            await reply(message, 'Clone setup requires bot premium, sudo access or Owner access.')
+            await reply(message, 'Clone setup requires bot premium, including for sudo and Owner users.')
             return
         existing = self.active(user_id)
         if existing is not None:

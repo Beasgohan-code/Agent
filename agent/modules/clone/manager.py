@@ -149,7 +149,7 @@ class CloneManager:
         """Start one clone and return its username (``""`` when Telegram hides it)."""
         async with self._lock:
             if self.eligible is not None and not self.eligible(clone.owner_id):
-                raise CloneError("Clone owner no longer has premium, sudo or Owner eligibility.")
+                raise CloneError("Clone owner no longer has bot premium eligibility.")
             if clone.bot_id in self._running:
                 return self._running[clone.bot_id][2]
             bot = self._factory(self.settings_for(clone))

@@ -82,11 +82,8 @@ def build(ctx):
     if getattr(ctx, "sudo", None) is None:
         ctx.sudo = SudoStore(ctx.settings.data_dir, owner_id=ctx.settings.owner_id, db=getattr(ctx, "db", None))
 
-    def privileged(user_id):
-        return user_id is not None and (user_id == ctx.settings.owner_id or ctx.sudo.contains(user_id))
-
     def quota(user_id):
-        return ctx.settings.clone_limit if privileged(user_id) else allowance(ctx.premium, user_id)[0]
+        return allowance(ctx.premium, user_id)[0]
 
     def entitled(user_id):
         return quota(user_id) > 0
@@ -254,7 +251,7 @@ def build(ctx):
             await reply(message, "Use /clone privately. Never send bot tokens or session strings in groups; revoke any token you already posted publicly.")
             return
         if not entitled(user.id):
-            await reply(message, "Cloning requires bot premium, sudo access or Owner access.")
+            await reply(message, "Cloning requires bot premium, including for Owner and sudo users.")
             return
         parts = (getattr(message, "text", "") or "").split()
         if len(parts) < 2:
@@ -293,7 +290,7 @@ def build(ctx):
                 "<code>/mybots</code> shows its state.",
             )
             return
-        allowed, tier = quota(user.id), ("privileged" if privileged(user.id) else "premium")
+        allowed, tier = quota(user.id), "premium"
         mine = store.by_owner(user.id)
         if len(mine) >= allowed:
             await reply(
@@ -485,7 +482,7 @@ def build(ctx):
             await query.answer("Only its owner can control this clone.", show_alert=True)
             return
         if action in ("start", "profile", "p") and not entitled(presser):
-            await query.answer("Starting or reconfiguring clones requires premium, sudo or Owner access.", show_alert=True)
+            await query.answer("Starting or reconfiguring clones requires bot premium, including for Owner and sudo users.", show_alert=True)
             return
         if action in ("profile", "p", "back"):
             await _profile_press(client, query, target, action, extra, presser)

@@ -130,7 +130,7 @@ def test_no_secrets_requested_without_encryption(tmp_path):
     asyncio.run(scenario())
 
 
-def test_free_member_denied_sudo_grant_enables_setup(tmp_path):
+def test_free_member_denied_sudo_grant_does_not_enable_setup(tmp_path):
     async def scenario():
         ctx, _, commands = build(tmp_path, premium=FakePremium())
         denied = FakeMessage('/clone')
@@ -138,7 +138,7 @@ def test_free_member_denied_sudo_grant_enables_setup(tmp_path):
         assert ctx.clone_setup.active(MEMBER) is None
         ctx.sudo.change(11, MEMBER, add=True)
         await commands['clone'](None, FakeMessage('/clone'))
-        assert ctx.clone_setup.active(MEMBER).step == 'token'
+        assert ctx.clone_setup.active(MEMBER) is None
     asyncio.run(scenario())
 
 
