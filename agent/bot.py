@@ -10,6 +10,7 @@ from contextlib import suppress
 from pyrogram import Client, filters
 from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
 
+from . import __version__
 from .config import Settings
 from .handlers import CallbackHandlers, CommandHandlers
 from .health import HealthMonitor
@@ -17,8 +18,10 @@ from .modules import MODULES
 from .platform.context import ModuleContext
 from .platform.manifest import PluginRegistry
 from .health_server import start_health_server, stop_health_server
+from .platform.audience import UserIndex
 from .platform.events import EventLog
 from .platform.instance import InstanceLease
+from .platform.logbook import LogBook, subscribe
 from .platform.runtime import PluginRuntime
 from .ui.theme import Theme
 from .utils.sender import ScreenSender
@@ -54,6 +57,14 @@ class AgentBot:
         self.modules: ModuleContext | None = None
         self.registry = PluginRegistry()
         self.events = EventLog()
+        self.users = UserIndex(settings.data_dir)
+        #: Videl1-style log channel: every event, hashtag-tagged, or owner DMs.
+        self.logbook = LogBook(
+            settings.data_dir,
+            channel_id=settings.log_channel,
+            owner_id=settings.owner_id,
+        )
+        subscribe(self.events, self.logbook)
         #: One lease per bot token: two live copies would answer every update twice.
         self.lease = InstanceLease(settings.data_dir / "instance.lock")
         self.runtime = PluginRuntime(
@@ -98,7 +109,9 @@ class AgentBot:
         #: Plain-message watchers (anti-spam) run in their own handler group so
         #: they can never shadow a command handler.
         self._watchers = []
-        commands = CommandHandlers(sender, self.theme, monitor=self.health)
+        commands = CommandHandlers(
+            sender, self.theme, monitor=self.health, events=self.events, users=self.users
+        )
         callbacks = CallbackHandlers(sender, self.theme, monitor=self.health)
 
         self._handlers = [
@@ -123,6 +136,7 @@ class AgentBot:
         self.modules.events = self.events
         self.modules.runtime = self.runtime
         self.modules.lease = self.lease
+        self.modules.logbook = self.logbook
 
         # A plugin disabled in a previous run stays off, and registers nothing.
         for manifest in self.registry.manifests():
@@ -160,6 +174,7 @@ class AgentBot:
         for index, watcher in enumerate(self._watchers, start=1):
             client.add_handler(watcher, group=index)
         self.runtime.attach(client)
+        self.logbook.client = client
 
         enabled = [m.slug for m in self.registry.manifests() if self.registry.is_enabled(m.slug)]
         logger.info(
@@ -170,6 +185,10 @@ class AgentBot:
 
     async def _on_error(self, client, exception, handler, update, users, chats) -> None:
         """Catch anything a handler let escape; the bot keeps polling."""
+        # ``kind`` is the event's own parameter, so the field is named separately.
+        self.events.emit(
+            "error", error_type=type(exception).__name__, detail=str(exception)[:200]
+        )
         logger.error(
             "Unhandled %s in %s: %s",
             type(exception).__name__,
@@ -208,6 +227,7 @@ class AgentBot:
 
         # A completed handshake is a successful probe.
         self.health.record_success()
+        self.events.emit("start", version=__version__)
 
         me = client.me
         logger.info(
@@ -248,6 +268,7 @@ class AgentBot:
             # Releasing lets a replacement process start immediately (this is
             # what makes /restart a fast handover rather than a 60s timeout).
             self.lease.release()
+            self.events.emit("stop")
 
     def _health_detail(self) -> dict:
         """Extra fields for ``/health``: the lease and the plugin states."""

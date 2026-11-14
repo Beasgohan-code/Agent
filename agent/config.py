@@ -40,6 +40,8 @@ class Settings:
     #: Optional. Until it is set, owner-only commands refuse politely instead
     #: of guessing who owns the bot.
     owner_id: int | None = None
+    #: Default log channel; /setlog overrides it at runtime.
+    log_channel: int | None = None
     health_port: int | None = None
     watchdog_interval: float = 30.0
     watchdog_timeout: float = 20.0
@@ -100,6 +102,7 @@ class Settings:
             data_dir=Path((source.get("DATA_DIR") or "data").strip() or "data"),
             link_secret=hashlib.sha256(bot_token.encode()).hexdigest(),
             owner_id=_optional_id(source.get("OWNER_ID")),
+            log_channel=_optional_id(source.get("LOG_CHANNEL")),
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),

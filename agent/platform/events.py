@@ -21,13 +21,26 @@ class EventLog:
 
     def __init__(self, maxlen: int = 200) -> None:
         self._events: deque[dict[str, Any]] = deque(maxlen=max(10, maxlen))
+        self._listeners: list[Any] = []
 
     def emit(self, kind: str, **fields: Any) -> dict[str, Any]:
         event = {"kind": kind, "at": time.time(), **fields}
         self._events.append(event)
         detail = " ".join(f"{key}={value}" for key, value in fields.items())
         logger.info("%s %s", kind, detail)
+        for listener in list(self._listeners):
+            try:
+                listener(kind, dict(fields))
+            except Exception:  # noqa: BLE001 - a listener must not break the emitter
+                logger.exception("event listener failed for %s", kind)
         return event
+
+    def subscribe(self, listener: Any) -> None:
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def unsubscribe(self, listener: Any) -> None:
+        self._listeners = [item for item in self._listeners if item is not listener]
 
     def recent(self, limit: int = 10, *, kind: str | None = None) -> list[dict[str, Any]]:
         items = [e for e in self._events if kind is None or e["kind"] == kind]
@@ -40,3 +53,6 @@ class EventLog:
 
     def clear(self) -> None:
         self._events.clear()
+
+    def listeners(self) -> int:
+        return len(self._listeners)

@@ -18,6 +18,10 @@ import tempfile
 import time
 from pathlib import Path
 
+from pyrogram.enums import ChatMemberStatus, ChatType
+from pyrogram.handlers import ChatMemberUpdatedHandler
+
+from ..platform.logbook import tag_for
 from ..platform.manifest import PluginManifest
 from ..ui.screens import format_uptime
 
@@ -28,7 +32,7 @@ MANIFEST = PluginManifest(
     name="Operations",
     version="1.0.0",
     description="Restart, watchdog sweeps, plugin on/off and the event log.",
-    commands=("restart", "watchdog", "plugins", "plugin", "events"),
+    commands=("restart", "watchdog", "plugins", "plugin", "events", "setlog", "unsetlog", "log"),
     permissions=("process.control", "plugins.manage", "files.write"),
     scope="all",
 )
@@ -69,6 +73,40 @@ def sweep_temp_dirs(*, min_age: float = SWEEP_MIN_AGE, root: Path | None = None)
         removed += 1
         freed += size
     return removed, freed
+
+
+def extra_handlers(ctx):
+    """Report the bot being added to a group as #NewGroup."""
+
+    async def on_member_update(client, update):
+        try:
+            me = getattr(client, "me", None)
+            new = getattr(update, "new_chat_member", None)
+            old = getattr(update, "old_chat_member", None)
+            chat = getattr(update, "chat", None)
+            if me is None or new is None or old is None or chat is None:
+                return
+            if getattr(getattr(new, "user", None), "id", None) != getattr(me, "id", None):
+                return
+            added = (
+                getattr(new, "status", None)
+                in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR)
+                and getattr(old, "status", None) in (ChatMemberStatus.LEFT, ChatMemberStatus.BANNED)
+            )
+            if not added:
+                return
+            events = getattr(ctx, "events", None)
+            if events is not None:
+                events.emit(
+                    "new_group",
+                    title=getattr(chat, "title", None),
+                    id=chat.id,
+                    added_by=getattr(getattr(update, "from_user", None), "id", None),
+                )
+        except Exception:  # noqa: BLE001 - a watcher must never break the client
+            logger.exception("new-group watcher failed")
+
+    return [ChatMemberUpdatedHandler(on_member_update)]
 
 
 def build(ctx):
@@ -257,10 +295,96 @@ def build(ctx):
             lines.append(f"{stamp} {event['kind']} {fields}".strip())
         await message.reply("\n".join(lines))
 
+    # -- log channel -------------------------------------------------------
+
+    async def setlog(client, message):
+        if not await _owner_gate(message):
+            return
+        logbook = getattr(ctx, "logbook", None)
+        if logbook is None:  # pragma: no cover - always wired
+            await message.reply("No log channel support in this runtime.")
+            return
+        args = _args(message)[1:]
+        if not args:
+            await message.reply(
+                "Usage: <code>/setlog &lt;channel id&gt;</code> or "
+                "<code>/setlog here</code> (run it in the channel)."
+            )
+            return
+        raw = args[0].lower()
+        if raw == "here":
+            chat = getattr(message, "chat", None)
+            if chat is None or getattr(chat, "type", None) not in (
+                ChatType.CHANNEL,
+                ChatType.SUPERGROUP,
+            ):
+                await message.reply("Run <code>/setlog here</code> inside the channel or group.")
+                return
+            target = int(chat.id)
+        else:
+            try:
+                target = int(raw)
+            except ValueError:
+                await message.reply("That is not a channel id.")
+                return
+
+        # Verify the bot can actually reach it before claiming it is set.
+        try:
+            chat = await client.get_chat(target)
+            title = getattr(chat, "title", None) or str(target)
+        except Exception as exc:  # noqa: BLE001 - reported to the owner
+            await message.reply(
+                f"I cannot reach <code>{target}</code> ({type(exc).__name__}). "
+                "Add me to that channel as an admin, then try again."
+            )
+            return
+
+        logbook.set_channel(target)
+        await message.reply(f"Log channel set to <b>{title}</b> (<code>{target}</code>).")
+
+    async def unsetlog(_client, message):
+        if not await _owner_gate(message):
+            return
+        logbook = getattr(ctx, "logbook", None)
+        if logbook is None:  # pragma: no cover
+            return
+        logbook.set_channel(None)
+        fallback = "your DM" if logbook.owner_id else "nowhere — set OWNER_ID or LOG_CHANNEL"
+        await message.reply(f"Log channel cleared. Events now go to {fallback}.")
+
+    async def log(client, message):
+        if not await _owner_gate(message):
+            return
+        logbook = getattr(ctx, "logbook", None)
+        if logbook is None:  # pragma: no cover
+            return
+        destination = logbook.destination()
+        where = (
+            f"<code>{destination}</code>"
+            if logbook.channel_id is not None
+            else ("your DM (no channel set)" if destination else "nowhere yet")
+        )
+        lines = [
+            "<b>Log book</b>",
+            f"Destination: {where}",
+            f"Events recorded: {events.count() if events is not None else 0}",
+        ]
+        if events is not None:
+            recent = events.recent(5)
+            if recent:
+                lines.append("")
+                lines.extend(f"#{tag_for(item['kind'])}" for item in recent)
+        lines.append("")
+        lines.append("Set one with <code>/setlog &lt;channel id&gt;</code>.")
+        await message.reply("\n".join(lines))
+
     return MANIFEST, {
         "restart": restart,
         "watchdog": watchdog,
         "plugins": plugins,
         "plugin": plugin,
         "events": show_events,
+        "setlog": setlog,
+        "unsetlog": unsetlog,
+        "log": log,
     }

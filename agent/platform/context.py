@@ -36,6 +36,7 @@ class ModuleContext:
     events: object | None = None
     runtime: object | None = None
     lease: object | None = None
+    logbook: object | None = None
 
     @classmethod
     def build(cls, settings: Settings, theme: Theme, sender: ScreenSender, *, root: Path) -> "ModuleContext":

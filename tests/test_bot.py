@@ -83,23 +83,27 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    # 3 built-in commands + 40 module commands + callback + error handler,
-    # plus three watchers (anti-spam, filters, joins/leaves), one per group.
-    assert bot.handler_count == 48
+    # 3 built-in commands + 43 module commands + callback + error handler,
+    # plus four watchers (anti-spam, filters, joins/leaves, new-group log),
+    # each in its own group.
+    assert bot.handler_count == 52
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 43
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 46
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
     # Watchers must not sit in group 0, where they could shadow a command
     # handler, and each needs its own group: pyrogram runs at most one handler
     # per group per update, so sharing would let one watcher swallow another's.
-    for group in (1, 2, 3):
+    watchers = [client.dispatcher.groups[group][0] for group in (1, 2, 3, 4)]
+    for group in (1, 2, 3, 4):
         assert len(client.dispatcher.groups[group]) == 1
-    assert isinstance(client.dispatcher.groups[1][0], MessageHandler)   # anti-spam
-    assert isinstance(client.dispatcher.groups[2][0], MessageHandler)   # filters
-    assert isinstance(client.dispatcher.groups[3][0], ChatMemberUpdatedHandler)  # joins
+    # Two message watchers (anti-spam, filters) and two membership watchers
+    # (greetings, new-group log). Which group number each lands in follows the
+    # module order, so assert the mix rather than the position.
+    assert sum(isinstance(w, MessageHandler) for w in watchers) == 2
+    assert sum(isinstance(w, ChatMemberUpdatedHandler) for w in watchers) == 2
 
 
 def test_duplicate_initialisation_is_prevented():
@@ -115,7 +119,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 43
+    assert len(messages) == 46
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}

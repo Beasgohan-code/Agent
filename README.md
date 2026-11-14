@@ -118,7 +118,7 @@ Every one is wired to something real — none is a stub.
 | Filters (groups) | `/filter` `/filters` `/stopfilter` |
 | Welcome (groups) | `/setwelcome` `/welcome` `/goodbye` |
 | Utilities | `/id` `/info` `/time` |
-| Operations (owner) | `/restart` `/watchdog` `/plugins` `/plugin` `/events` |
+| Operations (owner) | `/restart` `/watchdog` `/plugins` `/plugin` `/events` `/setlog` `/unsetlog` `/log` |
 | Encoding | `/encode` `/encinfo` `/encpreset` `/enccancel` |
 | Sharing | `/genlink` `/links` `/revoke` |
 
@@ -173,6 +173,27 @@ old one — so "we deploy carefully" is not protection.
   an unsupervised process will simply stay down.
 * **`/health`** now carries the lease state, disabled plugins and event count,
   so a platform health check can see what the bot sees.
+
+## The log channel (Videl1's botlog)
+
+Everything notable is posted to one channel, tagged so it is searchable:
+
+| Tag | When |
+| --- | --- |
+| `#BotStarted` / `#BotStopped` | process connect and shutdown |
+| `#NewUser` / `#Start` | first-ever `/start`, then returning visits |
+| `#NewGroup` | the bot was added to a group |
+| `#Restart` / `#Plugin` / `#Watchdog` / `#Error` | operations, plugin switches, sweeps, handler errors |
+
+`/setlog <channel id>`, or run `/setlog here` inside the channel. The target is
+verified with `get_chat` first, so a channel the bot cannot reach is refused
+rather than silently stored. With no channel set, events fall back to the
+owner's DM — and with no owner either, `/log` says "nowhere yet" instead of
+pretending.
+
+`/setlog`, `/unsetlog` and `/log` are ours; Videl1 configures its channel purely
+through `LOG_CHANNEL`. The environment variable still works and is overridden by
+the command.
 
 ## Plugins you can switch at runtime
 
