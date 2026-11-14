@@ -47,8 +47,8 @@ class PluginRuntime:
     # -- persistence -------------------------------------------------------
 
     def _load(self) -> None:
-        if self._db is not None and getattr(self._db, "connected", False):
-            data = self._db.get("runtime")
+        if self._db is not None:
+            data = self._db.get("runtime") if self._db.connected else None
         elif self.state_path and self.state_path.exists():
             try:
                 data = json.loads(self.state_path.read_text(encoding="utf-8"))
@@ -62,7 +62,9 @@ class PluginRuntime:
             self._disabled = {str(slug) for slug in disabled}
 
     def _save(self) -> None:
-        if self._db is not None and getattr(self._db, "connected", False):
+        if self._db is not None:
+            if not self._db.connected:
+                raise RuntimeError("PostgreSQL unavailable: refusing local runtime settings write")
             self._db.save("runtime", {"disabled": sorted(self._disabled)})
             return
         if not self.state_path:

@@ -99,7 +99,7 @@ class Settings:
     storage_channel: int | None = None
     #: DB_REQUIRED=1 makes an unreachable DATABASE_URL a startup failure instead
     #: of a quiet fall back to JSON files.
-    db_required: bool = False
+    db_required: bool = True
     #: Which plugins register at startup (PLUGINS=..., or * for every module).
     plugins: tuple[str, ...] = DEFAULT_PLUGINS
     ai_api_key: str | None = field(default=None, repr=False)
@@ -176,8 +176,7 @@ class Settings:
             db_scope=f"main:{_bot_id(bot_token)}",
             token_key=(source.get("TOKEN_KEY") or "").strip() or None,
             storage_channel=_optional_chat(source.get("STORAGE_CHANNEL")),
-            db_required=(source.get("DB_REQUIRED") or "0").strip().lower()
-            in ("1", "true", "yes", "on"),
+            db_required=True,  # PostgreSQL-only runtime; DB_REQUIRED=0 no longer enables disk state.
             database_url=(source.get("DATABASE_URL") or "").strip() or None,
             ai_api_key=(source.get("AI_API_KEY") or "").strip() or None,
             ai_model=(source.get("AI_MODEL") or "").strip() or None,

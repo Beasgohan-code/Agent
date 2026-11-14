@@ -69,7 +69,7 @@ class InstanceLease:
         return "postgres" if self._uses_db() else "file"
 
     def _uses_db(self) -> bool:
-        return self._database_lease or (self._db is not None and getattr(self._db, "connected", False))
+        return self._database_lease or self._db is not None
 
     def state(self) -> dict:
         current = self.read() or {}

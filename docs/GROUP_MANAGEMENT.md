@@ -634,3 +634,27 @@ actual `/setlog`/`/unsetlog` handlers against PostgreSQL, fresh-filesystem resta
 environment override/explicit clear, main/clone isolation, startup hydration,
 write failure and posting denial. No live Telegram/Render service or production
 database was modified.
+
+### Error incident operations
+
+Unhandled handler failures now emit privacy-minimized `#Errors` notifications to
+that bot's log destination. Owner-only `/errors` works in private chat and lists
+10 recent aggregated incident groups, isolated by bot tenant. PostgreSQL retains
+100 groups per bot; repeat notifications are throttled for 60 seconds per
+fingerprint in each process. Exception messages, incoming updates and locals are
+not stored by this incident collector. Database outages yield unsaved metadata
+alerts, never local JSON backups. This does not cover every caught component
+error or replace an external service monitor.
+
+Normal bot startup now requires the existing `DATABASE_URL`; `DB_REQUIRED=0`
+no longer permits disk-state operation. Existing disk JSON is not imported.
+Legacy helpers remain only for standalone compatibility/tests. Older document
+stores still batch writes; do not mistake no disk fallback for confirmed
+persistence of every individual settings command.
+
+Reference review for this increment examined the error hook at
+`refs/Videl1/VidelBot/core/errors.py`: repeat suppression informed the behavior,
+but raw update/traceback forwarding was deliberately not reproduced. Agent's
+implementation adds bounded, tenant-isolated SQL aggregation and a private
+incident view. This is an original increment, not completion of the outstanding
+all-reference feature inventory or Music parity work.

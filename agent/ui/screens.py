@@ -201,7 +201,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "bot",
         "Operations (owner)",
         (
-            "restart", "watchdog", "plugins", "plugin", "events", "db",
+            "restart", "watchdog", "plugins", "plugin", "events", "errors", "db",
             "setlog", "unsetlog", "log", "sudo",
         ),
     ),

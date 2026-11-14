@@ -46,6 +46,7 @@ MANIFEST = PluginManifest(
         "plugins",
         "plugin",
         "events",
+        "errors",
         "db",
         "setlog",
         "unsetlog",
@@ -506,6 +507,29 @@ def build(ctx):
             )
         )
 
+    async def errors(_client, message):
+        if not await _owner_gate(message):
+            return
+        if message.chat.id != message.from_user.id:
+            await reply(message, "Open this bot privately to inspect error incidents.")
+            return
+        if len(_args(message)) != 1:
+            await reply(message, "Use /errors without arguments for the latest incident groups.")
+            return
+        service = getattr(ctx, "incidents", None)
+        if service is None:
+            await reply(message, "Incident storage is unavailable.")
+            return
+        try:
+            rows = await service.recent()
+        except Exception:
+            await reply(message, "PostgreSQL incident history could not be read.")
+            return
+        await reply(message, panel("Error incidents", icon=ctx.theme.emoji("shield"),
+            table=Table(headers=("Incident", "Type", "Count"), rows=tuple(
+                (row['incident_id'], row['error_type'], str(row['occurrences'])) for row in rows)),
+            footer="Latest 10 aggregated incidents in this bot tenant. No message text, credentials or exception arguments are collected."))
+
     # -- log channel -------------------------------------------------------
 
     async def setlog(client, message):
@@ -648,6 +672,7 @@ def build(ctx):
         "db": db,
         "plugin": plugin,
         "events": show_events,
+        "errors": errors,
         "setlog": setlog,
         "unsetlog": unsetlog,
         "log": log,

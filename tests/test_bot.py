@@ -87,13 +87,13 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    # 3 built-in commands + 102 module commands (music registers nothing without
+    # 3 built-in commands + 103 module commands (music registers nothing without
     # SESSION_STRING) + callback + error handler, plus four watchers (anti-spam,
     # filters, joins/leaves, new-group log), each in its own group.
-    assert bot.handler_count == 114
+    assert bot.handler_count == 115
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 106
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 107
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -125,7 +125,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 106
+    assert len(messages) == 107
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -158,7 +158,8 @@ def test_error_handler_logs_the_failure(caplog):
     with caplog.at_level(logging.ERROR):
         asyncio.run(bot._on_error(None, ValueError("boom"), handler, None, {}, {}))
 
-    assert "boom" in caplog.text
+    assert "boom" not in caplog.text
+    assert "incident=" in caplog.text
     assert "ValueError" in caplog.text
 
 

@@ -181,14 +181,14 @@ def test_clone_records_are_shared_through_the_database(tmp_path):
     assert CloneStore(tmp_path, db=database).count() == 2
 
 
-def test_a_store_falls_back_to_its_file_when_the_database_is_down(tmp_path):
+def test_a_store_refuses_file_fallback_when_configured_database_is_down(tmp_path):
     database = FakeDB(connected=False)
     chats = ChatStore(tmp_path, db=database)
 
-    chats.put(-9, "rules", "from the file")
-
-    assert (tmp_path / "chats.json").exists()
-    assert ChatStore(tmp_path).get(-9, "rules") == "from the file"
+    import pytest
+    with pytest.raises(RuntimeError, match="refusing local"):
+        chats.put(-9, "rules", "not saved")
+    assert not (tmp_path / "chats.json").exists()
 
 
 # --- the lease ------------------------------------------------------------

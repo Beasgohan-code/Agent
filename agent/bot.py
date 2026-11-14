@@ -25,6 +25,7 @@ from .platform.deeplinks import DeepLinkRouter
 from .platform.audience import UserIndex
 from .platform.db import Database
 from .platform.events import EventLog
+from .platform.incidents import ErrorIncidents
 from .platform.instance import InstanceLease
 from .platform.assistant import AssistantLease
 from .platform.logbook import LogBook, subscribe
@@ -76,11 +77,12 @@ class AgentBot:
         # Every row this instance writes is prefixed with its scope, so a
         # clone's ``runtime`` can never overwrite the main bot's.
         self.database = (
-            Database(settings.database_url, scope=settings.db_scope, required=settings.db_required)
+            Database(settings.database_url, scope=settings.db_scope, required=True)
             if settings.database_url
             else None
         )
         db = self.database
+        self.incidents = ErrorIncidents(db)
         self.users = UserIndex(settings.data_dir, db=db)
         self.logbook = LogBook(
             settings.data_dir,
@@ -202,6 +204,7 @@ class AgentBot:
         self.modules.voice = self.voice
         self.modules.premium = self.premium
         self.modules.events = self.events
+        self.modules.incidents = self.incidents
         self.modules.runtime = self.runtime
         self.modules.lease = self.lease
         self._wire_archive(client)
@@ -324,17 +327,14 @@ class AgentBot:
 
     async def _on_error(self, client, exception, handler, update, users, chats) -> None:
         """Catch anything a handler let escape; the bot keeps polling."""
-        # ``kind`` is the event's own parameter, so the field is named separately.
-        self.events.emit(
-            "error", error_type=type(exception).__name__, detail=str(exception)[:200]
-        )
-        logger.error(
-            "Unhandled %s in %s: %s",
-            type(exception).__name__,
-            type(handler).__name__,
-            exception,
-            exc_info=(type(exception), exception, exception.__traceback__),
-        )
+        incident = await self.incidents.capture(exception, handler)
+        if incident['notify']:
+            self.events.emit("error", incident=incident['incident_id'],
+                error_type=incident['error_type'], handler=incident['handler'],
+                occurrences=incident['occurrences'], saved=incident['saved'],
+                location="; ".join(incident['frames']))
+        logger.error("Unhandled %s in %s; incident=%s (raw exception text withheld)",
+                     incident['error_type'], incident['handler'], incident['incident_id'])
 
     async def run(self) -> None:
         """Expose process liveness before waiting for a rolling-deploy handover."""
@@ -399,14 +399,14 @@ class AgentBot:
 
     async def _run(self) -> None:
         """Connect only after obtaining exclusive ownership of this bot token."""
-        if self.settings.db_required and self.database is None:
-            self.fatal_reason = "DB_REQUIRED is enabled but DATABASE_URL is missing or invalid"
+        if self.database is None:
+            self.fatal_reason = "PostgreSQL is required: DATABASE_URL is missing or invalid"
             logger.critical(self.fatal_reason)
             return
         if self.database is not None:
             if await self.database.connect():
                 await self.database.load()
-                if self.settings.db_required and self.database.load_error:
+                if self.database.load_error:
                     self.fatal_reason = "Required PostgreSQL state could not be loaded"
                     logger.critical(self.fatal_reason)
                     return
@@ -428,7 +428,7 @@ class AgentBot:
                     hydrate = getattr(store, "hydrate", None)
                     if hydrate is not None:
                         hydrate()
-            elif self.settings.db_required:
+            else:
                 # The deployment said the database is the source of truth; two
                 # competing ones (database and files) are worse than not starting.
                 self.fatal_reason = (
@@ -437,11 +437,7 @@ class AgentBot:
                 )
                 logger.critical(self.fatal_reason)
                 return
-            else:
-                logger.warning(
-                    "Continuing with JSON files: DATABASE_URL is set but unusable (%s).",
-                    self.database.error or "no reason given",
-                )
+
 
         client = self._client or self.build()
 

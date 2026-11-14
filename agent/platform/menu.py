@@ -178,6 +178,7 @@ DESCRIPTIONS: dict[str, str] = {
     "plugins": "List plugins and their state (owner)",
     "plugin": "Enable or disable a plugin (owner)",
     "events": "Recent operational events (owner)",
+    "errors": "Private error incident history (owner)",
     "db": "The state store: backend, host, health (owner)",
     "setlog": "Set the log channel (owner)",
     "unsetlog": "Clear the log channel (owner)",

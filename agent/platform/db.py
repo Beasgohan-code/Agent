@@ -46,6 +46,7 @@ from typing import Any
 
 from .plugin_access import SCHEMA as PLUGIN_SCHEMA
 from .music_lists import SCHEMA as MUSIC_SCHEMA
+from .incidents import SCHEMA as INCIDENT_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ SCHEMA: tuple[str, ...] = (
     """,
 )
 
-SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + (
+SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + (
     """CREATE TABLE IF NOT EXISTS agent_log_settings (
         tenant TEXT PRIMARY KEY,
         channel_id BIGINT CHECK (channel_id IS NULL OR channel_id < 0),
@@ -187,13 +188,13 @@ class Database:
 
     # -- lifecycle ---------------------------------------------------------
     async def connect(self) -> bool:
-        """Connect and apply the schema. False means "stay on the files"."""
+        """Connect and apply the schema. The bot refuses startup on failure."""
         if self.url is None:
             return False
         if not self.driver_installed():
             self.error = "asyncpg is not installed"
             logger.warning(
-                "DATABASE_URL is set but asyncpg is not installed; using JSON files. "
+                "DATABASE_URL is set but asyncpg is not installed; PostgreSQL is unavailable. "
                 "Install it with `pip install asyncpg`."
             )
             return False
@@ -208,7 +209,7 @@ class Database:
         except Exception as exc:  # noqa: BLE001 - a database is an option, not a requirement
             self.error = f"{type(exc).__name__}: {exc}"
             logger.warning(
-                "Could not use PostgreSQL (%s); falling back to JSON files.", self.error
+                "Could not use PostgreSQL (%s); no local-state fallback.", self.error
             )
             self._pool = None
             self.connected = False
@@ -403,7 +404,7 @@ def load_document(database: Database | None, name: str, path: Path, default: Any
         value = database.get(name)
         if value is not None:
             return value
-    if database is not None and getattr(database, "required", False):
+    if database is not None:
         return default
     return read_json(path, default)
 
@@ -413,7 +414,7 @@ def save_document(database: Database | None, name: str, path: Path, value: Any) 
     if database is not None and database.connected:
         database.save(name, value)
         return
-    if database is not None and getattr(database, "required", False):
+    if database is not None:
         raise RuntimeError("PostgreSQL required: refusing local document write")
     write_json(path, value)
 

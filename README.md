@@ -24,10 +24,10 @@ not a claim of implemented coverage. See [the architecture audit](docs/GROUP_MAN
 | `PLUGINS` | no | Which optional modules register; mandatory group core is always included. `*` includes all modules. |
 | `SESSION_STRING` | for music | A user session is the only thing that can join a group call. |
 | `LOG_CHANNEL` | no | Where the bot posts its event log; without it, the owner's DM. |
-| `DATA_DIR` | no | Where local state (vault files, and JSON stores without a database) lives. Default `data`. |
-| `DATABASE_URL` | no | PostgreSQL DSN. Set it and every store is kept in the database, scoped per bot. |
+| `DATA_DIR` | no | Temporary media/vault working directory. Metadata is PostgreSQL-backed. Default `data`. |
+| `DATABASE_URL` | **yes** | PostgreSQL DSN. Set it and every store is kept in the database, scoped per bot. |
 | `TOKEN_KEY` | no | Encrypts clone tokens at rest (Fernet). Unset ⇒ plaintext, announced. |
-| `DB_REQUIRED` | no | `1` makes an unreachable `DATABASE_URL` a startup failure. |
+| `DB_REQUIRED` | no | Legacy flag; PostgreSQL is now always required. `0` does not enable local state. |
 | `STORAGE_CHANNEL` | no | A private channel id vault files are archived into (durable bytes). |
 | `CLONE_LIMIT` | no | How many clones this deployment will run at once. Default `5`. |
 | `START_IMAGE` | no | Picture above `/start`; `0` keeps the text only. |
@@ -244,21 +244,20 @@ stop-and-clear, for staff or whoever queued the track.
 
 ## Where state lives
 
-Two modes, same behaviour:
+The bot runtime requires PostgreSQL. Missing credentials, a failed connection
+or failed initial state load refuse startup; there is no local JSON fallback.
+The old `DB_REQUIRED=0` option no longer enables disk-backed operation.
 
-* **JSON files** (`data/`) by default — one process, small state, no server to run.
-* **PostgreSQL** when `DATABASE_URL` is set. Each store becomes one row in
-  `agent_documents` (`name`, `value jsonb`), and the single-instance lease becomes
-  a row in `agent_lease`, so two containers finally see each other. The schema is
-  applied on boot; there is nothing to migrate by hand.
+Legacy document stores use bot-scoped PostgreSQL JSONB rows; plugin approval,
+Music playlists, log destinations and incident aggregation use dedicated tables.
+Some older stores still batch writes in memory before flushing: this change
+removes disk fallback, not every outstanding confirmed-write limitation. `/setlog`
+uses awaited SQL and confirms only after persistence. Temporary media files can
+still use disk; media bytes are not PostgreSQL metadata.
 
-Writes are queued and flushed by one background task, so a handler never waits on
-the network, and the last value for a document wins — a store never writes a
-partial one. If the database is missing, unreachable, or `asyncpg` is not
-installed, the bot logs one warning and keeps running on its files: losing the
-database must not take the bot down. `/db` (owner) states which backend is live,
-the host, how many documents are loaded and whether writes are queued; `/status`
-carries the same answer in one row.
+Low-level standalone file helpers remain for legacy/test compatibility, but the
+normal bot/clone service lifecycle does not start in that mode. Do not deploy
+those helpers as a replacement persistence system.
 
 ### One database, many bots
 
@@ -359,9 +358,8 @@ pytest -q                      # 541 tests
 python -m pyflakes agent tests # no unused names
 ```
 
-State is JSON on disk (`data/`), never a database: the surface is small enough
-that a schema and a migration tool would be overhead, and the files are easy to
-inspect and back up.
+Runtime state is PostgreSQL-backed. Local JSON helpers are legacy/test-only;
+the normal service refuses to start without PostgreSQL.
 
 ## Primary feature catalog and AI Agent
 
@@ -461,3 +459,16 @@ clearly labelled; it is not redeploy-safe hosting storage.
 [Standing user requirements](docs/USER_REQUIREMENTS.md) records the continuing
 scope and constraints for command-by-command upgrades. This log-setting fix does
 not mean every older batched settings store already has confirmed-write semantics.
+
+### Safe error incident center
+
+Unhandled handler failures generate **#Errors** log notifications with a stable
+incident ID, error category, handler, safe frame locations and occurrence count.
+Raw exception arguments, update/message text, usernames, tokens and local
+variables are not intentionally collected. Repeats are aggregated in PostgreSQL
+and alerts are throttled to once per fingerprint per minute per process.
+Owner-only `/errors` in private shows the latest 10 incident groups in this bot.
+At most 100 distinct groups are retained per tenant, pruned on incident writes.
+This is bounded operational diagnosis, not an immutable moderation audit trail.
+Caught component errors and failures before Telegram connection are not all
+forwarded through this boundary. No live deployment has been validated here.

@@ -24,8 +24,8 @@ can supersede items here; do not silently discard earlier constraints.
 
 ## Database and isolation
 
-- Use the existing Render `DATABASE_URL`; PostgreSQL is authoritative in
-  production. Do not ask the user to reconnect/recreate their existing database.
+- **No more local JSON runtime state.** Use the existing Render `DATABASE_URL`;
+  PostgreSQL is mandatory for normal bot startup. Do not ask the user to reconnect/recreate their existing database.
 - `/setlog` must survive restart/redeploy; `/unsetlog` must not resurrect an env
   default. Success means confirmed persistence, not an in-memory change or a
   background write merely being queued. Upgrade other mutable settings against
@@ -104,3 +104,15 @@ is no ephemeral-file fallback; old file-only selections must be saved once with
 `/setlog` after deploying this correction. Previously lost ephemeral data cannot
 be reconstructed. Standalone deployments without a database retain explicit
 atomic local-file compatibility, clearly labelled as such.
+
+## Latest extension: safe #Errors and no disk fallback
+
+Unhandled handler errors must also notify the configured log destination as
+`#Errors`. The incident center stores safe category/frame metadata and aggregated
+counts in PostgreSQL, without copying raw exception arguments or incoming
+messages. `/errors` is private and Owner-only. Repeated alerts are bounded.
+The normal service now requires PostgreSQL regardless of the legacy DB_REQUIRED
+flag. Remaining standalone JSON helper branches are legacy/test compatibility,
+not a supported bot runtime mode. Temporary downloaded/encoded media is distinct
+from JSON metadata. Continue upgrading mutable commands one by one; reference
+feature extraction/manual review and full Music parity are still unfinished.

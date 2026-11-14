@@ -33,7 +33,7 @@ TAGS = {
     "restart": "Restart",
     "plugin": "Plugin",
     "watchdog": "Watchdog",
-    "error": "Error",
+    "error": "Errors",
     "instance": "Instance",
 }
 
