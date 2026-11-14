@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-from pathlib import Path
-from urllib.parse import urlsplit
 
 from ...platform.attachments import attachment_kwargs
 from ...platform.manifest import PluginManifest
@@ -118,9 +116,9 @@ def build(ctx):
         try:
             url = parse_url(raw)
             await check_target(url)
-        except LeechError as exc:
-            logger.info("leech refused user=%s reason=%s", message.from_user.id, exc)
-            await reply(message, f"<b>Not fetching that</b>\n{exc}.")
+        except LeechError:
+            logger.info("leech URL refused user=%s", message.from_user.id)
+            await reply(message, "<b>Not fetching that</b>\nUse one public HTTP(S) URL without embedded credentials; the address could not be validated.")
             return
 
         book = getattr(ctx, "premium", None)
@@ -147,13 +145,9 @@ def build(ctx):
                 ),
             )
             return
-        label = f"{'Mirror' if keep else 'Leech'}: <code>{Path(urlsplit(url).path).name or url}</code>"
-        logger.info(
-            "transfer queued user=%s kind=%s url=%s",
-            user_id,
-            "mirror" if keep else "leech",
-            url,
-        )
+        # Avoid persisting source URLs/query tokens in task labels or logs.
+        label = 'Mirror transfer' if keep else 'Leech transfer'
+        logger.info('transfer queued user=%s kind=%s', user_id, 'mirror' if keep else 'leech')
         _message_id, report = await _progress_message(client, message, label)
 
         async def runner(job):
@@ -216,7 +210,16 @@ def build(ctx):
     # -- queue reporting ---------------------------------------------------
 
     async def tasklist(client, message):
-        jobs = ctx.jobs.for_owner(message.from_user.id)
+        args = (getattr(message, 'text', '') or '').split()[1:]
+        if len(args) > 1 or (args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0]) > 8 or int(args[0]) < 1)):
+            await reply(message, 'Usage: <code>/tasklist [page]</code>, starting at page 1.')
+            return
+        page = int(args[0]) if args else 1
+        jobs = list(reversed(ctx.jobs.for_owner(message.from_user.id)))
+        pages = max(1, (len(jobs) + 9) // 10)
+        if page > pages:
+            await reply(message, f'Choose a task page from 1 to {pages}.')
+            return
         if not jobs:
             await reply(message, 
                 panel(
@@ -232,29 +235,31 @@ def build(ctx):
                 job.id,
                 job.state.value,
                 f"{int(job.progress * 100)}%",
-                (job.label or job.detail or "—")[:40],
+                job.module,
             )
-            for job in jobs[-10:]
+            for job in jobs[(page - 1) * 10:page * 10]
         )
         await reply(message, 
             panel(
                 "Your tasks",
                 icon=ctx.theme.emoji("stats"),
-                subtitle=f"<b>{len(jobs)}</b> task(s) this run.",
+                subtitle=f"{ctx.theme.emoji('diamond')} Page <b>{page}/{pages}</b> · {len(jobs)} retained task(s), newest first.",
                 table=Table(
-                    headers=("Id", "State", "Done", "What"),
+                    headers=("Id", "State", "Done", "Module"),
                     rows=rows,
                     aligns=("left", "left", "right", "left"),
                     total_width=56,
                 ),
-                note="<code>/taskstatus &lt;id&gt;</code> for the detail of one.",
+                lines=([f"<code>/tasklist {page - 1}</code> previous"] if page > 1 else []) +
+                      ([f"<code>/tasklist {page + 1}</code> next"] if page < pages else []),
+                note="<code>/taskstatus &lt;id&gt;</code> for one. Labels are omitted to avoid exposing source URLs from older jobs.",
                 footer="Jobs live in this process; a restart clears them.",
             )
         )
 
     async def taskstatus(client, message):
         parts = (getattr(message, "text", "") or "").split()
-        if len(parts) < 2:
+        if len(parts) != 2:
             await reply(message, "Usage: <code>/taskstatus &lt;id&gt;</code>")
             return
         job = ctx.jobs.get(parts[1])
@@ -266,10 +271,10 @@ def build(ctx):
             ("Module", job.module),
             ("State", job.state.value),
             ("Progress", f"{int(job.progress * 100)}%"),
-            ("Detail", job.detail or job.label or "—"),
+            ("Detail", "withheld: task details may contain private paths or URLs"),
         ]
         if job.error:
-            rows.append(("Error", job.error[:200]))
+            rows.append(("Error", "Task failed; raw provider/tool errors are withheld."))
         await reply(message, 
             panel(
                 "Task",
@@ -301,7 +306,7 @@ def build(ctx):
                 icon=ctx.theme.emoji("stats"),
                 table=kv_table(rows) if rows else None,
                 lines=[] if rows else ["Nothing has been queued by you this run."],
-                footer=f"{len(ctx.jobs.active())} task(s) active across the bot.",
+                footer=f"{sum(not job.finished for job in jobs)} of your tasks active. Counts cover retained shared jobs, not only transfers.",
             )
         )
 
@@ -325,7 +330,25 @@ def build(ctx):
             )
         )
 
-    return MANIFEST, {
+    def validated(name, handler):
+        async def wrapped(client, message):
+            user_id = getattr(getattr(message, 'from_user', None), 'id', None)
+            if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+                await reply(message, 'Use your personal Telegram user identity for transfer commands.')
+                return
+            args = (getattr(message, 'text', '') or '').split()[1:]
+            if name in ('leechstats', 'taskbackend') and args:
+                await reply(message, f'Usage: <code>/{name}</code> without arguments.')
+                return
+            if name in ('leech', 'mirror') and len(args) != 1:
+                await reply(message, panel('Transfer options', icon=ctx.theme.emoji('info'),
+                    lines=[f'Usage: <code>/{name} &lt;public_http_url&gt;</code>. Supply exactly one URL.'],
+                    note='Transfers and task responses are visible in the current chat. Do not submit secret links.'))
+                return
+            return await handler(client, message)
+        return wrapped
+
+    handlers = {
         "leech": leech,
         "mirror": mirror,
         "tasklist": tasklist,
@@ -333,3 +356,4 @@ def build(ctx):
         "leechstats": leechstats,
         "taskbackend": taskbackend,
     }
+    return MANIFEST, {name: validated(name, handler) for name, handler in handlers.items()}

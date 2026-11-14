@@ -266,3 +266,11 @@ arguments and sender identity, corrected cancellation scope and empty downloads,
 reaped cancelled probe/tool children and removed the unread stderr pipe/raw tool
 error rendering. Existing real FFmpeg tests plus regression tests validate this
 batch. Do not claim all media resource/sandbox/cleanup risks are resolved.
+
+### Six-command transfer batch
+
+Upgraded leech/mirror/tasklist/taskstatus/leechstats/taskbackend with personal
+identity/argument validation, paged owned history, URL-free new transfer labels
+and enqueue logs, withheld sensitive shared-job details/errors and caller-only
+active counts. Shared task history remains process-local; this is not durable
+transfer recovery or a full network/download security audit.
