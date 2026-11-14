@@ -228,6 +228,14 @@ def build(ctx):
 
     # -- /plugins and /plugin ---------------------------------------------
 
+    def _idle_reason(row: dict) -> str:
+        """The manifest's own sentence about why it registered nothing."""
+        description = str(row.get("description") or "")
+        marker = "unavailable in this deployment: "
+        if marker in description:
+            return description.split(marker, 1)[1].rstrip(".")
+        return "registers no commands in this deployment"
+
     async def plugins(_client, message):
         if not await _owner_gate(message):
             return
@@ -238,16 +246,23 @@ def build(ctx):
         # Three columns only: a fourth would squeeze every cell to an ellipsis on
         # a phone. The display name lives in the note below, the slug (the thing
         # ``/plugin`` actually needs) keeps the room.
+        # "on" with no commands would be a half-truth: music is enabled and
+        # registered nothing because the deployment has no session string. The
+        # state column says "idle" and the panel explains why underneath.
+        idle = [
+            row for row in state if row["enabled"] and not row["commands"]
+        ]
         rows = tuple(
             (
                 row["slug"],
-                ("on" if row["enabled"] else "off")
+                ("off" if not row["enabled"] else ("idle" if not row["commands"] else "on"))
                 + (" (locked)" if row["protected"] else ""),
                 str(len(row["commands"])),
             )
             for row in state
         )
         enabled = sum(1 for row in state if row["enabled"])
+        idle_lines = [f"<code>{row['slug']}</code> — {_idle_reason(row)}" for row in idle]
         await reply(message, 
             panel(
                 "Plugin runtime",
@@ -260,6 +275,9 @@ def build(ctx):
                     headers=("Plugin", "State", "Cmds"),
                     rows=rows,
                     aligns=("left", "left", "right"),
+                ),
+                lines=(
+                    ["Idle (enabled, no commands):"] + idle_lines if idle_lines else []
                 ),
                 note=(
                     "Toggle with <code>/plugin &lt;slug&gt; on|off</code>. "

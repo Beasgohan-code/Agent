@@ -393,3 +393,49 @@ def test_get_refuses_a_file_that_is_not_yours(tmp_path):
     message = FakeMessage(f"/get {stored.id}", uid=11)
     run(commands["get"], message)
     assert "not in your vault" in message.replies[0]
+
+
+# --- the runtime panel must not call an idle plugin "on" -------------------
+
+
+def test_a_plugin_with_no_commands_is_reported_as_idle(tmp_path):
+    """music is enabled but registers nothing without SESSION_STRING."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from agent.bot import AgentBot
+    from agent.config import Settings
+    from agent.modules import ops
+
+    settings = Settings.from_env(
+        {
+            "BOT_TOKEN": "123456789:AAHfakeTokenValueForTests_1234567890abc",
+            "API_ID": "1234567",
+            "API_HASH": "0123456789abcdef0123456789abcdef",
+            "OWNER_ID": str(OWNER),
+            "DATA_DIR": str(tmp_path / "data"),
+        }
+    )
+    bot = AgentBot(settings)
+    bot.build()
+
+    class Message:
+        text = "/plugins"
+        id = 1
+        chat = SimpleNamespace(id=5)
+        from_user = SimpleNamespace(id=OWNER, first_name="Owner")
+
+        def __init__(self):
+            self.replies = []
+
+        async def reply(self, text, **_kwargs):
+            self.replies.append(str(text))
+
+    _, commands = ops.build(bot.modules)
+    message = Message()
+    asyncio.run(commands["plugins"](None, message))
+    body = message.replies[0]
+
+    assert "idle" in body
+    assert "SESSION_STRING" in body          # the reason, not a shrug
+    assert "idle" in body.split("<pre>")[1]  # the state column itself
