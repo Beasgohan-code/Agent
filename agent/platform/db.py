@@ -17,7 +17,8 @@ Core storage tables, plus normalized feature tables:
 Legacy settings stores retain scoped JSONB documents. Features needing atomic
 multi-row checks use normalized tables instead: plugin approvals/slots and saved
 Music playlists have their own schemas. Playlist quotas are decided inside a
-PostgreSQL transaction, not by rewriting a whole JSON settings document.
+PostgreSQL transaction, not by rewriting a whole JSON settings document. Log
+destinations also use a dedicated table so /setlog confirms an awaited write.
 
 Writes are batched: a mutation queues the document and one background task
 flushes the queue, so a handler never waits on the network. A database that is
@@ -67,7 +68,12 @@ SCHEMA: tuple[str, ...] = (
     """,
 )
 
-SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA
+SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + (
+    """CREATE TABLE IF NOT EXISTS agent_log_settings (
+        tenant TEXT PRIMARY KEY,
+        channel_id BIGINT CHECK (channel_id IS NULL OR channel_id < 0),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now())""",
+)
 
 UPSERT_DOCUMENT = """
     INSERT INTO agent_documents (name, value)

@@ -372,3 +372,47 @@ def test_logbook_pending_queue_is_bounded_per_bot(tmp_path, monkeypatch):
         await book.close(timeout=0)
         assert not book._pending
     asyncio.run(scenario())
+
+
+def test_explicit_clear_survives_restart_even_with_environment_default(tmp_path):
+    first = LogBook(tmp_path, channel_id=-1001, owner_id=11)
+    asyncio.run(first.configure(None))
+    restarted = LogBook(tmp_path, channel_id=-2002, owner_id=11)
+    assert restarted.channel_id is None
+    assert restarted.destination() == 11
+
+
+def test_setlog_does_not_save_or_report_success_when_posting_is_denied(tmp_path):
+    from unittest.mock import AsyncMock
+    client = FakeClient()
+    client.send_message = AsyncMock(side_effect=RuntimeError('not allowed'))
+    ctx = make_ctx(tmp_path, client)
+    ctx.logbook.set_channel(-1001)
+    request = FakeMessage('/setlog -100777')
+    asyncio.run(ops.build(ctx)[1]['setlog'](client, request))
+    assert ctx.logbook.channel_id == -1001
+    assert 'could not post' in request.replies[0]
+    assert 'Log channel set' not in request.replies[0]
+
+
+def test_setlog_does_not_report_success_when_database_is_offline(tmp_path):
+    client = FakeClient()
+    ctx = make_ctx(tmp_path, client)
+    ctx.logbook = LogBook(tmp_path, channel_id=-1001, owner_id=11,
+                          db=SimpleNamespace(connected=False, _pool=None))
+    request = FakeMessage('/setlog -100777')
+    asyncio.run(ops.build(ctx)[1]['setlog'](client, request))
+    assert ctx.logbook.channel_id == -1001
+    assert 'PostgreSQL is unavailable' in request.replies[0]
+    assert not (tmp_path / 'logbook.json').exists()
+
+
+def test_configured_database_never_reads_a_local_logbook_override(tmp_path):
+    import json
+    (tmp_path / 'logbook.json').write_text(json.dumps({'channel_id': -1009}))
+    book = LogBook(tmp_path, channel_id=-1001, owner_id=11,
+                   db=SimpleNamespace(connected=False, _pool=None))
+    assert book.channel_id == -1001
+    book.client = FakeClient()
+    assert asyncio.run(book.post('start')) is False
+    assert not book.client.sent

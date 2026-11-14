@@ -443,3 +443,21 @@ files, credentials or signed query URLs. Start fresh playback before loading;
 loading appends the whole validated list only if it fits, without replacing the
 current track. Lists persist until deleted. See the Music migration document
 for URL-validation limitations and the remaining feature backlog.
+
+### Persistent log destination
+
+With `DATABASE_URL` configured, `/setlog <negative channel id>` tests posting
+permission and saves the destination directly to PostgreSQL **before** confirming
+success. `/log` rereads the database, and `/unsetlog` saves an explicit clear that
+continues overriding `LOG_CHANNEL` after restart. Main bot and clone settings
+are separate. A configured but unavailable database never silently redirects
+these settings to an ephemeral JSON file.
+
+**After deploying this correction, run `/setlog` once again** to save your old
+file-only selection in PostgreSQL. Data already lost from an old Render disk
+cannot be recovered. Without a database, standalone file compatibility remains
+clearly labelled; it is not redeploy-safe hosting storage.
+
+[Standing user requirements](docs/USER_REQUIREMENTS.md) records the continuing
+scope and constraints for command-by-command upgrades. This log-setting fix does
+not mean every older batched settings store already has confirmed-write semantics.

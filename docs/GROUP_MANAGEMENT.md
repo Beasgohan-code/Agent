@@ -597,3 +597,40 @@ checks and all-or-nothing queue admission. Compileall, pyflakes and whitespace
 checks passed. DNS and voice interactions were mocked; no live streaming or
 media-provider claim is made. Existing command sync picks up the four handlers
 when this database-capable build is deployed.
+
+### Confirmed PostgreSQL log settings — restart regression fix
+
+The log destination was an exception to the existing database-backed services:
+`LogBook` still wrote `logbook.json` only. It now receives the bot's database and
+uses a dedicated `agent_log_settings` row keyed by exact tenant scope. PostgreSQL
+schema creation is additive. Writes are awaited directly, not queued through
+the legacy JSONB document flusher; command success follows the database response.
+The runtime destination changes only after a confirmed write. Ambiguous database
+errors suppress event routing until `/log` reloads authoritative settings.
+
+Main and clone startup hydrate the destination before client build/event delivery.
+An explicit NULL means cleared and overrides `LOG_CHANNEL`; no row means use the
+environment default. Database read failure does not silently select a stale file
+or default destination. In configured database mode, the ephemeral JSON file is
+never read or written for this setting. Main startup refuses a log-settings load
+failure after database connection; clones fail startup and clean resources.
+Standalone mode retains atomic local-file compatibility, including explicit clears.
+
+`/setlog` validates a negative channel/group id, checks reachability, sends a
+bounded posting probe, then persists and acknowledges. The probe may appear even
+if the later database write fails; Telegram posting and SQL cannot be atomic.
+`/unsetlog` persists its clear before reporting success. `/log` rereads PostgreSQL
+and shows the settings backend. Titles are HTML escaped; storage errors expose no
+raw database credentials. Use `/setlog` once after deploying this correction to
+replace any old file-only selection; already-lost ephemeral data is unrecoverable.
+
+Other older settings stores still use batched document writes and need subsequent
+command-by-command durability review. [Standing requirements](USER_REQUIREMENTS.md)
+preserves the user's scope, safety, clone, UI, source-review and no-merge rules.
+
+Validation for this correction: **832 tests passed** against disposable
+PostgreSQL; compileall, pyflakes and whitespace checks passed. Tests include
+actual `/setlog`/`/unsetlog` handlers against PostgreSQL, fresh-filesystem restart,
+environment override/explicit clear, main/clone isolation, startup hydration,
+write failure and posting denial. No live Telegram/Render service or production
+database was modified.

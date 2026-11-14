@@ -163,6 +163,9 @@ class CloneManager:
                     await database.load()
                     if getattr(database, "load_error", None):
                         raise CloneError("Clone PostgreSQL state could not be loaded.")
+                    logbook = getattr(bot, "logbook", None)
+                    if logbook is not None:
+                        await logbook.hydrate()
                     for service in (getattr(bot, "users", None), getattr(bot, "premium", None), getattr(bot, "runtime", None)):
                         if getattr(service, "hydrate", None):
                             service.hydrate()

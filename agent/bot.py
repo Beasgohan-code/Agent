@@ -86,6 +86,7 @@ class AgentBot:
             settings.data_dir,
             channel_id=settings.log_channel,
             owner_id=settings.owner_id,
+            db=db,
         )
         subscribe(self.events, self.logbook)
         #: One lease per bot token: two live copies would answer every update twice.
@@ -409,7 +410,13 @@ class AgentBot:
                     self.fatal_reason = "Required PostgreSQL state could not be loaded"
                     logger.critical(self.fatal_reason)
                     return
-                # These three were built in __init__, before the database was
+                try:
+                    await self.logbook.hydrate()
+                except Exception:
+                    self.fatal_reason = "PostgreSQL log destination could not be loaded"
+                    logger.critical(self.fatal_reason)
+                    return
+                # These stores were built in __init__, before the database was
                 # readable; re-read them so a deploy starts from the stored state
                 # rather than from last boot's files.
                 for store in (

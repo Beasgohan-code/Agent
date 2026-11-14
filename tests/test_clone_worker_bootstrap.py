@@ -137,3 +137,23 @@ def test_clone_publishes_its_own_commands_after_connecting(tmp_path):
         assert worker._sync_commands.await_args.kwargs == {'reset_button': True}
         await ctx.clones.stop(record.bot_id)
     asyncio.run(scenario())
+
+
+def test_clone_loads_database_log_destination_before_build(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        book = SimpleNamespace(hydrate=AsyncMock())
+        class Worker(FakeBot):
+            def __init__(self, settings):
+                super().__init__(settings)
+                self.database = SimpleNamespace(connect=AsyncMock(return_value=True),
+                    load=AsyncMock(), load_error=None, close=AsyncMock())
+                self.logbook = book
+            def build(self):
+                book.hydrate.assert_awaited_once()
+                return super().build()
+        ctx.clones._factory = Worker
+        record = Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A)
+        await ctx.clones.start(record)
+        await ctx.clones.stop(record.bot_id)
+    asyncio.run(scenario())

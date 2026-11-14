@@ -8,6 +8,7 @@ down, and disabling a plugin detaches its handlers rather than hiding it.
 from __future__ import annotations
 
 import html
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -20,7 +21,7 @@ from pyrogram.handlers import ChatMemberUpdatedHandler
 from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
-from ...platform.logbook import tag_for
+from ...platform.logbook import tag_for, LogSettingsError
 from ...platform.manifest import PluginManifest
 from ...ui.screens import format_uptime
 from ...ui.keyboards import nav_keyboard
@@ -515,7 +516,7 @@ def build(ctx):
             await reply(message, "No log channel support in this runtime.")
             return
         args = _args(message)[1:]
-        if not args:
+        if len(args) != 1:
             await reply(message, 
                 "Usage: <code>/setlog &lt;channel id&gt;</code> or "
                 "<code>/setlog here</code> (run it in the channel)."
@@ -538,9 +539,12 @@ def build(ctx):
                 await reply(message, "That is not a channel id.")
                 return
 
-        # Verify the bot can actually reach it before claiming it is set.
+        if not -(2**63) < target < 0:
+            await reply(message, "Use a negative Telegram channel or group id.")
+            return
+        # Verify reachability, then actual posting, before claiming it is set.
         try:
-            chat = await client.get_chat(target)
+            chat = await asyncio.wait_for(client.get_chat(target), timeout=10)
             title = getattr(chat, "title", None) or str(target)
         except Exception as exc:  # noqa: BLE001 - reported to the owner
             await reply(message, 
@@ -549,8 +553,17 @@ def build(ctx):
             )
             return
 
-        logbook.set_channel(target)
-        await reply(message, f"Log channel set to <b>{title}</b> (<code>{target}</code>).")
+        try:
+            await asyncio.wait_for(client.send_message(target, "Agent log-channel verification. The destination will be saved only after persistence succeeds."), timeout=10)
+        except Exception as exc:
+            await reply(message, f"I could not post to that log channel ({type(exc).__name__}). Check posting permissions. The saved destination was not changed.")
+            return
+        try:
+            await logbook.configure(target)
+        except LogSettingsError as exc:
+            await reply(message, html.escape(str(exc)))
+            return
+        await reply(message, f"Log channel set to <b>{html.escape(str(title))}</b> (<code>{target}</code>). Saved in {logbook.backend}.")
 
     async def unsetlog(_client, message):
         if not await _owner_gate(message):
@@ -558,15 +571,24 @@ def build(ctx):
         logbook = getattr(ctx, "logbook", None)
         if logbook is None:  # pragma: no cover
             return
-        logbook.set_channel(None)
+        try:
+            await logbook.configure(None)
+        except LogSettingsError as exc:
+            await reply(message, html.escape(str(exc)))
+            return
         fallback = "your DM" if logbook.owner_id else "nowhere — set OWNER_ID or LOG_CHANNEL"
-        await reply(message, f"Log channel cleared. Events now go to {fallback}.")
+        await reply(message, f"Log channel cleared and saved in {logbook.backend}. Events now go to {fallback}.")
 
     async def log(client, message):
         if not await _owner_gate(message):
             return
         logbook = getattr(ctx, "logbook", None)
         if logbook is None:  # pragma: no cover
+            return
+        try:
+            await logbook.hydrate()
+        except LogSettingsError as exc:
+            await reply(message, html.escape(str(exc)))
             return
         destination = logbook.destination()
         where = (
@@ -577,6 +599,7 @@ def build(ctx):
         lines = [
             "<b>Log book</b>",
             f"Destination: {where}",
+            f"Settings store: {logbook.backend}",
             f"Events recorded: {events.count() if events is not None else 0}",
         ]
         if events is not None:
