@@ -114,6 +114,10 @@ DESCRIPTIONS: dict[str, str] = {
     "volumeup": "Increase voice-chat volume by 20 percent",
     "volumedown": "Decrease voice-chat volume by 20 percent",
     "history": "Recent acknowledged music titles this session",
+    "saveplaylist": "Save your group's queue as a named playlist",
+    "playlist": "Append your saved playlist to the current queue",
+    "playlists": "List your saved playlists in this group",
+    "deleteplaylist": "Delete your saved playlist in this group",
     "leave": "Leave the voice chat",
     # reports / posts / security
     "report": "Report a message to the moderators",
@@ -190,6 +194,7 @@ GROUP_ONLY = frozenset(
         "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
         "q", "end", "resetplayer", "playnext", "loop", "shuffle", "clear", "clearqueue",
         "remove", "move", "jump", "replay", "volume", "volumeup", "volumedown", "history",
+        "saveplaylist", "playlist", "playlists", "deleteplaylist",
         "post", "postpreview", "posttemplate", "verify",
         "addpremium", "delpremium", "premiumusers",
         "filter", "filters", "stopfilter",

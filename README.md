@@ -409,8 +409,8 @@ does not revoke Telegram authorization.
 `/health/live` remains process liveness. Telegram `/alive` opens the live status
 screen. This does not self-ping or prevent free-tier service sleep.
 
-Music now has 24 real group commands when its dependencies and assistant are
-configured, including queue editing, repeat modes, shuffle, replay, volume,
+Music has 24 base group commands when its dependencies and assistant are
+configured, plus four saved-playlist commands when PostgreSQL is connected, including queue editing, repeat modes, shuffle, replay, volume,
 play-next and recent session titles. Song-name search, YouTube watch-page
 extraction, effects, seeking and linked-channel playback are **not** claimed as
 supported yet. See [Music behavior migration](docs/MUSIC_PARITY.md) for exact
@@ -432,3 +432,14 @@ for the reference keep-alive behavior, monitoring endpoints and hosting setup.
 A sleeping free service is not an always-on host; the existing Blueprint uses a
 paid `starter` worker. Applying that plan is a deployment decision, not something
 this code silently purchases or changes on your live service.
+
+### Saved Music playlists
+
+Admins can use `/saveplaylist name`, `/playlists`, `/playlist name` and
+`/deleteplaylist name`. Lists are PostgreSQL-backed and isolated by bot, group
+and user, with atomic quotas (10 lists, 20 tracks each). Saving replaces your
+same-named list. Only stable public HTTP(S) media URLs are accepted—not local
+files, credentials or signed query URLs. Start fresh playback before loading;
+loading appends the whole validated list only if it fits, without replacing the
+current track. Lists persist until deleted. See the Music migration document
+for URL-validation limitations and the remaining feature backlog.

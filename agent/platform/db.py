@@ -5,7 +5,7 @@ A deployment with several instances (the main bot, its clones, a rolling deploy
 that briefly runs two copies) breaks that assumption, so there is a database
 mode with the same behaviour and a different place to keep it.
 
-Two tables, nothing more:
+Core storage tables, plus normalized feature tables:
 
 * ``agent_documents`` — one row per store (``chats``, ``premium``, ``links``,
   ``clones``, ``runtime``, ``users``), the whole document as ``jsonb``. The
@@ -14,10 +14,10 @@ Two tables, nothing more:
   own, so "two processes, one token" is decided by the database rather than by a
   file that two containers cannot see.
 
-Why documents and not one table per feature: every store already reads and
-writes a JSON document, and a schema with fifteen normalised tables would need a
-migration for each new setting. ``jsonb`` keeps the store code as it is and puts
-the durability where it belongs.
+Legacy settings stores retain scoped JSONB documents. Features needing atomic
+multi-row checks use normalized tables instead: plugin approvals/slots and saved
+Music playlists have their own schemas. Playlist quotas are decided inside a
+PostgreSQL transaction, not by rewriting a whole JSON settings document.
 
 Writes are batched: a mutation queues the document and one background task
 flushes the queue, so a handler never waits on the network. A database that is
@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from .plugin_access import SCHEMA as PLUGIN_SCHEMA
+from .music_lists import SCHEMA as MUSIC_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ SCHEMA: tuple[str, ...] = (
     """,
 )
 
-SCHEMA += PLUGIN_SCHEMA
+SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA
 
 UPSERT_DOCUMENT = """
     INSERT INTO agent_documents (name, value)

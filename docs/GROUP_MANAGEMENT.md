@@ -568,3 +568,32 @@ uses a paid worker; no live hosting plan or monitor was changed. Validation:
 whitespace checks passed. Tests cover plugin-change sync, in-flight changes,
 manifest scopes, clone startup sync, API timeouts and measured uptime. No live
 Telegram command registration, deployment or billing action was performed.
+
+### Durable saved Music metadata
+
+Music exposes 24 base commands plus four playlist commands when PostgreSQL is
+connected: `/saveplaylist`, `/playlist`, `/playlists`, `/deleteplaylist`.
+The additive `agent_music_playlists` table keys every row by bot tenant, group,
+authenticated user and validated name. Saving snapshots current/upcoming URL
+metadata; same-name saves replace only that user's list in that group/bot.
+An advisory transaction lock serializes the ten-list quota check and write.
+Lists cap at twenty tracks, names at 32 characters, titles at 160 and URLs at
+2048. No local paths, embedded credentials, query/fragment URLs or control
+characters are accepted. Names/counts, not source URLs, appear in list views.
+
+All four commands require a moderator/tenant Owner. Loading rechecks all source
+metadata and DNS, then activation and whole-list queue capacity before one local
+append. It requires fresh current playback and cannot start or replace a track.
+Revocation while validation is in progress prevents admission. Native streaming
+is not a pinned HTTP proxy: redirect/DNS-rebinding limitations are explicitly
+documented, and path-embedded access tokens cannot be automatically recognized.
+Saved lists remain until deleted; turning off Music does not silently destroy
+them. Automatic retention and whole-group erasure integration remain open.
+
+Validation: **822 tests passed** with disposable PostgreSQL, including a real
+12-way quota race, same-name replacement, reconnect persistence, bot/group/user
+isolation, delete ownership, DNS revalidation, malformed metadata, permission
+checks and all-or-nothing queue admission. Compileall, pyflakes and whitespace
+checks passed. DNS and voice interactions were mocked; no live streaming or
+media-provider claim is made. Existing command sync picks up the four handlers
+when this database-capable build is deployed.

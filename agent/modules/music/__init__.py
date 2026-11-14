@@ -28,6 +28,7 @@ from ...ui.tables import Panel, Table, kv_table, panel
 from ..moderation import is_moderator
 from .queue import QueueBook, Track
 from .controls import COMMANDS as EXTRA_COMMANDS, build_controls
+from .playlists import COMMANDS as PLAYLIST_COMMANDS, build_playlists
 from .sources import SourceError, resolve
 from ...utils import rich as rich_ui
 from ...utils.rich import reply
@@ -40,7 +41,7 @@ MANIFEST = PluginManifest(
     version="1.0.0",
     description="Stream audio into the group's voice chat (needs SESSION_STRING).",
     commands=("play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
-              "q", "end", "resetplayer", "playnext", *EXTRA_COMMANDS),
+              "q", "end", "resetplayer", "playnext", *EXTRA_COMMANDS, *PLAYLIST_COMMANDS),
     permissions=("messages.read", "messages.send", "voice.stream"),
     scope="group",
 )
@@ -470,4 +471,11 @@ def build(ctx):
         "playnext": play,
         **build_controls(ctx, queues, history, volumes, _play_next),
     }
-    return MANIFEST, {name: serialized(handler) for name, handler in handlers.items()}
+    db = getattr(ctx, "db", None)
+    if db is not None and db.connected:
+        handlers.update(build_playlists(ctx, queues))
+        manifest = MANIFEST
+    else:
+        manifest = replace(MANIFEST, commands=tuple(name for name in MANIFEST.commands if name not in PLAYLIST_COMMANDS),
+                           description=MANIFEST.description + " Saved playlists unavailable without PostgreSQL.")
+    return manifest, {name: serialized(handler) for name, handler in handlers.items()}
