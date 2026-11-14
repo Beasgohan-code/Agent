@@ -184,6 +184,7 @@ class ChatStore:
         filters = settings.setdefault("filters", {})
         removed = filters.pop(name.strip().lower()[:64], None) is not None
         if removed:
+            settings.get('filter_authors', {}).pop(name.strip().lower()[:64], None)
             self._save()
         return removed
 

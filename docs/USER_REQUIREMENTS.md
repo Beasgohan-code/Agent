@@ -203,3 +203,13 @@ personal-identity checks. Overlong input is rejected before the store's silent
 Welcome studio and update panels use the current theme. Greeting storage still
 background-flushes; Telegram send failures remain isolated, not automatically
 retried. This does not complete the all-feature bug audit or reference parity.
+
+### Filter studio and improvement suggestions
+
+Upgraded filter pagination/full-detail preview, multiline input preservation,
+2000-character reply rejection, a 100-new-filter/group cap, personal-identity
+checks and strict deletion arguments. Deleting now cleans author metadata.
+Existing substring/first-stored-match semantics remain intentionally unchanged.
+Management responses are group-visible and persistence still background-flushes.
+Prioritized design suggestions are recorded in NEXT_IMPROVEMENTS.md, not claimed
+as delivered features. Full-reference audit and complete parity remain pending.
