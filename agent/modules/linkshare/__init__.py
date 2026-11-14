@@ -35,6 +35,7 @@ from ...ui.tables import Table, kv_table, panel
 from ...utils import rich as rich_ui
 from ...utils.delivery import send_stored
 from ...utils.rich import reply
+from ..filestore.vault import MAX_BOT_DOWNLOAD, media_of, media_name, media_size
 
 logger = logging.getLogger(__name__)
 
@@ -221,12 +222,11 @@ def build(ctx):
         await _grant(client, message, stored, ttl, uses, source=f"/share {parts[0]}")
 
     async def genlink(client, message):
-        replied = getattr(message, "reply_to_message", None)
-        media = replied and (getattr(replied, "document", None) or getattr(replied, "video", None))
-        if not media:
+        found = media_of(message)
+        if found is None:
             await reply(
                 message,
-                "Reply to a file with <code>/genlink</code>. Two numbers are "
+                "Reply to a file (document, video, audio, voice note, animation or photo) with <code>/genlink</code>. Two numbers are "
                 "optional: hours until it expires, and how many times it may be "
                 "opened — <code>/genlink 48 5</code>. A file already in the vault "
                 "is shared with <code>/share &lt;id&gt;</code>.",
@@ -238,10 +238,22 @@ def build(ctx):
             await reply(message, problem)
             return
 
+        replied, media = found
         owner = message.from_user.id
+        size = media_size(media)
+        if size > MAX_BOT_DOWNLOAD:
+            await reply(message, "That file exceeds this workflow's 20 MB download limit. No link was created.")
+            return
+        book = getattr(ctx, "premium", None)
+        allowance = book.tier(owner).quota_bytes if book is not None else None
         try:
+            # Admission only; save_path checks the actual downloaded size again.
+            ctx.storage.check_quota(owner, size, quota_bytes=allowance)
             source = await replied.download()
-            stored = ctx.storage.save_path(owner, source, name=media.file_name or "file.bin")
+            if not source:
+                await reply(message, "Telegram returned no file. No link was created.")
+                return
+            stored = ctx.storage.save_path(owner, source, name=media_name(media), quota_bytes=allowance)
         except Exception as exc:  # noqa: BLE001 - quota and IO errors reach the user
             logger.warning("genlink save unconfirmed (%s)", type(exc).__name__)
             await reply(
