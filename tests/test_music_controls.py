@@ -43,7 +43,7 @@ async def contents(handlers):
 def test_all_new_music_commands_are_declared_and_group_scoped(tmp_path, monkeypatch):
     ctx, manifest, handlers = wire(tmp_path, monkeypatch)
     assert set(manifest.commands) == set(handlers)
-    assert len(handlers) == 26
+    assert len(handlers) == 29
     assert manifest.scope == 'group'
 
 

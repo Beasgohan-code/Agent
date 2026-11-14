@@ -6,10 +6,10 @@ from ..moderation import is_moderator
 from ...utils.rich import reply
 from ...ui.tables import Table, kv_table, panel
 from ...platform.voice import VoiceUnavailable
-from .seeking import USAGE as SEEK_USAGE, seek_target
+from .seeking import USAGE as SEEK_USAGE, control_target
 
 COMMANDS = ('loop', 'shuffle', 'clear', 'clearqueue', 'remove', 'move', 'jump',
-            'replay', 'seek', 'volume', 'volumeup', 'volumedown', 'history')
+            'replay', 'seek', 'fw', 'bw', 'seekback', 'volume', 'volumeup', 'volumedown', 'history')
 
 
 def build_controls(ctx, queues, history, volumes, advance):
@@ -69,7 +69,7 @@ def build_controls(ctx, queues, history, volumes, advance):
                         raise
                 said = ('Selected track started after voice-engine acknowledgement.' if name == 'jump'
                         else 'Upcoming queue updated; current playback is unchanged.')
-            elif name == 'seek':
+            elif name in ('seek', 'fw', 'bw', 'seekback'):
                 if len(args) != 1:
                     raise ValueError(SEEK_USAGE)
                 playback = engine.playback(chat_id)
@@ -77,7 +77,7 @@ def build_controls(ctx, queues, history, volumes, advance):
                     raise ValueError('Nothing is playing here.')
                 if playback.paused:
                     raise ValueError('Resume playback before seeking.')
-                target = seek_target(args[0], playback.elapsed)
+                target = control_target(name, args[0], playback.elapsed)
                 acknowledged = await engine.seek(chat_id, target)
                 if acknowledged is False:
                     raise VoiceUnavailable('Seek was not acknowledged.')

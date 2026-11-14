@@ -86,3 +86,72 @@ def test_seek_handler_permissions_and_queue_unchanged(tmp_path, monkeypatch):
         await invoke(handlers, '/seek nan')
         assert ctx.voice.seek.await_count == 1
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('raw,expected', [('5m', 300), ('1h', 3600), ('+5m', 700), ('-5m', 100), ('30s', 30)])
+def test_duration_units(raw, expected):
+    assert seek_target(raw, 400) == expected
+
+
+@pytest.mark.parametrize('command,raw,expected', [('fw', '5m', 700), ('bw', '1m', 340), ('seekback', '30s', 370)])
+def test_relative_shortcut_syntax(command, raw, expected):
+    from agent.modules.music.seeking import control_target
+    assert control_target(command, raw, 400) == expected
+
+
+@pytest.mark.parametrize('command,raw', [('fw', '-1'), ('bw', '+30'), ('fw', '0'), ('bw', '1h'), ('seekback', '1:30'), ('fw', '25h')])
+def test_shortcuts_reject_ambiguous_or_out_of_range_values(command, raw):
+    from agent.modules.music.seeking import control_target
+    with pytest.raises(ValueError):
+        control_target(command, raw, 30)
+
+
+@pytest.mark.parametrize('command,arg,expected', [('fw', '5m', 900), ('bw', '1m', 540), ('seekback', '30s', 570)])
+def test_shortcut_handlers_preserve_queue_and_deny_nonadmins(tmp_path, monkeypatch, command, arg, expected):
+    async def scenario():
+        ctx, manifest, handlers = wire(tmp_path, monkeypatch)
+        assert command in manifest.commands
+        await invoke(handlers, '/play current')
+        await invoke(handlers, '/play upcoming')
+        ctx.voice.playbacks[CHAT] = SimpleNamespace(elapsed=600, paused=False, title='current')
+        ctx.voice.seek = AsyncMock()
+        await invoke(handlers, f'/{command} {arg}', uid=STRANGER)
+        ctx.voice.seek.assert_not_awaited()
+        await invoke(handlers, f'/{command} {arg}')
+        ctx.voice.seek.assert_awaited_once_with(CHAT, expected)
+        body = (await invoke(handlers, '/queue')).reply.await_args.args[0]
+        assert 'upcoming' in body
+    asyncio.run(scenario())
+
+
+def test_cancelled_native_seek_does_not_update_position(monkeypatch):
+    async def scenario():
+        engine = native(monkeypatch)
+        before = engine.playback(CHAT).started_at
+        entered = asyncio.Event()
+        async def wait(*args):
+            entered.set()
+            await asyncio.Event().wait()
+        engine._call.play.side_effect = wait
+        task = asyncio.create_task(engine.seek(CHAT, 90))
+        await entered.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert engine.playback(CHAT).started_at == before
+    asyncio.run(scenario())
+
+
+def test_timed_out_native_seek_does_not_update_position(monkeypatch):
+    async def scenario():
+        from agent.platform import voice
+        monkeypatch.setattr(voice, 'START_TIMEOUT', 0.01)
+        engine = native(monkeypatch)
+        before = engine.playback(CHAT).started_at
+        async def wait(*args):
+            await asyncio.Event().wait()
+        engine._call.play.side_effect = wait
+        with pytest.raises(VoiceUnavailable, match='TimeoutError'):
+            await engine.seek(CHAT, 90)
+        assert engine.playback(CHAT).started_at == before
+    asyncio.run(scenario())
