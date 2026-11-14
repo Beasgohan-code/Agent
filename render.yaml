@@ -1,0 +1,55 @@
+# Render Blueprint — Agent as a Docker Background Worker.
+# Secrets use sync: false, so Render prompts for them instead of storing
+# them in this file.
+#
+# A worker never idles out, so no keep-alive traffic is needed. The bot still
+# runs a watchdog and, if you prefer a web service (health checks, public
+# /health), add the block below instead — Render sets PORT, which enables the
+# endpoint automatically. Nothing ever pings itself.
+#
+#  - type: web
+#    name: agent
+#    runtime: docker
+#    dockerfilePath: ./Dockerfile
+#    plan: starter
+#    healthCheckPath: /health/live
+#    # Use liveness here: the replacement may wait for the old token lease.
+#    envVars:
+#      - { key: BOT_TOKEN, sync: false }
+#      - { key: API_ID, sync: false }
+#      - { key: API_HASH, sync: false }
+services:
+  - type: worker
+    name: agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      # PostgreSQL. Paste the Internal Database URL from the Postgres instance
+      # you created (Render also accepts ?sslmode=require; the bot strips it).
+      # Without it the bot keeps its state in JSON files on this service's disk,
+      # which a redeploy wipes.
+      - key: DATABASE_URL
+        sync: false
+      # Encrypts the clone tokens at rest. Generate with:
+      #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: TOKEN_KEY
+        sync: false
+      # A private channel the bot archives vault files into (negative id). Without
+      # it, files live on this service's disk and a redeploy wipes them.
+      - key: STORAGE_CHANNEL
+        sync: false
+      # The database is the source of truth in production: refuse to start rather
+      # than quietly fall back to a disk that is wiped on every deploy.
+      - key: DB_REQUIRED
+        value: "1"
+      - key: OWNER_ID
+        sync: false

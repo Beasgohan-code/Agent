@@ -1,0 +1,6 @@
+# Agent — development dependencies
+# Install with:
+#   pip install -r requirements-dev.txt
+#   pip install --no-deps richgram==0.2.0
+# (richgram is deliberately excluded here: see the note in requirements.txt)
+pytest==8.4.2

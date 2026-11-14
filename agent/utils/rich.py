@@ -1,0 +1,218 @@
+"""Agent — one way to answer, rich when the deployment allows it.
+
+Telegram Bot API 10.3 can render a real table, a real heading and collapsible
+details, but only through a *rich message* (``send_rich_message``). A bot that
+has it gets native tables; a deployment whose client library predates it — or
+whose Telegram build refuses the call — falls back to the HTML that has always
+worked, with tables drawn in ``<pre>``.
+
+The fallback is not per-message guesswork: the first refusal flips
+:func:`agent.ui.tables.set_rich` off for the whole process, so the UI stops
+producing ``<table>`` at all instead of degrading one message at a time.
+
+Editing is covered too: the Bot API edits a rich message through
+``edit_message_text(rich_text=…)``, so navigating `/menu` keeps the native table
+instead of collapsing the screen into a grid on the first button press. When
+either call is refused the classic form is built from the same object — tables
+drawn in ``<pre>``, which stays aligned instead of becoming a run-on line.
+"""
+
+from __future__ import annotations
+
+import html
+import logging
+import re
+
+from pyrogram.types import InputRichMessage, ReplyParameters
+
+from ..ui import tables
+
+logger = logging.getLogger(__name__)
+
+#: Any markup tag, for taking the visible text out of an HTML cell.
+_CELL_TAG = re.compile(r"<[^>]+>")
+
+#: Tags only a rich message can render; seeing one means "send this richly".
+_RICH_ONLY = re.compile(
+    r"</?(?:h[1-6]|table|thead|tbody|tr|th|td|details|summary|mark|hr|footer"
+    r"|tg-button-row|tg-button|tg-math-block|tg-collage|tg-slideshow|tg-map"
+    r"|tg-document|tg-thinking|button|img)(?=[\s/>])",
+    re.IGNORECASE,
+)
+
+
+def needs_rich(text: str) -> bool:
+    """Does *text* use markup only a rich message can render?"""
+    return bool(text) and bool(_RICH_ONLY.search(text))
+
+
+def available(client) -> bool:
+    """Can *client* deliver a rich message at all?"""
+    return hasattr(client, "send_rich_message")
+
+
+async def send(client, chat_id, text: str, *, reply_markup=None, **kwargs):
+    """Send *text*: rich when possible, plain HTML otherwise."""
+    payload = str(text or "")
+    if not payload:
+        return None
+    if tables.rich_enabled() and needs_rich(payload):
+        if not available(client):
+            _cannot(client)
+            payload = _classic_form(text, payload)
+        else:
+            try:
+                return await client.send_rich_message(
+                    chat_id=chat_id,
+                    rich_text=InputRichMessage(html=payload),
+                    reply_markup=reply_markup,
+                    **kwargs,
+                )
+            except Exception as exc:  # noqa: BLE001 - downgrade, never lose it
+                _refused(exc)
+                payload = _classic_form(text, payload)
+    return await client.send_message(
+        chat_id=chat_id, text=payload, reply_markup=reply_markup, **kwargs
+    )
+
+
+async def reply(message, text, **kwargs):
+    """Reply to *message*: rich when possible, plain HTML otherwise."""
+    payload = str(text or "")
+    if not payload:
+        return None
+    client = getattr(message, "_client", None)
+    if tables.rich_enabled() and needs_rich(payload):
+        if not available(client):
+            _cannot(client)
+            payload = _classic_form(text, payload)
+        else:
+            try:
+                return await client.send_rich_message(
+                    chat_id=message.chat.id,
+                    rich_text=InputRichMessage(html=payload),
+                    reply_markup=kwargs.pop("reply_markup", None),
+                    reply_parameters=ReplyParameters(message_id=message.id),
+                    **kwargs,
+                )
+            except Exception as exc:  # noqa: BLE001 - downgrade, never lose it
+                _refused(exc)
+                payload = _classic_form(text, payload)
+    return await message.reply(payload, **kwargs)
+
+
+def _editor(target):
+    """The callable that edits *target*'s message, or ``None``.
+
+    A real :class:`pyrogram.types.CallbackQuery` edits itself; the panel code in
+    the plugins also carries the editor on ``query.message``, so both are tried.
+    """
+    direct = getattr(target, "edit_message_text", None)
+    if callable(direct):
+        return direct
+    message = getattr(target, "message", None)
+    nested = getattr(message, "edit_text", None)
+    return nested if callable(nested) else None
+
+
+async def edit(target, text, *, reply_markup=None):
+    """Edit the message *target* (a callback query) points at.
+
+    Rich when the text needs it and the client can send it, classic otherwise;
+    the classic form is derived from the same object, so a refused rich edit
+    degrades to the grid rather than to nothing.
+    """
+    payload = str(text or "")
+    if not payload:
+        return None
+    editor = _editor(target)
+    if editor is None:
+        return None
+    client = getattr(target, "_client", None) or getattr(
+        getattr(target, "message", None), "_client", None
+    )
+    if tables.rich_enabled() and needs_rich(payload) and available(client):
+        try:
+            return await editor(
+                rich_text=InputRichMessage(html=payload), reply_markup=reply_markup
+            )
+        except Exception as exc:  # noqa: BLE001 - fall through to the grid
+            logger.warning("Telegram refused a rich edit (%s); using the grid.", exc)
+    return await editor(
+        text=_classic_form(text, payload), parse_mode="html", reply_markup=reply_markup
+    )
+
+
+def _refused(exc: Exception) -> None:
+    """Telegram said no: stop producing tables for this process."""
+    logger.warning(
+        "Telegram refused a rich message (%s: %s); switching the UI to the "
+        "classic grid.",
+        type(exc).__name__,
+        exc,
+    )
+    tables.set_rich(False)
+
+
+def _cannot(client) -> None:
+    """The client library has no rich support: same downgrade, said once."""
+    logger.info(
+        "%s has no send_rich_message; using the classic grid.",
+        type(client).__name__,
+    )
+    tables.set_rich(False)
+
+
+def _classic_form(text, payload: str) -> str:
+    """The best classic rendering available for *text*.
+
+        A :class:`agent.ui.tables.Panel` carries its own monospace form, which keeps
+        the table aligned; anything else is normalised from its rich markup.
+        
+    """
+    return getattr(text, "classic", None) or classic(payload)
+
+
+#: A native ``<table>``, as emitted by :meth:`agent.ui.tables.Table.rich_block`.
+_TABLE_RE = re.compile(r"<table[^>]*>([\s\S]*?)</table>", re.IGNORECASE)
+_ROW_RE = re.compile(r"<tr[^>]*>([\s\S]*?)</tr>", re.IGNORECASE)
+_CELL_RE = re.compile(r"<t([hd])[^>]*>([\s\S]*?)</t\1>", re.IGNORECASE)
+
+
+def _cell_text(cell: str) -> str:
+    """Visible text of one cell: tags gone, whitespace collapsed."""
+    return " ".join(html.unescape(_CELL_TAG.sub("", cell)).split())
+
+
+def _table_to_pre(match: re.Match) -> str:
+    """Draw one native table as the monospace grid classic messages can show."""
+    headers: tuple[str, ...] = ()
+    rows: list[tuple[str, ...]] = []
+    for row in _ROW_RE.finditer(match.group(1)):
+        cells = [(kind.lower(), _cell_text(text)) for kind, text in _CELL_RE.findall(row.group(1))]
+        if not cells:
+            continue
+        if not headers and not rows and all(kind == "h" for kind, _ in cells):
+            headers = tuple(text for _, text in cells)
+        else:
+            rows.append(tuple(text for _, text in cells))
+    if not headers and not rows:
+        return ""
+    table = tables.Table(
+        headers=headers, rows=tuple(rows), max_column=40, total_width=62
+    )
+    return table.classic_block()
+
+
+def classic(text: str) -> str:
+    """The same content as HTML Telegram has always accepted.
+
+    A native table would arrive as one run-on line — Telegram does not lay out
+    ``<table>`` outside a rich message — so it is drawn as a ``<pre>`` grid first.
+    """
+    from .sender import to_safe_html
+
+    body = text or ""
+    if "<table" in body.lower():
+        body = _TABLE_RE.sub(_table_to_pre, body)
+    return to_safe_html(body)

@@ -1,0 +1,660 @@
+# Agent — group-management architecture audit
+
+## Product contract
+
+Agent is primarily a professional group-management bot. Moderation, group
+settings, filters, welcome/goodbye, reports and verification are mandatory core
+systems, alongside navigation and Owner operations. Core availability cannot be
+disabled through `PLUGINS`, runtime controls or old persisted disabled flags.
+Rules remain configurable: making verification available does not force every
+new member to verify. Mandatory systems consume no optional slots.
+
+Owner approval is global within a bot tenant. Authorized group administrators
+may activate approved optional plugins for their own group: at most three active
+per group. Installation trust approval and product availability approval are
+separate decisions. The trusted-code installer is not a sandbox.
+
+## Existing systems (source audit, not a 210-feature claim)
+
+| System | Existing implementation | Important remaining work |
+| --- | --- | --- |
+| Moderation | `modules/moderation`: warnings, escalation, mute/unmute, kick, ban/unban, purge, notes, trust, audit view | Durable case identifiers, searchable cases, consistent action history |
+| Permissions | `moderation.is_moderator`, per-action checks, protected-target checks | Review all mutation paths and callbacks for Telegram granular rights |
+| Protection | Flood, duplicate, link/invite and keyword checks with configurable actions | Mention spam, raid detection, durable windows and escalation workflows |
+| Group settings | `modules/group`: rules, pins, admin list, warn limit, lockdown | Integrated control center; preserve pre-lockdown chat permissions |
+| Filters | Keyword response CRUD and non-command watcher | Rule priorities, richer conditions and safe automation |
+| Onboarding | Welcome/goodbye; verification button, restriction and expiry | Persist pending verifications; restart currently loses pending timers |
+| Reports | Report list, resolution callbacks and appeals | Search, pagination, case assignment and durable case lifecycle |
+| Records | `platform/chats.py`: group-keyed members, settings, logs, reports | Relational member/case data and concurrency-safe writes |
+| Presentation | Rich panels/tables, action routing and editable plugin panel | Unified permission-aware group dashboard and navigation |
+| Optional runtime | Deployment selection, global handler attachment/removal, disabled-state persistence | Per-group dispatch, task/listener ownership and teardown |
+| Analytics | Existing bounded activity records | Explicit metric definitions, retention, group aggregation and dashboard |
+
+The group store is PostgreSQL-backed JSONB when configured, partitioned by group
+inside a bot-scoped document. It is **not** safe for concurrent read/count/write
+slot reservations. Optional modules still use the existing deployment-wide
+runtime; this change does not silently impose three slots on existing groups.
+
+## Next implementation boundaries
+
+1. Audit command and callback permissions; separate mandatory event handling
+   from optional execution. Today watchers use separate dispatcher groups, but
+   startup/build still shares a process and is not a fault-isolated pipeline.
+2. Introduce PostgreSQL catalog and activation tables keyed by tenant and group.
+   Serialize all group activation mutations with a transaction-scoped group lock,
+   recheck Owner approval inside the transaction, enforce a unique plugin row and
+   count active/reserved slots while holding that lock. Global blocking must
+   serialize against activation too. No local-file fallback for reservations.
+3. Route commands, callbacks and controlled events through per-group eligibility.
+   A globally registered handler is not itself a per-group activation. Remove
+   group-owned subscriptions, jobs and listeners on disable, without detaching
+   other groups' handlers. Failures must leave mandatory moderation operational.
+4. Build the existing settings entry point into the Group Control Center using
+   live data, authorization on every press, pagination and confirmations.
+5. Reconcile the 210-capability target against tests and source, recording each
+   capability as implemented, partial or planned. Do not manufacture commands to
+   meet a count or port unsafe remote execution features as moderation tools.
+
+## Compatibility in this pass
+
+Narrow builds and clone profiles now retain the mandatory group core. `tiny`
+means no optional tools, not no moderation. Existing optional deployment choices
+remain unchanged. Previously disabled core modules become available on startup.
+No new commands, external services or credentials are introduced.
+
+## Render rolling deployment handover
+
+For a Render **web service**, set its Health Check Path to `/health/live`.
+The HTTP server binds to `0.0.0.0:$PORT` before database and Telegram startup.
+This is process liveness, not a claim that Telegram is connected. A replacement
+may remain in standby while the previous process owns the token lease. Once
+Render retires the predecessor and it releases the lease (or its lease expires),
+the replacement connects. Never delete or steal a live lease to force a deploy:
+that risks duplicate bot sessions. A genuinely separate service using the same
+token must be stopped. Background workers retain the bounded lease wait.
+
+The shutdown wrapper closes HTTP, stops the heartbeat, releases only its own
+lease and closes PostgreSQL even after startup failure. The heartbeat starts
+immediately after acquisition, before Telegram, voice or clone initialization.
+
+### Lease safety during database outages
+
+An unavailable database is not evidence of lease ownership. Acquisition now
+refuses unprotected startup, and failed renewals signal shutdown. Once a process
+selects a PostgreSQL lease, it cannot silently downgrade to a container-local
+file lock after disconnection. Web standby retries include a delay to avoid
+hammering the database. Operators should expect reduced availability during a
+database outage rather than duplicate bot responders.
+
+Cleanup attempts continue through optional voice/clone shutdown failures so
+Telegram disconnect is not skipped. Database cleanup also runs if HTTP cleanup
+or lease release raises. These changes are covered by regression tests; live
+Render rollout still needs to be verified on the deployed branch.
+
+## Videl1 reference review — permission safety
+
+Reviewed the local reference files `refs/Videl1/helper/chat_status.py` and
+`refs/Videl1/modules/plugins/antiflood.py` for granular administrator rights,
+restriction behavior and enforcement flow. They are behavioral references, not
+code copied into Agent. Their presence does not establish feature parity.
+
+Agent's lockdown previously unlocked groups with generic open permissions.
+It now reads the current Telegram permissions, stores a group-scoped baseline,
+and restores that baseline instead. Repeated lock/unlock operations are no-ops;
+a missing legacy baseline or unreadable permissions refuses unsafe mutation.
+Typos in the mode are rejected. Failed unlocks preserve recovery state. Local
+concurrent requests are serialized per group; cross-process transactional group
+state and crash-atomic Telegram/database updates are not implemented by this fix.
+The existing document store's asynchronous persistence limitations still apply.
+
+### Recovery-command review
+
+`refs/Videl1/modules/commands/admin.py` restores Telegram's current group default
+permissions during unmute recovery. Agent now uses that behavior for `/unmute`
+instead of generic send/media permissions, refuses when defaults are unreadable,
+and protects administrator targets. This restores current group defaults, not
+any older per-member custom restriction; it is not a historical rollback.
+
+Mute, unmute, kick, ban and unban now report Telegram RPC failures to the caller.
+Flood waits are reported without blocking the update handler for a long sleep or
+automatically replaying a destructive action. Tests verify failed requests do
+not create success log entries. A kick remains two Telegram requests: if unban
+fails after ban succeeds, the operation is partial, not transactional.
+
+### Partial kick recovery
+
+All three kick paths (manual command, warning escalation and anti-spam) now share
+one implementation. A confirmed ban followed by an unconfirmed unban records
+`kick:incomplete`, not a successful kick. The notice states that the member may
+still be banned and provides `/unban <id>` as a recovery action. Flood-wait
+failures include the retry delay. The bot does not automatically replay the ban.
+The anti-spam watcher contains recovery-notice failures as well. This improves
+observability and recovery, not atomicity across the two Telegram requests.
+
+## Upgrade phase: security and relational plugin permissions
+
+Completed in this phase:
+
+- Unknown/missing target membership and lookup errors fail closed for moderation
+  and automatic anti-spam actions. Warning escalation checks the target too.
+- Third-party execution is refused even for approved digests. Automatic startup
+  loading is removed. Inspection is not process isolation.
+- Local plugin staging rejects symlinks and unsafe slugs; activation re-inspects
+  source rather than trusting a stale inspection object.
+- Required database mode refuses file reads as a fallback for absent documents,
+  refuses offline file writes, and stops startup after a failed document load.
+- Relational plugin-use service provides Owner approval, activation/deactivation,
+  per-group configuration and history. Catalog row locks serialize revocation
+  against activation; a group-specific advisory lock serializes slot checks.
+- Revocation removes activation rows and marks resource records cleanup-pending
+  atomically. Core never consumes slots. No JSONB count/write fallback exists.
+
+Five additive tables are created by the normal database bootstrap:
+`agent_plugin_catalog`, `agent_group_plugins`, `agent_plugin_config`,
+`agent_plugin_history`, `agent_plugin_resources`. No existing data is dropped or
+converted. Approval defaults to false. Configuration uses per-group JSONB rows,
+not a shared document counter. Existing deployment plugin settings are not
+silently converted to Owner approvals or group activations.
+
+Not completed by this phase:
+
+- Telegram catalog/activation UI and execution-boundary routing.
+- Runtime job/listener teardown, including cleanup-pending resource processing.
+- An external-process capability protocol (execution remains disabled).
+- Relational members/cases, persistent verification, database recovery and
+  document-store write consistency beyond the fail-closed changes listed above.
+- Full Control Center, granular-permission audit of every callback, and the
+  detailed 200+ capability matrix. The earlier audit is a system-level inventory,
+  not a substitute for that requested matrix.
+
+Do not treat the new service alone as end-to-end enforcement. Existing optional
+commands still use the deployment-wide runtime until routing and teardown are
+integrated. Mandatory core availability is retained.
+
+Validation: full suite with a disposable PostgreSQL server: **626 passed**, no
+skips. The integration test exercises concurrent activation, fourth-slot refusal,
+group isolation, configuration isolation, deactivation, resource cleanup markers
+and a revocation/activation race. It is opt-in via `AGENT_TEST_DATABASE_URL` when
+running elsewhere; no production database is used by default. Without that
+variable the normal run reports 625 passed and one skipped. `pgserver` was used
+only in the local test environment, not added to application requirements.
+Compile checks, pyflakes and whitespace checks passed.
+
+Deployment: no new application environment variables. Existing `DATABASE_URL`
+and `OWNER_ID` are used by the service; `DB_REQUIRED=1` now refuses legacy local
+fallback. Import any needed local-only state deliberately before requiring the
+database: this phase intentionally does not auto-import stale disk documents.
+Keep Render's liveness path `/health/live`.
+
+## Execution-routing phase (supersedes earlier routing/UI pending notes)
+
+`platform/execution.py` now gates group optional-module commands, registered
+callbacks/deep links and watcher callbacks using live PostgreSQL eligibility.
+Callback/deep-link ownership is captured while the module builds. Mandatory
+modules are not wrapped. Missing chat origins are refused rather than assumed
+private. Private optional tools retain deployment-scoped use; their group-use
+approval does not change private availability. Runtime disable still blocks
+private callbacks and deep links.
+
+Group invocation tasks are owned children, so cleanup cancels plugin work rather
+than a shared dispatcher worker. JobQueue inherits group/module ownership through
+execution context and rechecks approval before starting queued work. Group cleanup
+cancels only matching jobs and invocation tasks. Music registers queue/call
+cleanup and rechecks eligibility before advancing an ended stream. Global revoke
+and group deactivate invoke local cleanup after commit; a two-second reconciler
+handles other processes and existing deployment-wide toggles. New calls never
+use a cached approval. Optional build failures restore callback registrations and
+leave core modules available. Generic arbitrary-task/subscription ownership and
+durable resource-row lifecycle processing are still incomplete.
+
+### Telegram workflow
+
+- Owner: `/plugin <slug> approve|revoke` changes global group-use permission.
+  Existing Owner deployment-wide `on|off` controls remain separate.
+- Group administrator: `/plugins`, or the button under `/settings`, opens a live
+  paginated table of approval, activation and deployment availability. The panel
+  shows actual remaining slots. It rechecks the presser's manage-chat rights,
+  provides activation and a disable confirmation, and edits the same message.
+- Private-only plugins are not offered for activation in groups; this prevents
+  pretending that changing a catalog row makes private handlers group-safe.
+- The full multi-section Control Center, searchable members/cases, plugin-specific
+  configuration forms and group feature-data isolation remain incomplete.
+
+No additional migration or application environment variable is needed beyond the
+five tables introduced previously. Group optional execution now fails closed if
+PostgreSQL or approval is absent. Deployments relying on group music must set up
+DATABASE_URL, SESSION_STRING and Owner approval, then activate it in the group.
+No live Telegram/Render rollout was exercised in this environment.
+
+Validation: **641 passed**, with real disposable PostgreSQL enabled; compileall,
+pyflakes and whitespace checks passed. Added regression tests for execution gates,
+callback rechecks, queued-job rechecks, cross-group cancellation isolation,
+owned-child cancellation, optional failure containment, presser authorization,
+confirmation rendering, live slot counts and private-only availability.
+
+## Verification safety phase
+
+Verification callbacks now require a pending session, the correct group and the
+exact prompt message. A stale button cannot lift restrictions. Callback ids are
+bounded, positive-user/negative-group ids; malformed input is rejected. Membership
+is refreshed before unrestriction, and current group defaults are restored rather
+than generic open permissions. Telegram failure leaves the session/timer intact;
+success is logged only after confirmation. Callback and timeout operations share
+a per-member lock.
+
+Timeouts refuse to kick unknown or administrator targets, skip departed members,
+and share the partial-kick audit path used by moderation. Old timers cannot expire
+a replacement session. Shutdown cancels verification timers. Join events are
+serialized, check fresh membership and trusted-member exemptions, and escape names.
+If prompt delivery fails after confirmed restriction, current group defaults are
+used to roll back; failed rollback is recorded as `verify:recovery_required` for
+administrator recovery. This cannot make Telegram's separate calls atomic.
+
+Important remaining limitation: pending sessions and timers are still process-local
+and are not restored after restart. The durable verification migration is not
+included here. Existing members affected by a restart may need administrator
+recovery. Turning verification off controls new onboarding; it does not undo
+existing pending restrictions automatically.
+
+Validation: **666 passed** with disposable PostgreSQL, plus compileall, pyflakes
+and whitespace checks. Added safety tests for stale/cross-group/wrong-prompt
+callbacks, membership changes, failed unrestriction, baseline restoration,
+timeout protection, malformed ids, failed prompt rollback, duplicate join events
+and lookup failure. No new migration, environment variable or dependency.
+
+## Guided clone setup: FileStore first
+
+The user-facing `/clone` flow is now private, expiring and interactive:
+verified token → FileStore selection → optional log channel → required archive
+channel → confirmation → startup. Token format is not identity: `getMe` must
+confirm a matching bot, and identity is checked again on creation. Channel
+configuration verifies both the operator and clone administrator memberships and
+the clone's posting rights; permissions are checked again at confirmation.
+The main bot cannot clone itself; duplicate records cannot overwrite ownership.
+
+New credentials require TOKEN_KEY; setup does not invite secret submission when
+encryption or capacity is unavailable. Drafts are process-local, expire after ten
+minutes and can be cancelled with `/cancel`. Secret messages are deleted best
+effort, but Telegram/client history is not guaranteed to erase them. Completed
+records encrypt the token; draft representations exclude it. Bot tokens do not
+reveal their human creator. The authenticated setup user becomes the Owner of
+that clone tenant, not the parent deployment. Legacy clones keep their previous
+Owner behavior unless created by the guided flow.
+
+Creation/restart/profile changes require bot premium, sudo or deployment Owner
+eligibility. Free allowance is now zero; bot premium allows three clones and
+Owner/sudo remain capped by CLONE_LIMIT. Stop/delete remain available to the
+record owner after premium expiry. The supervisor parks running ineligible
+clones; restore does not start them. This is bot membership, not Telegram's own
+Premium subscription. Owner-only, private `/sudo add|remove <id>` and `/sudo list`
+manage delegated clone eligibility. Sudo does not grant parent Owner operations,
+other users' clone ownership or bypass Telegram group rights.
+
+Clone settings now isolate bot id, link signer, data scope, assistant session,
+channel destinations and HTTP port. No profile includes recursive cloning.
+Worker bootstrap loads its database and acquires its own lease before Telegram
+startup; heartbeat loss stops the clone, and stop/failure releases resources.
+A required selected plugin missing from the built registry refuses startup.
+FileStore uses the supplied clone archive channel; optional group use still
+requires that clone's Owner approval and group activation.
+
+Reference review: Videl1's clone command/manager and Videl0's premium-emoji
+metadata were inspected. Videl0 is an ignored reference checkout, not a shipped
+runtime dependency. Three additional custom-emoji mappings (diamond, microphone,
+speaker) use reference metadata with Unicode fallbacks. Telegram eligibility and
+rendering are not guaranteed by knowing an emoji id.
+
+Not included: Music assistant-session collection, remaining guided templates,
+external-process clone isolation, media-plugin completeness, durable setup drafts
+or the full group-management inventory. Music credentials are deliberately not
+requested until a dedicated isolated assistant lifecycle is implemented.
+
+Deployment: configure TOKEN_KEY before accepting new clone credentials. Existing
+clone records remain readable; new channel, selected-plugin and managed-owner
+fields are additive in the existing encrypted clone store. Sudo uses a scoped
+PostgreSQL document (or standalone file), not environment-wide implicit powers.
+No new application dependency or schema migration. Existing clones no longer
+inherit the parent session or channels; supply their own configuration as needed.
+No live Telegram calls were made during validation: API identity/channel checks
+are tested with controlled responses, while PostgreSQL integration uses a real
+disposable server.
+
+Validation: full suite **681 passed**, compileall, pyflakes and whitespace checks
+clean. Added guided setup, expiry, wrong-presser, channel-rights, revoked-token,
+encryption, sudo authorization, private-only collection, credential isolation,
+duplicate ownership, premium-loss and worker database/lease lifecycle tests.
+
+### Primary catalog and sender-owned clones
+
+Primary presentation order: Encoder, Moderation, Post maker, Music, Linkshare,
+FileStore, Leech, AI Agent. Moderation remains mandatory and slot-free. Renamer
+is still available explicitly; it is no longer in the default optional set.
+AI Agent is a credential-gated `/ask` completion adapter, not an autonomous
+operator. Parent AI keys/models are cleared in clone settings. The recorded
+token sender is now the Owner for all clone records, including legacy ones,
+scoped to the clone's database namespace.
+
+Validation for this increment: **700 tests passed with disposable PostgreSQL**
+(699 passed and one database test skipped without PostgreSQL); compileall,
+pyflakes and diff whitespace checks passed. Provider tests use mocked HTTP;
+no live Telegram or paid AI request was made.
+
+Reference-review status: clone submission and manager behavior were inspected,
+including sender ownership, token verification, duplicate handling, session
+cleanup and client ownership. The remaining reference repository has **not**
+received a complete behavioral/security audit yet. Guided clone selection is
+still FileStore-only; the eight-feature catalog must not be mistaken for eight
+finished guided clone templates. Music assistant setup remains outstanding.
+
+### Guided-template expansion and reference inventory
+
+The previous FileStore-only restriction is superseded: Encoder, Moderation,
+Post maker, Linkshare and Leech now also have single-feature guided templates.
+Every template retains the mandatory safety core. Each asks for an optional log
+channel; only FileStore requires an archive channel. Saved selections are
+allowlisted and must contain exactly one reviewed slug. Unsupported or multiple
+saved selections fail closed instead of silently running a reduced feature set.
+Startup still checks that the selected plugin actually registered commands;
+missing encoder binaries or other dependencies prevent a false-success result.
+Music and AI Agent templates remain gated pending per-clone credential setup.
+
+`REFERENCE_INVENTORY.md` indexes all 255 Python files at the reference revision,
+with content hashes, literal command candidates and process/client review sites.
+It is reproducible using `python tools/reference_inventory.py refs/Videl1
+docs/REFERENCE_INVENTORY.md` and never executes reference code. The reference
+entry point `__main__.py` has an unterminated string at line 33 in that checkout;
+this is recorded, not fixed in or imported into Agent. Reviewed entry-point
+patterns also include import-time plugin discovery and global Music/AI clients;
+Agent keeps explicit module registration and credential-gated initialization.
+Reference developer shell/eval commands are not being adopted. Static coverage
+is complete; manual feature-by-feature parity and security review remain open.
+
+Guided selections are displayed by feature name in `/mybots` and the profile
+picker, not mislabelled as the fallback `tiny` profile. The picker warns that a
+legacy profile replaces a guided selection. Validation: **722 passed** against
+disposable PostgreSQL; compileall, pyflakes and whitespace checks passed.
+No live Telegram/media/provider validation was performed.
+
+### Isolated AI clone credentials
+
+AI Agent is now the seventh guided template. It requests an OpenAI key and model
+in private only after bot identity verification. The wizard discloses external
+question processing, best-effort deletion and Telegram-history limitations.
+Keys/models are syntax-checked, not tested using a paid provider request. Provider
+billing, model access and compatibility are confirmed only when `/ask` is used.
+
+The clone store encrypts the additional key as `ai_api_key_enc`; it never writes
+a plaintext AI key, even in legacy unkeyed mode. New credentials require a key
+at rest. Clone token and AI key are excluded from dataclass reprs. The manager
+uses AI credentials only for an explicit AI selection, never parent credentials.
+Legacy profile changes clear the stored key/model; cancel, expiry, successful
+creation and startup-failure cleanup clear draft secrets. Cancellation racing
+with secret-message deletion cannot restore a discarded key. Failed store adds
+roll back the in-memory record. This is stateless text completion, not a tool
+agent. Music remains the only primary feature without a guided clone template.
+
+Validation for AI clone setup: **726 tests passed** with disposable PostgreSQL;
+compileall, pyflakes and whitespace checks passed. Paid provider calls and live
+Telegram credential/session behavior have not been tested in this environment.
+
+### Music lifecycle prerequisites
+
+Music credential collection remains gated. Voice startup now has a 30-second
+bound, serialized start/stop transitions, explicit user-account authorization
+checks and cleanup for partial connection, initialization failure, timeout and
+cancellation. Assistant bots are refused. Each stop/disconnect operation has a
+10-second bound; call shutdown failure cannot skip Telegram disconnect. Startup
+errors expose the exception category, not provider/library exception text which
+could contain credentials. Shutdown also cleans partial, not-yet-connected
+engines. This does not provide an OS-level sandbox or a guarantee against a
+third-party library that suppresses cancellation indefinitely.
+
+The clone manager now starts a configured voice engine after bot login, and
+cleans voice, bot, database and lease on startup cancellation/failure. Guided
+creation cancellation also removes the newly saved record and clears its draft
+secrets. Music assistant credential verification, account-level exclusivity and
+a safe private session workflow still need implementation before exposing the
+Music template; no assistant credentials are being accepted prematurely.
+
+Validation: **741 tests passed** with disposable PostgreSQL; compileall, pyflakes
+and whitespace checks passed. Voice-library lifecycle tests use mock clients,
+not live Telegram calls. No real assistant account was connected.
+
+### Assistant account ownership
+
+Database-backed voice engines now use a session-level PostgreSQL advisory lock
+keyed by the **verified Telegram user ID**, not the session string or bot tenant.
+The main bot and future Music clones therefore contend for the same account
+across scopes. Different accounts remain independent. Lock acquisition occurs
+after user authorization/identity checks and before the call engine starts.
+PostgreSQL being configured but unavailable fails closed for this guard; no
+file fallback is used. A database-free legacy deployment retains its existing
+single-process behavior and does not gain distributed account exclusivity.
+
+Each active guarded engine retains one pool connection until shutdown. A
+five-second health check with a five-second query timeout triggers shutdown on
+connection loss; new voice operations also check ownership. This is a bounded
+best-effort stop, not instantaneous fencing of third-party Telegram software.
+Locks coordinate bots sharing this PostgreSQL database, not different databases
+or external Telegram clients. A database disconnect can release a lock before
+the old assistant finishes shutdown; no perfect split-brain guarantee is made.
+Use a dedicated assistant account. Logs and lock keys contain no session string.
+
+Validation: **747 passed** with disposable PostgreSQL, including a real three-way
+cross-tenant account-lock race, independent-account concurrency and release/reuse.
+Voice tests cover refusal before call startup, lost ownership and shutdown
+without monitor self-cancellation. No live assistant account was connected.
+The private Music template still needs encrypted session onboarding and a
+verified consent/identity workflow before it can be enabled.
+
+### Private Music onboarding
+
+The previous Music-template gate is superseded by a consent-first guided flow.
+Music requires connected PostgreSQL and installed voice dependencies before any
+session prompt is shown. The operator must confirm control of a dedicated user
+account; the bot explains that a session grants broad account access, that the
+service decrypts it at runtime, and that Telegram history cannot guarantee
+secret erasure. No phone number, password, OTP or account-login flow is offered.
+The recorded bot-token sender remains the clone Owner, not the assistant account.
+
+Only pre-generated production Telethon IPv4 StringSessions on port 443, DCs 1–5
+and allowlisted Telegram networks are accepted. The embedded address is checked
+before any outbound connection; arbitrary/private/metadata-server endpoints are
+rejected. IPv6, test-DC and other session formats are intentionally unsupported.
+Network ranges are a maintained compatibility constraint, not live DC discovery.
+Offline parsing does not prove authorization; actual user identity, the shared
+account lock and the voice connection are verified during clone startup. No
+voice chat is joined as part of setup. An unavailable or unconnected voice engine
+cannot produce a successful Music-clone result.
+
+Sessions are encrypted as `assistant_session_enc`, excluded from record/settings
+reprs, and never inherited from the parent. Draft cancellation, expiry, failed
+startup and successful creation clear the draft session. A legacy profile switch
+removes the saved assistant credential. Removing ciphertext does not revoke the
+Telegram authorization: use Telegram Devices to revoke a session. Runtime
+settings reprs now also hide bot tokens, API hashes, DB URLs, token-encryption
+keys and link-signing secrets. Clones remain in-process clients, not sandboxes.
+
+All eight primary features now have single-feature guided templates, but this
+is not a feature-parity or production-validation claim. Music requires dedicated
+account provisioning, admin permissions and an active group voice chat for real
+playback. No real assistant was connected and no live call was joined here.
+
+Validation: **766 tests passed** with disposable PostgreSQL; compileall, pyflakes
+and whitespace checks passed. Includes real offline Telethon session serialization
+and parsing, untrusted-endpoint rejection, consent/readiness gates, encrypted
+round-trip, draft cleanup and startup-failure rollback. Lifecycle calls remain
+mocked; live Telegram voice operation is not validated.
+
+### Deploy shutdown and expanded reference review
+
+The supplied Render trace indicates successful startup after normal lease
+handover, then a best-effort log post racing with Telegram disconnect on shutdown.
+`#BotStopped` is now emitted and drained before disconnect, not after it. Pending
+posts are owned per LogBook (no global cross-clone set); a five-second shutdown
+budget cancels hung posts, sends have ten-second timeouts, and late events are
+ignored after draining starts. Pending delivery is capped at 200 tasks per bot;
+excess best-effort notifications are dropped with a counter rather than growing
+memory indefinitely. These posts remain operational notifications, not durable
+audit records. Client disconnect still runs if log cleanup fails.
+
+All 29 other public account repositories were fetched into ignored `refs/`.
+The [catalog](references/README.md) records revisions and file types for 3,399
+tracked files plus Python static indexes for 2,044 files. Five files failed parsing
+under the test interpreter and are marked for manual review. This is not a full
+behavioral audit or an assertion that all advertised features work. The
+[adoption ledger](REFERENCE_ADOPTION.md) records reviewed behavior and exclusions;
+no reference code is imported wholesale. Reference checkouts and runtime data
+are excluded from Docker build context, not merely omitted by COPY statements.
+
+The current branch already includes consent-first encrypted Music onboarding
+from the preceding commit; it is retained rather than rebuilt. Validation for
+this increment: **772 passed** against disposable PostgreSQL with the optional
+Telethon parser installed; compileall, pyflakes and whitespace checks passed.
+No live Telegram deployment, voice call, Render configuration or production
+lease was changed or tested.
+
+### Alive and Music command expansion
+
+Alive JSON reporting at `/` and `/alive` follows measured Telegram probe age,
+with separate `/health/ready` readiness (healthy only) and unchanged process
+liveness. Telegram `/alive` reads the status screen. No self-pinging, no extra
+Flask/threaded server, and no claim that HTTP prevents Render free-tier sleep.
+
+Music now registers 24 commands when capable. The original controls module adds
+repeat modes, shuffle, upcoming edits/jump, replay, bounded session history and
+acknowledged volume adjustments. Play-next is admin-only. Per-group locks cover
+commands, transport callbacks, stream completion and activation cleanup; checks
+are repeated after source resolution. Queue transitions restore local order on
+failed starts; explicit skip overrides repeat-one. Queues cap at 50 tracks and
+displays at 15 entries; title notifications are HTML-escaped. The plugin still
+occupies one optional slot and still needs global approval/local activation.
+
+[Music behavior migration](MUSIC_PARITY.md) lists reviewed reference command
+families and the remaining gaps. There are no fake seek/effects/download/search
+handlers and no claim of full reference parity. Lifecycle, external extraction,
+recording/privacy and licensing boundaries remain in effect. Static extraction
+across all repositories is not a complete manual audit or blanket reuse grant.
+
+Validation: **793 tests passed** with disposable PostgreSQL; compileall,
+pyflakes and whitespace checks passed. This includes alive/readiness HTTP
+responses, queue/volume permissions, repeat modes, queue rollback, per-group
+concurrency and isolation, bounded queues and escaping. No live Telegram voice
+call, Render redeploy or external media-provider test was performed.
+
+### Command sync, default menu button and uptime
+
+`/uptime` now reports monotonic process age, Telegram state, last-success age and
+probe success/failure counters; it does not fabricate historical availability.
+Startup and deployment-wide runtime changes publish current registry commands
+using manifest scopes. Shared controls are included in the specific group list
+because Telegram scope overrides do not merge with the default list. Private
+setup stays out of groups, empty lists clear stale scope registrations, and
+unavailable plugins with no handlers stay omitted. Clones sync through their own
+clients after connection. Coalesced refreshes retry the latest state if another
+toggle occurs while an API request is in flight; shutdown cancels the task.
+Each Telegram registration/reset request has a ten-second timeout.
+
+The button is reset to `MenuButtonDefault`, not forced to Commands or WebApp.
+There is no hide-button API while retaining registered slash commands. Existing
+unknown per-chat/language overrides are not bulk-deleted. `SYNC_COMMANDS=0` opts
+out of registration without disabling handlers; menu reset still runs at startup.
+The 100-command-per-scope limit is logged, with the full active list in help.
+
+[Always-on deployment](ALWAYS_ON.md) distinguishes the inspected references'
+heartbeat/self-ping code from actual hosting guarantees. The existing Blueprint
+uses a paid worker; no live hosting plan or monitor was changed. Validation:
+**802 tests passed** with disposable PostgreSQL; compileall, pyflakes and
+whitespace checks passed. Tests cover plugin-change sync, in-flight changes,
+manifest scopes, clone startup sync, API timeouts and measured uptime. No live
+Telegram command registration, deployment or billing action was performed.
+
+### Durable saved Music metadata
+
+Music exposes 24 base commands plus four playlist commands when PostgreSQL is
+connected: `/saveplaylist`, `/playlist`, `/playlists`, `/deleteplaylist`.
+The additive `agent_music_playlists` table keys every row by bot tenant, group,
+authenticated user and validated name. Saving snapshots current/upcoming URL
+metadata; same-name saves replace only that user's list in that group/bot.
+An advisory transaction lock serializes the ten-list quota check and write.
+Lists cap at twenty tracks, names at 32 characters, titles at 160 and URLs at
+2048. No local paths, embedded credentials, query/fragment URLs or control
+characters are accepted. Names/counts, not source URLs, appear in list views.
+
+All four commands require a moderator/tenant Owner. Loading rechecks all source
+metadata and DNS, then activation and whole-list queue capacity before one local
+append. It requires fresh current playback and cannot start or replace a track.
+Revocation while validation is in progress prevents admission. Native streaming
+is not a pinned HTTP proxy: redirect/DNS-rebinding limitations are explicitly
+documented, and path-embedded access tokens cannot be automatically recognized.
+Saved lists remain until deleted; turning off Music does not silently destroy
+them. Automatic retention and whole-group erasure integration remain open.
+
+Validation: **822 tests passed** with disposable PostgreSQL, including a real
+12-way quota race, same-name replacement, reconnect persistence, bot/group/user
+isolation, delete ownership, DNS revalidation, malformed metadata, permission
+checks and all-or-nothing queue admission. Compileall, pyflakes and whitespace
+checks passed. DNS and voice interactions were mocked; no live streaming or
+media-provider claim is made. Existing command sync picks up the four handlers
+when this database-capable build is deployed.
+
+### Confirmed PostgreSQL log settings — restart regression fix
+
+The log destination was an exception to the existing database-backed services:
+`LogBook` still wrote `logbook.json` only. It now receives the bot's database and
+uses a dedicated `agent_log_settings` row keyed by exact tenant scope. PostgreSQL
+schema creation is additive. Writes are awaited directly, not queued through
+the legacy JSONB document flusher; command success follows the database response.
+The runtime destination changes only after a confirmed write. Ambiguous database
+errors suppress event routing until `/log` reloads authoritative settings.
+
+Main and clone startup hydrate the destination before client build/event delivery.
+An explicit NULL means cleared and overrides `LOG_CHANNEL`; no row means use the
+environment default. Database read failure does not silently select a stale file
+or default destination. In configured database mode, the ephemeral JSON file is
+never read or written for this setting. Main startup refuses a log-settings load
+failure after database connection; clones fail startup and clean resources.
+Standalone mode retains atomic local-file compatibility, including explicit clears.
+
+`/setlog` validates a negative channel/group id, checks reachability, sends a
+bounded posting probe, then persists and acknowledges. The probe may appear even
+if the later database write fails; Telegram posting and SQL cannot be atomic.
+`/unsetlog` persists its clear before reporting success. `/log` rereads PostgreSQL
+and shows the settings backend. Titles are HTML escaped; storage errors expose no
+raw database credentials. Use `/setlog` once after deploying this correction to
+replace any old file-only selection; already-lost ephemeral data is unrecoverable.
+
+Other older settings stores still use batched document writes and need subsequent
+command-by-command durability review. [Standing requirements](USER_REQUIREMENTS.md)
+preserves the user's scope, safety, clone, UI, source-review and no-merge rules.
+
+Validation for this correction: **832 tests passed** against disposable
+PostgreSQL; compileall, pyflakes and whitespace checks passed. Tests include
+actual `/setlog`/`/unsetlog` handlers against PostgreSQL, fresh-filesystem restart,
+environment override/explicit clear, main/clone isolation, startup hydration,
+write failure and posting denial. No live Telegram/Render service or production
+database was modified.
+
+### Error incident operations
+
+Unhandled handler failures now emit privacy-minimized `#Errors` notifications to
+that bot's log destination. Owner-only `/errors` works in private chat and lists
+10 recent aggregated incident groups, isolated by bot tenant. PostgreSQL retains
+100 groups per bot; repeat notifications are throttled for 60 seconds per
+fingerprint in each process. Exception messages, incoming updates and locals are
+not stored by this incident collector. Database outages yield unsaved metadata
+alerts, never local JSON backups. This does not cover every caught component
+error or replace an external service monitor.
+
+Normal bot startup now requires the existing `DATABASE_URL`; `DB_REQUIRED=0`
+no longer permits disk-state operation. Existing disk JSON is not imported.
+Legacy helpers remain only for standalone compatibility/tests. Older document
+stores still batch writes; do not mistake no disk fallback for confirmed
+persistence of every individual settings command.
+
+Reference review for this increment examined the error hook at
+`refs/Videl1/VidelBot/core/errors.py`: repeat suppression informed the behavior,
+but raw update/traceback forwarding was deliberately not reproduced. Agent's
+implementation adds bounded, tenant-isolated SQL aggregation and a private
+incident view. This is an original increment, not completion of the outstanding
+all-reference feature inventory or Music parity work.
