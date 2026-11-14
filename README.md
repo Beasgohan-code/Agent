@@ -129,13 +129,15 @@ full per-group feature-data migration and external process isolation remain open
 Send **`/clone` in private** to open Clone studio. This requires bot premium,
 sudo access or the bot Owner. `TOKEN_KEY` must be configured before credentials
 are requested. Guided setup supports **Encoder, Moderation, Post maker,
-Linkshare, FileStore and Leech**, one plugin at a
+Linkshare, FileStore, Leech and AI Agent**, one plugin at a
 time:
 
 1. Send a token from @BotFather. Agent checks `getMe` and the bot id; format alone
    is not accepted as identity. Secret messages are deleted best-effort.
 2. Choose a reviewed template with a button. Mandatory group core stays available.
-3. Send a log channel id, or `skip`.
+3. For AI Agent, privately supply your own OpenAI key and model id first.
+   No paid validation request is made; compatibility is checked on first use.
+   Then send a log channel id, or `skip`.
 4. For FileStore, send the archive channel id. Both the operator and clone must be
    channel administrators; the clone needs posting permission. Rights are checked
    again before creation.
@@ -370,6 +372,9 @@ Obvious token/key patterns are rejected, but this is not a comprehensive secret
 scanner: never include private information. Responses are untrusted AI output.
 Requests have bounded size, concurrency, timeout and a per-user cooldown.
 No key means no `/ask` handler. Parent AI credentials never pass into clones.
+AI Agent clones instead require their own private guided key/model setup; keys
+are encrypted at rest and cleared from cancelled or expired drafts. Changing a
+clone to a legacy profile removes its stored AI credentials.
 
 Every clone uses its recorded token sender as its own tenant Owner, including
 legacy records. This does not grant ownership of the parent bot. Telegram token

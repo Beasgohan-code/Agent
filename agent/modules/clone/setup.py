@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import html
 import secrets
+import re
 import time
 from weakref import WeakValueDictionary
 from dataclasses import dataclass, field
@@ -49,6 +50,8 @@ class Setup:
     log_channel: int | None = None
     storage_channel: int | None = None
     template: str = 'files'
+    ai_api_key: str = field(default='', repr=False)
+    ai_model: str = ''
 
 
 class CloneSetup:
@@ -64,6 +67,7 @@ class CloneSetup:
         if state and state.expires <= time.monotonic():
             self.sessions.pop(user_id, None)
             state.token = ''
+            state.ai_api_key = ''
             return None
         return state
 
@@ -71,6 +75,7 @@ class CloneSetup:
         state = self.sessions.pop(user_id, None)
         if state is not None:
             state.token = ''
+            state.ai_api_key = ''
 
     def keyboard(self, state, options):
         rows = [[Button(label, callback_data=f'csetup:{state.nonce}:{action}')] for label, action in options]
@@ -122,7 +127,7 @@ class CloneSetup:
             self.cancel(user_id)
             await reply(message, 'Clone setup cancelled; the draft was discarded.')
             return
-        if text.startswith('/'):
+        if text.startswith('/') and state.step != 'ai_key':
             return
         lock = self._locks.setdefault(user_id, asyncio.Lock())
         async with lock:
@@ -154,8 +159,26 @@ class CloneSetup:
                     await reply(message, panel('Choose clone features', icon=self.ctx.theme.emoji('sparkles'),
                         lines=[f"Verified bot: <b>@{html.escape(state.username)}</b>",
                                'Mandatory group moderation stays available with every template.'],
-                        footer='Music and AI Agent require isolated credentials and are not offered yet.'),
+                        footer='Music assistant setup is not offered yet. AI requires your own provider key and model.'),
                         reply_markup=self.keyboard(state, [(name, action) for action, (_, name, _) in TEMPLATES.items()]))
+                elif state.step == 'ai_key':
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
+                    if self.active(user_id) is not state or not self.entitled(user_id):
+                        return
+                    if not re.fullmatch(r'sk-[A-Za-z0-9_-]{16,250}', text):
+                        raise SetupError('Send an OpenAI API key beginning with sk-. It is not validated with a paid request.')
+                    state.ai_api_key = text
+                    state.step = 'ai_model'
+                    await reply(message, 'Send the OpenAI model id to use. Compatibility and billing depend on your provider account. No test request is made during setup.')
+                elif state.step == 'ai_model':
+                    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}', text):
+                        raise SetupError('Send a model id of at most 128 letters, numbers or model-id punctuation, without spaces.')
+                    state.ai_model = text
+                    state.step = 'log'
+                    await reply(message, 'Send a log channel id, or skip. Your AI key will not appear in logs or setup panels.')
                 elif state.step in ('log', 'storage'):
                     if state.step == 'log' and text.lower() == 'skip':
                         state.log_channel = None
@@ -215,6 +238,14 @@ class CloneSetup:
             return
         if action in TEMPLATES and state.step == 'plugin':
             state.template = action
+            if action == 'ai_agent':
+                state.step = 'ai_key'
+                await edit(query, panel('Private AI credentials', icon=self.ctx.theme.emoji('gear'),
+                    lines=['Send your own OpenAI API key here. It will be encrypted with TOKEN_KEY.',
+                           'Only explicit questions go to the provider; no group history or autonomous actions.',
+                           'Messages are deleted best-effort. Telegram history is not a secret vault; cancel if you prefer not to send credentials here.']))
+                await query.answer()
+                return
             state.step = 'log'
             await edit(query, panel('Clone log channel', icon=self.ctx.theme.emoji('gear'),
                 lines=['Send a log channel id, or send <code>skip</code>. Both you and the clone must administer the channel.']))
@@ -251,7 +282,7 @@ class CloneSetup:
                     raise SetupError('That bot was added while setup was running. No duplicate was created.')
                 state.step = 'starting'
                 record = Clone(bot_id=state.bot_id, owner_id=user_id, token=state.token,
-                    username=state.username, profile='tiny', selected_plugins=(TEMPLATES[state.template][0],), managed_owner=True,
+                    username=state.username, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=(TEMPLATES[state.template][0],), managed_owner=True,
                     log_channel=state.log_channel, storage_channel=state.storage_channel)
                 self.store.add(record)
                 try:

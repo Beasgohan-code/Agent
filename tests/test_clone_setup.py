@@ -266,7 +266,7 @@ def test_guided_templates_create_only_selected_feature(tmp_path, template, log):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize('action', ['music', 'ai_agent', 'clone', 'unknown'])
+@pytest.mark.parametrize('action', ['music', 'clone', 'unknown'])
 def test_unreviewed_template_callback_cannot_select_feature(tmp_path, action):
     async def scenario():
         ctx, _, _ = build(tmp_path)
@@ -277,7 +277,7 @@ def test_unreviewed_template_callback_cannot_select_feature(tmp_path, action):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize('selection', [('clone',), ('music',), ('ai_agent',),
+@pytest.mark.parametrize('selection', [('clone',), ('music',),
                                        ('encoder', 'leech'), ('filestore', 'filestore')])
 def test_persisted_unsupported_selection_fails_closed(tmp_path, selection):
     from agent.modules.clone.manager import CloneError
@@ -297,3 +297,92 @@ def test_guided_clone_reports_custom_selection_even_while_stopped(tmp_path):
     assert ctx.clones.profile(111111111) == 'custom'
     assert selection_label(('encoder',)) == 'Encoder'
     assert selection_label(('<untrusted>',)) == 'unsupported'
+
+
+def test_guided_ai_clone_uses_encrypted_isolated_credentials(tmp_path):
+    from agent.modules.clone.store import CloneStore
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        await wizard.press(None, query(state), state.nonce + ':ai_agent')
+        assert state.step == 'ai_key'
+        key = 'sk-private_clone_key_1234567890'
+        secret_message = FakeMessage(key)
+        await wizard.receive(None, secret_message)
+        assert state.step == 'ai_model'
+        assert key not in repr(state)
+        await wizard.receive(None, FakeMessage('chosen-model'))
+        assert state.step == 'log'
+        await wizard.receive(None, FakeMessage('skip'))
+        assert state.step == 'confirm'
+        await wizard.press(None, query(state), state.nonce + ':create')
+        record = ctx.clones.current()[0]
+        settings = ctx.clones.settings_for(record)
+        assert settings.plugins == ('ai_agent',)
+        assert settings.ai_api_key == key
+        assert settings.ai_model == 'chosen-model'
+        assert key not in repr(record)
+        assert TOKEN_A not in repr(record)
+        assert state.ai_api_key == '' and state.token == ''
+        raw = wizard.store.path.read_text()
+        assert key not in raw
+        assert 'ai_api_key_enc' in raw
+        restored = CloneStore(wizard.store.path.parent, box=wizard.store._box)
+        assert restored.get(record.bot_id).ai_api_key == key
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('finish', ['cancel', 'expire'])
+def test_ai_draft_credentials_are_cleared(tmp_path, finish):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        await wizard.press(None, query(state), state.nonce + ':ai_agent')
+        await wizard.receive(None, FakeMessage('sk-private_clone_key_1234567890'))
+        if finish == 'cancel':
+            wizard.cancel(MEMBER)
+        else:
+            state.expires = 0
+            wizard.active(MEMBER)
+        assert state.ai_api_key == '' and state.token == ''
+        assert not ctx.clones.current()
+    asyncio.run(scenario())
+
+
+def test_ai_invalid_key_and_model_do_not_advance_setup(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        await wizard.press(None, query(state), state.nonce + ':ai_agent')
+        await wizard.receive(None, FakeMessage('not-a-key'))
+        assert state.step == 'ai_key'
+        await wizard.receive(None, FakeMessage('sk-private_clone_key_1234567890'))
+        await wizard.receive(None, FakeMessage('model with spaces'))
+        assert state.step == 'ai_model'
+    asyncio.run(scenario())
+
+
+def test_ai_secret_cannot_be_persisted_without_encryption(tmp_path):
+    from agent.modules.clone.store import Clone, CloneStore
+    from agent.platform.secrets import SecretBox, SecretError
+    store = CloneStore(tmp_path, box=SecretBox(None))
+    with pytest.raises(SecretError):
+        store.add(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A,
+                        ai_api_key='sk-private_clone_key_1234567890'))
+    assert store.count() == 0
+    assert not store.path.exists()
+
+
+def test_cancelling_during_key_message_deletion_cannot_restore_secret(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        await wizard.press(None, query(state), state.nonce + ':ai_agent')
+        request = FakeMessage('sk-private_clone_key_1234567890')
+        async def cancel_during_delete():
+            wizard.cancel(MEMBER)
+        request.delete = AsyncMock(side_effect=cancel_during_delete)
+        await wizard.receive(None, request)
+        assert state.ai_api_key == ''
+        assert wizard.active(MEMBER) is None
+    asyncio.run(scenario())

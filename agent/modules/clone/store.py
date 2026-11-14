@@ -1,7 +1,7 @@
 """Where clones are recorded, and what a record may say.
 
-A clone is one bot token plus the person who added it. The token is the one
-secret this store holds, so the file is written ``0600``, the panel never shows
+A clone is one bot token plus the person who added it. Tokens and optional AI
+provider keys are secrets, so the file is written ``0600``, the panel never shows
 more than its first digits, and the record is **encrypted at rest** when
 ``TOKEN_KEY`` is configured (:mod:`agent.platform.secrets`). Masking is a screen
 concern; encryption is a database concern, and this store needs both.
@@ -56,7 +56,7 @@ class Clone:
 
     bot_id: int
     owner_id: int
-    token: str
+    token: str = field(repr=False)
     username: str = ""
     name: str = ""
     created_at: float = field(default_factory=time.time)
@@ -66,6 +66,8 @@ class Clone:
     #: (see :mod:`agent.modules.clone.profiles`). Empty means ``standard``.
     profile: str = "standard"
     selected_plugins: tuple[str, ...] = ()
+    ai_api_key: str | None = field(default=None, repr=False)
+    ai_model: str | None = None
     managed_owner: bool = False
     log_channel: int | None = None
     storage_channel: int | None = None
@@ -128,6 +130,13 @@ class CloneStore:
                     continue
                 if entry.get("token") and not entry.get("token_enc"):
                     self._needs_rewrite = True
+                ai_key = None
+                if entry.get("ai_api_key_enc"):
+                    try:
+                        ai_key = self._box.decrypt(str(entry["ai_api_key_enc"]))
+                    except SecretError:
+                        logger.error("clone AI credential cannot be decrypted; skipping record")
+                        continue
                 clone = Clone(
                     bot_id=int(entry["bot_id"]),
                     owner_id=int(entry["owner_id"]),
@@ -138,6 +147,8 @@ class CloneStore:
                     disabled=bool(entry.get("disabled")),
                     profile=str(entry.get("profile") or "standard"),
                     selected_plugins=tuple(entry.get("selected_plugins") or ()),
+                    ai_api_key=ai_key,
+                    ai_model=entry.get("ai_model"),
                     managed_owner=bool(entry.get("managed_owner")),
                     log_channel=entry.get("log_channel"),
                     storage_channel=entry.get("storage_channel"),
@@ -153,6 +164,11 @@ class CloneStore:
         """The record as it is written: the token swapped for its ciphertext."""
         data = clone.as_json()
         token = data.pop("token", "")
+        ai_key = data.pop("ai_api_key", None)
+        if ai_key:
+            if not box.enabled:
+                raise SecretError("AI clone credentials require TOKEN_KEY.")
+            data["ai_api_key_enc"] = box.encrypt(str(ai_key))
         if box.enabled:
             data["token_enc"] = box.encrypt(str(token))
         else:
@@ -187,7 +203,11 @@ class CloneStore:
         if clone.bot_id in self._items:
             raise ValueError("This bot is already recorded; ownership cannot be overwritten")
         self._items[clone.bot_id] = clone
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            self._items.pop(clone.bot_id, None)
+            raise
         return clone
 
     def token_of(self, bot_id: int) -> str:

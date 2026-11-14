@@ -374,3 +374,25 @@ picker, not mislabelled as the fallback `tiny` profile. The picker warns that a
 legacy profile replaces a guided selection. Validation: **722 passed** against
 disposable PostgreSQL; compileall, pyflakes and whitespace checks passed.
 No live Telegram/media/provider validation was performed.
+
+### Isolated AI clone credentials
+
+AI Agent is now the seventh guided template. It requests an OpenAI key and model
+in private only after bot identity verification. The wizard discloses external
+question processing, best-effort deletion and Telegram-history limitations.
+Keys/models are syntax-checked, not tested using a paid provider request. Provider
+billing, model access and compatibility are confirmed only when `/ask` is used.
+
+The clone store encrypts the additional key as `ai_api_key_enc`; it never writes
+a plaintext AI key, even in legacy unkeyed mode. New credentials require a key
+at rest. Clone token and AI key are excluded from dataclass reprs. The manager
+uses AI credentials only for an explicit AI selection, never parent credentials.
+Legacy profile changes clear the stored key/model; cancel, expiry, successful
+creation and startup-failure cleanup clear draft secrets. Cancellation racing
+with secret-message deletion cannot restore a discarded key. Failed store adds
+roll back the in-memory record. This is stateless text completion, not a tool
+agent. Music remains the only primary feature without a guided clone template.
+
+Validation for AI clone setup: **726 tests passed** with disposable PostgreSQL;
+compileall, pyflakes and whitespace checks passed. Paid provider calls and live
+Telegram credential/session behavior have not been tested in this environment.

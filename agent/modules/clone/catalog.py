@@ -8,6 +8,7 @@ TEMPLATES = {
     'postmaker': ('postmaker', 'Post maker', False),
     'linkshare': ('linkshare', 'Linkshare', False),
     'leech': ('leech', 'Leech', False),
+    'ai_agent': ('ai_agent', 'AI Agent', False),
 }
 ALLOWED_PLUGINS = frozenset(item[0] for item in TEMPLATES.values())
 

@@ -67,6 +67,8 @@ class CloneManager:
             or any(name not in ALLOWED_PLUGINS for name in clone.selected_plugins)
         ):
             raise CloneError("The guided clone selection is unsupported. Restart setup.")
+        if clone.selected_plugins == ("ai_agent",) and (not clone.ai_api_key or not clone.ai_model):
+            raise CloneError("AI Agent requires this clone's own provider key and model.")
         return replace(
             self._settings,
             bot_token=clone.token,
@@ -80,8 +82,8 @@ class CloneManager:
             storage_channel=clone.storage_channel,
             # Never share the deployment's user-session credential with clones.
             session_string=None,
-            ai_api_key=None,
-            ai_model=None,
+            ai_api_key=clone.ai_api_key if clone.selected_plugins == ("ai_agent",) else None,
+            ai_model=clone.ai_model if clone.selected_plugins == ("ai_agent",) else None,
             health_port=None,
             # Its own rows in PostgreSQL. Without this every clone would write
             # the same ``runtime``/``premium``/``chats`` documents as the main

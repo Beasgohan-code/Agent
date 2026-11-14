@@ -437,7 +437,7 @@ def build(ctx):
         if profiles.clean(extra) != extra or extra not in profiles.ORDER:
             await query.answer("That profile does not exist.", show_alert=True)
             return
-        store.update(target.bot_id, profile=extra, selected_plugins=())
+        store.update(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None)
         said = f"{target.handle} is on {extra}."
         if manager.is_running(target.bot_id):
             try:
