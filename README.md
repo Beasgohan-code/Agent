@@ -415,3 +415,20 @@ play-next and recent session titles. Song-name search, YouTube watch-page
 extraction, effects, seeking and linked-channel playback are **not** claimed as
 supported yet. See [Music behavior migration](docs/MUSIC_PARITY.md) for exact
 commands, permissions, source limits and the remaining reference command list.
+
+### Uptime and Telegram registration
+
+`/uptime` shows measured process uptime and Telegram probe counts. With
+`SYNC_COMMANDS=1` (default), active handler commands are registered with Telegram
+at startup and refreshed after runtime plugin changes, including for clones.
+Group lists include shared `/start`, `/help`, `/ping` and `/uptime` controls.
+Unavailable plugins do not publish pretend commands; authorization/activation
+checks still apply.
+
+The forced Commands menu button is removed in favor of Telegram's default.
+Telegram may still show its built-in Menu button: there is no API for hiding it
+while keeping registered slash commands. See [always-on deployment and uptime](docs/ALWAYS_ON.md)
+for the reference keep-alive behavior, monitoring endpoints and hosting setup.
+A sleeping free service is not an always-on host; the existing Blueprint uses a
+paid `starter` worker. Applying that plan is a deployment decision, not something
+this code silently purchases or changes on your live service.

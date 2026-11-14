@@ -72,7 +72,7 @@ class Settings:
     owner_id: int | None = None
     #: Default log channel; /setlog overrides it at runtime.
     log_channel: int | None = None
-    #: Publish the command list to Telegram on start (SYNC_COMMANDS=0 disables).
+    #: Publish active Telegram commands on start/changes (SYNC_COMMANDS=0 disables).
     sync_commands: bool = True
     #: Optional MTProto user session for voice-chat streaming (SESSION_STRING).
     #: A bot token cannot join a group call, so the player needs its own session.

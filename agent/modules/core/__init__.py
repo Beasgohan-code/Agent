@@ -28,7 +28,7 @@ MANIFEST = PluginManifest(
     name="Core extras",
     version="1.0.0",
     description="Menu, about, runtime status, job cancellation and the owner panel.",
-    commands=("menu", "about", "status", "alive", "cancel", "owner"),
+    commands=("menu", "about", "status", "alive", "uptime", "cancel", "owner"),
     permissions=("messages.read",),
     scope="all",
 )
@@ -141,6 +141,23 @@ def build(ctx):
             reply_markup=nav_keyboard(),
         )
 
+    async def uptime(_client, message):
+        if ctx.monitor is None:
+            await reply(message, "Uptime is unavailable; no process health monitor is attached.")
+            return
+        snapshot = ctx.monitor.snapshot()
+        await reply(message, panel(
+            "Agent uptime", icon=ctx.theme.emoji("stats"),
+            table=kv_table([
+                ("Process uptime", format_uptime(snapshot.uptime_seconds)),
+                ("Telegram state", snapshot.state),
+                ("Last successful probe", "not yet" if snapshot.seconds_since_ok is None else f"{snapshot.seconds_since_ok:.0f}s ago"),
+                ("Successful probes", str(snapshot.probes - snapshot.failures)),
+                ("Failed probes", str(snapshot.failures)),
+            ]),
+            note="Measured since this process started; restarts reset uptime. Not a 24/7 availability percentage.",
+        ))
+
     async def cancel(_client, message):
         user = getattr(message, "from_user", None)
         if user is None or ctx.jobs is None:
@@ -205,6 +222,7 @@ def build(ctx):
         "about": about,
         "status": status,
         "alive": status,
+        "uptime": uptime,
         "cancel": cancel,
         "owner": owner,
     }

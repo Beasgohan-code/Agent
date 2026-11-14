@@ -17,6 +17,7 @@ the group scope. Nobody needs to see ``/ban`` in a DM.
 from __future__ import annotations
 
 import logging
+import asyncio
 import re
 from typing import Iterable
 
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 VALID_NAME = re.compile(r"^[a-z0-9_]{1,32}$")
 MAX_COMMANDS = 100
 MAX_DESCRIPTION = 256
+SYNC_TIMEOUT = 10.0
 
 #: One line per command, kept short — this is menu text, not documentation.
 DESCRIPTIONS: dict[str, str] = {
@@ -95,6 +97,7 @@ DESCRIPTIONS: dict[str, str] = {
     "queue": "Show the playback queue",
     "nowplaying": "What this group is playing",
     "alive": "Live bot health and uptime",
+    "uptime": "Process uptime and Telegram probe health",
     "q": "Show the music queue",
     "end": "Stop playback and clear the music queue",
     "resetplayer": "Reset this group's player and queue",
@@ -217,22 +220,40 @@ def build_commands(names: Iterable[str], *, group: bool = False) -> list[BotComm
     return commands[:MAX_COMMANDS]
 
 
-async def publish(client, names: Iterable[str]) -> tuple[int, int]:
+async def publish(client, names: Iterable[str], *, command_scopes: dict[str, str] | None = None) -> tuple[int, int]:
     """Publish both scopes. Returns (private_count, group_count).
 
-        Failure is logged, never raised: a bot that cannot set its menu must still
-        answer commands.
+        Manifest scopes preserve shared commands in both chat types. Legacy
+        callers without metadata retain the static split. Empty scopes clear old
+        registrations. Failure is logged: handlers must keep answering commands.
         
     """
     names = list(names)
-    private = build_commands(names, group=False)
-    group = build_commands(names, group=True)
+    if command_scopes is None:
+        private = build_commands(names, group=False)
+        group = build_commands(names, group=True)
+    else:
+        # A specific group scope replaces, rather than extends, the default.
+        # Include all-scope controls such as /start and /uptime in both lists.
+        def scoped(group):
+            allowed = {"all", "group" if group else "private"}
+            selected = [name for name in names if command_scopes.get(name) in allowed]
+            # Build descriptions without the legacy static group filter.
+            commands, seen = [], set()
+            for raw in selected:
+                name = sanitize(raw)
+                if name is None or name in seen:
+                    continue
+                seen.add(name)
+                commands.append(BotCommand(command=name, description=DESCRIPTIONS.get(name, name.replace("_", " ").capitalize())[:MAX_DESCRIPTION]))
+            if len(commands) > MAX_COMMANDS:
+                logger.warning("Telegram command scope exceeds its 100-command limit; help retains the full active list.")
+            return commands[:MAX_COMMANDS]
+        private, group = scoped(False), scoped(True)
     done = {False: 0, True: 0}
     for is_group, (scope, commands) in zip((False, True), _scopes(private, group)):
-        if not commands:
-            continue
         try:
-            await client.set_bot_commands(commands, scope=scope)
+            await asyncio.wait_for(client.set_bot_commands(commands, scope=scope), timeout=SYNC_TIMEOUT)
         except Exception:  # noqa: BLE001 - menu cosmetics must not stop the bot
             logger.exception("Could not publish the command menu")
             continue
@@ -251,14 +272,13 @@ def _scopes(private, group):
 
 
 async def reset_menu_button(client) -> bool:
-    """Point the chat menu button at the command list instead of a web app."""
-    from pyrogram.types import MenuButtonCommands
+    """Remove the forced menu-button type; Telegram controls default visibility."""
+    from pyrogram.types import MenuButtonDefault
 
     try:
-        await client.set_chat_menu_button(menu_button=MenuButtonCommands())
+        await asyncio.wait_for(client.set_chat_menu_button(menu_button=MenuButtonDefault()), timeout=SYNC_TIMEOUT)
         logger.info(
-            "Menu button reset to the command list (the Bot API has no option to "
-            "hide it entirely)."
+            "Custom menu button reset to Telegram default; Telegram may still show its Commands button."
         )
         return True
     except Exception:  # noqa: BLE001

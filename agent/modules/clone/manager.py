@@ -184,6 +184,9 @@ class CloneManager:
                 voice = getattr(bot, "voice", None)
                 if voice is not None:
                     await voice.start()
+                sync_commands = getattr(bot, "_sync_commands", None)
+                if sync_commands is not None:
+                    await sync_commands(client, reset_button=True)
                 if clone.selected_plugins == ("music",) and (voice is None or not voice.connected):
                     raise CloneError("The Music assistant did not connect.")
             except (Exception, asyncio.CancelledError) as exc:  # noqa: BLE001 - the reason is the message

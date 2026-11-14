@@ -226,3 +226,27 @@ def test_status_and_the_owner_panel_both_carry_it(tmp_path):
         message = KeyboardMessage(f"/{name}")
         run(handlers(ctx)[name], ctx, message)
         assert message.markups[-1] is not None, name
+
+
+def test_uptime_uses_process_clock_and_real_probe_counts(tmp_path):
+    ctx = make_ctx(tmp_path)
+    now = [100.0]
+    ctx.monitor = HealthMonitor(clock=lambda: now[0])
+    ctx.monitor.record_success()
+    now[0] += 3605
+    ctx.monitor.record_failure('test failure')
+    message = FakeMessage('/uptime')
+    run(handlers(ctx)['uptime'], ctx, message)
+    body = message.replies[0]
+    assert '1h 0m 5s' in body
+    assert '3605s ago' in body
+    assert 'Successful probes' in body and 'Failed probes' in body
+    assert 'Not a 24/7 availability percentage' in body
+
+
+def test_uptime_without_monitor_does_not_fabricate_measurements(tmp_path):
+    ctx = make_ctx(tmp_path)
+    ctx.monitor = None
+    message = FakeMessage('/uptime')
+    run(handlers(ctx)['uptime'], ctx, message)
+    assert 'unavailable' in message.replies[0]

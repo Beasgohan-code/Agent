@@ -38,6 +38,7 @@ class PluginRuntime:
         self._handlers: dict[str, list[tuple[Any, int]]] = {}
         self._client = None
         self._disabled: set[str] = set()
+        self.change_hook: Callable[[], None] | None = None
         self.restart_hook: Callable[[], None] | None = None
         self.restart_requested = False
         self.restart_reason = ""
@@ -107,6 +108,7 @@ class PluginRuntime:
         self.registry.disable(slug)
         self._disabled.add(slug)
         self._save()
+        self._notify_change()
         return True
 
     def enable(self, slug: str) -> bool:
@@ -119,7 +121,15 @@ class PluginRuntime:
         self.registry.enable(slug)
         self._disabled.discard(slug)
         self._save()
+        self._notify_change()
         return True
+
+    def _notify_change(self):
+        if self.change_hook is not None:
+            try:
+                self.change_hook()
+            except Exception:
+                logger.warning("Plugin change notification failed; handlers remain updated.")
 
     def state(self) -> list[dict]:
         rows = []

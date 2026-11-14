@@ -541,3 +541,30 @@ pyflakes and whitespace checks passed. This includes alive/readiness HTTP
 responses, queue/volume permissions, repeat modes, queue rollback, per-group
 concurrency and isolation, bounded queues and escaping. No live Telegram voice
 call, Render redeploy or external media-provider test was performed.
+
+### Command sync, default menu button and uptime
+
+`/uptime` now reports monotonic process age, Telegram state, last-success age and
+probe success/failure counters; it does not fabricate historical availability.
+Startup and deployment-wide runtime changes publish current registry commands
+using manifest scopes. Shared controls are included in the specific group list
+because Telegram scope overrides do not merge with the default list. Private
+setup stays out of groups, empty lists clear stale scope registrations, and
+unavailable plugins with no handlers stay omitted. Clones sync through their own
+clients after connection. Coalesced refreshes retry the latest state if another
+toggle occurs while an API request is in flight; shutdown cancels the task.
+Each Telegram registration/reset request has a ten-second timeout.
+
+The button is reset to `MenuButtonDefault`, not forced to Commands or WebApp.
+There is no hide-button API while retaining registered slash commands. Existing
+unknown per-chat/language overrides are not bulk-deleted. `SYNC_COMMANDS=0` opts
+out of registration without disabling handlers; menu reset still runs at startup.
+The 100-command-per-scope limit is logged, with the full active list in help.
+
+[Always-on deployment](ALWAYS_ON.md) distinguishes the inspected references'
+heartbeat/self-ping code from actual hosting guarantees. The existing Blueprint
+uses a paid worker; no live hosting plan or monitor was changed. Validation:
+**802 tests passed** with disposable PostgreSQL; compileall, pyflakes and
+whitespace checks passed. Tests cover plugin-change sync, in-flight changes,
+manifest scopes, clone startup sync, API timeouts and measured uptime. No live
+Telegram command registration, deployment or billing action was performed.

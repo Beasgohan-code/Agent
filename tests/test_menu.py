@@ -7,7 +7,7 @@ import pytest
 from pyrogram.types import (
     BotCommandScopeAllGroupChats,
     BotCommandScopeDefault,
-    MenuButtonCommands,
+    MenuButtonDefault,
 )
 
 from agent.bot import AgentBot
@@ -160,11 +160,11 @@ def test_a_failed_publish_is_logged_not_raised():
     assert any("Could not publish the command menu" in m for m in messages)
 
 
-def test_resetting_the_menu_button_uses_the_command_list():
+def test_resetting_the_menu_button_uses_telegram_default():
     client = FakeClient()
 
     assert asyncio.run(menu.reset_menu_button(client)) is True
-    assert isinstance(client.menu_buttons[0], MenuButtonCommands)
+    assert isinstance(client.menu_buttons[0], MenuButtonDefault)
 
 
 def test_a_failed_menu_button_reset_is_reported_not_raised():
@@ -207,3 +207,101 @@ def test_the_menu_scope_matches_each_module_declared_scope():
                 assert command in GROUP_ONLY, f"{command} runs only in groups but is not group-scoped"
             elif scope == "private":
                 assert command not in GROUP_ONLY, f"{command} runs only in private but is group-scoped"
+
+
+def test_manifest_scopes_include_common_commands_in_groups_not_private_controls():
+    async def scenario():
+        client = FakeClient()
+        names = ['start', 'uptime', 'clone', 'ban']
+        counts = await menu.publish(client, names, command_scopes={
+            'start': 'all', 'uptime': 'all', 'clone': 'private', 'ban': 'group'})
+        assert counts == (3, 3)
+        lists = {type(scope): {item.command for item in commands} for scope, commands in client.commands}
+        assert lists[BotCommandScopeAllGroupChats] == {'start', 'uptime', 'ban'}
+        assert lists[BotCommandScopeDefault] == {'start', 'uptime', 'clone'}
+    asyncio.run(scenario())
+
+
+def test_empty_command_scope_is_published_to_clear_old_commands():
+    client = FakeClient()
+    assert asyncio.run(menu.publish(client, [])) == (0, 0)
+    assert len(client.commands) == 2
+    assert all(not commands for _, commands in client.commands)
+
+
+def test_connected_runtime_toggle_refreshes_commands_without_unavailable_plugins(tmp_path):
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    async def scenario():
+        bot = AgentBot(settings_in(tmp_path))
+        bot.build()
+        client = SimpleNamespace(is_connected=True, set_bot_commands=AsyncMock(),
+                                 set_chat_menu_button=AsyncMock())
+        bot._client = client
+        await bot._sync_commands(client, reset_button=True)
+        assert isinstance(client.set_chat_menu_button.await_args.kwargs['menu_button'], MenuButtonDefault)
+        client.set_bot_commands.reset_mock()
+        bot.runtime.disable('encoder')
+        await bot._menu_sync_task
+        published = {item.command for call in client.set_bot_commands.await_args_list for item in call.args[0]}
+        assert 'encode' not in published
+        assert 'play' not in published  # no configured assistant/voice engine
+        assert 'uptime' in published
+        client.set_bot_commands.reset_mock()
+        bot.runtime.enable('encoder')
+        await bot._menu_sync_task
+        published = {item.command for call in client.set_bot_commands.await_args_list for item in call.args[0]}
+        assert 'encode' in published
+    asyncio.run(scenario())
+
+
+def test_disabling_command_sync_does_not_force_commands_menu_button(tmp_path):
+    from dataclasses import replace
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    async def scenario():
+        bot = AgentBot(replace(settings_in(tmp_path), sync_commands=False))
+        client = SimpleNamespace(set_bot_commands=AsyncMock(), set_chat_menu_button=AsyncMock())
+        await bot._sync_commands(client, reset_button=True)
+        client.set_bot_commands.assert_not_awaited()
+        assert isinstance(client.set_chat_menu_button.await_args.kwargs['menu_button'], MenuButtonDefault)
+    asyncio.run(scenario())
+
+
+def test_telegram_registration_and_button_reset_are_timeout_bounded(monkeypatch):
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    async def scenario():
+        async def blocked(*args, **kwargs):
+            await asyncio.Event().wait()
+        monkeypatch.setattr(menu, 'SYNC_TIMEOUT', 0.001)
+        client = SimpleNamespace(set_bot_commands=AsyncMock(side_effect=blocked),
+                                 set_chat_menu_button=AsyncMock(side_effect=blocked))
+        assert await menu.publish(client, ['start', 'ban']) == (0, 0)
+        assert await menu.reset_menu_button(client) is False
+    asyncio.run(scenario())
+
+
+def test_mid_sync_toggle_is_not_lost(tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    async def scenario():
+        bot = AgentBot(settings_in(tmp_path))
+        bot.build()
+        entered, proceed = asyncio.Event(), asyncio.Event()
+        calls = []
+        async def publish(commands, **kwargs):
+            calls.append({item.command for item in commands})
+            if len(calls) == 1:
+                entered.set()
+                await proceed.wait()
+        client = SimpleNamespace(is_connected=True, set_bot_commands=AsyncMock(side_effect=publish))
+        bot._client = client
+        bot.runtime.disable('encoder')
+        await entered.wait()
+        bot.runtime.enable('encoder')
+        proceed.set()
+        await bot._menu_sync_task
+        assert len(calls) == 4  # two scopes, followed by the latest state
+        assert 'encode' in calls[-2]
+    asyncio.run(scenario())

@@ -118,3 +118,22 @@ def test_cancelled_clone_start_releases_voice_and_database(tmp_path):
         voice.shutdown.assert_awaited_once()
         db.close.assert_awaited_once()
     asyncio.run(scenario())
+
+
+def test_clone_publishes_its_own_commands_after_connecting(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        workers = []
+        class Worker(FakeBot):
+            def __init__(self, settings):
+                super().__init__(settings)
+                self._sync_commands = AsyncMock()
+                workers.append(self)
+        ctx.clones._factory = Worker
+        record = Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A)
+        await ctx.clones.start(record)
+        worker = workers[0]
+        worker._sync_commands.assert_awaited_once()
+        assert worker._sync_commands.await_args.kwargs == {'reset_button': True}
+        await ctx.clones.stop(record.bot_id)
+    asyncio.run(scenario())

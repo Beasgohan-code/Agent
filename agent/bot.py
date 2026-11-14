@@ -61,6 +61,10 @@ class AgentBot:
         )
         #: Set when the watchdog gives up; start.py turns it into exit code 1.
         self.fatal_reason: str | None = None
+        self._menu_sync_lock = asyncio.Lock()
+        self._menu_sync_task = None
+        self._commands_dirty = False
+        self._commands_closing = False
         self._client: Client | None = None
         self._handlers: list = []
         self.modules: ModuleContext | None = None
@@ -281,6 +285,7 @@ class AgentBot:
         for index, watcher in enumerate(self._watchers, start=1):
             client.add_handler(watcher, group=index)
         self.runtime.attach(client)
+        self.runtime.change_hook = self._schedule_command_sync
         self.logbook.client = client
 
         enabled = [m.slug for m in self.registry.manifests() if self.registry.is_enabled(m.slug)]
@@ -494,14 +499,7 @@ class AgentBot:
 
         # Make Telegram's own command menu match what this process actually
         # registered — a disabled plugin must not linger in the menu either.
-        if self.settings.sync_commands:
-            try:
-                await reset_menu_button(client)
-                await publish_menu(
-                    client, ["start", "help", "ping", *self.registry.active_commands()]
-                )
-            except Exception:  # noqa: BLE001 - menu cosmetics never stop the bot
-                logger.exception("Command menu sync failed; continuing without it.")
+        await self._sync_commands(client, reset_button=True)
 
         me = client.me
         logger.info(
@@ -529,8 +527,49 @@ class AgentBot:
                 await heartbeat_task
             await self._cleanup_services(client)
 
+    async def _sync_commands(self, client, *, reset_button=False):
+        async with self._menu_sync_lock:
+            if self._commands_closing:
+                return
+            if reset_button:
+                await reset_menu_button(client)
+            if not self.settings.sync_commands:
+                return
+            try:
+                scopes = {command: manifest.scope for manifest in self.registry.manifests()
+                          for command in manifest.commands}
+                scopes.update({command: "all" for command in ("start", "help", "ping")})
+                await publish_menu(client, ["start", "help", "ping", *self.registry.active_commands()],
+                                   command_scopes=scopes)
+            except Exception:
+                logger.warning("Command-list sync failed; active handlers are unchanged.")
+
+    def _schedule_command_sync(self):
+        if (self._commands_closing or not self.settings.sync_commands
+                or not getattr(self._client, "is_connected", False)):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._commands_dirty = True
+        if self._menu_sync_task is not None and not self._menu_sync_task.done():
+            return
+        async def sync():
+            while self._commands_dirty and not self._commands_closing:
+                self._commands_dirty = False
+                await asyncio.sleep(0.1)
+                await self._sync_commands(self._client)
+        self._menu_sync_task = loop.create_task(sync(), name="telegram-command-sync")
+
     async def _cleanup_services(self, client) -> None:
         """Optional shutdown failures must not prevent Telegram disconnect."""
+        self._commands_closing = True
+        command_sync = getattr(self, "_menu_sync_task", None)
+        if command_sync is not None:
+            command_sync.cancel()
+            await asyncio.gather(command_sync, return_exceptions=True)
+            self._menu_sync_task = None
         supervisor = getattr(self, "_supervisor", None)
         if supervisor is not None:
             supervisor.cancel()
