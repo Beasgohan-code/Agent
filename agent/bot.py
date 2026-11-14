@@ -122,19 +122,21 @@ class AgentBot:
             chat_filter = _scope_filter(scopes.get(command, "private"))
             self._handlers.append(MessageHandler(callback, filters.command(command) & chat_filter))
 
-        # Some modules also need to *see* plain messages (anti-spam). They run in
-        # their own handler group so they can never shadow a command handler.
+        # Some modules also need to see updates that are not commands (anti-spam,
+        # filters, joins/leaves). Each gets its own handler group: pyrogram runs
+        # at most one handler per group per update, so sharing a group would let
+        # one watcher swallow another's updates.
         for module in MODULES:
-            factory = getattr(module, "watch", None)
+            factory = getattr(module, "extra_handlers", None)
             slug = module.MANIFEST.slug
             if factory is None or not self.registry.is_enabled(slug):
                 continue
-            self._watchers.append(MessageHandler(factory(self.modules), filters.group))
+            self._watchers.extend(factory(self.modules))
 
         for handler in self._handlers:
             client.add_handler(handler)
-        for watcher in self._watchers:
-            client.add_handler(watcher, group=1)
+        for index, watcher in enumerate(self._watchers, start=1):
+            client.add_handler(watcher, group=index)
 
         enabled = [m.slug for m in self.registry.manifests() if self.registry.is_enabled(m.slug)]
         logger.info(

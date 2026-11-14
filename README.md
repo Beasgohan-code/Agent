@@ -115,6 +115,9 @@ Every one is wired to something real — none is a stub.
 | --- | --- |
 | Core | `/start` `/help` `/menu` `/about` `/status` `/cancel` `/ping` `/owner` |
 | Moderation (groups) | `/warn` `/warnings` `/warns` `/unwarn` `/mute` `/unmute` `/kick` `/ban` `/unban` `/purge` `/note` `/trust` `/antispam` `/modlog` |
+| Filters (groups) | `/filter` `/filters` `/stopfilter` |
+| Welcome (groups) | `/setwelcome` `/welcome` `/goodbye` |
+| Utilities | `/id` `/info` `/time` |
 | Encoding | `/encode` `/encinfo` `/encpreset` `/enccancel` |
 | Sharing | `/genlink` `/links` `/revoke` |
 
@@ -144,6 +147,23 @@ Untested against live Telegram: there is no session or group in this sandbox,
 so moderation is covered by tests that drive the handlers against a fake client
 and assert the exact pyrogram calls. That is stated plainly rather than claimed
 as deployment-tested.
+
+## Where each reference project went
+
+| Reference | Contributed here | Still missing, and what it needs |
+| --- | --- | --- |
+| **Meikoagent** | the 21-command surface, plugin lifecycle, role checks | its AI/analytics/reports plugins need an API key and a database |
+| **CBML** / **WZML-X** | filters, welcome/goodbye, `/id` `/info` `/time` | mirror/leech need aria2, rclone, Google credentials and MongoDB |
+| **ENCODING-BOT** | the encoder module (real FFmpeg) | link downloads and cloud uploads need downloaders and storage creds |
+| **LINK-SHAREBOT** | `/genlink` and the signed-link store | `/batch` needs a multi-file queue; `/broadcast` needs a users table |
+| **Multi-FileStoreBot** | the shared file store behind `/genlink`/`/links` | per-user bots need one isolated client per token — not safe in-process |
+| **playeon** | nothing yet | it is a streaming indexer: needs a web server and a file database |
+| **save-restricted-content-bot** | nothing | it works by session-based access to protected content, which the project rules forbid |
+| **Videl1** | keep-alive and watchdog (already shipped) | — |
+| **wzgram** | the client itself | — |
+
+Nothing in the "still missing" column is registered as a command. A command
+that cannot do its job is worse than a missing one.
 
 ## Layout
 

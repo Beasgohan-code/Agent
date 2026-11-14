@@ -25,7 +25,9 @@ import time
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 
+from pyrogram import filters as tg_filters
 from pyrogram.enums import ChatMemberStatus, ChatType
+from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
 from ..platform.chats import SPAM_ACTIONS
@@ -290,6 +292,11 @@ def watch(ctx):
             logging.getLogger(__name__).exception("anti-spam watcher failed")
 
     return on_message
+
+
+def extra_handlers(ctx):
+    """The anti-spam watcher, registered by the bot in its own handler group."""
+    return [MessageHandler(watch(ctx), tg_filters.group)]
 
 
 # -- handlers ---------------------------------------------------------------

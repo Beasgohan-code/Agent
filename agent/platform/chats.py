@@ -145,6 +145,55 @@ class ChatStore:
     def settings(self, chat_id: int) -> dict:
         return self._chat(chat_id)["settings"]
 
+    # -- message filters ---------------------------------------------------
+
+    def filters(self, chat_id: int) -> dict[str, str]:
+        return dict(self._chat(chat_id)["settings"].get("filters") or {})
+
+    def set_filter(self, chat_id: int, name: str, reply: str, *, by: int) -> None:
+        settings = self._chat(chat_id)["settings"]
+        filters = settings.setdefault("filters", {})
+        filters[name.strip().lower()[:64]] = reply[:2000]
+        settings.setdefault("filter_authors", {})[name.strip().lower()[:64]] = int(by)
+        self._save()
+
+    def remove_filter(self, chat_id: int, name: str) -> bool:
+        settings = self._chat(chat_id)["settings"]
+        filters = settings.setdefault("filters", {})
+        removed = filters.pop(name.strip().lower()[:64], None) is not None
+        if removed:
+            self._save()
+        return removed
+
+    def match_filter(self, chat_id: int, text: str) -> str | None:
+        """The reply of the first filter whose name appears in *text*."""
+        body = (text or "").strip().lower()
+        if not body:
+            return None
+        for name, reply in self.filters(chat_id).items():
+            if name and name in body:
+                return reply
+        return None
+
+    # -- greetings ---------------------------------------------------------
+
+    def greeting(self, chat_id: int, kind: str) -> dict:
+        stored = (self._chat(chat_id)["settings"].get("greetings") or {}).get(kind) or {}
+        return {"text": stored.get("text", ""), "enabled": stored.get("enabled", False)}
+
+    def set_greeting(self, chat_id: int, kind: str, text: str) -> dict:
+        greetings = self._chat(chat_id)["settings"].setdefault("greetings", {})
+        greetings[kind] = {"text": text[:1500], "enabled": True}
+        self._save()
+        return self.greeting(chat_id, kind)
+
+    def toggle_greeting(self, chat_id: int, kind: str, enabled: bool) -> dict:
+        greetings = self._chat(chat_id)["settings"].setdefault("greetings", {})
+        current = greetings.setdefault(kind, {"text": "", "enabled": False})
+        current["enabled"] = bool(enabled)
+        self._save()
+        return self.greeting(chat_id, kind)
+
     # -- audit trail -------------------------------------------------------
 
     def log(

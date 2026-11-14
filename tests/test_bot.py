@@ -6,7 +6,12 @@ from types import SimpleNamespace
 
 import pytest
 from pyrogram import Client
-from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
+from pyrogram.handlers import (
+    CallbackQueryHandler,
+    ChatMemberUpdatedHandler,
+    ErrorHandler,
+    MessageHandler,
+)
 
 from agent.bot import AgentBot
 from agent.config import Settings
@@ -78,20 +83,23 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    # 3 built-in commands + 26 module commands + callback + error handler,
-    # plus the moderation watcher in its own group.
-    assert bot.handler_count == 32
+    # 3 built-in commands + 35 module commands + callback + error handler,
+    # plus three watchers (anti-spam, filters, joins/leaves), one per group.
+    assert bot.handler_count == 43
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 29
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 38
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
-    # The anti-spam watcher must not sit in group 0, where it could shadow a
-    # command handler; at most one handler per group handles an update.
-    watchers = client.dispatcher.groups[1]
-    assert len(watchers) == 1
-    assert isinstance(watchers[0], MessageHandler)
+    # Watchers must not sit in group 0, where they could shadow a command
+    # handler, and each needs its own group: pyrogram runs at most one handler
+    # per group per update, so sharing would let one watcher swallow another's.
+    for group in (1, 2, 3):
+        assert len(client.dispatcher.groups[group]) == 1
+    assert isinstance(client.dispatcher.groups[1][0], MessageHandler)   # anti-spam
+    assert isinstance(client.dispatcher.groups[2][0], MessageHandler)   # filters
+    assert isinstance(client.dispatcher.groups[3][0], ChatMemberUpdatedHandler)  # joins
 
 
 def test_duplicate_initialisation_is_prevented():
@@ -107,7 +115,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 29
+    assert len(messages) == 38
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -119,6 +127,8 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     assert group == {
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "unban", "purge", "note", "trust", "antispam", "modlog",
+        "filter", "filters", "stopfilter",
+        "setwelcome", "welcome", "goodbye",
     }
 
 
