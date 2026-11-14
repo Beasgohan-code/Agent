@@ -9,12 +9,14 @@ a write queue that never blocks a handler.
 import asyncio
 import time
 
+import pytest
+
 from agent.modules.clone.store import Clone, CloneStore
 from agent.platform.audience import UserIndex
 from agent.platform.chats import ChatStore
 from agent.platform.db import Database, normalise_url
 from agent.platform.instance import InstanceLease
-from agent.platform.links import LinkStore
+from agent.platform.links import LinkStore, LinkError
 from agent.platform.premium import PremiumBook
 from agent.platform.runtime import PluginRuntime
 
@@ -147,14 +149,13 @@ def test_premium_ledger_round_trips_through_the_database(tmp_path):
     assert again.is_premium(8) is True
 
 
-def test_links_are_saved_as_a_single_document(tmp_path):
+def test_links_require_awaited_database_operations(tmp_path):
     database = FakeDB()
-
     links = LinkStore(tmp_path, "secret", db=database)
-    record = links.create("file-1", owner_id=7, ttl_hours=1)
-
-    assert set(database.saved["links"]) == {record.token}
-    assert record.file_id in database.saved["links"][record.token]["file_id"]
+    with pytest.raises(LinkError, match="Awaited"):
+        links.create("file-1", owner_id=7, ttl_hours=1)
+    assert not database.saved
+    assert not (tmp_path / "links.json").exists()
 
 
 def test_the_user_index_and_the_plugin_runtime_use_the_database(tmp_path):

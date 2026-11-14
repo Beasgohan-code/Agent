@@ -17,6 +17,8 @@ the use cap are all checked there, in that order, before a file is sent.
 from __future__ import annotations
 
 import base64
+import copy
+import json
 import binascii
 import hashlib
 import hmac
@@ -97,9 +99,74 @@ class LinkStore:
         return records
 
     def _save(self) -> None:
+        if self._db is not None:
+            raise LinkError("Awaited PostgreSQL link operation required")
         save_document(
             self._db, "links", self._path, {k: asdict(v) for k, v in self._links.items()}
         )
+
+    async def _atomic(self, operation, *args, **kwargs):
+        """Serialize scoped document reads/mutations in an awaited transaction.
+
+        This preserves existing tokens and JSONB records without a destructive
+        migration. It deliberately bypasses the legacy background writer.
+        All participating processes must use this awaited API.
+        """
+        if self._db is None:
+            return getattr(self, operation)(*args, **kwargs)
+        db = self._db
+        if not db.connected or getattr(db, "_pool", None) is None:
+            raise LinkError("PostgreSQL link state is unavailable")
+        if "links" in getattr(db, "_pending", {}):
+            raise LinkError("Legacy link write pending; retry after it is flushed")
+        try:
+            async with db._pool.acquire(timeout=5) as connection:
+                async with connection.transaction():
+                    key = db.name_for("links")
+                    await connection.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", key, timeout=5)
+                    raw = await connection.fetchval("SELECT value FROM agent_documents WHERE name=$1 FOR UPDATE", key, timeout=5)
+                    raw = json.loads(raw) if isinstance(raw, str) else raw
+                    if raw is None:
+                        raw = {}
+                    if not isinstance(raw, dict):
+                        raise LinkError("Persisted link state is invalid")
+                    work = copy.copy(self)
+                    work._db = None
+                    work._links = {token: LinkRecord(**value) for token, value in raw.items()}
+                    work._save = lambda: None
+                    result = getattr(work, operation)(*args, **kwargs)
+                    if operation in ("create", "consume", "revoke", "purge_expired"):
+                        await connection.execute("""INSERT INTO agent_documents(name,value)
+                            VALUES($1,$2::jsonb) ON CONFLICT(name) DO UPDATE
+                            SET value=EXCLUDED.value,updated_at=now()""", key,
+                            json.dumps({token: asdict(record) for token, record in work._links.items()}), timeout=5)
+            # Reflect only a committed transaction; callers must still read SQL
+            # afresh rather than treating this per-process cache as authority.
+            self._links = work._links
+            return result
+        except LinkError:
+            raise
+        except Exception:
+            logger.warning("PostgreSQL link operation was not confirmed")
+            raise LinkError("Link result was not confirmed; check before retrying") from None
+
+    async def acreate(self, *args, **kwargs):
+        return await self._atomic("create", *args, **kwargs)
+
+    async def aresolve(self, token):
+        return await self._atomic("resolve", token)
+
+    async def aconsume(self, token):
+        return await self._atomic("consume", token)
+
+    async def arevoke(self, token, **kwargs):
+        return await self._atomic("revoke", token, **kwargs)
+
+    async def aowned(self, owner_id):
+        return await self._atomic("owned", owner_id)
+
+    async def apurge_expired(self):
+        return await self._atomic("purge_expired")
 
     # -- signing -----------------------------------------------------------
 
@@ -114,6 +181,8 @@ class LinkStore:
         ttl_hours: int | None = None,
         max_uses: int = 0,
     ) -> LinkRecord:
+        if self._db is not None:
+            raise LinkError("Awaited PostgreSQL link operation required")
         # ``ttl_hours=0`` means "expires now"; only None falls back to the default.
         hours = self.default_ttl // 3600 if ttl_hours is None else ttl_hours
         ttl = hours * 3600
@@ -139,6 +208,8 @@ class LinkStore:
 
     def resolve(self, token: str) -> LinkRecord:
         """Return the record for *token*, or raise :class:`LinkError`."""
+        if self._db is not None:
+            raise LinkError("Awaited PostgreSQL link operation required")
         record = self._links.get(token)
         if record is not None:
             if record.revoked:
@@ -175,9 +246,13 @@ class LinkStore:
 
     def get(self, token: str) -> LinkRecord | None:
         """The stored record for *token*, without validating it."""
+        if self._db is not None:
+            raise LinkError("Awaited PostgreSQL link operation required")
         return self._links.get(token)
 
     def revoke(self, token: str, *, owner_id: int | None = None) -> bool:
+        if self._db is not None:
+            raise LinkError("Awaited PostgreSQL link operation required")
         record = self._links.get(token)
         if record is None or record.revoked:
             return False
@@ -192,6 +267,8 @@ class LinkStore:
         return True
 
     def owned(self, owner_id: int) -> list[LinkRecord]:
+        if self._db is not None:
+            raise LinkError("Awaited PostgreSQL link operation required")
         return sorted(
             (r for r in self._links.values() if r.owner_id == owner_id),
             key=lambda r: r.created_at,
@@ -217,6 +294,8 @@ class LinkStore:
 
     def purge_expired(self) -> int:
         """Drop records whose expiry has passed. Returns how many were removed."""
+        if self._db is not None:
+            raise LinkError("Awaited PostgreSQL link operation required")
         stale = [token for token, record in self._links.items() if record.expired]
         for token in stale:
             self._links.pop(token, None)

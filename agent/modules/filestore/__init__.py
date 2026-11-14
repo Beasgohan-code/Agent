@@ -203,7 +203,7 @@ def build(ctx):
         path = storage.path_for(stored)
         links = [
             record
-            for record in ctx.links.owned(message.from_user.id)
+            for record in await ctx.links.aowned(message.from_user.id)
             if record.file_id == stored.id and not record.revoked
         ]
         await reply(

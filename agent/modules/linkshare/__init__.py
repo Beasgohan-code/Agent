@@ -162,7 +162,7 @@ def build(ctx):
     async def _grant(client, message, stored, ttl, uses, *, source: str) -> None:
         """Create the link for *stored* and answer with the share card."""
         owner = message.from_user.id
-        record = ctx.links.create(stored.id, owner, ttl_hours=ttl, max_uses=uses)
+        record = await ctx.links.acreate(stored.id, owner, ttl_hours=ttl, max_uses=uses)
         if getattr(ctx, "events", None) is not None:
             ctx.events.emit("link", owner=owner, uses=uses)
         logger.info(
@@ -271,7 +271,7 @@ def build(ctx):
             return
         page = int(parts[0]) if parts else 1
         owner = message.from_user.id
-        records = ctx.links.owned(owner)
+        records = await ctx.links.aowned(owner)
         pages = max(1, (len(records) + 9) // 10)
         if page > pages:
             await reply(message, f"Choose a links page from 1 to {pages}.")
@@ -343,7 +343,7 @@ def build(ctx):
             return
         owner = message.from_user.id
         try:
-            record = ctx.links.resolve(parts[1].strip())
+            record = await ctx.links.aresolve(parts[1].strip())
         except LinkError as exc:
             # A revoked token must still be revocable-by-owner idempotently;
             # anything else is a genuine failure.
@@ -353,7 +353,7 @@ def build(ctx):
                 await reply(message, f"Invalid link: {html.escape(str(exc))}")
             return
 
-        if ctx.links.revoke(record.token, owner_id=owner):
+        if await ctx.links.arevoke(record.token, owner_id=owner):
             await reply(message, panel("Link revoked", icon=ctx.theme.emoji("check"),
                 lines=["Link revoked. Future redemptions are blocked."],
                 note="Already delivered files and in-flight deliveries are not erased.", footer="/links"))
@@ -364,7 +364,7 @@ def build(ctx):
     async def redeem(client, message, token: str):
         """Send the file behind *token*, or say precisely why it cannot be sent."""
         try:
-            record = ctx.links.resolve(token)
+            record = await ctx.links.aresolve(token)
         except LinkError as exc:
             reason = {
                 "link revoked": "The owner revoked this link.",
@@ -385,7 +385,7 @@ def build(ctx):
         # No use is spent for a missing metadata entry. Consume immediately
         # before delivery, with a second expiry/revocation/cap check.
         try:
-            record = ctx.links.consume(token)
+            record = await ctx.links.aconsume(token)
         except LinkError:
             await _refused(message, "This link is no longer available.")
             return
@@ -431,14 +431,14 @@ def build(ctx):
             return
         presser = getattr(getattr(query, "from_user", None), "id", None)
         try:
-            record = ctx.links.resolve(token)
+            record = await ctx.links.aresolve(token)
         except LinkError as exc:
             await query.answer(f"Nothing to revoke: {exc}.", show_alert=True)
             return
         if presser is None or record.owner_id != int(presser):
             await query.answer("Only the owner of this link can revoke it.", show_alert=True)
             return
-        ctx.links.revoke(token, owner_id=int(presser))
+        await ctx.links.arevoke(token, owner_id=int(presser))
         stored = ctx.storage.get(record.file_id)
         username = await _username(client)
         text, keyboard = _panel(record, stored, username)

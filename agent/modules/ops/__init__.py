@@ -193,7 +193,7 @@ def build(ctx):
 
         if mode in ("run", "clean"):
             removed, freed = sweep_temp_dirs()
-            expired = ctx.links.purge_expired() if ctx.links is not None else 0
+            expired = await ctx.links.apurge_expired() if ctx.links is not None else 0
             pruned = 0
             if mode == "clean" and ctx.storage is not None:
                 pruned = len(ctx.storage.prune(retention_days=7))
