@@ -24,11 +24,23 @@ class ConfigError(RuntimeError):
     """Raised when the environment does not describe a runnable bot."""
 
 
-#: Which plugins register at startup. ``("*",)`` means every module compiled in,
-#: which is the default: the plugins are the product, not a build matrix. Set
-#: ``PLUGINS=leech,filestore`` to ship a narrower bot — an unselected plugin
-#: registers nothing at all, it does not half-work.
-DEFAULT_PLUGINS: tuple[str, ...] = ("*",)
+#: Which plugins register at startup. The default is the eight a file bot is
+#: actually used for; everything else is compiled in but silent until a
+#: deployment names it. ``PLUGINS=*`` registers every module for development.
+#: An unselected plugin registers nothing at all, it does not half-work;
+#: ``agent.modules.SHELL`` (``ops`` and ``core``) always registers, because a
+#: bot without its own controls has no way back.
+DEFAULT_PLUGINS: tuple[str, ...] = (
+    "ops",
+    "core",
+    "filestore",
+    "leech",
+    "linkshare",
+    "moderation",
+    "music",
+    "postmaker",
+    "renamer",
+)
 
 
 def _plugins(raw: str | None) -> tuple[str, ...]:

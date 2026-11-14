@@ -272,8 +272,9 @@ def build(ctx):
             lines=(["Idle (enabled, no commands):"] + [f"<code>{row['slug']}</code> — {_idle_reason(row)}" for row in idle] if idle else []),
             note=(
                 "Tap a plugin to switch it on or off, or use "
-                "<code>/plugin &lt;slug&gt; on|off</code>. <code>ops</code> is locked "
-                "so the bot cannot lose its own controls."
+                "<code>/plugin &lt;slug&gt; on|off</code>. <code>ops</code> and "
+                "<code>core</code> are locked: they are the controls and the front "
+                "door, so the bot cannot lose the way back in."
             ),
             footer="Counts come from the live registry, not a stored copy.",
         )

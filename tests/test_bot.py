@@ -30,8 +30,10 @@ ENV = {
 }
 
 
-def make_settings():
-    return Settings.from_env(ENV)
+def make_settings(**overrides):
+    # These tests count the wiring of *every* plugin, so they ask for the star
+    # rather than the shipped default (eight plugins plus the shell).
+    return Settings.from_env({**ENV, "PLUGINS": "*", **overrides})
 
 
 class FakeMessage:

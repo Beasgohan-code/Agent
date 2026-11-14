@@ -66,20 +66,43 @@ def buttons(keyboard):
 # --- the build's plugin selection -----------------------------------------
 
 
-def test_the_default_build_registers_every_plugin(tmp_path):
-    bot = make_bot(tmp_path)
+def test_the_default_build_ships_the_eight_plugins_plus_the_shell(tmp_path):
+    bot = make_bot(tmp_path, PLUGINS="")
     registered = {m.slug for m in bot.registry.manifests()}
 
-    assert "moderation" in registered and "music" in registered
-    assert len(registered) == 17
-    assert not_selected(bot.settings.plugins) == ()
+    assert registered == {
+        "ops",
+        "core",
+        "filestore",
+        "leech",
+        "linkshare",
+        "moderation",
+        "music",
+        "postmaker",
+        "renamer",
+    }
+    # The nine the deployment left out are absent, not idle or hidden.
+    assert {"encoder", "filters", "group", "premium", "reports", "security",
+            "utilities", "welcome"} <= set(not_selected(bot.settings.plugins))
+    assert "encode" not in set(bot.registry.active_commands())
+    assert {"fsave", "leech", "ban", "plugins"} <= set(bot.registry.active_commands())
+
+
+def test_the_shell_survives_even_when_plugins_names_nothing_else(tmp_path):
+    bot = make_bot(tmp_path, PLUGINS="leech")
+    registered = {m.slug for m in bot.registry.manifests()}
+    commands = set(bot.registry.active_commands())
+
+    # A build with one feature still has a front door and a way to repair it.
+    assert registered == {"ops", "core", "leech"}
+    assert {"menu", "about", "status", "cancel", "plugins", "plugin"} <= commands
 
 
 def test_plugins_env_narrows_the_build_and_unselected_plugins_vanish(tmp_path):
     bot = make_bot(tmp_path, PLUGINS="ops,leech,filestore")
     registered = {m.slug for m in bot.registry.manifests()}
 
-    assert registered == {"ops", "leech", "filestore"}
+    assert registered == {"ops", "core", "leech", "filestore"}
     assert "moderation" in not_selected(bot.settings.plugins)
     # A plugin that is not selected has no commands at all, not hidden ones.
     assert "ban" not in set(bot.registry.active_commands())
@@ -88,7 +111,7 @@ def test_plugins_env_narrows_the_build_and_unselected_plugins_vanish(tmp_path):
 
 def test_an_unknown_slug_costs_one_plugin_not_the_bot():
     assert unknown(("ops", "nope")) == ("nope",)
-    assert [m.MANIFEST.slug for m in select(("ops", "nope"))] == ["ops"]
+    assert [m.MANIFEST.slug for m in select(("ops", "nope"))] == ["ops", "core"]
 
 
 def test_star_selects_everything_compiled():

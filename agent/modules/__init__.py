@@ -5,6 +5,12 @@ Every module is compiled in; which ones *register* is the deployment's choice
 the whole lifecycle rule of this bot: a module that is not selected registers
 nothing — no commands, no watchers, no menu entries — so it cannot half-work.
 
+:data:`SHELL` is the exception, and it is not a plugin: ``ops`` owns
+``/plugins``, ``/plugin`` and ``/restart``, and ``core`` owns ``/menu``,
+``/about``, ``/status``, ``/cancel`` and ``/owner``. A build that dropped those
+would accept files and offer no way to look at, cancel or repair itself, so
+they register whatever ``PLUGINS`` says.
+
 Order matters only for collisions: the registry rejects any command declared
 twice, so adding a module can never silently shadow another.
 """
@@ -51,6 +57,10 @@ ORDER = (
     "welcome",
 )
 
+#: Modules that are part of the bot itself rather than a feature: the controls
+#: and the front door. Always registered, never switchable off from the panel.
+SHELL = ("ops", "core")
+
 ALL_MODULES = {
     "ops": ops,
     "core": core,
@@ -75,14 +85,15 @@ ALL_MODULES = {
 def select(slugs) -> tuple:
     """The modules to register for *slugs*, in :data:`ORDER`.
 
-    ``("*",)`` selects everything compiled in. Unknown slugs are returned in
-    :func:`unknown` rather than raising, so a typo in ``PLUGINS`` costs one
-    plugin and a log line, not the whole bot.
+    ``("*",)`` selects everything compiled in. Otherwise *slugs* plus
+    :data:`SHELL`. Unknown slugs are returned in :func:`unknown` rather than
+    raising, so a typo in ``PLUGINS`` costs one plugin and a log line, not the
+    whole bot.
     """
     requested = tuple(slugs or ())
     if requested == ("*",):
         return tuple(ALL_MODULES[name] for name in ORDER)
-    wanted = set(requested)
+    wanted = set(requested) | set(SHELL)
     return tuple(ALL_MODULES[name] for name in ORDER if name in wanted)
 
 

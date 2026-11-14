@@ -14,8 +14,10 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-#: The plugin that owns /plugin and /restart may not disable itself.
-PROTECTED = ("ops",)
+#: The shell: ``ops`` owns /plugins, /plugin and /restart, ``core`` owns /menu,
+#: /about, /status, /cancel and /owner. Neither may disable itself, or the bot
+#: loses the only door back in.
+PROTECTED = ("ops", "core")
 
 
 class PluginRuntime:

@@ -91,11 +91,17 @@ fetched, the counters reset at midnight UTC, and the state is `data/premium.json
 ## Plugin runtime, by button
 
 `/plugins` is a panel you can press: one styled button per plugin (green when it
-is on, grey when it is off, disabled for `ops`), and pressing one detaches or
+is on, grey when it is off, disabled for the shell), and pressing one detaches or
 re-attaches that plugin's handlers in place, then redraws the panel. `/plugin
-<slug> on|off` still exists for scripts. `PLUGINS=leech,filestore` narrows a
-build — an unselected plugin registers nothing at all, it does not half-work,
-and `PLUGINS=*` (the default) registers everything compiled in.
+<slug> on|off` still exists for scripts.
+
+The build ships nine plugins on: `ops` and `core` (the shell — controls and front
+door, always registered and never switchable off), plus `filestore`, `leech`,
+`linkshare`, `moderation`, `music`, `postmaker` and `renamer`. The other eight
+(`encoder`, `filters`, `group`, `premium`, `reports`, `security`, `utilities`,
+`welcome`) are compiled in but register nothing until a deployment asks:
+`PLUGINS=encoder,security`. An unselected plugin has no commands, no watchers
+and no menu entries, so it cannot half-work; `PLUGINS=*` turns everything on.
 
 Buttons use the Bot API 10.3 `style` field (primary / success / danger) and the
 info screen carries a `copy_text` button, so the user id can be pasted without
@@ -409,11 +415,17 @@ that cannot do its job is worse than a missing one.
 ## Plugin runtime, by button
 
 `/plugins` is a panel you can press: one styled button per plugin (green when it
-is on, grey when it is off, disabled for `ops`), and pressing one detaches or
+is on, grey when it is off, disabled for the shell), and pressing one detaches or
 re-attaches that plugin's handlers in place, then redraws the panel. `/plugin
-<slug> on|off` still exists for scripts. `PLUGINS=leech,filestore` narrows a
-build — an unselected plugin registers nothing at all, it does not half-work,
-and `PLUGINS=*` (the default) registers everything compiled in.
+<slug> on|off` still exists for scripts.
+
+The build ships nine plugins on: `ops` and `core` (the shell — controls and front
+door, always registered and never switchable off), plus `filestore`, `leech`,
+`linkshare`, `moderation`, `music`, `postmaker` and `renamer`. The other eight
+(`encoder`, `filters`, `group`, `premium`, `reports`, `security`, `utilities`,
+`welcome`) are compiled in but register nothing until a deployment asks:
+`PLUGINS=encoder,security`. An unselected plugin has no commands, no watchers
+and no menu entries, so it cannot half-work; `PLUGINS=*` turns everything on.
 
 Buttons use the Bot API 10.3 `style` field (primary / success / danger) and the
 info screen carries a `copy_text` button, so the user id can be pasted without
