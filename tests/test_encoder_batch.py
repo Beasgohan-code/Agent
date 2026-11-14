@@ -52,3 +52,90 @@ def test_cancelled_probe_reaps_child(monkeypatch):
         process.kill.assert_called_once()
         process.wait.assert_awaited_once()
     asyncio.run(scenario())
+
+
+def test_conversion_deadline_reaps_process_and_removes_partial(tmp_path, monkeypatch):
+    async def scenario():
+        monkeypatch.setattr(encoder, 'CONVERSION_TIMEOUT', 0.1)
+        output = tmp_path / 'partial.mp4'
+        command = [sys.executable, '-c',
+                   'import pathlib,time; pathlib.Path(__import__("sys").argv[1]).write_bytes(b"partial"); time.sleep(60)', str(output)]
+        with pytest.raises(TimeoutError):
+            await encoder.run_tool(Job('timeout', 'encoder', 1), command, output, duration=1)
+        assert not output.exists()
+    asyncio.run(scenario())
+
+
+def test_success_exit_without_output_is_not_success(tmp_path):
+    async def scenario():
+        with pytest.raises(RuntimeError, match='nonempty output'):
+            await encoder.run_tool(Job('empty', 'encoder', 1),
+                                   [sys.executable, '-c', 'pass'], tmp_path / 'missing', duration=1)
+    asyncio.run(scenario())
+
+
+def test_cancel_validation_reaps_child(monkeypatch, tmp_path):
+    async def scenario():
+        entered = asyncio.Event()
+        process = SimpleNamespace(returncode=None, kill=Mock())
+        async def wait():
+            if process.kill.called:
+                process.returncode = -9
+                return -9
+            entered.set()
+            await asyncio.Event().wait()
+        process.wait = AsyncMock(side_effect=wait)
+        monkeypatch.setattr(encoder, 'ffmpeg_path', lambda: 'ffmpeg')
+        monkeypatch.setattr(encoder.asyncio, 'create_subprocess_exec', AsyncMock(return_value=process))
+        target = tmp_path / 'input'
+        target.write_bytes(b'fake')
+        task = asyncio.create_task(encoder.validate_output(target))
+        await entered.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        process.kill.assert_called_once()
+        assert process.wait.await_count == 2
+    asyncio.run(scenario())
+
+
+def test_validation_deadline_reaps_child(monkeypatch, tmp_path):
+    async def scenario():
+        process = SimpleNamespace(returncode=None, kill=Mock())
+        async def wait():
+            if process.kill.called:
+                process.returncode = -9
+                return -9
+            await asyncio.Event().wait()
+        process.wait = AsyncMock(side_effect=wait)
+        monkeypatch.setattr(encoder, 'VALIDATION_TIMEOUT', 0.01)
+        monkeypatch.setattr(encoder, 'ffmpeg_path', lambda: 'ffmpeg')
+        monkeypatch.setattr(encoder.asyncio, 'create_subprocess_exec', AsyncMock(return_value=process))
+        target = tmp_path / 'input'
+        target.write_bytes(b'fake')
+        with pytest.raises(TimeoutError):
+            await encoder.validate_output(target)
+        process.kill.assert_called_once()
+        assert process.wait.await_count == 2
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('failure', [TimeoutError, asyncio.CancelledError, RuntimeError])
+def test_validation_failure_cleans_job_output(monkeypatch, tmp_path, failure):
+    async def scenario():
+        directory = tmp_path / 'owned'
+        directory.mkdir()
+        monkeypatch.setattr(encoder.tempfile, 'mkdtemp', lambda **kwargs: str(directory))
+        monkeypatch.setattr(encoder, 'probe', AsyncMock(return_value={'duration': 1}))
+        async def convert(job, src, output, **kwargs):
+            output.write_bytes(b'partial')
+            return output
+        monkeypatch.setattr(encoder, 'run_ffmpeg', convert)
+        monkeypatch.setattr(encoder, 'validate_output', AsyncMock(side_effect=failure))
+        source = tmp_path / 'source.mp4'
+        source.write_bytes(b'original')
+        with pytest.raises(failure):
+            await encoder.encode_job(Job('cleanup', 'encoder', 1), None, source, 'fast', 'h264')
+        assert source.read_bytes() == b'original'
+        assert not directory.exists()
+    asyncio.run(scenario())

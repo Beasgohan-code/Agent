@@ -40,6 +40,9 @@ MANIFEST = PluginManifest(
     permissions=("messages.read", "files.write", "process.spawn"),
 )
 
+CONVERSION_TIMEOUT = 60 * 60
+VALIDATION_TIMEOUT = 5 * 60
+
 PRESETS: dict[str, tuple[int, str]] = {
     "fast": (28, "veryfast"),
     "balanced": (23, "medium"),
@@ -132,25 +135,29 @@ async def run_tool(job: Job, command: list[str], dst: Path, *, duration: float) 
         stderr=asyncio.subprocess.DEVNULL,
     )
     try:
-        assert process.stdout is not None
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
-            key, _, value = line.decode(errors="ignore").strip().partition("=")
-            if key in ("out_time_ms", "out_time_us") and duration > 0 and value.isdigit():
-                seconds = int(value) / 1_000_000
-                job.progress = min(0.99, seconds / duration)
-                job.detail = f"{seconds:.0f}s / {duration:.0f}s"
-        await process.wait()
+        async with asyncio.timeout(CONVERSION_TIMEOUT):
+            assert process.stdout is not None
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                key, _, value = line.decode(errors="ignore").strip().partition("=")
+                if key in ("out_time_ms", "out_time_us") and duration > 0 and value.isdigit():
+                    seconds = int(value) / 1_000_000
+                    job.progress = min(0.99, seconds / duration)
+                    job.detail = f"{seconds:.0f}s / {duration:.0f}s"
+            await process.wait()
+        if process.returncode != 0:
+            raise RuntimeError(f"ffmpeg exited {process.returncode}; media conversion was not confirmed")
+        if not dst.is_file() or dst.stat().st_size == 0:
+            raise RuntimeError("ffmpeg returned no nonempty output; media conversion was not confirmed")
     except BaseException:
         if process.returncode is None:
             process.kill()
             await process.wait()
+        dst.unlink(missing_ok=True)
         raise
 
-    if process.returncode != 0:
-        raise RuntimeError(f"ffmpeg exited {process.returncode}; media conversion was not confirmed")
     return dst
 
 
@@ -235,16 +242,27 @@ def screens_command(src: Path, dst: Path, *, count: int = 9, duration: float = 0
 
 
 async def validate_output(path: Path) -> bool:
-    """Decode the whole output with errors fatal — a real integrity check."""
-    if not path.exists() or path.stat().st_size == 0:
+    """Decode with fatal errors, bounded runtime, and cancellation-safe cleanup.
+
+    FFmpeg's error exit status is authoritative with ``-xerror``. Stderr is
+    discarded rather than buffering arbitrary decoder diagnostics in memory.
+    """
+    if not path.is_file() or path.stat().st_size == 0:
         return False
     process = await asyncio.create_subprocess_exec(
-        ffmpeg_path(), "-hide_banner", "-v", "error", "-i", str(path), "-f", "null", "-",
+        ffmpeg_path(), "-hide_banner", "-nostdin", "-v", "error", "-xerror",
+        "-i", str(path), "-f", "null", "-",
         stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
     )
-    _, stderr = await process.communicate()
-    return process.returncode == 0 and not stderr.strip()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=VALIDATION_TIMEOUT)
+    except BaseException:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+        raise
+    return process.returncode == 0
 
 
 def describe(info: dict) -> str:
@@ -259,11 +277,19 @@ async def encode_job(job: Job, ctx, src: Path, preset: str, codec: str) -> Path:
     info = await probe(src)
     job.detail = f"encoding {preset}"
     output = Path(tempfile.mkdtemp(prefix="enc-")) / (src.stem + "-encoded.mp4")
-    produced = await run_ffmpeg(job, src, output, preset=preset, codec=codec, duration=info["duration"])
-    if not await validate_output(produced):
-        produced.unlink(missing_ok=True)
-        raise RuntimeError("output failed validation (unplayable or empty)")
-    return produced
+    try:
+        produced = await run_ffmpeg(job, src, output, preset=preset, codec=codec, duration=info["duration"])
+        if not await validate_output(produced):
+            raise RuntimeError("output failed validation (unplayable or empty)")
+        return produced
+    except BaseException:
+        output.unlink(missing_ok=True)
+        # Only this job's newly created directory is owned here.
+        try:
+            output.parent.rmdir()
+        except OSError:
+            logger.warning("Could not remove Encoder temporary directory", exc_info=True)
+        raise
 
 
 def _source_media(message):
