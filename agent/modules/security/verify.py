@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from pyrogram.enums import ChatMemberStatus, ChatType
+from pyrogram.enums import ButtonStyle, ChatMemberStatus, ChatType
 from pyrogram.types import ChatPermissions
 from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
@@ -62,7 +62,15 @@ def timeout_minutes(chats, chat_id: int) -> int:
 
 def button_for(chat_id: int, user_id: int) -> Keyboard:
     return Keyboard(
-        [[Button("I am human", callback_data=f"{PREFIX}:{int(chat_id)}:{int(user_id)}")]]
+        [
+            [
+                Button(
+                    "\u2705 I am human",
+                    callback_data=f"{PREFIX}:{int(chat_id)}:{int(user_id)}",
+                    style=ButtonStyle.SUCCESS,
+                )
+            ]
+        ]
     )
 
 

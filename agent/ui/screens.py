@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
+from pyrogram.enums import ButtonStyle
 from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup
 from richgram import (
@@ -290,7 +291,13 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
 def _section_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [Button("\u2b05\ufe0f All sections", callback_data=f"help:{ALL_SECTIONS}")],
+            [
+                Button(
+                    "\u2b05\ufe0f All sections",
+                    callback_data=f"help:{ALL_SECTIONS}",
+                    style=ButtonStyle.PRIMARY,
+                )
+            ],
             [Button("\u21a9\ufe0f Back to menu", callback_data=keyboards.CB_HOME)],
         ]
     )
