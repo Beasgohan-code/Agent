@@ -85,6 +85,8 @@ class Settings:
     #: START_IMAGE=0 removes it. Nothing depends on it: an unreachable image
     #: falls back to the plain text screen.
     start_image: str | None = None
+    #: PostgreSQL DSN (DATABASE_URL). None keeps the JSON files.
+    database_url: str | None = None
     #: How many clones this deployment will run at once (CLONE_LIMIT).
     clone_limit: int = 5
     #: Which plugins register at startup (PLUGINS=..., or * for every module).
@@ -157,6 +159,7 @@ class Settings:
             session_string=(source.get("SESSION_STRING") or "").strip() or None,
             plugins=_plugins(source.get("PLUGINS")),
             clone_limit=_bounded_int(source.get("CLONE_LIMIT"), 5, 0, 50),
+            database_url=(source.get("DATABASE_URL") or "").strip() or None,
             health_port=_optional_port(source),
             watchdog_interval=_optional_float(source.get("WATCHDOG_INTERVAL_SECONDS"), 30.0),
             watchdog_timeout=_optional_float(source.get("WATCHDOG_TIMEOUT_SECONDS"), 20.0),

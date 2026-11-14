@@ -52,7 +52,7 @@ PREFIX = "clone"
 
 def build(ctx):
     """Wire the clone commands and their buttons to the shared context."""
-    store = CloneStore(ctx.settings.data_dir)
+    store = CloneStore(ctx.settings.data_dir, db=getattr(ctx, "db", None))
     # A deployment (or a test) may hand in its own bot factory; the default
     # builds a real AgentBot for the clone's token.
     manager = CloneManager(ctx.settings, store, getattr(ctx, "clone_factory", None))

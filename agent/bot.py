@@ -22,6 +22,7 @@ from .platform.manifest import PluginRegistry
 from .health_server import start_health_server, stop_health_server
 from .platform.actions import ActionRouter
 from .platform.audience import UserIndex
+from .platform.db import Database
 from .platform.events import EventLog
 from .platform.instance import InstanceLease
 from .platform.logbook import LogBook, subscribe
@@ -63,7 +64,12 @@ class AgentBot:
         self.modules: ModuleContext | None = None
         self.registry = PluginRegistry()
         self.events = EventLog()
-        self.users = UserIndex(settings.data_dir)
+        #: PostgreSQL, when the deployment provides DATABASE_URL. Connected (and
+        #: loaded) in run(), before the client starts, so the stores are built
+        #: against the database rather than filling up from files first.
+        self.database = Database(settings.database_url) if settings.database_url else None
+        db = self.database
+        self.users = UserIndex(settings.data_dir, db=db)
         self.logbook = LogBook(
             settings.data_dir,
             channel_id=settings.log_channel,
@@ -71,14 +77,14 @@ class AgentBot:
         )
         subscribe(self.events, self.logbook)
         #: One lease per bot token: two live copies would answer every update twice.
-        self.lease = InstanceLease(settings.data_dir / "instance.lock")
+        self.lease = InstanceLease(settings.data_dir / "instance.lock", db=db)
         self.runtime = PluginRuntime(
-            self.registry, state_path=settings.data_dir / "plugins.json"
+            self.registry, state_path=settings.data_dir / "plugins.json", db=db
         )
         #: Module-owned callback prefixes (member verification today).
         self.actions = ActionRouter()
         #: Premium membership and the tier allowances the modules enforce.
-        self.premium = PremiumBook(settings.data_dir)
+        self.premium = PremiumBook(settings.data_dir, db=db)
         #: Voice-chat streaming is optional: without a session string there is no
         #: engine and the music module registers nothing.
         ok, reason = capability(settings.session_string)
@@ -167,7 +173,11 @@ class AgentBot:
         # from the context while building, so attaching afterwards leaves every
         # module holding None and the runtime commands answering "unavailable".
         self.modules = ModuleContext.build(
-            self.settings, self.theme, sender, root=self.settings.data_dir
+            self.settings,
+            self.theme,
+            sender,
+            root=self.settings.data_dir,
+            db=self.database,
         )
         self.modules.registry = self.registry
         self.modules.actions = self.actions
@@ -250,6 +260,22 @@ class AgentBot:
 
     async def run(self) -> None:
         """Connect, poll until a stop signal arrives, then disconnect."""
+        if self.database is not None:
+            if await self.database.connect():
+                await self.database.load()
+                # These three were built in __init__, before the database was
+                # readable; re-read them so a deploy starts from the stored state
+                # rather than from last boot's files.
+                for store in (self.users, self.premium, self.runtime):
+                    hydrate = getattr(store, "hydrate", None)
+                    if hydrate is not None:
+                        hydrate()
+            else:
+                logger.warning(
+                    "Continuing with JSON files: DATABASE_URL is set but unusable (%s).",
+                    self.database.error or "no reason given",
+                )
+
         client = self._client or self.build()
 
         stop_event = asyncio.Event()
@@ -352,7 +378,9 @@ class AgentBot:
             await self.lease.stop_heartbeat()
             # Releasing lets a replacement process start immediately (this is
             # what makes /restart a fast handover rather than a 60s timeout).
-            self.lease.release()
+            await self.lease.release_async()
+            if self.database is not None:
+                await self.database.close()
             self.events.emit("stop")
 
     def _health_detail(self) -> dict:

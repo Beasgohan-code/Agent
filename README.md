@@ -22,7 +22,8 @@ built from the live state of this process rather than a stored copy of it.
 | `PLUGINS` | no | Which plugins register. Default is the nine below; `*` is everything. |
 | `SESSION_STRING` | for music | A user session is the only thing that can join a group call. |
 | `LOG_CHANNEL` | no | Where the bot posts its event log; without it, the owner's DM. |
-| `DATA_DIR` | no | Where state (vault, links, clones, settings) lives. Default `data`. |
+| `DATA_DIR` | no | Where local state (vault files, and JSON stores without a database) lives. Default `data`. |
+| `DATABASE_URL` | no | PostgreSQL DSN. Set it and every store is kept in the database. |
 | `CLONE_LIMIT` | no | How many clones this deployment will run at once. Default `5`. |
 | `START_IMAGE` | no | Picture above `/start`; `0` keeps the text only. |
 | `HEALTH_PORT` / `PORT` | no | Exposes `/health` and `/health/live`. |
@@ -129,6 +130,29 @@ user session, and is gated on capability: without `SESSION_STRING` the module
 registers zero commands and `/plugins` says why. `/play` and `/nowplaying` answer
 with a card, and the card is the remote — pause/resume, skip, and a red
 stop-and-clear, for staff or whoever queued the track.
+
+## Where state lives
+
+Two modes, same behaviour:
+
+* **JSON files** (`data/`) by default — one process, small state, no server to run.
+* **PostgreSQL** when `DATABASE_URL` is set. Each store becomes one row in
+  `agent_documents` (`name`, `value jsonb`), and the single-instance lease becomes
+  a row in `agent_lease`, so two containers finally see each other. The schema is
+  applied on boot; there is nothing to migrate by hand.
+
+Writes are queued and flushed by one background task, so a handler never waits on
+the network, and the last value for a document wins — a store never writes a
+partial one. If the database is missing, unreachable, or `asyncpg` is not
+installed, the bot logs one warning and keeps running on its files: losing the
+database must not take the bot down. `/db` (owner) states which backend is live,
+the host, how many documents are loaded and whether writes are queued; `/status`
+carries the same answer in one row.
+
+**The vault is the exception.** Files live on the host's disk under `DATA_DIR`;
+the database holds the index and the links. A multi-instance deployment that
+wants shared *files* needs object storage, and this bot does not pretend
+otherwise.
 
 ## Premium
 

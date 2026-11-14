@@ -14,12 +14,13 @@ import base64
 import binascii
 import hashlib
 import hmac
-import json
 import logging
 import secrets
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+from .db import load_document, save_document
 
 logger = logging.getLogger(__name__)
 
@@ -55,28 +56,32 @@ def _unb64(text: str) -> bytes:
 class LinkStore:
     """Creates, validates and revokes signed file links."""
 
-    def __init__(self, root: Path, secret: str, *, default_ttl_hours: int = 24) -> None:
+    def __init__(
+        self, root: Path, secret: str, *, default_ttl_hours: int = 24, db=None
+    ) -> None:
         self.root = Path(root)
         self._secret = (secret or "").encode() or secrets.token_bytes(32)
         self.default_ttl = max(1, default_ttl_hours) * 3600
         self._path = self.root / "links.json"
+        self._db = db
         self._links: dict[str, LinkRecord] = self._load()
 
     def _load(self) -> dict[str, LinkRecord]:
-        if not self._path.exists():
+        raw = load_document(self._db, "links", self._path, {})
+        if not isinstance(raw, dict):
             return {}
-        try:
-            raw = json.loads(self._path.read_text("utf-8"))
-            return {k: LinkRecord(**v) for k, v in raw.items()}
-        except (OSError, ValueError, TypeError):
-            logger.warning("Link index unreadable; starting empty.")
-            return {}
+        records: dict[str, LinkRecord] = {}
+        for key, value in raw.items():
+            try:
+                records[key] = LinkRecord(**value)
+            except TypeError:
+                logger.warning("skipping a malformed link record")
+        return records
 
     def _save(self) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({k: asdict(v) for k, v in self._links.items()}), "utf-8")
-        tmp.replace(self._path)
+        save_document(
+            self._db, "links", self._path, {k: asdict(v) for k, v in self._links.items()}
+        )
 
     # -- signing -----------------------------------------------------------
 

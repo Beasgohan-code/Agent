@@ -6,30 +6,30 @@ without storing profiles, names or message content.
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
+
+from .db import load_document, save_document
 
 
 class UserIndex:
     """A tiny persistent set of user ids."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, db=None) -> None:
         self._path = Path(root) / "users.json"
+        self._db = db
         self._users: dict[str, float] = self._load()
 
     def _load(self) -> dict[str, float]:
-        try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        data = load_document(self._db, "users", self._path, {})
         return data if isinstance(data, dict) else {}
 
     def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self._users, indent=2), encoding="utf-8")
-        tmp.replace(self._path)
+        save_document(self._db, "users", self._path, self._users)
+
+    def hydrate(self) -> None:
+        """Re-read the document; called once PostgreSQL has been loaded."""
+        self._users = self._load()
 
     def seen(self, user_id: int) -> bool:
         return str(int(user_id)) in self._users

@@ -10,10 +10,11 @@ Keys are Telegram ids stringified, because JSON object keys must be strings.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from pathlib import Path
+
+from .db import load_document, save_document
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -43,29 +44,29 @@ DEFAULT_ANTISPAM: dict[str, Any] = {
 class ChatStore:
     """JSON-backed state for every chat the bot moderates."""
 
-    def __init__(self, root: Path, *, max_log: int = 200, max_warnings: int = 50) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        max_log: int = 200,
+        max_warnings: int = 50,
+        db=None,
+    ) -> None:
         self._path = Path(root) / "chats.json"
         self._max_log = max_log
         self._max_warnings = max_warnings
+        #: When a database is connected, this is where the document lives.
+        self._db = db
         self._chats: dict[str, dict] = self._load()
 
     # -- persistence -------------------------------------------------------
 
     def _load(self) -> dict[str, dict]:
-        if not self._path.exists():
-            return {}
-        try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            logger.warning("chats.json unreadable; starting from an empty store")
-            return {}
+        data = load_document(self._db, "chats", self._path, {})
         return data if isinstance(data, dict) else {}
 
     def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self._chats, indent=2, sort_keys=True), encoding="utf-8")
-        tmp.replace(self._path)
+        save_document(self._db, "chats", self._path, self._chats)
 
     def _chat(self, chat_id: int) -> dict:
         return self._chats.setdefault(

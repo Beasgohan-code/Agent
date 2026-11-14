@@ -17,11 +17,12 @@ allowance resets at midnight UTC without a scheduler.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from .db import load_document, save_document
 
 logger = logging.getLogger(__name__)
 
@@ -59,31 +60,27 @@ def _today(now: float | None = None) -> str:
 class PremiumBook:
     """Who has premium, and how much of today's allowance they have spent."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, db=None) -> None:
         self._path = Path(root) / "premium.json"
+        self._db = db
         self._data: dict = self._load()
 
     # -- persistence -------------------------------------------------------
 
     def _load(self) -> dict:
-        if not self._path.exists():
-            return {"users": {}, "usage": {}}
-        try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            logger.warning("premium.json unreadable; starting from an empty book")
-            return {"users": {}, "usage": {}}
+        data = load_document(self._db, "premium", self._path, {})
         if not isinstance(data, dict):
-            return {"users": {}, "usage": {}}
+            data = {}
         data.setdefault("users", {})
         data.setdefault("usage", {})
         return data
 
     def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self._data, indent=2, sort_keys=True), encoding="utf-8")
-        tmp.replace(self._path)
+        save_document(self._db, "premium", self._path, self._data)
+
+    def hydrate(self) -> None:
+        """Re-read the ledger; called once PostgreSQL has been loaded."""
+        self._data = self._load()
 
     # -- membership --------------------------------------------------------
 

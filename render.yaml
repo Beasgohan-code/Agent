@@ -32,3 +32,11 @@ services:
         sync: false
       - key: API_HASH
         sync: false
+      # PostgreSQL. Paste the Internal Database URL from the Postgres instance
+      # you created (Render also accepts ?sslmode=require; the bot strips it).
+      # Without it the bot keeps its state in JSON files on this service's disk,
+      # which a redeploy wipes.
+      - key: DATABASE_URL
+        sync: false
+      - key: OWNER_ID
+        sync: false

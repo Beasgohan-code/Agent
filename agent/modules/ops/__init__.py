@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
+from urllib.parse import urlsplit
 import time
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from pyrogram.types import InlineKeyboardMarkup as Keyboard
 from ...platform.logbook import tag_for
 from ...platform.manifest import PluginManifest
 from ...ui.screens import format_uptime
+from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
 
@@ -34,7 +36,17 @@ MANIFEST = PluginManifest(
     name="Operations",
     version="1.0.0",
     description="Restart, watchdog sweeps, plugin on/off and the event log.",
-    commands=("restart", "watchdog", "plugins", "plugin", "events", "setlog", "unsetlog", "log"),
+    commands=(
+        "restart",
+        "watchdog",
+        "plugins",
+        "plugin",
+        "events",
+        "db",
+        "setlog",
+        "unsetlog",
+        "log",
+    ),
     permissions=("process.control", "plugins.manage", "files.write"),
     scope="all",
 )
@@ -331,6 +343,55 @@ def build(ctx):
                 await client.send_message(chat_id, text, reply_markup=keyboard)
         await query.answer(message)
 
+    def _database_rows() -> list[tuple[str, str]]:
+        """What the store is, where it is, and whether it is answering."""
+        database = getattr(ctx, "db", None)
+        lease = getattr(ctx, "lease", None)
+        rows: list[tuple[str, str]] = [
+            ("Backend", "postgres" if database is not None and database.connected else "json files"),
+            ("Lease", getattr(lease, "backend", "file")),
+        ]
+        if database is None:
+            rows.append(("DATABASE_URL", "not set"))
+            return rows
+        host = "—"
+        try:
+            host = urlsplit(database.url or "").hostname or "—"
+        except ValueError:  # pragma: no cover - a malformed URL is still reportable
+            pass
+        rows.extend(
+            [
+                ("Host", host),
+                ("Connected", "yes" if database.connected else f"no ({database.error or 'not tried'})"),
+                ("Documents", str(len(getattr(database, "_docs", {}) or {}))),
+                ("Queued writes", str(len(getattr(database, "_pending", {}) or {}))),
+            ]
+        )
+        return rows
+
+    async def db(_client, message):
+        """The store, stated plainly: which one, where, and is it answering."""
+        if not await _owner_gate(message):
+            return
+        await reply(
+            message,
+            panel(
+                "Database",
+                icon=ctx.theme.emoji("stats"),
+                subtitle=(
+                    "Every store (chats, premium, links, clones, plugins) is one "
+                    "document; the vault's files stay on this host's disk."
+                ),
+                table=kv_table(_database_rows()),
+                note=(
+                    "Set <code>DATABASE_URL</code> to a PostgreSQL URL to share state "
+                    "between instances and survive a redeploy."
+                ),
+                footer="Writes are queued and flushed in the background; a handler never waits.",
+            ),
+            reply_markup=nav_keyboard(),
+        )
+
     async def plugins(_client, message):
         if not await _owner_gate(message):
             return
@@ -511,6 +572,7 @@ def build(ctx):
         "restart": restart,
         "watchdog": watchdog,
         "plugins": plugins,
+        "db": db,
         "plugin": plugin,
         "events": show_events,
         "setlog": setlog,

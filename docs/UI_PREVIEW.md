@@ -21,7 +21,7 @@ Agent
 
 ┌──────────┬────────────────────────┐
 │ Version  │ 0.1.0                  │
-│ Commands │ 61                     │
+│ Commands │ 62                     │
 │ Status   │ online                 │
 │ Privacy  │ no message text stored │
 └──────────┴────────────────────────┘
@@ -51,7 +51,7 @@ Command reference
 │ 🔒 Moderation          │ 14       │
 │ 🔥 Community & premium │ 3        │
 │ 🔍 Clones              │ 4        │
-│ 🤖 Operations (owner)  │ 8        │
+│ 🤖 Operations (owner)  │ 9        │
 └────────────────────────┴──────────┘
 
 ─────
@@ -81,11 +81,11 @@ The watchdog probes Telegram on a timer.
 ```
 ✨ About Agent
 
-Version 0.1.0 · 61 commands
+Version 0.1.0 · 62 commands
 ┌─────────────┬──────────┐
 │ Module      │ Commands │
 ├─────────────┼──────────┤
-│ Operations  │ 8        │
+│ Operations  │ 9        │
 │ Core extras │ 5        │
 │ Clone       │ 4        │
 │ Filestore   │ 8        │
@@ -114,8 +114,9 @@ Read from this process, not from a cache.
 ┌──────────────┬───────────────────────────┐
 │ Version      │ 0.1.0                     │
 │ Jobs running │ 0                         │
+│ State store  │ json files                │
 │ Modules      │ Operations, Core extras,… │
-│ Commands     │ 61                        │
+│ Commands     │ 62                        │
 │ Your storage │ 0 B                       │
 └──────────────┴───────────────────────────┘
 
@@ -133,7 +134,7 @@ Read from this process, not from a cache.
 ┌────────────┬─────────────┬──────┐
 │ Plugin     │ State       │ Cmds │
 ├────────────┼─────────────┼──────┤
-│ ops        │ on (locked) │    8 │
+│ ops        │ on (locked) │    9 │
 │ core       │ on (locked) │    5 │
 │ clone      │ on          │    4 │
 │ filestore  │ on          │    8 │
@@ -182,8 +183,8 @@ Owner only.
 ┌──────────┬────────┬────────────────────────────┐
 │ Time     │ Kind   │ Detail                     │
 ├──────────┼────────┼────────────────────────────┤
-│ 10:26:13 │ plugin │ slug=group action=on by=11 │
-│ 10:26:13 │ start  │ version=0.1.0              │
+│ 10:31:57 │ plugin │ slug=group action=on by=11 │
+│ 10:31:57 │ start  │ version=0.1.0              │
 └──────────┴────────┴────────────────────────────┘
 
 Every entry is written when the action happened — none are simulated.
@@ -200,8 +201,8 @@ Owner only. Times are UTC.
 ┌─────┬──────────────────────┬─────┬──────────────┐
 │   # │ Reason               │  By │ When         │
 ├─────┼──────────────────────┼─────┼──────────────┤
-│   1 │ ignoring staff       │  11 │ 14 Nov 10:26 │
-│   2 │ posting invite links │  11 │ 14 Nov 10:26 │
+│   1 │ ignoring staff       │  11 │ 14 Nov 10:31 │
+│   2 │ posting invite links │  11 │ 14 Nov 10:31 │
 └─────┴──────────────────────┴─────┴──────────────┘
 
 Member: Meiko — 2 active warning(s).
@@ -221,8 +222,8 @@ Newest first.
 ┌────────┬────────┬─────────────────────┬──────────────┐
 │ Action │ Target │ Reason              │ When         │
 ├────────┼────────┼─────────────────────┼──────────────┤
-│ MUTE   │     22 │ flood               │ 14 Nov 10:26 │
-│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:26 │
+│ MUTE   │     22 │ flood               │ 14 Nov 10:31 │
+│ WARN   │     22 │ posting invite lin… │ 14 Nov 10:31 │
 └────────┴────────┴─────────────────────┴──────────────┘
 
 ─────

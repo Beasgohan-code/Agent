@@ -121,6 +121,10 @@ def build(ctx):
             )
         if ctx.jobs is not None:
             rows.append(("Jobs running", str(len(ctx.jobs.active()))))
+        database = getattr(ctx, "db", None)
+        rows.append(
+            ("State store", "postgres" if database is not None and database.connected else "json files")
+        )
         rows.append(("Modules", modules))
         rows.append(("Commands", str(commands)))
         user = getattr(message, "from_user", None)

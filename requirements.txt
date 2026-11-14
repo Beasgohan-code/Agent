@@ -7,5 +7,9 @@
 wzgram==3.1.7
 python-dotenv==1.1.1
 aiohttp==3.14.5
+# PostgreSQL support (DATABASE_URL). Optional at runtime: without the database,
+# the stores use JSON files; without this wheel, a database URL is ignored with
+# one warning instead of a crash.
+asyncpg==0.30.0
 # Static ffmpeg for the encoder module when the host has none on PATH.
 imageio-ffmpeg==0.8.1

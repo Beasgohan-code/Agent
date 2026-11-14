@@ -29,9 +29,11 @@ class PluginRuntime:
         *,
         state_path: Path | None = None,
         protected: tuple[str, ...] = PROTECTED,
+        db=None,
     ) -> None:
         self.registry = registry
         self.state_path = Path(state_path) if state_path else None
+        self._db = db
         self.protected = protected
         self._handlers: dict[str, list[tuple[Any, int]]] = {}
         self._client = None
@@ -44,18 +46,24 @@ class PluginRuntime:
     # -- persistence -------------------------------------------------------
 
     def _load(self) -> None:
-        if not self.state_path or not self.state_path.exists():
-            return
-        try:
-            data = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            logger.warning("plugin state unreadable; assuming defaults")
+        if self._db is not None and getattr(self._db, "connected", False):
+            data = self._db.get("runtime")
+        elif self.state_path and self.state_path.exists():
+            try:
+                data = json.loads(self.state_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                logger.warning("plugin state unreadable; assuming defaults")
+                return
+        else:
             return
         disabled = data.get("disabled") if isinstance(data, dict) else None
         if isinstance(disabled, list):
             self._disabled = {str(slug) for slug in disabled}
 
     def _save(self) -> None:
+        if self._db is not None and getattr(self._db, "connected", False):
+            self._db.save("runtime", {"disabled": sorted(self._disabled)})
+            return
         if not self.state_path:
             return
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,6 +83,11 @@ class PluginRuntime:
         return slug in self._disabled
 
     # -- control -----------------------------------------------------------
+
+    def hydrate(self) -> None:
+        """Re-read the disabled set; called once PostgreSQL has been loaded."""
+        self._disabled = set()
+        self._load()
 
     def is_protected(self, slug: str) -> bool:
         return slug in self.protected

@@ -49,15 +49,26 @@ class ModuleContext:
     clones: object | None = None
     #: Builds the bot a clone runs; None means "the real AgentBot".
     clone_factory: object | None = None
+    #: PostgreSQL, when DATABASE_URL is set; the stores prefer it over files.
+    db: object | None = None
 
     @classmethod
-    def build(cls, settings: Settings, theme: Theme, sender: ScreenSender, *, root: Path) -> "ModuleContext":
+    def build(
+        cls,
+        settings: Settings,
+        theme: Theme,
+        sender: ScreenSender,
+        *,
+        root: Path,
+        db=None,
+    ) -> "ModuleContext":
         return cls(
             settings=settings,
             theme=theme,
             sender=sender,
             jobs=JobQueue(concurrency=2),
             storage=Storage(root),
-            links=LinkStore(root, settings.link_secret, default_ttl_hours=24),
-            chats=ChatStore(root),
+            links=LinkStore(root, settings.link_secret, default_ttl_hours=24, db=db),
+            chats=ChatStore(root, db=db),
+            db=db,
         )

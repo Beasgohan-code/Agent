@@ -12,13 +12,13 @@ two clients answering the same updates.
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import re
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+from ...platform.db import load_document, save_document
 
 logger = logging.getLogger(__name__)
 
@@ -74,18 +74,16 @@ class Clone:
 class CloneStore:
     """A JSON list of clones, rewritten atomically on every change."""
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, *, db=None) -> None:
         self.path = Path(root) / "clones.json"
+        #: With a database, clone records survive a redeploy on any instance.
+        self._db = db
         self._items: dict[int, Clone] = self._load()
 
     # -- persistence ------------------------------------------------------
     def _load(self) -> dict[int, Clone]:
-        if not self.path.exists():
-            return {}
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            logger.warning("clones.json is unreadable; starting with no clones")
+        raw = load_document(self._db, "clones", self.path, [])
+        if raw == []:
             return {}
         items: dict[int, Clone] = {}
         for entry in raw if isinstance(raw, list) else []:
@@ -106,17 +104,12 @@ class CloneStore:
         return items
 
     def _save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(
-            [clone.as_json() for clone in self._items.values()], indent=2, sort_keys=True
+        save_document(
+            self._db,
+            "clones",
+            self.path,
+            [clone.as_json() for clone in self._items.values()],
         )
-        temp = self.path.with_suffix(".json.tmp")
-        temp.write_text(payload, encoding="utf-8")
-        try:
-            os.chmod(temp, 0o600)
-        except OSError:  # pragma: no cover - a filesystem without modes
-            logger.debug("could not restrict clones.json permissions", exc_info=True)
-        temp.replace(self.path)
 
     # -- reads ------------------------------------------------------------
     def get(self, bot_id: int) -> Clone | None:

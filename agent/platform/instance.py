@@ -39,9 +39,14 @@ class InstanceLease:
         owner: str | None = None,
         ttl: float = TTL,
         beat: float = BEAT,
+        db=None,
+        name: str = "agent",
     ) -> None:
         self.path = Path(path)
         self.owner = owner or default_owner()
+        #: A database-backed lease is visible to every instance; the file is not.
+        self._db = db
+        self.name = name
         self.ttl = ttl
         self.beat = beat
         self.held = False
@@ -58,9 +63,17 @@ class InstanceLease:
         except (OSError, ValueError):
             return None
 
+    @property
+    def backend(self) -> str:
+        return "postgres" if self._uses_db() else "file"
+
+    def _uses_db(self) -> bool:
+        return self._db is not None and getattr(self._db, "connected", False)
+
     def state(self) -> dict:
         current = self.read() or {}
         return {
+            "backend": self.backend,
             "owner": current.get("owner"),
             "held_by_us": self.held,
             "degraded": self.degraded,
@@ -122,10 +135,13 @@ class InstanceLease:
         return False
 
     async def acquire(self, *, wait_seconds: float = 90.0, poll: float = POLL) -> bool:
-        """        Returning False is not an error: it means another copy is still live
-                and this one must not serve updates.
-                
+        """Take the lease, from the database when there is one.
+
+        Returning False is not an error: it means another copy is still live and
+        this one must not serve updates.
         """
+        if self._uses_db():
+            return await self._acquire_db(wait_seconds=wait_seconds, poll=poll)
         deadline = time.monotonic() + max(0.0, wait_seconds)
         announced = False
         while True:
@@ -144,6 +160,59 @@ class InstanceLease:
                 logger.error("Instance lease still held by %s; refusing to double-serve.", self.other)
                 return False
             await asyncio.sleep(poll)
+
+    async def _acquire_db(self, *, wait_seconds: float, poll: float) -> bool:
+        deadline = time.monotonic() + max(0.0, wait_seconds)
+        announced = False
+        while True:
+            state = await self._db.take_lease(self.name, self.owner, self.ttl)
+            if state in ("taken", "renewed"):
+                self.held = True
+                self.other = None
+                logger.info("Instance lease held in PostgreSQL.")
+                return True
+            if state == "unavailable":
+                # The database answered nothing usable. Refusing to serve would
+                # take a working bot down over a transient error, so say so and
+                # continue degraded (a doubled process is the lesser risk).
+                self.degraded = True
+                self.held = True
+                logger.warning("Database lease unavailable; serving without a guarantee.")
+                return True
+            holder, _until = await self._db.lease_holder(self.name)
+            self.other = holder
+            if not announced:
+                logger.warning(
+                    "Another instance holds the database lease (%s); waiting up to %.0fs.",
+                    holder,
+                    wait_seconds,
+                )
+                announced = True
+            if time.monotonic() >= deadline:
+                logger.error("Database lease still held by %s; refusing to serve.", holder)
+                return False
+            await asyncio.sleep(poll)
+
+    async def beat_once(self) -> bool:
+        """Renew once, through whichever backend holds the lease."""
+        if self._uses_db():
+            state = await self._db.take_lease(self.name, self.owner, self.ttl)
+            if state in ("taken", "renewed"):
+                self.held = True
+                return True
+            if state == "unavailable":
+                return True
+            holder, _until = await self._db.lease_holder(self.name)
+            self.held = False
+            self.other = holder
+            return False
+        return self.heartbeat()
+
+    async def release_async(self) -> None:
+        """Drop the lease in the database (when used) and on disk."""
+        if self._uses_db():
+            await self._db.release_lease(self.name, self.owner)
+        self.release()
 
     def heartbeat(self) -> bool:
         """Renew if we still hold it. False means somebody else took over."""
@@ -178,7 +247,7 @@ class InstanceLease:
                 return
             except asyncio.TimeoutError:
                 pass
-            if not self.heartbeat():
+            if not await self.beat_once():
                 logger.critical("Instance lease was taken over by %s; stopping.", self.other)
                 stop_event.set()
                 return
