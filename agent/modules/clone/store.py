@@ -68,6 +68,7 @@ class Clone:
     selected_plugins: tuple[str, ...] = ()
     ai_api_key: str | None = field(default=None, repr=False)
     ai_model: str | None = None
+    assistant_session: str | None = field(default=None, repr=False)
     managed_owner: bool = False
     log_channel: int | None = None
     storage_channel: int | None = None
@@ -137,6 +138,13 @@ class CloneStore:
                     except SecretError:
                         logger.error("clone AI credential cannot be decrypted; skipping record")
                         continue
+                assistant_session = None
+                if entry.get("assistant_session_enc"):
+                    try:
+                        assistant_session = self._box.decrypt(str(entry["assistant_session_enc"]))
+                    except SecretError:
+                        logger.error("clone assistant credential cannot be decrypted; skipping record")
+                        continue
                 clone = Clone(
                     bot_id=int(entry["bot_id"]),
                     owner_id=int(entry["owner_id"]),
@@ -147,6 +155,7 @@ class CloneStore:
                     disabled=bool(entry.get("disabled")),
                     profile=str(entry.get("profile") or "standard"),
                     selected_plugins=tuple(entry.get("selected_plugins") or ()),
+                    assistant_session=assistant_session,
                     ai_api_key=ai_key,
                     ai_model=entry.get("ai_model"),
                     managed_owner=bool(entry.get("managed_owner")),
@@ -164,6 +173,11 @@ class CloneStore:
         """The record as it is written: the token swapped for its ciphertext."""
         data = clone.as_json()
         token = data.pop("token", "")
+        session = data.pop("assistant_session", None)
+        if session:
+            if not box.enabled:
+                raise SecretError("Assistant sessions require TOKEN_KEY.")
+            data["assistant_session_enc"] = box.encrypt(str(session))
         ai_key = data.pop("ai_api_key", None)
         if ai_key:
             if not box.enabled:

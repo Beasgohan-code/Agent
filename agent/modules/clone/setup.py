@@ -1,7 +1,7 @@
 """Private, expiring clone setup. Reviewed single-plugin templates with isolated destinations.
 
-No session-string prompt is exposed until a dedicated music-clone lifecycle is
-available. Tokens are validated against Telegram, never echoed or logged.
+Music requires explicit session consent and PostgreSQL account exclusivity.
+Tokens are validated against Telegram, never echoed or logged.
 """
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ from ...ui.tables import panel
 from ...utils.rich import reply, edit
 from .store import Clone, parse_token
 from .catalog import TEMPLATES
+from .assistant import validate_session
+from ...platform.voice import capability
 
 
 class SetupError(RuntimeError):
@@ -52,6 +54,7 @@ class Setup:
     template: str = 'files'
     ai_api_key: str = field(default='', repr=False)
     ai_model: str = ''
+    assistant_session: str = field(default='', repr=False)
 
 
 class CloneSetup:
@@ -68,6 +71,7 @@ class CloneSetup:
             self.sessions.pop(user_id, None)
             state.token = ''
             state.ai_api_key = ''
+            state.assistant_session = ''
             return None
         return state
 
@@ -76,6 +80,7 @@ class CloneSetup:
         if state is not None:
             state.token = ''
             state.ai_api_key = ''
+            state.assistant_session = ''
 
     def keyboard(self, state, options):
         rows = [[Button(label, callback_data=f'csetup:{state.nonce}:{action}')] for label, action in options]
@@ -127,7 +132,7 @@ class CloneSetup:
             self.cancel(user_id)
             await reply(message, 'Clone setup cancelled; the draft was discarded.')
             return
-        if text.startswith('/') and state.step != 'ai_key':
+        if text.startswith('/') and state.step not in ('ai_key', 'music_session'):
             return
         lock = self._locks.setdefault(user_id, asyncio.Lock())
         async with lock:
@@ -159,8 +164,22 @@ class CloneSetup:
                     await reply(message, panel('Choose clone features', icon=self.ctx.theme.emoji('sparkles'),
                         lines=[f"Verified bot: <b>@{html.escape(state.username)}</b>",
                                'Mandatory group moderation stays available with every template.'],
-                        footer='Music assistant setup is not offered yet. AI requires your own provider key and model.'),
+                        footer='Music requires a dedicated assistant session. AI requires your own provider key and model.'),
                         reply_markup=self.keyboard(state, [(name, action) for action, (_, name, _) in TEMPLATES.items()]))
+                elif state.step == 'music_session':
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
+                    if self.active(user_id) is not state or not self.entitled(user_id):
+                        return
+                    try:
+                        validate_session(text)
+                    except Exception:
+                        raise SetupError('That session is unsupported. Use a production Telethon IPv4 StringSession on port 443; never send a phone number, password or OTP.') from None
+                    state.assistant_session = text
+                    state.step = 'log'
+                    await reply(message, 'Session structure accepted, not yet authorized. Account identity and exclusivity are checked at startup. Send a log channel id, or skip.')
                 elif state.step == 'ai_key':
                     try:
                         await message.delete()
@@ -236,7 +255,31 @@ class CloneSetup:
             self.cancel(user_id)
             await query.answer('Setup cancelled.')
             return
+        if action == 'music_consent' and state.step == 'music_consent':
+            state.step = 'music_session'
+            await edit(query, panel('Private assistant session', icon=self.ctx.theme.emoji('gear'),
+                lines=['Send a pre-generated Telethon StringSession for a dedicated account you control.',
+                       'Never send a phone number, password, recovery code or OTP. Use /cancel to stop.']))
+            await query.answer()
+            return
         if action in TEMPLATES and state.step == 'plugin':
+            if action == 'music':
+                ok, _ = capability('dependency-check-only')
+                db = getattr(self.ctx, 'db', None)
+                if not ok or db is None or not db.connected or not self.ctx.settings.database_url:
+                    await query.answer('Music setup requires connected PostgreSQL and installed voice dependencies. Do not send a session.', show_alert=True)
+                    return
+                state.template = action
+                state.step = 'music_consent'
+                await edit(query, panel('Assistant account consent', icon=self.ctx.theme.emoji('shield'),
+                    lines=['A session string grants access to a Telegram USER account, not just voice calls.',
+                           'Use only a dedicated account you control. Never use your personal account.',
+                           'The session is encrypted at rest, but the running service must decrypt it.',
+                           'Telegram messages are deleted best-effort; chat history is not a credential vault.',
+                           'You can cancel now. Revoke the session in Telegram Devices to invalidate access.']),
+                    reply_markup=self.keyboard(state, [('I control this dedicated account — continue', 'music_consent')]))
+                await query.answer()
+                return
             state.template = action
             if action == 'ai_agent':
                 state.step = 'ai_key'
@@ -282,7 +325,7 @@ class CloneSetup:
                     raise SetupError('That bot was added while setup was running. No duplicate was created.')
                 state.step = 'starting'
                 record = Clone(bot_id=state.bot_id, owner_id=user_id, token=state.token,
-                    username=state.username, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=(TEMPLATES[state.template][0],), managed_owner=True,
+                    username=state.username, assistant_session=state.assistant_session or None, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=(TEMPLATES[state.template][0],), managed_owner=True,
                     log_channel=state.log_channel, storage_channel=state.storage_channel)
                 self.store.add(record)
                 try:

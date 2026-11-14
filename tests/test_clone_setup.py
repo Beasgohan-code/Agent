@@ -277,7 +277,7 @@ def test_unreviewed_template_callback_cannot_select_feature(tmp_path, action):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize('selection', [('clone',), ('music',),
+@pytest.mark.parametrize('selection', [('clone',),
                                        ('encoder', 'leech'), ('filestore', 'filestore')])
 def test_persisted_unsupported_selection_fails_closed(tmp_path, selection):
     from agent.modules.clone.manager import CloneError

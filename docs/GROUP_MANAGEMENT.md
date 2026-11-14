@@ -446,3 +446,42 @@ Voice tests cover refusal before call startup, lost ownership and shutdown
 without monitor self-cancellation. No live assistant account was connected.
 The private Music template still needs encrypted session onboarding and a
 verified consent/identity workflow before it can be enabled.
+
+### Private Music onboarding
+
+The previous Music-template gate is superseded by a consent-first guided flow.
+Music requires connected PostgreSQL and installed voice dependencies before any
+session prompt is shown. The operator must confirm control of a dedicated user
+account; the bot explains that a session grants broad account access, that the
+service decrypts it at runtime, and that Telegram history cannot guarantee
+secret erasure. No phone number, password, OTP or account-login flow is offered.
+The recorded bot-token sender remains the clone Owner, not the assistant account.
+
+Only pre-generated production Telethon IPv4 StringSessions on port 443, DCs 1–5
+and allowlisted Telegram networks are accepted. The embedded address is checked
+before any outbound connection; arbitrary/private/metadata-server endpoints are
+rejected. IPv6, test-DC and other session formats are intentionally unsupported.
+Network ranges are a maintained compatibility constraint, not live DC discovery.
+Offline parsing does not prove authorization; actual user identity, the shared
+account lock and the voice connection are verified during clone startup. No
+voice chat is joined as part of setup. An unavailable or unconnected voice engine
+cannot produce a successful Music-clone result.
+
+Sessions are encrypted as `assistant_session_enc`, excluded from record/settings
+reprs, and never inherited from the parent. Draft cancellation, expiry, failed
+startup and successful creation clear the draft session. A legacy profile switch
+removes the saved assistant credential. Removing ciphertext does not revoke the
+Telegram authorization: use Telegram Devices to revoke a session. Runtime
+settings reprs now also hide bot tokens, API hashes, DB URLs, token-encryption
+keys and link-signing secrets. Clones remain in-process clients, not sandboxes.
+
+All eight primary features now have single-feature guided templates, but this
+is not a feature-parity or production-validation claim. Music requires dedicated
+account provisioning, admin permissions and an active group voice chat for real
+playback. No real assistant was connected and no live call was joined here.
+
+Validation: **766 tests passed** with disposable PostgreSQL; compileall, pyflakes
+and whitespace checks passed. Includes real offline Telethon session serialization
+and parsing, untrusted-endpoint rejection, consent/readiness gates, encrypted
+round-trip, draft cleanup and startup-failure rollback. Lifecycle calls remain
+mocked; live Telegram voice operation is not validated.

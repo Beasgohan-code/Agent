@@ -69,6 +69,14 @@ class CloneManager:
             raise CloneError("The guided clone selection is unsupported. Restart setup.")
         if clone.selected_plugins == ("ai_agent",) and (not clone.ai_api_key or not clone.ai_model):
             raise CloneError("AI Agent requires this clone's own provider key and model.")
+        if clone.selected_plugins == ("music",):
+            if not clone.assistant_session or not self._settings.database_url:
+                raise CloneError("Music requires its own assistant session and PostgreSQL.")
+            from .assistant import validate_session
+            try:
+                validate_session(clone.assistant_session)
+            except Exception:
+                raise CloneError("The assistant session is unsupported. Restart setup.") from None
         return replace(
             self._settings,
             bot_token=clone.token,
@@ -81,7 +89,7 @@ class CloneManager:
             log_channel=clone.log_channel,
             storage_channel=clone.storage_channel,
             # Never share the deployment's user-session credential with clones.
-            session_string=None,
+            session_string=clone.assistant_session if clone.selected_plugins == ("music",) else None,
             ai_api_key=clone.ai_api_key if clone.selected_plugins == ("ai_agent",) else None,
             ai_model=clone.ai_model if clone.selected_plugins == ("ai_agent",) else None,
             health_port=None,
@@ -176,6 +184,8 @@ class CloneManager:
                 voice = getattr(bot, "voice", None)
                 if voice is not None:
                     await voice.start()
+                if clone.selected_plugins == ("music",) and (voice is None or not voice.connected):
+                    raise CloneError("The Music assistant did not connect.")
             except (Exception, asyncio.CancelledError) as exc:  # noqa: BLE001 - the reason is the message
                 category = "UNAUTHORIZED" if "UNAUTHORIZED" in str(exc).upper() else type(exc).__name__
                 reason = f"Clone {clone.bot_id} could not start ({category})."

@@ -58,15 +58,15 @@ def _plugins(raw: str | None) -> tuple[str, ...]:
 class Settings:
     """Validated runtime settings."""
 
-    bot_token: str
+    bot_token: str = field(repr=False)
     api_id: int
-    api_hash: str
+    api_hash: str = field(repr=False)
     session_name: str = "agent"
     # Optional operational knobs; every one has a working default.
     data_dir: Path = field(default_factory=lambda: Path("data"))
     #: Derived from the bot token so links stay valid across restarts without
     #: introducing another required variable.
-    link_secret: str = ""
+    link_secret: str = field(default="", repr=False)
     #: Optional. Until it is set, owner-only commands refuse politely instead
     #: of guessing who owns the bot.
     owner_id: int | None = None
@@ -77,13 +77,13 @@ class Settings:
     #: Optional MTProto user session for voice-chat streaming (SESSION_STRING).
     #: A bot token cannot join a group call, so the player needs its own session.
     #: Never logged, never written to disk here.
-    session_string: str | None = None
+    session_string: str | None = field(default=None, repr=False)
     #: Picture shown above /start — a URL or a path this process can read.
     #: START_IMAGE=0 removes it. Nothing depends on it: an unreachable image
     #: falls back to the plain text screen.
     start_image: str | None = None
     #: PostgreSQL DSN (DATABASE_URL). None keeps the JSON files.
-    database_url: str | None = None
+    database_url: str | None = field(default=None, repr=False)
     #: How many clones this deployment will run at once (CLONE_LIMIT).
     clone_limit: int = 5
     #: The Telegram bot id inside the token: every stored row is scoped by it.
@@ -93,7 +93,7 @@ class Settings:
     #: with ``clone:<bot id>`` so two bots sharing one database never collide.
     db_scope: str = "global"
     #: TOKEN_KEY: the Fernet key clone tokens are encrypted with at rest.
-    token_key: str | None = None
+    token_key: str | None = field(default=None, repr=False)
     #: STORAGE_CHANNEL: a private channel id the bot archives files into. With it,
     #: the vault survives a redeploy: delivery re-uses Telegram's own file_id.
     storage_channel: int | None = None

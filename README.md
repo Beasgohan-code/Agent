@@ -129,7 +129,7 @@ full per-group feature-data migration and external process isolation remain open
 Send **`/clone` in private** to open Clone studio. This requires bot premium,
 sudo access or the bot Owner. `TOKEN_KEY` must be configured before credentials
 are requested. Guided setup supports **Encoder, Moderation, Post maker,
-Linkshare, FileStore, Leech and AI Agent**, one plugin at a
+Linkshare, FileStore, Leech, Music and AI Agent**, one plugin at a
 time:
 
 1. Send a token from @BotFather. Agent checks `getMe` and the bot id; format alone
@@ -148,7 +148,12 @@ time:
 Drafts expire after ten minutes; `/cancel` discards one. Draft tokens are held in
 memory, not persisted. Completed tokens are encrypted. Telegram chat history is
 not a credential vault; message deletion cannot guarantee erasure from clients.
-Music assistant-session collection is intentionally not exposed yet.
+Music setup is offered only with connected PostgreSQL and installed voice
+libraries. It requires explicit consent before accepting a dedicated account's
+pre-generated Telethon session. Phone numbers, passwords and OTPs are never
+requested. Session structure is checked offline; Telegram user authorization
+and account exclusivity are checked when the clone starts. No group call is
+joined during setup.
 
 The legacy `/clone <token> [standard|files|tiny]` path remains private, encrypted
 and premium/sudo/Owner-gated. Guided setup selects one reviewed feature; changing its
@@ -389,5 +394,10 @@ Connection loss triggers shutdown and blocks new voice operations. Each active
 assistant uses one database pool connection. This does not fence external
 Telegram clients or deployments using another database, and failure detection
 is not instantaneous. Use a dedicated account. Database-free legacy deployments
-do not have distributed assistant exclusivity. Music clone onboarding remains
-gated; no session-string collection is exposed yet.
+do not have distributed assistant exclusivity. Music clone onboarding therefore
+requires PostgreSQL. Only production Telethon IPv4 sessions using port 443 and
+allowlisted Telegram DC networks are accepted; arbitrary session endpoints are
+rejected before any connection. Parent assistant credentials are never reused.
+Changing to a legacy profile clears the stored assistant session. Revoke it in
+Telegram Devices to invalidate account access; deleting local ciphertext alone
+does not revoke Telegram authorization.
