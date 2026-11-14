@@ -212,6 +212,22 @@ class AgentBot:
             manifest, handlers = module.build(self.modules)
             self.registry.register(manifest, handlers)
 
+        # Third-party plugins come last, so a builtin always wins a command
+        # collision. Only approved digests are imported, and a bad one is logged
+        # rather than allowed to stop the bot. See platform/installer.
+        try:
+            from .platform import installer
+
+            approvals = installer.Approvals(self.settings.data_dir, db=self.database)
+            installed = installer.load(
+                self.settings.data_dir, ctx=self.modules, registry=self.registry,
+                approvals=approvals,
+            )
+            if installed:
+                logger.info("Installed plugins loaded: %s", ", ".join(installed))
+        except Exception:  # noqa: BLE001 - a feature, never the bot
+            logger.exception("Could not load installed plugins; continuing.")
+
         # A plugin disabled in a previous run stays off, and registers nothing.
         for manifest in self.registry.manifests():
             if self.runtime.wants_disabled(manifest.slug):

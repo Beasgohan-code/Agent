@@ -92,6 +92,30 @@ that plugin's handlers in place and redraws the panel; `/plugin <slug> on|off`
 does the same from a script. A plugin that is enabled but registered nothing says
 why — `music` without `SESSION_STRING`, `encoder` without ffmpeg.
 
+## Installing a plugin
+
+Plugins ship inside the image; there is also a review path for third-party ones,
+and it is deliberately not a one-click install.
+
+1. **Stage** — point the installer at a directory you already have
+   (`installer.stage(path, root=DATA_DIR)`). It is copied to `staging/<digest>`
+   and *parsed*, never imported.
+2. **Inspect** — `exec`, `eval`, `compile`, `__import__`, `subprocess`, `socket`,
+   `ctypes`, `multiprocessing` and `pty` are **hard blockers**: the install is
+   refused. Network imports, file writes and unknown permissions are *warnings*,
+   shown as `Needs review`.
+3. **Approve** — `Approvals(DATA_DIR, db=...).approve(inspection)`, recorded
+   against the digest in PostgreSQL.
+4. **Activate** — `installer.activate` moves it to `plugins/<slug>`, and the
+   loader imports only plugins whose digest was approved. Change one byte and the
+   approval no longer applies, so it stops loading until reviewed again.
+
+**There is no download-from-a-URL path, on purpose.** A plugin runs in this
+process beside the bot token, the database password and every user's files; a
+URL plus an "approve" button would suggest a review that did not happen. Remote
+plugins need their own process and a capability IPC, which this runtime does not
+have yet — so the refusal says exactly that instead of pretending.
+
 ## Clones
 
 `/clone <bot token> [profile]` runs this bot on another token: its own client,
@@ -300,7 +324,7 @@ tests/              the suite; every module is testable without Telegram
 ```
 
 ```sh
-pytest -q                      # 521 tests
+pytest -q                      # 541 tests
 python -m pyflakes agent tests # no unused names
 ```
 

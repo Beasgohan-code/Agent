@@ -20,6 +20,9 @@ class PluginManifest:
     #: Where the commands may run: "private", "group" or "all". Moderation has
     #: no meaning in a private chat, so the scope is declared, not guessed.
     scope: str = "private"
+    #: "builtin" for the plugins shipped with the bot, "installed" for one that
+    #: arrived through :mod:`agent.platform.installer` and was approved.
+    origin: str = "builtin"
 
 
 @dataclass
