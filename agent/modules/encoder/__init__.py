@@ -21,6 +21,7 @@ from ...platform.manifest import PluginManifest
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
 from ..filestore.vault import human_bytes
+from .options import USAGE, VideoOptions, parse_options
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +104,16 @@ async def probe(path: Path) -> dict:
     }
 
 
-def build_command(src: Path, dst: Path, *, preset: str = "balanced", codec: str = "h264") -> list[str]:
-    crf, x264 = PRESETS.get(preset, PRESETS["balanced"])
+def build_command(src: Path, dst: Path, *, preset: str = "balanced", codec: str = "h264",
+                  options: VideoOptions | None = None) -> list[str]:
+    if preset not in PRESETS or codec not in ("h264", "h265", "hevc"):
+        raise ValueError(USAGE)
+    options = options or VideoOptions()
+    crf, x264 = PRESETS[preset]
+    if options.crf is not None:
+        crf = options.crf
     encoder = "libx265" if codec in ("h265", "hevc") else "libx264"
+    filters = options.filters()
     return [
         ffmpeg_path(),
         "-hide_banner",
@@ -119,6 +127,9 @@ def build_command(src: Path, dst: Path, *, preset: str = "balanced", codec: str 
         "-preset", x264,
         "-c:a", "aac",
         "-b:a", "128k",
+        "-pix_fmt", "yuv420p",
+        *(["-vf", ",".join(filters)] if filters else []),
+        "-movflags", "+faststart",
         str(dst),
     ]
 
@@ -161,10 +172,11 @@ async def run_tool(job: Job, command: list[str], dst: Path, *, duration: float) 
     return dst
 
 
-async def run_ffmpeg(job: Job, src: Path, dst: Path, *, preset: str, codec: str, duration: float) -> Path:
+async def run_ffmpeg(job: Job, src: Path, dst: Path, *, preset: str, codec: str, duration: float,
+                     options: VideoOptions | None = None) -> Path:
     """The encode itself, on the shared runner."""
     return await run_tool(
-        job, build_command(src, dst, preset=preset, codec=codec), dst, duration=duration
+        job, build_command(src, dst, preset=preset, codec=codec, options=options), dst, duration=duration
     )
 
 
@@ -272,13 +284,15 @@ def describe(info: dict) -> str:
     return f"{info['video_codec']} {size}, {info['duration']:.1f}s"
 
 
-async def encode_job(job: Job, ctx, src: Path, preset: str, codec: str) -> Path:
+async def encode_job(job: Job, ctx, src: Path, preset: str, codec: str,
+                     options: VideoOptions | None = None) -> Path:
     """Job body: probe → encode → validate, cleaning up on failure."""
     info = await probe(src)
     job.detail = f"encoding {preset}"
     output = Path(tempfile.mkdtemp(prefix="enc-")) / (src.stem + "-encoded.mp4")
     try:
-        produced = await run_ffmpeg(job, src, output, preset=preset, codec=codec, duration=info["duration"])
+        produced = await run_ffmpeg(job, src, output, preset=preset, codec=codec, duration=info["duration"],
+                                    **({"options": options} if options is not None else {}))
         if not await validate_output(produced):
             raise RuntimeError("output failed validation (unplayable or empty)")
         return produced
@@ -308,18 +322,19 @@ def build(ctx):
         if media is None:
             await reply(message, 
                 "Reply to a video or document with /encode.\n"
-                "Optional: /encode <preset>  (fast, balanced, quality)"
+                + USAGE
             )
             return
 
         parts = (getattr(message, "text", "") or "").split()
-        preset = parts[1].lower() if len(parts) > 1 else "balanced"
-        if preset not in PRESETS:
-            await reply(message, f"Unknown preset {preset!r}. Choose: {', '.join(PRESETS)}")
-            return
+        preset, codec, options = parse_options(parts[1:])
 
         owner = message.from_user.id
-        await reply(message, f"Downloading and queueing ({preset})…")
+        await reply(message, panel("Encoder request", icon=ctx.theme.emoji("gear"),
+            table=kv_table([("Preset", preset), ("Codec", codec),
+                            ("Quality (CRF)", str(options.crf if options.crf is not None else PRESETS[preset][0])),
+                            ("Max height", options.height), ("Frame rate", options.fps)]),
+            note="Downloading and queueing. Options apply only to this request; source is not modified."))
         try:
             source = await message.reply_to_message.download()
         except Exception as exc:  # noqa: BLE001 - reported to the user
@@ -334,7 +349,7 @@ def build(ctx):
         job = ctx.jobs.submit(
             "encoder",
             owner,
-            lambda j: encode_job(j, ctx, src, preset, "h264"),
+            lambda j: encode_job(j, ctx, src, preset, codec, options),
             label=src.name,
         )
         await reply(message, 
@@ -537,8 +552,11 @@ def build(ctx):
             problem = None
             if name in ('compress', 'toaudio', 'screens', 'mediainfo') and args:
                 problem = f'Use /{name} without arguments.'
-            elif name == 'encode' and (len(args) > 1 or (args and args[0].lower() not in PRESETS)):
-                problem = 'Use /encode [fast|balanced|quality].'
+            elif name == 'encode':
+                try:
+                    parse_options(args)
+                except ValueError:
+                    problem = USAGE
             elif name == 'sample':
                 try:
                     if len(args) > 2 or any(len(value) > 20 for value in args):
