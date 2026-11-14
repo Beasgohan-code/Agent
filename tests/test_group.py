@@ -77,6 +77,13 @@ class FakeClient:
     async def unban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("unban", int(user_id)))
 
+    async def get_chat(self, chat_id):
+        from pyrogram.types import ChatPermissions
+        return SimpleNamespace(permissions=ChatPermissions(
+            can_send_messages=True, can_send_photos=False,
+            can_invite_users=False, can_pin_messages=False,
+        ))
+
     async def set_chat_permissions(self, chat_id, permissions):
         self.calls.append(("permissions", permissions))
         return SimpleNamespace(id=chat_id)
@@ -452,6 +459,7 @@ def test_lockdown_locks_the_group_and_records_it(ctx):
 
 def test_lockdown_off_restores_sending(ctx):
     ctx.chats.put(CHAT, "lockdown", True)
+    ctx.chats.put(CHAT, "lockdown_permissions", {"can_send_messages": True, "can_send_photos": False})
     client = FakeClient()
     message = FakeMessage("/lockdown off")
 
@@ -538,3 +546,69 @@ def test_settings_read_the_log_channel_the_runtime_is_using(ctx):
     run(handlers(ctx)["settings"], FakeClient(), message)
 
     assert "-100999" in pre(message.replies[0])
+
+
+def test_lockdown_restores_restricted_baseline_instead_of_opening_everything(ctx):
+    client = FakeClient()
+    commands = handlers(ctx)
+    run(commands['lockdown'], client, FakeMessage('/lockdown'))
+    run(commands['lockdown'], client, FakeMessage('/lockdown off'))
+    restored = client.calls[-1][1]
+    assert restored.can_send_messages is True
+    assert restored.can_send_photos is False
+    assert restored.can_invite_users is False
+    assert restored.can_pin_messages is False
+
+
+def test_repeated_lockdown_does_not_overwrite_baseline(ctx):
+    client = FakeClient()
+    commands = handlers(ctx)
+    run(commands['lockdown'], client, FakeMessage('/lockdown'))
+    original = dict(ctx.chats.get(CHAT, 'lockdown_permissions'))
+    run(commands['lockdown'], client, FakeMessage('/lockdown'))
+    assert len(client.calls) == 1
+    assert ctx.chats.get(CHAT, 'lockdown_permissions') == original
+
+
+def test_legacy_lockdown_without_baseline_refuses_unsafe_unlock(ctx):
+    ctx.chats.put(CHAT, 'lockdown', True)
+    client = FakeClient()
+    message = FakeMessage('/lockdown off')
+    run(handlers(ctx)['lockdown'], client, message)
+    assert not client.calls
+    assert ctx.chats.get(CHAT, 'lockdown') is True
+    assert 'No saved' in message.replies[0]
+
+
+def test_unlock_without_lockdown_is_noop(ctx):
+    client = FakeClient()
+    run(handlers(ctx)['lockdown'], client, FakeMessage('/lockdown off'))
+    assert not client.calls
+
+
+def test_lockdown_refuses_when_current_permissions_are_unavailable(ctx):
+    class Unavailable(FakeClient):
+        async def get_chat(self, chat_id):
+            return SimpleNamespace(permissions=None)
+    client = Unavailable()
+    run(handlers(ctx)['lockdown'], client, FakeMessage('/lockdown'))
+    assert not client.calls
+    assert not ctx.chats.get(CHAT, 'lockdown')
+
+
+def test_failed_unlock_keeps_baseline_for_retry(ctx):
+    class Refusing(FakeClient):
+        async def set_chat_permissions(self, *args):
+            raise RuntimeError('missing rights')
+    saved = {'can_send_messages': True, 'can_invite_users': False}
+    ctx.chats.put(CHAT, 'lockdown', True)
+    ctx.chats.put(CHAT, 'lockdown_permissions', saved)
+    run(handlers(ctx)['lockdown'], Refusing(), FakeMessage('/lockdown off'))
+    assert ctx.chats.get(CHAT, 'lockdown') is True
+    assert ctx.chats.get(CHAT, 'lockdown_permissions') == saved
+
+
+def test_lockdown_typo_does_not_lock_group(ctx):
+    client = FakeClient()
+    run(handlers(ctx)['lockdown'], client, FakeMessage('/lockdown of'))
+    assert not client.calls

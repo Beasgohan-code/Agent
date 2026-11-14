@@ -90,3 +90,19 @@ Cleanup attempts continue through optional voice/clone shutdown failures so
 Telegram disconnect is not skipped. Database cleanup also runs if HTTP cleanup
 or lease release raises. These changes are covered by regression tests; live
 Render rollout still needs to be verified on the deployed branch.
+
+## Videl1 reference review — permission safety
+
+Reviewed the local reference files `refs/Videl1/helper/chat_status.py` and
+`refs/Videl1/modules/plugins/antiflood.py` for granular administrator rights,
+restriction behavior and enforcement flow. They are behavioral references, not
+code copied into Agent. Their presence does not establish feature parity.
+
+Agent's lockdown previously unlocked groups with generic open permissions.
+It now reads the current Telegram permissions, stores a group-scoped baseline,
+and restores that baseline instead. Repeated lock/unlock operations are no-ops;
+a missing legacy baseline or unreadable permissions refuses unsafe mutation.
+Typos in the mode are rejected. Failed unlocks preserve recovery state. Local
+concurrent requests are serialized per group; cross-process transactional group
+state and crash-atomic Telegram/database updates are not implemented by this fix.
+The existing document store's asynchronous persistence limitations still apply.

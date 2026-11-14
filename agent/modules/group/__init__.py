@@ -20,6 +20,8 @@ that acts.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import html
 import logging
 
@@ -66,7 +68,7 @@ LOCKED_PERMISSIONS = ChatPermissions(
     can_add_web_page_previews=False,
 )
 
-#: Restored by ``/lockdown off``.
+#: Legacy open permissions (not used to restore a lockdown).
 OPEN_PERMISSIONS = ChatPermissions(
     can_send_messages=True,
     can_send_media_messages=True,
@@ -390,14 +392,58 @@ def build(ctx):
 
     # -- /lockdown ---------------------------------------------------------
 
+    lockdown_locks = {}
+
     async def lockdown(client, message):
+        lock = lockdown_locks.setdefault(message.chat.id, asyncio.Lock())
+        async with lock:
+            await _lockdown(client, message)
+
+    async def _lockdown(client, message):
         if not await _guard(client, message, need="can_restrict_members"):
             return
         args = [a.lower() for a in _args(message)[1:]]
+        if len(args) > 1 or (args and args[0] not in ("on", "lock", "off", "unlock", "open")):
+            await reply(message, "Use /lockdown on or /lockdown off. No permissions were changed.")
+            return
         locking = not (args and args[0] in ("off", "unlock", "open"))
-        permissions = LOCKED_PERMISSIONS if locking else OPEN_PERMISSIONS
+        chat_id = message.chat.id
+        active = ctx.chats.get(chat_id, "lockdown", False)
+        saved = ctx.chats.get(chat_id, "lockdown_permissions")
+        if locking and active:
+            await reply(message, "Lockdown is already on; the original permissions are preserved.")
+            return
+        if not locking and not active:
+            await reply(message, "Lockdown is already off; no permissions were changed.")
+            return
         try:
-            await client.set_chat_permissions(message.chat.id, permissions)
+            if locking:
+                chat = await client.get_chat(chat_id)
+                current = getattr(chat, "permissions", None)
+                if current is None:
+                    await reply(message, "Cannot read the current group permissions; nothing changed.")
+                    return
+                saved = {
+                    key: value for key in inspect.signature(ChatPermissions).parameters
+                    if isinstance(value := getattr(current, key, None), bool)
+                }
+                if not saved:
+                    await reply(message, "Cannot read the current group permissions; nothing changed.")
+                    return
+                # Keep the baseline before contacting Telegram, so a failed or
+                # interrupted request does not erase the only recovery record.
+                ctx.chats.put(chat_id, "lockdown_permissions", saved)
+                permissions = LOCKED_PERMISSIONS
+            else:
+                if not isinstance(saved, dict) or not saved:
+                    await reply(message, "No saved pre-lockdown permissions. Restore them in Telegram's group settings; I will not open all permissions.")
+                    return
+                allowed = inspect.signature(ChatPermissions).parameters
+                if any(k not in allowed or not isinstance(v, bool) for k, v in saved.items()):
+                    await reply(message, "Saved permissions are invalid; no permissions were changed.")
+                    return
+                permissions = ChatPermissions(**saved)
+            await client.set_chat_permissions(chat_id, permissions)
         except Exception as exc:  # noqa: BLE001
             logger.exception("lockdown failed")
             await reply(message, 
@@ -419,7 +465,7 @@ def build(ctx):
         else:
             body = (
                 f"{ctx.theme.emoji('check')} <b>Lockdown lifted</b>\n"
-                "Members can send messages again."
+                "The group's pre-lockdown permissions were restored."
             )
         await reply(message, panel("Lockdown", icon=ctx.theme.emoji("lock"), lines=[body]))
 
