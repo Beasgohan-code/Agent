@@ -528,7 +528,6 @@ class AgentBot:
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
             await self._cleanup_services(client)
-            self.events.emit("stop")
 
     async def _cleanup_services(self, client) -> None:
         """Optional shutdown failures must not prevent Telegram disconnect."""
@@ -565,7 +564,17 @@ class AgentBot:
                 await jobs.shutdown()
             except Exception:
                 logger.exception("Job shutdown failed; continuing Telegram disconnect.")
-        await self._shutdown(client)
+        # Emit while connected, then drain only this bot's delivery tasks.
+        # A bounded log-channel failure must never prevent Telegram shutdown.
+        try:
+            if not getattr(self, "_stop_event_emitted", False):
+                self._stop_event_emitted = True
+                self.events.emit("stop")
+            await self.logbook.close(timeout=5.0)
+        except Exception:
+            logger.warning("Log-channel shutdown failed; continuing Telegram disconnect.")
+        finally:
+            await self._shutdown(client)
 
     def _health_detail(self) -> dict:
         """Extra fields for ``/health``: the lease and the plugin states."""

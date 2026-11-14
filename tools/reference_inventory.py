@@ -63,5 +63,51 @@ def inventory(root):
     return '\n'.join(lines) + '\n'
 
 
+def inventory_all(root, output):
+    """Index every local checkout, including non-Python file-type coverage."""
+    from collections import Counter
+    root, output = Path(root), Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    repos = sorted(path for path in root.iterdir() if (path / '.git').is_dir())
+    lines = ['# Multi-repository review catalog', '',
+             f'Scope: {len(repos)} reference checkouts in the supplied account snapshot.',
+             'These are static inventories, not imported plugins or completed manual audits.',
+             'No reference modules, package installers or startup scripts were executed.',
+             'Command candidates can include regexes and false positives; dynamic registration',
+             'and non-Python commands require manual review. Lack of a license is not permission',
+             'to copy code. Copyleft and third-party subdirectory terms require separate review.', '',
+             '| Repository | Revision | Tracked files | Python | File types | Static index |',
+             '| --- | --- | ---: | ---: | --- | --- |']
+    total_files = total_python = total_errors = 0
+    for repo in repos:
+        names = subprocess.check_output(['git', '-C', str(repo), 'ls-files', '-z']).decode().split('\0')
+        names = [name for name in names if name]
+        counts = Counter(Path(name).suffix.lower() or '(none)' for name in names)
+        revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+        report = inventory(repo)
+        (output / f'{repo.name}.md').write_text(report)
+        python_count = sum(1 for name in names if name.endswith('.py'))
+        total_files += len(names)
+        total_python += python_count
+        total_errors += report.count('parse:')
+        types = ', '.join(f'{suffix}: {count}' for suffix, count in counts.most_common(8))
+        lines.append(f'| {repo.name} | `{revision}` | {len(names)} | {python_count} | {types} | [{repo.name}]({repo.name}.md) |')
+    lines += ['', f'Total tracked files: **{total_files}**. Python files: **{total_python}**.',
+              f'Python parse failures recorded for manual review: **{total_errors}**.', '',
+              '## Adoption boundaries', '',
+              '- Keep Agent’s eight-feature catalog; do not create duplicate plugin identities.',
+              '- Preserve mandatory safety and atomic PostgreSQL optional-slot approval.',
+              '- Do not import developer eval/shell endpoints, global assistant clients, plaintext',
+              '  credential stores, hardcoded secrets or automatic dependency installers.',
+              '- Use original implementations for unlicensed/incompatible sources; references',
+              '  inform behavior, not wholesale copying. This catalog is not feature parity.', '',
+              'Regenerate: `python tools/reference_inventory.py --all refs docs/references`.',
+              'Reference checkouts stay ignored and are excluded from the runtime image.']
+    (output / 'README.md').write_text('\n'.join(lines) + '\n')
+
+
 if __name__ == '__main__':
-    Path(sys.argv[2]).write_text(inventory(sys.argv[1]))
+    if sys.argv[1] == '--all':
+        inventory_all(sys.argv[2], sys.argv[3])
+    else:
+        Path(sys.argv[2]).write_text(inventory(sys.argv[1]))

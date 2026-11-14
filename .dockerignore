@@ -27,3 +27,16 @@ README.md
 render.yaml
 *.session
 *.session-journal
+
+# Reference source is review-only, never deployment input.
+refs/
+music/
+saver/
+Encoder/
+Filestore/
+Linkshare/
+leech/
+docs/
+tools/
+# Runtime indexes, downloaded media and encrypted credential documents.
+data/

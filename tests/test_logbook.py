@@ -300,3 +300,75 @@ def test_log_reports_the_destination(tmp_path):
     body = message.replies[0]
     assert "-100777" in body
     assert "#NewUser" in body
+
+
+def test_close_drains_stop_post_before_disconnect_and_rejects_late_events(tmp_path):
+    async def scenario():
+        client = FakeClient()
+        book = LogBook(tmp_path, channel_id=-1001)
+        book.client = client
+        book.publish('stop', {})
+        await book.close()
+        assert len(client.sent) == 1 and '#BotStopped' in client.sent[0][1]
+        assert book.client is None and not book._pending
+        book.publish('error', {'reason': 'late'})
+        await book.close()
+        assert len(client.sent) == 1
+    asyncio.run(scenario())
+
+
+def test_close_cancels_hung_posts_without_draining_another_bot(tmp_path):
+    async def scenario():
+        from unittest.mock import AsyncMock
+        entered = asyncio.Event()
+        async def hung(*args, **kwargs):
+            entered.set()
+            await asyncio.Event().wait()
+        first = LogBook(tmp_path / 'first', channel_id=-1001)
+        second = LogBook(tmp_path / 'second', channel_id=-1002)
+        first.client = SimpleNamespace(send_message=AsyncMock(side_effect=hung))
+        second_client = FakeClient()
+        second.client = second_client
+        first.publish('stop', {})
+        await entered.wait()
+        await first.close(timeout=0.001)
+        second.publish('start', {})
+        await second.close()
+        assert not first._pending and not second._pending
+        assert '#BotStarted' in second_client.sent[0][1]
+    asyncio.run(scenario())
+
+
+def test_cancelled_close_detaches_client_and_cancels_pending_posts(tmp_path):
+    async def scenario():
+        from unittest.mock import AsyncMock
+        entered = asyncio.Event()
+        async def blocked(*args, **kwargs):
+            entered.set()
+            await asyncio.Event().wait()
+        book = LogBook(tmp_path, channel_id=-1001)
+        book.client = SimpleNamespace(send_message=AsyncMock(side_effect=blocked))
+        book.publish('stop', {})
+        await entered.wait()
+        closer = asyncio.create_task(book.close(timeout=30))
+        await asyncio.sleep(0)
+        closer.cancel()
+        await asyncio.gather(closer, return_exceptions=True)
+        assert book.client is None and not book._pending
+    asyncio.run(scenario())
+
+
+def test_logbook_pending_queue_is_bounded_per_bot(tmp_path, monkeypatch):
+    async def scenario():
+        from unittest.mock import AsyncMock
+        monkeypatch.setattr('agent.platform.logbook.MAX_PENDING', 2)
+        async def blocked(*args, **kwargs):
+            await asyncio.Event().wait()
+        book = LogBook(tmp_path, channel_id=-1001)
+        book.client = SimpleNamespace(send_message=AsyncMock(side_effect=blocked))
+        for _ in range(5):
+            book.publish('plugin', {})
+        assert len(book._pending) == 2 and book.dropped == 3
+        await book.close(timeout=0)
+        assert not book._pending
+    asyncio.run(scenario())

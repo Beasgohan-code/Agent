@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
+MAX_PENDING = 200
 
 #: Event kind → hashtag. Unknown kinds get a CamelCase tag of their own.
 TAGS = {
@@ -64,6 +65,9 @@ class LogBook:
         self._channel_id = channel_id
         self.owner_id = owner_id
         self.client = None
+        self._pending: set[asyncio.Task] = set()
+        self._closing = False
+        self.dropped = 0
         stored = self._load()
         if stored.get("channel_id") is not None:
             self._channel_id = int(stored["channel_id"])
@@ -105,7 +109,10 @@ class LogBook:
             return False
         text = format_event(kind, fields)
         try:
-            await self.client.send_message(target, text, disable_web_page_preview=True)
+            await asyncio.wait_for(
+                self.client.send_message(target, text, disable_web_page_preview=True),
+                timeout=10.0,
+            )
             return True
         except Exception:  # noqa: BLE001 - logging must never break the bot
             logger.exception("Could not post #%s to the log channel", tag_for(kind))
@@ -113,17 +120,40 @@ class LogBook:
 
     def publish(self, kind: str, fields: dict[str, Any]) -> None:
         """Fire-and-forget from a synchronous context (the event log)."""
+        if self._closing:
+            return
+        if len(self._pending) >= MAX_PENDING:
+            self.dropped += 1
+            if self.dropped == 1:
+                logger.warning("Log-channel queue is full; dropping excess best-effort posts.")
+            return
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # pragma: no cover - no loop outside a running bot
             return
         task = loop.create_task(self.post(kind, **fields))
         # Keep a reference so the task is not garbage-collected mid-flight.
-        _PENDING.add(task)
-        task.add_done_callback(_PENDING.discard)
+        self._pending.add(task)
+        task.add_done_callback(self._pending.discard)
 
-
-_PENDING: set[asyncio.Task] = set()
+    async def close(self, *, timeout: float = 5.0) -> None:
+        """Stop accepting events and drain this bot's posts before disconnect."""
+        self._closing = True
+        pending = tuple(self._pending)
+        try:
+            if pending:
+                try:
+                    _, unfinished = await asyncio.wait(pending, timeout=max(0.0, timeout))
+                except asyncio.CancelledError:
+                    for task in pending:
+                        task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+                    raise
+                for task in unfinished:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+        finally:
+            self.client = None
 
 
 def subscribe(event_log, logbook: LogBook) -> Callable[[], None]:

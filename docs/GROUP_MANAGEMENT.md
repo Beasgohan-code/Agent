@@ -485,3 +485,31 @@ and whitespace checks passed. Includes real offline Telethon session serializati
 and parsing, untrusted-endpoint rejection, consent/readiness gates, encrypted
 round-trip, draft cleanup and startup-failure rollback. Lifecycle calls remain
 mocked; live Telegram voice operation is not validated.
+
+### Deploy shutdown and expanded reference review
+
+The supplied Render trace indicates successful startup after normal lease
+handover, then a best-effort log post racing with Telegram disconnect on shutdown.
+`#BotStopped` is now emitted and drained before disconnect, not after it. Pending
+posts are owned per LogBook (no global cross-clone set); a five-second shutdown
+budget cancels hung posts, sends have ten-second timeouts, and late events are
+ignored after draining starts. Pending delivery is capped at 200 tasks per bot;
+excess best-effort notifications are dropped with a counter rather than growing
+memory indefinitely. These posts remain operational notifications, not durable
+audit records. Client disconnect still runs if log cleanup fails.
+
+All 29 other public account repositories were fetched into ignored `refs/`.
+The [catalog](references/README.md) records revisions and file types for 3,399
+tracked files plus Python static indexes for 2,044 files. Five files failed parsing
+under the test interpreter and are marked for manual review. This is not a full
+behavioral audit or an assertion that all advertised features work. The
+[adoption ledger](REFERENCE_ADOPTION.md) records reviewed behavior and exclusions;
+no reference code is imported wholesale. Reference checkouts and runtime data
+are excluded from Docker build context, not merely omitted by COPY statements.
+
+The current branch already includes consent-first encrypted Music onboarding
+from the preceding commit; it is retained rather than rebuilt. Validation for
+this increment: **772 passed** against disposable PostgreSQL with the optional
+Telethon parser installed; compileall, pyflakes and whitespace checks passed.
+No live Telegram deployment, voice call, Render configuration or production
+lease was changed or tested.

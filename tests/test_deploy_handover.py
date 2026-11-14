@@ -145,3 +145,25 @@ def test_required_database_load_failure_refuses_before_build_or_telegram():
         assert 'could not be loaded' in bot.fatal_reason
         bot.build.assert_not_called()
     asyncio.run(scenario())
+
+
+def test_stop_event_is_delivered_before_telegram_disconnect(tmp_path):
+    from agent.platform.events import EventLog
+    from agent.platform.logbook import LogBook, subscribe
+    async def scenario():
+        order = []
+        async def send(*args, **kwargs):
+            order.append('posted')
+        async def shutdown(client):
+            order.append('disconnected')
+        book = LogBook(tmp_path, channel_id=-1001)
+        book.client = SimpleNamespace(send_message=send)
+        events = EventLog()
+        subscribe(events, book)
+        bot = SimpleNamespace(voice=None, modules=None, events=events, logbook=book, _shutdown=shutdown)
+        await AgentBot._cleanup_services(bot, 'client')
+        assert order == ['posted', 'disconnected']
+        assert events.count('stop') == 1
+        await AgentBot._cleanup_services(bot, 'client')
+        assert events.count('stop') == 1
+    asyncio.run(scenario())
