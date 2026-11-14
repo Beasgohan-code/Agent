@@ -6,7 +6,10 @@ can supersede items here; do not silently discard earlier constraints.
 
 ## Non-negotiable workflow
 
-- **Never merge the PR.** Work on the Arena session's fixed current branch only.
+- **Do not merge without a separate second explicit user confirmation naming the PR.**
+  A previous single-request merge was reported as a mistake. First ask for
+  confirmation; “continue” is never merge permission. Work only on the Arena
+  session's fixed current branch. Do not revert prior merges without approval.
 - Retain Agent's identity and original branding. Do not fill README, help, start
   or about screens with other bots' credits. Reference audit documents may name
   reviewed sources. Never remove legally required notices from copied code;
@@ -125,3 +128,11 @@ coverage. Implemented public-origin web-service heartbeat plus uptime telemetry
 and themed Home/Help/profile/Ping headings; remaining commands are incremental
 work, not a completed universal redesign. Preserve fallback and never claim
 self-pinging guarantees uninterrupted hosting.
+
+## Latest command increment
+
+Implemented group-admin/tenant-Owner `/voicehealth`: premium-styled native rich
+panel showing allowlisted, group-local cached voice state, repeat/upcoming queue
+and acknowledged volume. It performs no remote probe or mutation and exposes no
+media sources, titles or assistant credentials. Quality settings, active network
+voice tests, durable cleanup recovery and full reference parity remain pending.

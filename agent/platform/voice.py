@@ -97,6 +97,22 @@ class VoiceEngine:
     def connected(self) -> bool:
         return self._connected
 
+    def diagnostics(self, chat_id: int) -> dict:
+        """Allowlisted cached state for one group, never credentials or sources.
+
+        This does not probe Telegram or measure audio delivery/packet loss.
+        """
+        playback = self.playback(chat_id)
+        lease = self._assistant_lease
+        ready = self._connected and self._call is not None
+        if lease is not None:
+            ready = ready and bool(lease.held)
+        return {
+            "engine_ready": bool(ready),
+            "assistant_lease": "not configured" if lease is None else ("held" if lease.held else "not held"),
+            "playback": "idle" if playback is None else ("paused" if playback.paused else "playing"),
+        }
+
     def set_stream_end_handler(self, handler) -> None:
         """Install the callback fired when a stream finishes on its own."""
         self._on_stream_end = handler

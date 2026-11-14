@@ -157,10 +157,10 @@ def test_saved_playlist_commands_are_capability_gated(tmp_path, monkeypatch):
     from test_player_card import build
     from agent.modules import music
     ctx, manifest, handlers = build(tmp_path, monkeypatch)
-    assert len(handlers) == 24
+    assert len(handlers) == 25
     assert not set(playlists.COMMANDS).intersection(handlers)
     ctx.db = SimpleNamespace(connected=True, _pool=object(), scope='test')
     manifest, handlers = music.build(ctx)
-    assert len(handlers) == 28
+    assert len(handlers) == 29
     assert set(manifest.commands) == set(handlers)
     assert set(playlists.COMMANDS).issubset(handlers)

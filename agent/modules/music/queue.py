@@ -74,6 +74,10 @@ class QueueBook:
     def for_chat(self, chat_id: int) -> ChatQueue:
         return self._queues.setdefault(int(chat_id), ChatQueue())
 
+    def peek(self, chat_id: int) -> ChatQueue | None:
+        """Read without creating a new group queue."""
+        return self._queues.get(int(chat_id))
+
     def drop(self, chat_id: int) -> None:
         self._queues.pop(int(chat_id), None)
 

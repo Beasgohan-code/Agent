@@ -41,7 +41,7 @@ MANIFEST = PluginManifest(
     version="1.0.0",
     description="Stream audio into the group's voice chat (needs SESSION_STRING).",
     commands=("play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
-              "q", "end", "resetplayer", "playnext", *EXTRA_COMMANDS, *PLAYLIST_COMMANDS),
+              "q", "end", "resetplayer", "playnext", "voicehealth", *EXTRA_COMMANDS, *PLAYLIST_COMMANDS),
     permissions=("messages.read", "messages.send", "voice.stream"),
     scope="group",
 )
@@ -429,6 +429,37 @@ def build(ctx):
             reply_markup=_transport(message.chat.id),
         )
 
+    async def voicehealth(client, message):
+        if not await is_moderator(client, message, owner_id=ctx.settings.owner_id):
+            await reply(message, "Only group administrators can inspect voice diagnostics.")
+            return
+        if len(_args(message)) != 1:
+            await reply(message, "Use /voicehealth without arguments.")
+            return
+        snapshot = engine.diagnostics(message.chat.id)
+        # Explicit allowlist: do not render arbitrary engine dictionaries.
+        ready = snapshot.get("engine_ready") is True
+        queue = queues.peek(message.chat.id)
+        rows = [
+            ("Engine readiness", "ready (cached)" if ready else "not ready"),
+            ("Assistant lease", snapshot.get("assistant_lease") if snapshot.get("assistant_lease") in
+             ("held", "not held", "not configured") else "unknown"),
+            ("Playback here", snapshot.get("playback") if snapshot.get("playback") in
+             ("playing", "paused", "idle") else "unknown"),
+            ("Upcoming here", str(len(queue.waiting)) if queue else "0"),
+            ("Repeat mode", ("one" if queue.loop else "all" if queue.repeat_all else "off") if queue else "off"),
+            ("Volume here", f"{volumes[message.chat.id]}% acknowledged" if message.chat.id in volumes else "not set this session"),
+        ]
+        await reply(message, panel(
+            "Voice health", icon=ctx.theme.emoji("speaker"),
+            subtitle=f"{ctx.theme.emoji('check' if ready else 'warn')} "
+                     + ("Engine initialized; inspect the group call below." if ready else "Engine unavailable; playback may need recovery."),
+            table=kv_table(rows),
+            note=f"{ctx.theme.emoji('shield')} Cached state for this group only. "
+                 "Not a live connectivity or audible-stream test. No sources, sessions or account IDs shown.",
+            footer="/nowplaying · /queue · /help voicehealth",
+        ))
+
     def serialized(handler):
         async def wrapped(client, message):
             if not _in_group(message):
@@ -457,6 +488,7 @@ def build(ctx):
 
     logger.info("Music handlers registered; engine startup is checked by the bot lifecycle")
     handlers = {
+        "voicehealth": voicehealth,
         "play": play,
         "pause": pause,
         "resume": resume,

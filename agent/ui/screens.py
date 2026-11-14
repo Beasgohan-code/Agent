@@ -161,7 +161,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "music",
         "Music (voice chat)",
         ("play", "playnext", "pause", "resume", "skip", "stop", "end", "resetplayer",
-         "queue", "q", "nowplaying", "leave", "loop", "shuffle", "clearqueue", "clear",
+         "queue", "q", "nowplaying", "voicehealth", "leave", "loop", "shuffle", "clearqueue", "clear",
          "remove", "move", "jump", "replay", "volume", "volumeup", "volumedown", "history",
          "saveplaylist", "playlist", "playlists", "deleteplaylist"),
     ),

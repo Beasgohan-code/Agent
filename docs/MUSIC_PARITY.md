@@ -59,7 +59,7 @@ extraction alone does not discover every dynamic registration or web feature.
 | `song`, `vsong`, `download` | Pending: extractor, SSRF/redirect validation, media rights, bounded downloads and cancellation |
 | `restorequeue` | Pending: durable safe upcoming metadata; never automatically replay an interrupted current track |
 | `requests`, `dj` | Pending: durable approvals and membership-checked expiring DJ delegation |
-| `voicequality`, `voicehealth` | Pending: validated quality profiles and credential-safe detailed voice diagnostics |
+| `voicequality` | Pending: validated quality profiles |
 
 The reference's `restart` is a general owner operation; Agent already has its
 own owner-only restart command and does not create another Music-owned copy.
@@ -78,9 +78,8 @@ a healthy Telegram probe state (503 for starting, degraded or down).
 
 Telegram `/alive` is an alias for the measured `/status` screen, not a worker
 command. The existing watchdog remains in charge of Telegram probes and fatal
-restart policy. HTTP runs on `0.0.0.0` and `PORT`/`HEALTH_PORT` as before. Nothing
-pings itself; this does not defeat Render free-service sleep or replace a paid
-always-on worker. The async server can time out under an event-loop stall,
+restart policy. HTTP runs on `0.0.0.0` and `PORT`/`HEALTH_PORT` as before. Web services with `RENDER_EXTERNAL_URL` now self-ping `/health` every 300 seconds;
+this does not defeat all Render free-service sleep or replace a paid always-on worker. The async server can time out under an event-loop stall,
 allowing the platform's own liveness check to detect it.
 
 Validation for this increment: **793 tests passed** with disposable PostgreSQL;
@@ -123,3 +122,22 @@ URL validation is admission checking, **not** a pinned outbound proxy. Native
 streaming retains redirect/DNS-rebinding limitations; DNS revalidation does not
 prove that a URL remains safe forever or that its content is playable/licensed.
 No extractor or media download is performed while saving/loading metadata.
+
+## Voice diagnostics command
+
+`/voicehealth` is now implemented for group administrators and this bot's Owner.
+It is capability-gated with Music and goes through the same group plugin gate
+and serialization path. It reports only this group's cached playback state,
+upcoming count, repeat setting and acknowledged session volume, plus engine
+initialization/assistant lease readiness. It does not allocate an idle queue,
+start/restart an assistant, join a call, resolve URLs or probe Telegram.
+
+The native rich panel uses the existing premium speaker/check/warning/shield
+emoji theme and retains the standard sender fallback. No session strings, API
+keys, media URLs, track titles, assistant account IDs or other groups' queues
+are rendered. Readiness is explicitly cached and not proof of audible audio,
+network connectivity, membership, stream quality, latency or packet loss.
+Quality selection and active voice-network probes remain pending.
+
+Current Music surface: 25 commands without saved playlists; 29 with PostgreSQL
+playlist support. External voice streaming remains unvalidated in this sandbox.
