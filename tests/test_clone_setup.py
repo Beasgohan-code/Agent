@@ -243,3 +243,57 @@ def test_clone_does_not_inherit_parent_ai_credentials(tmp_path):
     settings = ctx.clones.settings_for(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A))
     assert settings.ai_api_key is None
     assert settings.ai_model is None
+
+
+@pytest.mark.parametrize('template', ['encoder', 'moderation', 'postmaker', 'linkshare', 'leech'])
+@pytest.mark.parametrize('log', ['skip', '-100100'])
+def test_guided_templates_create_only_selected_feature(tmp_path, template, log):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        await wizard.press(None, query(state), state.nonce + ':' + template)
+        assert state.step == 'log'
+        await wizard.receive(None, FakeMessage(log))
+        assert state.step == 'confirm'
+        await wizard.press(None, query(state), state.nonce + ':create')
+        record = ctx.clones.current()[0]
+        assert record.selected_plugins == (template,)
+        assert record.storage_channel is None
+        assert record.log_channel == (None if log == 'skip' else -100100)
+        assert ctx.clones.settings_for(record).plugins == (template,)
+        assert ctx.clones.settings_for(record).owner_id == MEMBER
+        assert wizard.active(MEMBER) is None
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('action', ['music', 'ai_agent', 'clone', 'unknown'])
+def test_unreviewed_template_callback_cannot_select_feature(tmp_path, action):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        await wizard.press(None, query(state), state.nonce + ':' + action)
+        assert state.step == 'plugin'
+        assert not ctx.clones.current()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('selection', [('clone',), ('music',), ('ai_agent',),
+                                       ('encoder', 'leech'), ('filestore', 'filestore')])
+def test_persisted_unsupported_selection_fails_closed(tmp_path, selection):
+    from agent.modules.clone.manager import CloneError
+    from agent.modules.clone.store import Clone
+    ctx, _, _ = build(tmp_path)
+    with pytest.raises(CloneError, match='unsupported'):
+        ctx.clones.settings_for(Clone(bot_id=111111111, owner_id=MEMBER,
+                                      token=TOKEN_A, selected_plugins=selection))
+
+
+def test_guided_clone_reports_custom_selection_even_while_stopped(tmp_path):
+    from agent.modules.clone.catalog import selection_label
+    from agent.modules.clone.store import Clone
+    ctx, _, _ = build(tmp_path)
+    ctx.clones._store.add(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A,
+                                profile='tiny', selected_plugins=('encoder',)))
+    assert ctx.clones.profile(111111111) == 'custom'
+    assert selection_label(('encoder',)) == 'Encoder'
+    assert selection_label(('<untrusted>',)) == 'unsupported'

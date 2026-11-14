@@ -345,3 +345,32 @@ cleanup and client ownership. The remaining reference repository has **not**
 received a complete behavioral/security audit yet. Guided clone selection is
 still FileStore-only; the eight-feature catalog must not be mistaken for eight
 finished guided clone templates. Music assistant setup remains outstanding.
+
+### Guided-template expansion and reference inventory
+
+The previous FileStore-only restriction is superseded: Encoder, Moderation,
+Post maker, Linkshare and Leech now also have single-feature guided templates.
+Every template retains the mandatory safety core. Each asks for an optional log
+channel; only FileStore requires an archive channel. Saved selections are
+allowlisted and must contain exactly one reviewed slug. Unsupported or multiple
+saved selections fail closed instead of silently running a reduced feature set.
+Startup still checks that the selected plugin actually registered commands;
+missing encoder binaries or other dependencies prevent a false-success result.
+Music and AI Agent templates remain gated pending per-clone credential setup.
+
+`REFERENCE_INVENTORY.md` indexes all 255 Python files at the reference revision,
+with content hashes, literal command candidates and process/client review sites.
+It is reproducible using `python tools/reference_inventory.py refs/Videl1
+docs/REFERENCE_INVENTORY.md` and never executes reference code. The reference
+entry point `__main__.py` has an unterminated string at line 33 in that checkout;
+this is recorded, not fixed in or imported into Agent. Reviewed entry-point
+patterns also include import-time plugin discovery and global Music/AI clients;
+Agent keeps explicit module registration and credential-gated initialization.
+Reference developer shell/eval commands are not being adopted. Static coverage
+is complete; manual feature-by-feature parity and security review remain open.
+
+Guided selections are displayed by feature name in `/mybots` and the profile
+picker, not mislabelled as the fallback `tiny` profile. The picker warns that a
+legacy profile replaces a guided selection. Validation: **722 passed** against
+disposable PostgreSQL; compileall, pyflakes and whitespace checks passed.
+No live Telegram/media/provider validation was performed.

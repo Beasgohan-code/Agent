@@ -23,6 +23,7 @@ from dataclasses import replace
 from typing import Callable
 
 from . import lifecycle, profiles
+from .catalog import ALLOWED_PLUGINS
 from .lifecycle import State, WorkerState
 from .store import Clone, CloneStore
 
@@ -61,6 +62,11 @@ class CloneManager:
         mandatory core is added by Agent's module selector. Credentials and
         resource destinations never fall through to the parent's values.
         """
+        if clone.selected_plugins and (
+            len(clone.selected_plugins) != 1
+            or any(name not in ALLOWED_PLUGINS for name in clone.selected_plugins)
+        ):
+            raise CloneError("The guided clone selection is unsupported. Restart setup.")
         return replace(
             self._settings,
             bot_token=clone.token,
@@ -81,7 +87,7 @@ class CloneManager:
             # the same ``runtime``/``premium``/``chats`` documents as the main
             # bot and the last writer would silently win.
             db_scope=f"clone:{clone.bot_id}",
-            plugins=tuple(name for name in clone.selected_plugins if name == "filestore")
+            plugins=tuple(name for name in clone.selected_plugins if name in ALLOWED_PLUGINS)
             if clone.selected_plugins else profiles.plugins_for(clone.profile, self._settings),
         )
 
@@ -115,7 +121,7 @@ class CloneManager:
         settings = getattr(entry[0], "settings", None) if entry else None
         if settings is None:
             clone = self._store.get(bot_id)
-            return profiles.clean(getattr(clone, "profile", None))
+            return "custom" if clone and clone.selected_plugins else profiles.clean(getattr(clone, "profile", None))
         plugins = tuple(getattr(settings, "plugins", ()) or ())
         for name in profiles.ORDER:
             if plugins == tuple(profiles.plugins_for(name, self._settings)):

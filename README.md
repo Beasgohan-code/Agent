@@ -128,14 +128,15 @@ full per-group feature-data migration and external process isolation remain open
 
 Send **`/clone` in private** to open Clone studio. This requires bot premium,
 sudo access or the bot Owner. `TOKEN_KEY` must be configured before credentials
-are requested. The guided flow currently supports **FileStore**, one plugin at a
+are requested. Guided setup supports **Encoder, Moderation, Post maker,
+Linkshare, FileStore and Leech**, one plugin at a
 time:
 
 1. Send a token from @BotFather. Agent checks `getMe` and the bot id; format alone
    is not accepted as identity. Secret messages are deleted best-effort.
-2. Choose FileStore with a button. Mandatory group core stays available.
+2. Choose a reviewed template with a button. Mandatory group core stays available.
 3. Send a log channel id, or `skip`.
-4. Send the FileStore archive channel id. Both the operator and clone must be
+4. For FileStore, send the archive channel id. Both the operator and clone must be
    channel administrators; the clone needs posting permission. Rights are checked
    again before creation.
 5. Confirm creation. The signed-in setup user becomes the clone's Owner, in its
@@ -148,7 +149,7 @@ not a credential vault; message deletion cannot guarantee erasure from clients.
 Music assistant-session collection is intentionally not exposed yet.
 
 The legacy `/clone <token> [standard|files|tiny]` path remains private, encrypted
-and premium/sudo/Owner-gated. Guided setup selects only FileStore; changing its
+and premium/sudo/Owner-gated. Guided setup selects one reviewed feature; changing its
 profile later replaces that selection with the chosen legacy template. All
 profiles keep mandatory group core. No clone profile includes recursive cloning.
 

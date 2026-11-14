@@ -1,4 +1,4 @@
-"""Private, expiring clone setup. First supported setup plugin: FileStore.
+"""Private, expiring clone setup. Reviewed single-plugin templates with isolated destinations.
 
 No session-string prompt is exposed until a dedicated music-clone lifecycle is
 available. Tokens are validated against Telegram, never echoed or logged.
@@ -18,6 +18,7 @@ from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup 
 from ...ui.tables import panel
 from ...utils.rich import reply, edit
 from .store import Clone, parse_token
+from .catalog import TEMPLATES
 
 
 class SetupError(RuntimeError):
@@ -47,6 +48,7 @@ class Setup:
     username: str = ''
     log_channel: int | None = None
     storage_channel: int | None = None
+    template: str = 'files'
 
 
 class CloneSetup:
@@ -151,9 +153,9 @@ class CloneSetup:
                     state.step = 'plugin'
                     await reply(message, panel('Choose clone features', icon=self.ctx.theme.emoji('sparkles'),
                         lines=[f"Verified bot: <b>@{html.escape(state.username)}</b>",
-                               'Mandatory group moderation stays available. FileStore is the first guided plugin.'],
-                        footer='Music setup will be added only with an isolated assistant-session lifecycle.'),
-                        reply_markup=self.keyboard(state, [('FileStore', 'files')]))
+                               'Mandatory group moderation stays available with every template.'],
+                        footer='Music and AI Agent require isolated credentials and are not offered yet.'),
+                        reply_markup=self.keyboard(state, [(name, action) for action, (_, name, _) in TEMPLATES.items()]))
                 elif state.step in ('log', 'storage'):
                     if state.step == 'log' and text.lower() == 'skip':
                         state.log_channel = None
@@ -177,13 +179,13 @@ class CloneSetup:
                             state.log_channel = channel
                         else:
                             state.storage_channel = channel
-                    if state.step == 'log':
+                    if state.step == 'log' and TEMPLATES[state.template][2]:
                         state.step = 'storage'
                         await reply(message, 'Send the FileStore archive channel id. Add the clone bot as an administrator with permission to post. You must administer it too.')
                     else:
                         state.step = 'confirm'
                         await reply(message, panel('Ready to create', icon=self.ctx.theme.emoji('check'), lines=[
-                            f'Owner: <code>{user_id}</code>', 'Plugin: FileStore + mandatory group core',
+                            f'Owner: <code>{user_id}</code>', f'Plugin: {TEMPLATES[state.template][1]} + mandatory group core',
                             f'Log channel: {state.log_channel or "not configured"}',
                             f'Archive channel: {state.storage_channel}',
                         ]), reply_markup=self.keyboard(state, [('Create clone', 'create')]))
@@ -211,7 +213,8 @@ class CloneSetup:
             self.cancel(user_id)
             await query.answer('Setup cancelled.')
             return
-        if action == 'files' and state.step == 'plugin':
+        if action in TEMPLATES and state.step == 'plugin':
+            state.template = action
             state.step = 'log'
             await edit(query, panel('Clone log channel', icon=self.ctx.theme.emoji('gear'),
                 lines=['Send a log channel id, or send <code>skip</code>. Both you and the clone must administer the channel.']))
@@ -248,7 +251,7 @@ class CloneSetup:
                     raise SetupError('That bot was added while setup was running. No duplicate was created.')
                 state.step = 'starting'
                 record = Clone(bot_id=state.bot_id, owner_id=user_id, token=state.token,
-                    username=state.username, profile='files', selected_plugins=('filestore',), managed_owner=True,
+                    username=state.username, profile='tiny', selected_plugins=(TEMPLATES[state.template][0],), managed_owner=True,
                     log_channel=state.log_channel, storage_channel=state.storage_channel)
                 self.store.add(record)
                 try:
@@ -259,7 +262,7 @@ class CloneSetup:
                 self.cancel(user_id)
                 await reply(query.message, panel('Clone ready', icon=self.ctx.theme.emoji('sparkles'),
                     lines=[f'Bot id: <code>{record.bot_id}</code>', f'Bot: @{html.escape(username or state.username)}',
-                           f'Owner: <code>{user_id}</code>', 'FileStore is configured. Manage it with /mybots.',
+                           f'Owner: <code>{user_id}</code>', f'{TEMPLATES[state.template][1]} is configured. Manage it with /mybots.',
                            'Group use still requires approval and activation through /plugin and group /plugins.']))
             except SetupError as exc:
                 self.cancel(user_id)

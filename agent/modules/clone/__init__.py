@@ -1,6 +1,6 @@
 """Private, premium-gated clones with guided setup and lifecycle controls.
 
-FileStore is the first guided plugin. Bot token identity is verified; the setup
+Reviewed single-feature templates support guided setup. Bot token identity is verified; the setup
 user becomes that clone tenant's Owner. Legacy profiles remain supported. No
 clone inherits parent assistant credentials or permits recursive cloning.
 """
@@ -17,6 +17,7 @@ from pyrogram.types import InlineKeyboardMarkup as Keyboard
 from ...platform.manifest import PluginManifest
 from ...platform.secrets import SecretError, box_from
 from . import lifecycle, profiles
+from .catalog import selection_label
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils import rich as rich_ui
@@ -116,7 +117,7 @@ def build(ctx):
         rows = tuple(
             (
                 clone.handle,
-                profiles.label(clone.profile),
+                selection_label(clone.selected_plugins) if clone.selected_plugins else profiles.label(clone.profile),
                 manager.state(clone.bot_id).label,
             )
             for clone in mine
@@ -172,7 +173,9 @@ def build(ctx):
 
     def _profile_panel(clone: Clone) -> tuple[object, Keyboard]:
         """What a clone may run, and the two clicks that change it."""
-        current = profiles.clean(clone.profile)
+        current = None if clone.selected_plugins else profiles.clean(clone.profile)
+        active_label = selection_label(clone.selected_plugins) if clone.selected_plugins else profiles.label(current)
+        active_size = "guided selection + group core" if clone.selected_plugins else profiles.summary(current, ctx.settings)
         rows = tuple(
             (
                 name,
@@ -186,8 +189,8 @@ def build(ctx):
             f"Profile · {clone.handle}",
             icon=ctx.theme.emoji("gear"),
             subtitle=(
-                f"Running <b>{profiles.label(current)}</b> "
-                f"({profiles.summary(current, ctx.settings)}), "
+                f"Configured <b>{active_label}</b> "
+                f"({active_size}), "
                 + ("started." if manager.is_running(clone.bot_id) else "stopped.")
             ),
             table=Table(
@@ -201,7 +204,7 @@ def build(ctx):
                 "A restricted profile never gets <code>ops</code> or "
                 "<code>clone</code>: no deployment controls, and no clone of a clone."
             ),
-            footer="Choosing a profile restarts a running clone so it takes effect.",
+            footer="Choosing a profile replaces any guided selection and restarts a running clone.",
         )
         buttons: list[list[Button]] = []
         for name in profiles.ORDER:
