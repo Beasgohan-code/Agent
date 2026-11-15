@@ -13,6 +13,7 @@ from pyrogram.types import (
 from ...ui.tables import panel, kv_table
 from ...platform.antispam import read_policy, change_policy
 from ...platform.group_rules import read_rules
+from ...platform.blocklists import operate as read_blocklist
 from ...utils.rich import edit
 from ..moderation import is_moderator
 from .. import welcome
@@ -32,6 +33,7 @@ def keyboard(ctx):
             Button("Group rules", callback_data="gmanage:rules:show"),
         ],
     ]
+    rows.append([Button("Blocklist settings", callback_data="gmanage:blocklist:show")])
     if getattr(ctx, "group_plugin_panel", None) is not None:
         rows.append([Button("Optional plugins", callback_data="gplug:page:0")])
     rows.append([Button("Refresh overview", callback_data="gmanage:home:show")])
@@ -82,6 +84,7 @@ def register(ctx):
                 not in (
                     "home",
                     "rules",
+                    "blocklist",
                     "welcome",
                     "goodbye",
                     "protection",
@@ -97,7 +100,33 @@ def register(ctx):
                 )
                 return
             kind, action = parts
-            if kind == "rules":
+            if kind == "blocklist":
+                if action != "show":
+                    await query.answer(
+                        "Use the blocklist commands to change these settings.",
+                        show_alert=True,
+                    )
+                    return
+                state = await read_blocklist(ctx, chat.id)
+                text = panel(
+                    "Blocklist settings",
+                    table=kv_table(
+                        [
+                            ("Triggers", str(len(state["entries"]))),
+                            ("Action", state["mode"]),
+                            ("Duration", f"{state['seconds']}s"),
+                            ("Delete messages", "On" if state["delete"] else "Off"),
+                        ]
+                    ),
+                    note="Use /blocklist to list triggers, /addblocklist to add a phrase or file: pattern, /blocklistmode to choose an action, and /blocklistdelete on|off to control deletion. Bulk removal requires the chat owner and confirmation.",
+                )
+                buttons = Keyboard(
+                    [
+                        [Button("Refresh", callback_data="gmanage:blocklist:show")],
+                        [Button("Group Management", callback_data="gmanage:home:show")],
+                    ]
+                )
+            elif kind == "rules":
                 if action != "show":
                     await query.answer(
                         "Use /setrules to change rules.", show_alert=True
@@ -194,12 +223,17 @@ def register(ctx):
                     for k in ("welcome", "goodbye")
                 ]
                 current_rules = await read_rules(ctx, chat.id)
+                blocklist = await read_blocklist(ctx, chat.id)
                 text = panel(
                     "Group Management",
                     table=kv_table(
                         [
                             ("Welcome", "On" if states[0]["enabled"] else "Off"),
                             ("Goodbye", "On" if states[1]["enabled"] else "Off"),
+                            (
+                                "Blocklist",
+                                f"{len(blocklist['entries'])} triggers / {blocklist['mode']}",
+                            ),
                             (
                                 "Rules",
                                 "Configured"

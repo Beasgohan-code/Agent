@@ -176,15 +176,27 @@
         "https://missrose.org/docs/anti-spam/blocklists/modes/"
       ],
       "source_text_reviewed": true,
-      "assessment": "not_implemented",
+      "assessment": "partial",
       "code": [
-        "agent/platform/antispam.py"
+        "agent/platform/blocklists.py",
+        "agent/modules/moderation/blocklists.py",
+        "agent/modules/group/controls.py"
       ],
       "tests": [
-        "tests/test_antispam_authority.py"
+        "tests/test_blocklists.py"
       ],
-      "implemented_commands": [],
-      "differences_and_remaining": "Legacy blocked-keyword substring protection is not the documented blocklist feature. Pending wildcard/word normalization, filenames, emoji packs, forward/inline/prefix/exact/name targeting, per-trigger reasons/modes and owner-only bulk clearing."
+      "implemented_commands": [
+        "addblocklist",
+        "rmblocklist",
+        "unblocklistall",
+        "rmblocklistall",
+        "blocklist",
+        "blocklistmode",
+        "blocklistdelete",
+        "setblocklistreason",
+        "resetblocklistreason"
+      ],
+      "differences_and_remaining": "Canonical SQL settings/revisions and per-message action claims/outcomes; safe bounded non-backtracking bitset glob matcher supports word-aware accent/case/space normalization, quoted phrases, emoji and full filename globs via file:. Group action modes nothing/warn/ban/mute/kick/tban/tmute, deletion toggle, default/per-trigger plain-text reasons, paginated native tables, read-only Group Management card and owner-confirmed clear. Limits: 100 triggers, 128 input characters per trigger, 500-character reasons, timed actions 60s–365d. Wildcard-only triggers refused. Remaining: bulk syntax, per-trigger action overrides, sticker/emoji packs, forwards, inline/prefix/exact/name/username/lookalike selectors, typed-lock precedence and automated silent mode. Warn uses the existing legacy warning store/escalation; canonical warning authority remains pending. Other automatic protection watchers remain independent and can overlap. Legacy /antispam keyword policy is preserved separately; it is not silently converted into word-aware blocklists. No live Telegram validation."
     },
     {
       "feature": "locks",

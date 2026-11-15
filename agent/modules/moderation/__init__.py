@@ -25,6 +25,8 @@ from pyrogram.errors import RPCError, FloodWait
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
+from .blocklists import COMMANDS as BLOCKLIST_COMMANDS, build as build_blocklists, enforce as enforce_blocklist
+from ...platform.blocklists import history as blocklist_history, BlocklistError
 from .restrictions import COMMANDS as RESTRICTION_COMMANDS, build as build_restrictions
 from .antiflood import COMMANDS as FLOOD_COMMANDS, build as build_antiflood, watch as watch_antiflood
 from ...platform.group_rules import rules_history, RulesError
@@ -46,7 +48,7 @@ MANIFEST = PluginManifest(
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *FLOOD_COMMANDS, *RESTRICTION_COMMANDS,
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *BLOCKLIST_COMMANDS,
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -350,6 +352,8 @@ def watch(ctx):
         try:
             chat = getattr(message, "chat", None)
             user = getattr(message, "from_user", None)
+            if await enforce_blocklist(ctx, client, message):
+                return
             text = (getattr(message, "text", "") or "").strip()
             if chat is None or user is None or not text or text.startswith("/"):
                 return
@@ -773,7 +777,8 @@ def build(ctx):
             committed += await rules_history(ctx, message.chat.id)
             committed += await trust_history(ctx, message.chat.id)
             committed += await restriction_history(ctx, message.chat.id)
-        except (PolicyError, RulesError, TrustError, CaseError):
+            committed += await blocklist_history(ctx, message.chat.id)
+        except (PolicyError, RulesError, TrustError, CaseError, BlocklistError):
             await reply(message, "Moderation history could not be loaded. Please try again shortly.")
             return
         history = sorted([*ctx.chats.history(message.chat.id, limit=10), *committed], key=lambda row: row.get("at", 0), reverse=True)[:10]
@@ -828,6 +833,7 @@ def build(ctx):
     return MANIFEST, {
         **build_antiflood(ctx),
         **build_restrictions(ctx),
+        **build_blocklists(ctx),
         "warn": warn,
         "warnings": warnings,
         "warns": warnings,

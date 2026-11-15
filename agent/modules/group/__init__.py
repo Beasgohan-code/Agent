@@ -30,6 +30,7 @@ from pyrogram.types import ChatPermissions
 
 from ...platform.manifest import PluginManifest
 from ...platform.admin_settings import denied
+from ...platform.blocklists import operate as read_blocklist
 from .admin import COMMANDS as ADMIN_COMMANDS, build as build_admin
 from ...ui.tables import Table, kv_table, panel
 from ..moderation import (
@@ -126,6 +127,7 @@ def build(ctx):
             rules = (await rule_service.read_rules(ctx, chat_id))["body"].strip()
             current_filters = await read_filters(ctx, chat_id)
             trusted = len(await trusted_members(ctx, chat_id))
+            blocklist = await read_blocklist(ctx, chat_id)
         except Exception as error:
             logger.warning("Group settings state unavailable (%s)", type(error).__name__)
             await reply(message, "Group settings could not be loaded. Please try again shortly; no changes were made.")
@@ -151,6 +153,7 @@ def build(ctx):
                 ("Links", "blocked" if policy.get("links_enabled") else "allowed"),
                 ("Invites", "blocked" if policy.get("invites_enabled") else "allowed"),
                 ("Keywords", str(len(policy.get("blocked_keywords") or []))),
+                ("Blocklist", f"{len(blocklist['entries'])} / {blocklist['mode']}"),
                 ("Warn limit", f"{limit} -> {action}" if limit else "off"),
                 ("Welcome", _on_off(greeting.get("enabled"))),
                 ("Goodbye", _on_off(goodbye.get("enabled"))),
