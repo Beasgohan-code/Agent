@@ -1129,6 +1129,28 @@
         "Premium is not in DEFAULT_PLUGINS; operator must include premium in explicit deployment selection and enable it before using its commands",
         "No subscription granted in production; existing Owner-only grant authority preserved"
       ]
+    },
+    {
+      "id": "persisted-disabled-runtime-reactivation",
+      "status": "completed",
+      "implemented": [
+        "Found shared startup bug affecting all selected optional plugins: persisted-off plugins had neither command nor extra handlers tracked, so enable could never reattach them",
+        "Startup now constructs/tracks handlers before applying persisted-off state, excludes dormant handlers from initial client attach, preserves watcher group numbers and supports real later enable",
+        "Owner workspace displays executable handler counts and hides futile runtime activation for modules with zero handlers",
+        "Callback and text no-op messages now distinguish already on/off from unavailable with manifest-reported blockers (including AI key/model and music capability reasons)",
+        "Existing Videl1-inspired feature workspace retained; no fabricated healthy states or authority bypasses"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL 1578 passed, no skips, 15.68 seconds before final text-message wording alignment",
+        "Focused runtime/Owner panel suite after text-message alignment: 35 passed",
+        "Regression rebuilds persisted-off FileStore and verifies actual handler attachments on enable, no duplicates on repeated enable, AI missing config diagnostics",
+        "compileall and Pyflakes passed; diff check passed"
+      ],
+      "remaining": [
+        "No production deployment or actual live plugin connectivity tested",
+        "Failed-build or unselected modules still require deployment configuration/restart; switches cannot install them",
+        "Not complete audit or behavioral parity of every Videl1 plugin; optional provider and service integrations remain separately tracked"
+      ]
     }
   ],
   "production_changes": false,

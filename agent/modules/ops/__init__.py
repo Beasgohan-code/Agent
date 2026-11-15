@@ -338,6 +338,7 @@ def build(ctx):
                 ('Runtime', _state_text(entry)),
                 ('Scope', str(entry.get('scope', 'unknown'))),
                 ('Registered commands', str(len(commands))),
+                ('Executable handlers', str(entry.get('tracked_handlers', 0))),
                 ('Control', 'protected' if entry['protected'] else 'Owner managed'),
             ]),
             lines=[html.escape(str(entry.get('description') or 'No description supplied.')),
@@ -346,7 +347,7 @@ def build(ctx):
             note='Runtime on does not grant group approval or prove provider connectivity. Turning it off detaches handlers; it does not revoke approval or free group slots.',
             footer='Refresh is read-only. Use /help for command usage; credentials are never displayed here.')
         buttons = []
-        if not entry['protected']:
+        if not entry['protected'] and entry.get('tracked_handlers', 0):
             buttons.append([Button('Disable runtime…' if entry['enabled'] else 'Enable runtime',
                 callback_data=f'{PLUGIN_PREFIX}:ask:{slug}' if entry['enabled'] else f'{PLUGIN_PREFIX}:on:{slug}')])
         buttons += [[Button('Refresh', callback_data=f'{PLUGIN_PREFIX}:info:{slug}')],
@@ -404,7 +405,16 @@ def build(ctx):
         message = (f'{slug} is off — its handlers are detached.' if action == 'off' else
                    f'{slug} runtime is on. Next: /plugin {slug} approve, then group-admin activation in /plugins.')
         if not changed:
-            await query.answer("No runtime change was made. Refresh the panel; check plugin configuration if unavailable.", show_alert=True)
+            current = {row['slug']: row for row in runtime.state()}[slug]
+            body, keyboard = _plugin_workspace(current)
+            await _edit_plugin(query, body, keyboard)
+            if action == 'off' and not current['enabled']:
+                reason = f'{slug} is already off.'
+            elif not current.get('tracked_handlers'):
+                reason = f'{slug} cannot start: {_idle_reason(current)}. Configure this bot and restart with authorization.'
+            else:
+                reason = f'{slug} is already on. Group use still needs Owner approval and group-admin activation.'
+            await query.answer(reason[:195], show_alert=not bool(current.get('tracked_handlers')))
             return
         if events is not None:
             events.emit("plugin", slug=slug, action=action, by=presser)
@@ -546,8 +556,13 @@ def build(ctx):
                 await reply(message, str(exc))
                 return
         if not changed:
-            await reply(message, f"No runtime change for <code>{slug}</code>: already {action}, or no executable handlers are available. "
-                        + (f"Group use still requires <code>/plugin {slug} approve</code> and group-admin activation in /plugins." if action == "on" else "Group approval is separate from runtime state."))
+            current = next(row for row in runtime.state() if row['slug'] == slug)
+            if action == 'on' and not current.get('tracked_handlers'):
+                explanation = f'Cannot start {slug}: {_idle_reason(current)}. Configure this bot and restart with authorization.'
+            else:
+                explanation = f'{slug} is already {action}. No duplicate handlers were attached.'
+            await reply(message, html.escape(explanation) +
+                        (f' Group use still requires <code>/plugin {slug} approve</code> and group-admin activation in /plugins.' if action == 'on' else ' Group approval is separate from runtime state.'))
             return
         if events is not None:
             events.emit(

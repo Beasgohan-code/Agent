@@ -82,6 +82,11 @@ class PluginRuntime:
     def track(self, slug: str, handler, group: int = 0) -> None:
         self._handlers.setdefault(slug, []).append((handler, group))
 
+    def dormant_handler_ids(self) -> set[int]:
+        """Handlers built for disabled plugins, excluded from initial attach."""
+        return {id(handler) for slug, tracked in self._handlers.items()
+                if not self.registry.is_enabled(slug) for handler, _ in tracked}
+
     def wants_disabled(self, slug: str) -> bool:
         return slug not in self.protected and slug in self._disabled
 
@@ -149,6 +154,7 @@ class PluginRuntime:
                     "commands": list(manifest.commands),
                     "description": manifest.description,
                     "scope": manifest.scope,
+                    "tracked_handlers": len(self._handlers.get(manifest.slug, [])),
                     "protected": self.is_protected(manifest.slug),
                 }
             )

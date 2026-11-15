@@ -256,13 +256,8 @@ class AgentBot:
         # Staging/review is not isolation. External execution stays disabled until
         # a capability-scoped process boundary exists.
 
-        # A plugin disabled in a previous run stays off, and registers nothing.
-        for manifest in self.registry.manifests():
-            if self.runtime.wants_disabled(manifest.slug):
-                self.registry.disable(manifest.slug)
-
-        # Only *enabled* plugins contribute handlers. A disabled plugin
-        # registers nothing at all, which is the lifecycle rule that matters.
+        # Build and track dormant handlers too, so persisted-off plugins can
+        # be enabled without restarting. Attach only enabled handlers below.
         scopes = {c: m.scope for m in self.registry.manifests() for c in m.commands}
         owners = {c: m.slug for m in self.registry.manifests() for c in m.commands}
         for command in self.registry.active_commands():
@@ -283,17 +278,23 @@ class AgentBot:
         for module in self._modules:
             factory = getattr(module, "extra_handlers", None)
             slug = module.MANIFEST.slug
-            if factory is None or not self.registry.is_enabled(slug):
+            if factory is None:
                 continue
             for watcher in factory(self.modules):
                 watcher.callback = self.plugin_gate.wrap(slug, watcher.callback, silent=True)
                 self._watchers.append(watcher)
                 self.runtime.track(slug, watcher, len(self._watchers))
 
+        for manifest in self.registry.manifests():
+            if self.runtime.wants_disabled(manifest.slug):
+                self.registry.disable(manifest.slug)
+        dormant = self.runtime.dormant_handler_ids()
         for handler in self._handlers:
-            client.add_handler(handler)
+            if id(handler) not in dormant:
+                client.add_handler(handler)
         for index, watcher in enumerate(self._watchers, start=1):
-            client.add_handler(watcher, group=index)
+            if id(watcher) not in dormant:
+                client.add_handler(watcher, group=index)
         self.runtime.attach(client)
         self.runtime.change_hook = self._schedule_command_sync
         self.logbook.client = client

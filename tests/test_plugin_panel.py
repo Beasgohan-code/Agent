@@ -235,3 +235,35 @@ def test_workspace_refresh_unchanged_home_and_nonowner_controls(tmp_path, monkey
             assert denied.answers[0][1]
         assert bot.registry.is_enabled('filestore')
     asyncio.run(scenario())
+
+
+def test_persisted_off_plugins_can_be_enabled_after_rebuild_without_restart(tmp_path):
+    from unittest.mock import MagicMock
+    bot = make_bot(tmp_path)
+    assert bot.runtime.disable('filestore')
+    rebuilt = make_bot(tmp_path)
+    assert not rebuilt.registry.is_enabled('filestore')
+    entry = next(row for row in rebuilt.runtime.state() if row['slug'] == 'filestore')
+    assert entry['tracked_handlers'] > 0
+    client = MagicMock()
+    rebuilt.runtime.attach(client)
+    assert rebuilt.runtime.enable('filestore')
+    assert rebuilt.registry.is_enabled('filestore')
+    assert client.add_handler.call_count == entry['tracked_handlers']
+    assert 'get' in rebuilt.registry.active_commands()
+    assert not rebuilt.runtime.enable('filestore')
+    assert client.add_handler.call_count == entry['tracked_handlers']
+
+
+def test_already_on_and_unavailable_callbacks_explain_specific_state(tmp_path):
+    bot = make_bot(tmp_path)
+    ops.build(bot.modules)
+    already = FakeQuery('plugin:on:filestore')
+    asyncio.run(bot.actions.dispatch(None, already))
+    assert 'already on' in already.answers[0][0]
+    assert already.answers[0][1] is False
+    missing = FakeQuery('plugin:on:ai_agent')
+    asyncio.run(bot.actions.dispatch(None, missing))
+    assert 'AI_API_KEY' in missing.answers[0][0]
+    assert missing.answers[0][1] is True
+    assert not any(b.callback_data == 'plugin:on:ai_agent' for b in buttons(missing.edits[0][1]))
