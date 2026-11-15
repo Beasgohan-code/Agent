@@ -292,7 +292,7 @@ def test_alive_json_and_readiness_reflect_real_probe_state():
         async with TestClient(TestServer(build_app(monitor))) as client:
             response = await client.get('/')
             body = await response.json()
-            assert body['bot'] == 'Agent' and body['status'] == 'starting'
+            assert body['bot'] == 'Meiko' and body['status'] == 'starting'
             assert body['heartbeat_age'] is None
             assert (await client.get('/health/ready')).status == 503
             monitor.record_success()

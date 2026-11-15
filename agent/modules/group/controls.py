@@ -118,7 +118,7 @@ def register(ctx):
                             ("Delete messages", "On" if state["delete"] else "Off"),
                         ]
                     ),
-                    note="Use /blocklist to list triggers, /addblocklist to add a phrase or file: pattern, /blocklistmode to choose an action, and /blocklistdelete on|off to control deletion. Bulk removal requires the chat owner and confirmation.",
+                    note="Use /blocklist to list triggers, /addblocklist to add text, file:, prefix:, exact:, name: or username: patterns, /blocklistmode to choose an action, and /blocklistdelete on|off to control deletion. Bulk removal requires the chat owner and confirmation.",
                 )
                 buttons = Keyboard(
                     [

@@ -91,7 +91,7 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
     quick = [f"<code>/{command}</code> — {label}" for command, label in suggestions
              if active is None or command in active]
     text = (
-        rich_heading(f"{theme.emoji('diamond')} Agent", 2)
+        rich_heading(f"{theme.emoji('diamond')} Meiko", 2)
         + "\n<b>Your group. Your workspace.</b>\n"
         + greeting + "\n"
         + rich_note(f"{theme.emoji('shield')} Keep your community protected. "
@@ -374,7 +374,7 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
         + kv_table(rows).block()
         + "\n"
         + rich_hr()
-        + rich_footer("Telegram profile details are read live. Agent Premium is separate; use /myplan to check your plan.")
+        + rich_footer("Telegram profile details are read live. Meiko Premium is separate; use /myplan to check your plan.")
     )
     return Screen(text, keyboards.info_keyboard(user_id if isinstance(user_id, int) else None))
 

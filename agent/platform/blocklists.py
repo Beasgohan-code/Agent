@@ -78,7 +78,7 @@ def word(char):
     return char.isalnum() or char == "_"
 
 
-def matches(pattern, text, *, filename=False):
+def matches(pattern, text, *, filename=False, prefix=False):
     if not isinstance(text, str) or len(text) > 8192:
         return False
     text = normalize(text)
@@ -89,8 +89,10 @@ def matches(pattern, text, *, filename=False):
     end_word = tokens[-1][0] == "literal" and word(tokens[-1][1])
     for pos in range(len(text) + 1):
         if (
-            not filename and (not start_word or pos == 0 or not word(text[pos - 1]))
-        ) or (filename and pos == 0):
+            not filename
+            and not prefix
+            and (not start_word or pos == 0 or not word(text[pos - 1]))
+        ) or ((filename or prefix) and pos == 0):
             state |= 1
         state |= (state & stars) << 1  # adjacent star runs are collapsed when compiling
         if state & final and (
@@ -113,13 +115,16 @@ def trigger(value):
     value = normalize(value)
     if not value or len(value) > 256:
         raise BlocklistError("Normalized trigger is empty or too long.")
-    pattern = value[5:] if value.startswith("file:") else value
+    selector, separator, tail = value.partition(":")
+    pattern = (
+        tail.strip()
+        if separator and selector in ("file", "prefix", "exact", "name", "username")
+        else value
+    )
+    if separator and selector in ("file", "prefix", "exact", "name", "username"):
+        value = selector + ":" + pattern
     if value.startswith(
         (
-            "name:",
-            "username:",
-            "prefix:",
-            "exact:",
             "stickerpack:",
             "forward:",
             "inline:",
@@ -127,7 +132,7 @@ def trigger(value):
         )
     ):
         raise BlocklistError(
-            "Only text and file: triggers are supported in this version."
+            "Supported selectors: file:, prefix:, exact:, name:, username:."
         )
     compiled(pattern)
     return value
@@ -147,6 +152,20 @@ def find_match(policy, message):
             hit = any(
                 matches(name[5:], name_, filename=True) for name_ in filenames if name_
             )
+        elif name.startswith("prefix:"):
+            hit = bool(text) and matches(name[7:], text, prefix=True)
+        elif name.startswith("exact:"):
+            hit = bool(text) and matches(name[6:], text, filename=True)
+        elif name.startswith("name:"):
+            user = getattr(message, "from_user", None)
+            display = " ".join(
+                str(getattr(user, key, None) or "")
+                for key in ("first_name", "last_name")
+            ).strip()
+            hit = bool(display) and matches(name[5:], display)
+        elif name.startswith("username:"):
+            username = getattr(getattr(message, "from_user", None), "username", None)
+            hit = bool(username) and matches(name[9:], username, filename=True)
         else:
             hit = bool(text) and matches(name, text)
         if hit:

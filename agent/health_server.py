@@ -55,7 +55,7 @@ def build_app(monitor: HealthMonitor, extra: Callable[[], dict] | None = None):
     async def root(_request):
         snapshot = monitor.snapshot()
         return web.json_response({
-            "bot": "Agent", "version": __version__,
+            "bot": "Meiko", "version": __version__,
             "status": {"healthy": "alive", "down": "stale"}.get(snapshot.state, snapshot.state),
             "uptime": round(snapshot.uptime_seconds, 1),
             "heartbeat_age": snapshot.seconds_since_ok,

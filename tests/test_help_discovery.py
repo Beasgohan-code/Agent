@@ -51,5 +51,5 @@ def test_home_shortcuts_are_live_and_have_real_routes():
 def test_profile_does_not_confuse_entitlements_or_claim_no_storage():
     screen = info_screen(None, Theme())
     assert "Telegram Premium" in screen.rich_text
-    assert "Agent Premium" in screen.rich_text
+    assert "Meiko Premium" in screen.rich_text
     assert "Nothing is stored" not in screen.rich_text

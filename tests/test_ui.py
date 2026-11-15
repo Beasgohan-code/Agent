@@ -48,7 +48,7 @@ def test_welcome_screen_greets_the_user_and_shows_the_menu():
     screen = welcome_screen(make_user(), Theme())
 
     assert "Ada Lovelace" in screen.rich_text
-    assert "Agent" in screen.rich_text
+    assert "Meiko" in screen.rich_text
     assert "Try" in screen.rich_text                 # three commands to start from
     # The menu buttons plus the source link; the callbacks are the first two.
     assert callbacks(screen.keyboard)[:2] == [CB_HELP, CB_INFO]

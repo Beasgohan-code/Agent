@@ -469,7 +469,7 @@ class AgentBot:
 
         heartbeat_task = self.lease.start_heartbeat(stop_event)
         self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
-        logger.info("Starting Agent (token=%s)", self.settings.masked_token)
+        logger.info("Starting Meiko (token=%s)", self.settings.masked_token)
         try:
             await client.start()
         except Exception:
@@ -656,7 +656,7 @@ class AgentBot:
         except Exception:
             logger.exception("Error while stopping the client.")
         else:
-            logger.info("Disconnected. Agent stopped.")
+            logger.info("Disconnected. Meiko stopped.")
 
 
 def _install_signal_handlers(stop_event: asyncio.Event) -> None:

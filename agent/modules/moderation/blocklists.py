@@ -184,7 +184,7 @@ def build(ctx):
                         ]
                         if entries
                         else ["No triggers configured."],
-                        note="Plain-text reasons. Word-aware, case/accent-insensitive globs: ? one non-space, * non-spaces, ** any text. file: matches entire filenames. Wildcard-only triggers refused. Staff and approved members exempt. Long triggers/reasons shown as previews.",
+                        note="Plain-text reasons. Word-aware, case/accent-insensitive globs: ? one non-space, * non-spaces, ** any text. file: matches entire filenames; prefix: anchors text start; exact: matches whole text; name: matches sender display name; username: matches whole username (without @). Wildcard-only triggers refused. Staff and approved members exempt. Long triggers/reasons shown as previews.",
                         footer=f"Page {page}/{pages} · /blocklist [page]",
                     ),
                 )

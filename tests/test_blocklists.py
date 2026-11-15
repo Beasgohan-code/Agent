@@ -67,7 +67,7 @@ def test_safe_matching_boundaries_normalization_and_wildcards():
     assert matches("*.pdf", "Document.PDF", filename=True)
     assert not matches("report.pdf", "a-report.pdf.exe", filename=True)
     assert not matches("a*" * 60 + "z", "a" * 8192)
-    for pattern in ("*", "**", "?", "a\\", "name:test", ""):
+    for pattern in ("*", "**", "?", "a\\", "inline:test", ""):
         with pytest.raises(BlocklistError):
             trigger(pattern)
     policy = {
@@ -363,3 +363,41 @@ def test_blocklist_card_authorizes_presser_before_reading(tmp_path, monkeypatch)
         assert "Blocklist settings" in str(editor.await_args.args[1])
 
     asyncio.run(scenario())
+
+
+def test_advanced_selectors_anchor_and_isolate_surfaces():
+    from types import SimpleNamespace as NS
+    from agent.platform.blocklists import trigger, find_match
+
+    def hit(pattern, **fields):
+        policy = {"entries": [{"trigger": trigger(pattern), "reason": "matched"}]}
+        return find_match(policy, NS(**fields)) is not None
+
+    assert hit("prefix:buy", text="BUY now")
+    assert not hit("prefix:buy", text="please buy now")
+    assert not hit("prefix:buy", text="buyer")
+    assert hit("prefix:buy*", caption="buyer")
+    assert hit("exact:buy now", text="Búy   now")
+    assert not hit("exact:buy now", text="buy now please")
+    assert hit("exact:buy **", text="buy something now")
+    assert hit(
+        "name:scam*",
+        from_user=NS(first_name="Scámmer", last_name="Jones"),
+        text="hello",
+    )
+    assert not hit("name:scam*", from_user=NS(first_name="Normal"), text="scammer")
+    assert hit("username:spam*", from_user=NS(username="Spam123"))
+    assert not hit("username:spam", from_user=NS(username="spammer"))
+    assert not hit("username:spam*", sender_chat=NS(username="spam123"))
+    assert not hit("prefix:hello", document=NS(file_name="hello.txt"))
+    assert not hit("exact:hello", text="x" * 8193)
+
+
+def test_meiko_display_name_preserves_plugin_identity():
+    from agent.ui.screens import welcome_screen, HELP_SECTIONS
+    from agent.ui.theme import Theme
+    from types import SimpleNamespace
+
+    screen = welcome_screen(SimpleNamespace(first_name="Tester", last_name=""), Theme())
+    assert "Meiko" in screen.rich_text
+    assert any("AI Agent" in row for row in HELP_SECTIONS)
