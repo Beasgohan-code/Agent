@@ -14,6 +14,7 @@ from pyrogram import filters as tg_filters
 from pyrogram.handlers import MessageHandler
 
 from ...platform.manifest import PluginManifest
+from ...platform.group_filters import operate, FilterError
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
 
@@ -39,7 +40,7 @@ def _args(message) -> list[str]:
 async def _is_manager(client, message, owner_id: int | None) -> bool:
     from ..moderation import is_moderator
 
-    return await is_moderator(client, message, need="can_change_info", owner_id=owner_id)
+    return await is_moderator(client, message, need="can_change_info", owner_id=None)
 
 
 def watch(ctx):
@@ -50,7 +51,8 @@ def watch(ctx):
             text = getattr(message, "text", "") or ""
             if not text or text.startswith("/"):
                 return
-            matched = ctx.chats.match_filter(message.chat.id, text)
+            stored = await operate(ctx, message.chat.id)
+            matched = next((body for name, body in stored.items() if name and name in text.strip().lower()), None)
             if matched is None:
                 return
             # Escaped on the way out: replies are sent with HTML parsing on, so an
@@ -95,20 +97,20 @@ def build(ctx):
         if len(body) > 2000:
             await reply(message, 'Filter replies are limited to 2000 characters; nothing was changed.')
             return
-        stored = ctx.chats.filters(message.chat.id)
+        stored = await operate(ctx, message.chat.id)
         if name not in stored and len(stored) >= 100:
             await reply(message, 'This group has 100 filters. Remove one before adding another; existing filters can still be updated.')
             return
-        ctx.chats.set_filter(message.chat.id, name, body, by=message.from_user.id)
+        await operate(ctx, message.chat.id, name=name, body=body, actor=message.from_user.id)
         await reply(message, panel('Filter updated', icon=ctx.theme.emoji('check'),
             lines=[f"Filter <code>{html.escape(name)}</code> saved."],
-            note='Applied in this process; settings use background persistence.', footer='/filters · /filters show name'))
+            note='Saved. Configured PostgreSQL writes are committed before confirmation.', footer='/filters · /filters show name'))
 
     async def listing(client, message):
         if not await _guard(client, message):
             return
         args = _args(message)[1:]
-        stored = ctx.chats.filters(message.chat.id)
+        stored = await operate(ctx, message.chat.id)
         usage = 'Use <code>/filters [page]</code> or <code>/filters show name</code>.'
         if args and args[0].lower() == 'show':
             if len(args) != 2:
@@ -154,9 +156,17 @@ def build(ctx):
         if len(args) != 2 or not name:
             await reply(message, "Usage: <code>/stopfilter name</code>")
             return
-        if not ctx.chats.remove_filter(message.chat.id, name):
+        if not await operate(ctx, message.chat.id, name=name, actor=message.from_user.id):
             await reply(message, f"No filter named <code>{html.escape(name)}</code>.")
             return
         await reply(message, f"Filter <code>{html.escape(name)}</code> removed.")
 
-    return MANIFEST, {"filter": add, "filters": listing, "stopfilter": stop}
+    def guarded(handler):
+        async def call(client, message):
+            try:
+                await handler(client, message)
+            except FilterError as error:
+                await reply(message, str(error))
+        return call
+
+    return MANIFEST, {"filter": guarded(add), "filters": guarded(listing), "stopfilter": guarded(stop)}

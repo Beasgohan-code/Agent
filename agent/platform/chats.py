@@ -176,6 +176,9 @@ class ChatStore:
         return dict(self._chat(chat_id)["settings"].get("filters") or {})
 
     def set_filter(self, chat_id: int, name: str, reply: str, *, by: int) -> None:
+        if self._db is not None:
+            from .group_filters import FilterError
+            raise FilterError("Awaited PostgreSQL filter update required.")
         settings = self._chat(chat_id)["settings"]
         filters = settings.setdefault("filters", {})
         filters[name.strip().lower()[:64]] = reply[:2000]
@@ -183,6 +186,9 @@ class ChatStore:
         self._save()
 
     def remove_filter(self, chat_id: int, name: str) -> bool:
+        if self._db is not None:
+            from .group_filters import FilterError
+            raise FilterError("Awaited PostgreSQL filter update required.")
         settings = self._chat(chat_id)["settings"]
         filters = settings.setdefault("filters", {})
         removed = filters.pop(name.strip().lower()[:64], None) is not None

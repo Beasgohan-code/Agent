@@ -91,6 +91,7 @@ def build(ctx):
     from .plugin_panel import build as build_plugin_panel
     ctx.group_plugin_panel = build_plugin_panel(ctx)
     from ...platform import group_rules as rule_service
+    from ...platform.group_filters import operate as read_filters
     from .controls import register, keyboard as management_keyboard
     register(ctx)
 
@@ -120,6 +121,7 @@ def build(ctx):
             greeting = await read_greeting(ctx, chat_id, "welcome")
             goodbye = await read_greeting(ctx, chat_id, "goodbye")
             rules = (await rule_service.read_rules(ctx, chat_id))["body"].strip()
+            current_filters = await read_filters(ctx, chat_id)
         except Exception as error:
             logger.warning("Group settings state unavailable (%s)", type(error).__name__)
             await reply(message, "Group settings could not be loaded. Please try again shortly; no changes were made.")
@@ -149,7 +151,7 @@ def build(ctx):
                 ("Warn limit", f"{limit} -> {action}" if limit else "off"),
                 ("Welcome", _on_off(greeting.get("enabled"))),
                 ("Goodbye", _on_off(goodbye.get("enabled"))),
-                ("Filters", str(len(ctx.chats.filters(chat_id)))),
+                ("Filters", str(len(current_filters))),
                 ("Rules", f"{len(rules)} chars" if rules else "not set"),
                 ("Trusted", str(trusted)),
                 ("Log channel", str(log_channel or "not set")),
