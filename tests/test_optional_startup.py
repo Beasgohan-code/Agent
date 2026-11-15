@@ -107,3 +107,32 @@ def test_post_connection_failure_and_cancellation_always_cleanup(monkeypatch):
         await asyncio.gather(owner._plugin_watch, return_exceptions=True)
     asyncio.run(scenario('_start_optional_services', asyncio.CancelledError()))
     asyncio.run(scenario('_sync_commands', RuntimeError('injected menu failure')))
+
+
+def test_stalled_optional_shutdowns_do_not_prevent_telegram_disconnect(monkeypatch, caplog):
+    from unittest.mock import Mock
+    async def scenario():
+        monkeypatch.setattr(bot_module, 'SERVICE_SHUTDOWN_TIMEOUT', 0.01)
+        stopped = []
+        async def stall():
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.append(True)
+        async def broken():
+            raise RuntimeError('private-token private-database-url')
+        owner = NS(voice=NS(shutdown=AsyncMock(side_effect=stall)),
+                   modules=NS(clones=NS(stop_all=AsyncMock(side_effect=stall)),
+                              verifier=NS(shutdown=AsyncMock(side_effect=broken)),
+                              jobs=NS(shutdown=AsyncMock(side_effect=stall)),
+                              storage=NS(shutdown=AsyncMock())),
+                   events=NS(emit=Mock()), logbook=NS(close=AsyncMock()),
+                   _shutdown=AsyncMock())
+        await asyncio.wait_for(AgentBot._cleanup_services(owner, 'client'), timeout=1)
+        assert len(stopped) == 3
+        owner.modules.storage.shutdown.assert_awaited_once()
+        owner._shutdown.assert_awaited_once_with('client')
+        owner.events.emit.assert_called_once_with('stop')
+        assert 'TimeoutError' in caplog.text
+        assert 'private-token' not in caplog.text and 'private-database-url' not in caplog.text
+    asyncio.run(scenario())

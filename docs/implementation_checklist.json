@@ -1343,6 +1343,27 @@
         "Cleanup service calls may still need individual deadlines; no live Telegram or hosting deployment performed",
         "No token lease bypass, rollback, schema changes or merge performed"
       ]
+    },
+    {
+      "id": "optional-shutdown-service-deadlines",
+      "status": "completed",
+      "implemented": [
+        "Voice, clone, verification, job and storage shutdown each get a five-second cooperative timeout so an optional cleanup stall does not prevent attempting primary Telegram disconnect",
+        "Shared sanitized #Errors cleanup logging reports service label and exception class, not raw credential-bearing errors",
+        "Primary client stop and exclusive token lease behavior not bypassed"
+      ],
+      "validation": [
+        "28 focused startup/deploy/clone cleanup tests passed",
+        "Regression stalls voice, clone and job cleanup, injects verifier exception with fake secrets and verifies cancellation, later storage cleanup, stop event and primary disconnect attempt",
+        "Full disposable PostgreSQL suite: 1609 passed, no skips, 17.46 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Timeouts depend on coroutine cancellation cooperation; synchronous blocking or cancellation-suppressing services still require process-level supervision",
+        "Timed-out optional cleanup does not prove all optional resources stopped",
+        "Primary Telegram stop is intentionally not skipped to force faster lease release; database/lease cleanup and cancelled background tasks may need further investigation",
+        "Live reported outage root cause remains unknown without hosting logs; no deployment/merge performed"
+      ]
     }
   ],
   "production_changes": false,

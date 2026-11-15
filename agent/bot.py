@@ -43,6 +43,18 @@ from .watchdog import build_watchdog
 
 OPTIONAL_STARTUP_TIMEOUT = 30.0
 REQUIRED_STARTUP_TIMEOUT = 90.0
+SERVICE_SHUTDOWN_TIMEOUT = 5.0
+
+async def _close_optional(label, operation):
+    """Bound cooperative optional cleanup; never log raw service exceptions."""
+    try:
+        await asyncio.wait_for(operation(), timeout=SERVICE_SHUTDOWN_TIMEOUT)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        logger.warning('#Errors %s cleanup failed (%s); continuing Telegram disconnect.',
+                       label, type(error).__name__)
+
 
 def _scope_filter(scope: str):
     """Where a module's commands may run, as declared by its manifest."""
@@ -627,34 +639,15 @@ class AgentBot:
                 logger.exception("Clone supervisor failed during shutdown.")
             self._supervisor = None
         if self.voice is not None:
-            try:
-                await self.voice.shutdown()
-            except Exception:
-                logger.exception("Voice shutdown failed; continuing cleanup.")
-        clones = getattr(self.modules, "clones", None)
+            await _close_optional('Voice', self.voice.shutdown)
+        clones = getattr(self.modules, 'clones', None)
         if clones is not None:
-            try:
-                await clones.stop_all()
-            except Exception:
-                logger.exception("Clone shutdown failed; continuing cleanup.")
-        verifier = getattr(self.modules, "verifier", None)
-        if verifier is not None:
-            try:
-                await verifier.shutdown()
-            except Exception:
-                logger.exception("Verification timer shutdown failed.")
-        jobs = getattr(self.modules, "jobs", None)
-        if jobs is not None:
-            try:
-                await jobs.shutdown()
-            except Exception:
-                logger.exception("Job shutdown failed; continuing Telegram disconnect.")
-        storage = getattr(self.modules, "storage", None)
-        if storage is not None and hasattr(storage, "shutdown"):
-            try:
-                await storage.shutdown()
-            except Exception:
-                logger.exception("Archive shutdown failed; continuing Telegram disconnect.")
+            await _close_optional('Clones', clones.stop_all)
+        for name in ('verifier', 'jobs', 'storage'):
+            service = getattr(self.modules, name, None)
+            shutdown = getattr(service, 'shutdown', None)
+            if shutdown is not None:
+                await _close_optional(name, shutdown)
         # Emit while connected, then drain only this bot's delivery tasks.
         # A bounded log-channel failure must never prevent Telegram shutdown.
         try:
