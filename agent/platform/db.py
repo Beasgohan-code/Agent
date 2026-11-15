@@ -318,10 +318,15 @@ class Database:
             logger.debug("no running loop to flush %r yet", name)
 
     async def _drain(self) -> None:
+        retry_delay = 1.0
         while self._pending:
             if not await self.flush():
-                await asyncio.sleep(1.0)
-                return
+                # Keep ownership of retries: save() deliberately does not
+                # create a second writer while this task is alive.
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(30.0, retry_delay * 2)
+                continue
+            retry_delay = 1.0
             await asyncio.sleep(self._flush_interval)
 
     async def _write_batch(self, batch: dict[str, Any]) -> None:

@@ -1490,6 +1490,27 @@
         "No live Telegram or deployment verification; main confirmed FloodWait fix still requires authorized running-code update",
         "Broader plugin/Rose feature work remains separately pending; no merge or migration performed"
       ]
+    },
+    {
+      "id": "background-document-writer-recovery-retry",
+      "status": "completed",
+      "implemented": [
+        "Failed background document flush keeps retry ownership rather than sleeping once then abandoning pending writes",
+        "Exponential retry delay from one second capped at 30 seconds, reset after successful flush; new saves while backing off coalesce safely into pending batch",
+        "Workspace restored from base history with accumulated files; fetched current remote and verified every tracked blob matches workspace except two intentional edits before mixed fast-forward history alignment; no working-file resets or force push"
+      ],
+      "validation": [
+        "24 focused database tests passed",
+        "Regression fails first background write, saves newer same-key and separate-key settings during backoff, then verifies automatic successful retry without further saves",
+        "Initial full PostgreSQL run: 1622 passed, one missing-Telethon skip; installed test dependency and reran",
+        "Authoritative disposable PostgreSQL suite: 1623 passed, no skips, 17.37 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Permanent database outages still leave pending data in memory; no durability guarantee across process kill",
+        "Retries do not add cross-process revision semantics",
+        "No production deployment, credential changes, migrations or PR merge"
+      ]
     }
   ],
   "production_changes": false,

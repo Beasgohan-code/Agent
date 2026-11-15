@@ -407,3 +407,26 @@ def test_synchronous_save_retains_snapshot_without_unawaited_coroutine_warning(r
     gc.collect()
     assert db._pending == {'runtime': {'disabled': ['music']}}
     assert not any('never awaited' in str(item.message) for item in recwarn)
+
+
+def test_failed_background_flush_retries_without_needing_another_save(monkeypatch):
+    async def scenario():
+        db = Database('postgresql://user@host/db', flush_interval=0)
+        db.connected = True
+        failed = asyncio.Event()
+        attempts = []
+        async def write(batch):
+            attempts.append(dict(batch))
+            if len(attempts) == 1:
+                failed.set()
+                raise ConnectionError('temporary outage')
+        monkeypatch.setattr(db, '_write_batch', write)
+        db.save('runtime', {'version': 1})
+        await failed.wait()
+        db.save('runtime', {'version': 2})
+        db.save('chats', {'preserved': True})
+        await asyncio.wait_for(db._writer, timeout=3)
+        assert attempts == [{'runtime': {'version': 1}},
+                            {'runtime': {'version': 2}, 'chats': {'preserved': True}}]
+        assert not db._pending
+    asyncio.run(scenario())
