@@ -1044,6 +1044,27 @@
         "Warn/custom lock modes and live Telegram validation pending",
         "No new Markdown files, no deployment or PR merge"
       ]
+    },
+    {
+      "id": "rose-link-button-and-forward-subtype-locks",
+      "status": "completed",
+      "source": "https://missrose.org/docs/anti-spam/locks/ main section reread this turn",
+      "implemented": [
+        "Thirty supported types after button/forwarduser/forwardbot/forwardchannel additions",
+        "URL-button lock detects actual inline-keyboard URLs, not callback_data buttons",
+        "Shared URL/domain validation exempts button lock only when every button URL matches allowed domain; mixed links still blocked",
+        "Forward subtype detection uses legacy fields and actual Wzgram MessageOrigin API; hidden users not guessed to be bots"
+      ],
+      "validation": [
+        "Metadata tests distinguish bot/user/channel/hidden sender and reject unrelated replies/group origins",
+        "Actual enforcement test covers callback-only buttons, allowed public link buttons and mixed unapproved link deletion",
+        "Full disposable PostgreSQL suite: 1571 passed, no skips, 15.51 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Lock warning/custom-mode actions, invite handling and other allowlist kinds pending",
+        "No live Telegram or production validation; no new Markdown files"
+      ]
     }
   ],
   "production_changes": false,

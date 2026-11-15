@@ -10,7 +10,7 @@ import re
 import ipaddress
 from urllib.parse import urlsplit
 from weakref import WeakValueDictionary
-from pyrogram.enums import ChatType, ChatMemberStatus, MessageEntityType as Entity
+from pyrogram.enums import ChatType, ChatMemberStatus, MessageEntityType as Entity, MessageOriginType as Origin
 from ...ui.tables import panel, Table
 from ...utils.rich import reply
 
@@ -33,13 +33,24 @@ ENTITY_LOCKS = {
     'command': (Entity.BOT_COMMAND,),
 }
 TYPES.update({kind: None for kind in ENTITY_LOCKS})
-TYPES.update({'forward': None, 'stickeranimated': None, 'stickerpremium': None})
+TYPES.update({kind: None for kind in ('forward', 'forwarduser', 'forwardbot', 'forwardchannel', 'button', 'stickeranimated', 'stickerpremium')})
 
 
 def matches(message, kind):
     if kind in ENTITY_LOCKS:
         entities = list(getattr(message, 'entities', None) or []) + list(getattr(message, 'caption_entities', None) or [])
         return any(getattr(entity, 'type', None) in ENTITY_LOCKS[kind] for entity in entities)
+    if kind == 'button':
+        return bool(button_urls(message))
+    if kind in ('forwarduser', 'forwardbot', 'forwardchannel'):
+        origin = getattr(message, 'forward_origin', None)
+        user = getattr(origin, 'sender_user', None) or getattr(message, 'forward_from', None)
+        channel = getattr(origin, 'chat', None) or getattr(origin, 'sender_chat', None) or getattr(message, 'forward_from_chat', None)
+        if kind == 'forwardchannel':
+            return bool(getattr(channel, 'type', None) == ChatType.CHANNEL)
+        if user is not None:
+            return getattr(user, 'is_bot', False) is (kind == 'forwardbot')
+        return kind == 'forwarduser' and (getattr(origin, 'type', None) == Origin.HIDDEN_USER or bool(getattr(message, 'forward_sender_name', None)))
     if kind == 'forward':
         return any(getattr(message, field, None) is not None for field in (
             'forward_origin', 'forward_date', 'forward_from', 'forward_from_chat', 'forward_sender_name'))
@@ -85,6 +96,25 @@ def domain(value):
         raise ValueError('Use a domain name without paths, credentials, ports or IP addresses.') from None
 
 
+def button_urls(message):
+    keyboard = getattr(getattr(message, 'reply_markup', None), 'inline_keyboard', None) or []
+    return [button.url for row in keyboard for button in row if getattr(button, 'url', None)]
+
+
+def link_allowed(value, domains):
+    try:
+        if not isinstance(value, str) or len(value) > 8192 or any(char.isspace() for char in value):
+            return False
+        parts = urlsplit(value if '://' in value else 'https://' + value)
+        parts.port
+        if parts.scheme not in ('http', 'https') or parts.username is not None or parts.password is not None:
+            return False
+        host = domain(parts.hostname or '')
+        return any(host == item or host.endswith('.' + item) for item in domains)
+    except (ValueError, UnicodeError, TypeError):
+        return False
+
+
 def url_allowed(message, domains):
     """Every URL entity must be allowed; unknown/malformed links fail closed."""
     urls = []
@@ -105,14 +135,9 @@ def url_allowed(message, domains):
                     if (offset + length) * 2 > len(encoded):
                         return False
                     value = encoded[offset*2:(offset+length)*2].decode('utf-16-le')
-                parts = urlsplit(value if '://' in value else 'https://' + value)
-                parts.port  # Reject malformed ports before applying an exemption.
-                if parts.scheme not in ('http', 'https') or parts.username is not None or parts.password is not None:
+                if not link_allowed(value, domains):
                     return False
-                host = domain(parts.hostname or '')
-                if not any(host == item or host.endswith('.' + item) for item in domains):
-                    return False
-                urls.append(host)
+                urls.append(value)
             except (ValueError, UnicodeError, AttributeError, TypeError):
                 return False
     return bool(urls)
@@ -178,7 +203,7 @@ def build(ctx):
                     await reply(message, panel('URL lock allowlist', icon=ctx.theme.emoji('shield'),
                         table=Table(headers=('Domain',), rows=tuple((item,) for item in sorted(updated))),
                         lines=[] if updated else ['No domains are exempt.'],
-                        note='Domain and subdomains only; every link in a message must be allowed. Exempts only the URL lock, not other locks or blocklists. Other Rose allowlist kinds and path-specific rules are not implemented.',
+                        note='Domain and subdomains only; every link in a message must be allowed. Exempts URL and URL-button locks only, not other locks or blocklists. Other Rose allowlist kinds and path-specific rules are not implemented.',
                         footer='/allowlist wikipedia.org · /rmallowlist wikipedia.org'))
                     return
                 if command in ('lock', 'unlock'):
@@ -211,11 +236,14 @@ async def enforce(ctx, client, message):
     async with mutex(ctx, chat.id):
         try:
             kinds = read(ctx, chat.id)
-            domains = read_domains(ctx, chat.id) if 'url' in kinds else set()
+            domains = read_domains(ctx, chat.id) if kinds & {'url', 'button'} else set()
         except ValueError:
             return False
     if 'url' in kinds and url_allowed(message, domains):
         kinds = kinds - {'url'}
+    buttons = button_urls(message) if 'button' in kinds else []
+    if buttons and all(link_allowed(value, domains) for value in buttons):
+        kinds = kinds - {'button'}
     if not any(matches(message, kind) for kind in kinds):
         return False
     try:

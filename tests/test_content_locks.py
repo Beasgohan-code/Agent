@@ -220,3 +220,45 @@ def test_clear_allowlist_requires_current_group_owner_and_explicit_confirmation(
         await command(owner, fixtures.FakeMessage('/rmallowlistall confirm'))
         assert locks.read_domains(ctx, -100500) == set()
     asyncio.run(scenario())
+
+
+def test_forward_subtypes_distinguish_bot_user_channel_and_hidden_user():
+    from pyrogram.enums import ChatType, MessageOriginType as O
+    for origin in (NS(forward_from=NS(is_bot=True)),
+                   NS(forward_origin=NS(sender_user=NS(is_bot=True)))):
+        assert locks.matches(origin, 'forwardbot')
+        assert not locks.matches(origin, 'forwarduser')
+        assert not locks.matches(origin, 'forwardchannel')
+    for origin in (NS(forward_from=NS(is_bot=False)),
+                   NS(forward_origin=NS(type=O.HIDDEN_USER)), NS(forward_sender_name='Hidden')):
+        assert locks.matches(origin, 'forwarduser')
+        assert not locks.matches(origin, 'forwardbot')
+    channel = NS(forward_origin=NS(chat=NS(type=ChatType.CHANNEL)))
+    assert locks.matches(channel, 'forwardchannel')
+    assert not locks.matches(NS(forward_from_chat=NS(type=ChatType.SUPERGROUP)), 'forwardchannel')
+    assert not locks.matches(NS(reply_to_message=NS()), 'forwarduser')
+
+
+def test_url_buttons_lock_and_domain_exemptions_do_not_treat_callbacks_as_links(tmp_path):
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        ctx.chats.put(-100500, locks.KEY, ['button'])
+        ctx.chats.put(-100500, locks.ALLOW_KEY, ['wikipedia.org'])
+        msg = fixtures.FakeMessage('')
+        callback = NS(callback_data='safe:action')
+        msg.reply_markup = NS(inline_keyboard=[[callback]])
+        assert not locks.matches(msg, 'button')
+        client = fixtures.FakeClient()
+        client.get_me = AsyncMock(return_value=NS(id=99))
+        async def member(chat, uid):
+            return fixtures.member(fixtures.ADMIN if uid == 99 else fixtures.MEMBER)
+        client.get_chat_member = AsyncMock(side_effect=member)
+        client.delete_messages = AsyncMock(return_value=True)
+        msg.reply_markup.inline_keyboard[0].append(NS(url='https://en.wikipedia.org'))
+        assert locks.matches(msg, 'button')
+        assert not await locks.enforce(ctx, client, msg)
+        client.delete_messages.assert_not_awaited()
+        msg.reply_markup.inline_keyboard.append([NS(url='https://evil.test')])
+        assert await locks.enforce(ctx, client, msg)
+        client.delete_messages.assert_awaited_once_with(-100500, msg.id)
+    asyncio.run(scenario())
