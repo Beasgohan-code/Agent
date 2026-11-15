@@ -212,21 +212,18 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
     keeps it that way, because the Bot API can edit a rich message too.
     """
     rows: list[tuple[str, str]] = []
-    total = 0
     for icon, title, commands in HELP_SECTIONS:
         visible = help_visible(commands, active)
         if not visible:
             continue
-        total += len(visible)
         rows.append(
             (markup(f"{theme.emoji(icon)} {rich_esc(title)}"), str(len(visible)))
         )
     blocks = [
         rich_heading(f"{theme.emoji('sparkles')} Help", 2),
         rich_note(
-            f"{theme.emoji('info')} <b>{total}</b> commands in "
-            f"<b>{len(rows)}</b> sections. Owner-only commands need "
-            "<code>OWNER_ID</code>; group commands need moderator rights."
+            "<b>What would you like to do?</b>\n"
+            "Choose a category to explore its tools and how to use them."
         ),
     ]
     if rows:
@@ -236,8 +233,7 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"{theme.emoji('help')} Tap a section for the sentence behind every "
-            "command, or <code>/menu</code> for the ones you use daily."
+            "Tap a category below · <code>/help play</code> finds a command directly."
         )
     )
     return Screen("\n".join(blocks), _help_keyboard(active))
@@ -274,8 +270,17 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
     blocks = [
         rich_heading(f"{theme.emoji(icon)} {title}", 2),
         rich_note(
-            f"<b>{len(visible)}</b> command(s) ready here · owner-only ones need "
-            "<code>OWNER_ID</code>"
+            {
+                "Essentials": "Your everyday shortcuts. Start here, check your status or get help.",
+                "Moderation": "Keep your community safe. Moderation actions require the appropriate group permissions.",
+                "Group management": "Shape your group’s rules and welcome experience. Settings changes require group-admin permissions.",
+                "Operations (owner)": "System controls for the bot owner. Delegated diagnostics are limited to explicitly granted access.",
+                "Clones": "Create and manage your own bot workspace. Creation and startup require an active Premium entitlement.",
+                "Music (voice chat)": "Build your queue and control playback. Availability depends on this group’s plugin and player settings.",
+                "Vault & downloads": "Save, find and retrieve your files. Use private chat for personal file details.",
+                "Encoding & files": "Prepare your media, refine filenames and manage share links.",
+                "Community & premium": "Community tools, reports and your plan. Administrative actions stay permission-protected.",
+            }.get(title, "Explore the tools below. Each action checks the permissions it needs.")
             if visible
             else "Nothing in this section is available in this deployment."
         ),
@@ -297,8 +302,7 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"{theme.emoji('help')} <code>/help</code> lists every section; "
-            "the buttons below move between them."
+            "Choose another category below, or return to your workspace."
         )
     )
     return Screen("\n".join(blocks), _section_keyboard())

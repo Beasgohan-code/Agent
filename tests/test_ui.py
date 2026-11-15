@@ -339,3 +339,17 @@ def test_ping_screen_renders_to_parseable_html():
     assert "<h2>" not in rendered
     parsed = asyncio.run(Parser(None).parse(rendered, ParseMode.HTML))
     assert parsed["message"].strip()
+
+
+def test_help_copy_is_user_facing_not_deployment_instructions():
+    from agent.ui.screens import HELP_SECTIONS, help_section_screen
+
+    screens = [help_screen(make_user(), Theme())]
+    screens += [help_section_screen(title, make_user(), Theme()) for _, title, _ in HELP_SECTIONS]
+    for screen in screens:
+        assert 'OWNER_ID' not in screen.rich_text
+        assert 'group commands need moderator rights' not in screen.rich_text
+        assert 'command(s) ready here' not in screen.rich_text
+    assert 'Choose a category' in screens[0].rich_text
+    essentials = help_section_screen('Essentials', make_user(), Theme())
+    assert 'owner-only ones need' not in essentials.rich_text
