@@ -37,6 +37,7 @@ genuinely deployment-wide.
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import logging
 import time
@@ -302,12 +303,15 @@ class Database:
         """Queue a document write. Never blocks, never raises at a handler."""
         if not self.connected:
             return
-        self._docs[name] = value
-        self._pending[name] = value
+        # Independent snapshots: caller/cache mutation must not change an
+        # already queued batch without a subsequent explicit save.
+        self._docs[name] = deepcopy(value)
+        self._pending[name] = deepcopy(value)
         if self._writer is not None and not self._writer.done():
             return
         try:
-            self._writer = asyncio.create_task(self._drain(), name="agent-db-writer")
+            loop = asyncio.get_running_loop()
+            self._writer = loop.create_task(self._drain(), name="agent-db-writer")
         except RuntimeError:
             # No event loop (a synchronous test, or shutdown): the pending
             # document stays queued and the next flush picks it up.

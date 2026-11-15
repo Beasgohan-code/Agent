@@ -373,3 +373,37 @@ def test_concurrent_flushes_commit_in_queue_order(monkeypatch):
         assert await first == 1 and await second == 1
         assert writes == [{'settings': 1}, {'settings': 2}]
     asyncio.run(scenario())
+
+
+def test_document_save_snapshots_are_independent_of_caller_and_cache_mutation(monkeypatch):
+    async def scenario():
+        db = Database('postgresql://user@host/db')
+        db.connected = True
+        committed = []
+        async def write(batch):
+            committed.append(batch)
+        monkeypatch.setattr(db, '_write_batch', write)
+        value = {'group': {'locks': ['url']}}
+        db.save('chats', value)
+        value['group']['locks'].append('photo')
+        assert db.get('chats') == {'group': {'locks': ['url']}}
+        db.get('chats')['group']['locks'].append('video')
+        assert await db.flush() == 1
+        assert committed == [{'chats': {'group': {'locks': ['url']}}}]
+        db.save('chats', value)
+        await db.flush()
+        assert committed[-1] == {'chats': {'group': {'locks': ['url', 'photo']}}}
+        if db._writer is not None:
+            db._writer.cancel()
+            await asyncio.gather(db._writer, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+def test_synchronous_save_retains_snapshot_without_unawaited_coroutine_warning(recwarn):
+    import gc
+    db = Database('postgresql://user@host/db')
+    db.connected = True
+    db.save('runtime', {'disabled': ['music']})
+    gc.collect()
+    assert db._pending == {'runtime': {'disabled': ['music']}}
+    assert not any('never awaited' in str(item.message) for item in recwarn)
