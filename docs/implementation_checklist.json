@@ -1303,6 +1303,27 @@
         "Required database/lease/Telegram connection failures still correctly prevent unsafe startup; no bypasses introduced",
         "No live network/deployment validation, migrations, automatic rollback or PR merge performed"
       ]
+    },
+    {
+      "id": "named-required-startup-deadlines",
+      "status": "completed",
+      "implemented": [
+        "Named startup phases logged and included in health details: database connect/load, log destination, handler build, token lease, Telegram connect, optional services, menu sync, running",
+        "Required network stages database connect/load, log destination hydration and Telegram handshake have 90-second deadlines",
+        "Required-stage errors record sanitized phase and exception type; database-unusable fatal reason no longer copies raw backend error",
+        "Shutdown cancellation propagates; required state/lease safety unchanged"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL suite 1607 passed, no skips, 15.90 seconds",
+        "New regressions verify timeout names, sanitized raised exceptions, cancellation and false-return semantics",
+        "Two existing startup test doubles updated to bind real new helper methods; initial full run exposed these fixture mismatches and rerun passed",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Reported live outage after 084d7bd still needs hosting logs; exact cause not reproduced",
+        "No claim of production restart or fix verification; no deployment, migrations, lease bypass or merge",
+        "Synchronous module/store build and menu sync are separate stages; not every operation has a deadline"
+      ]
     }
   ],
   "production_changes": false,

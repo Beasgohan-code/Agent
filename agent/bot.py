@@ -42,6 +42,7 @@ from .watchdog import build_watchdog
 
 
 OPTIONAL_STARTUP_TIMEOUT = 30.0
+REQUIRED_STARTUP_TIMEOUT = 90.0
 
 def _scope_filter(scope: str):
     """Where a module's commands may run, as declared by its manifest."""
@@ -413,6 +414,22 @@ class AgentBot:
                         await task
         return False
 
+    def _startup_phase(self, phase: str) -> None:
+        self.startup_phase = phase
+        logger.info('Startup phase: %s', phase)
+
+    async def _startup_step(self, phase, operation):
+        """Bound required network stages without exposing connection details."""
+        self._startup_phase(phase)
+        try:
+            return await asyncio.wait_for(operation(), timeout=REQUIRED_STARTUP_TIMEOUT)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            self.fatal_reason = f'Startup failed at {phase} ({type(error).__name__}); check hosting configuration and connectivity'
+            logger.error('#Errors %s', self.fatal_reason)
+            raise RuntimeError(self.fatal_reason) from None
+
     async def _run(self) -> None:
         """Connect only after obtaining exclusive ownership of this bot token."""
         if self.database is None:
@@ -420,14 +437,14 @@ class AgentBot:
             logger.critical(self.fatal_reason)
             return
         if self.database is not None:
-            if await self.database.connect():
-                await self.database.load()
+            if await self._startup_step('database-connect', self.database.connect):
+                await self._startup_step('database-load', self.database.load)
                 if self.database.load_error:
                     self.fatal_reason = "Required PostgreSQL state could not be loaded"
                     logger.critical(self.fatal_reason)
                     return
                 try:
-                    await self.logbook.hydrate()
+                    await self._startup_step('log-destination-load', self.logbook.hydrate)
                 except Exception:
                     self.fatal_reason = "PostgreSQL log destination could not be loaded"
                     logger.critical(self.fatal_reason)
@@ -448,13 +465,13 @@ class AgentBot:
                 # The deployment said the database is the source of truth; two
                 # competing ones (database and files) are worse than not starting.
                 self.fatal_reason = (
-                    "DATABASE_URL is required but unusable: "
-                    f"{self.database.error or 'no reason given'}"
+                    "DATABASE_URL is required but unusable; check database connectivity and credentials in hosting settings"
                 )
                 logger.critical(self.fatal_reason)
                 return
 
 
+        self._startup_phase('handler-build')
         client = self._client or self.build()
 
         stop_event = asyncio.Event()
@@ -464,6 +481,7 @@ class AgentBot:
         # Two copies of one token would answer every update twice. Take the
         # lease first; wait for a departing deploy, then give up rather than
         # double-serve.
+        self._startup_phase('token-lease')
         if not await self._acquire_lease(stop_event):
             if stop_event.is_set():
                 return
@@ -477,7 +495,7 @@ class AgentBot:
         self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
         logger.info("Starting Meiko (token=%s)", self.settings.masked_token)
         try:
-            await client.start()
+            await self._startup_step('telegram-connect', client.start)
         except Exception:
             logger.exception(
                 "Could not connect to Telegram. Check BOT_TOKEN, API_ID, API_HASH "
@@ -493,12 +511,15 @@ class AgentBot:
         self.health.record_success()
         self.events.emit("start", version=__version__)
         logger.info('Main Telegram client connected; starting optional services with bounded waits.')
+        self._startup_phase('optional-services')
         await self._start_optional_services()
+        self._startup_phase('command-menu-sync')
 
         # Make Telegram's own command menu match what this process actually
         # registered — a disabled plugin must not linger in the menu either.
         await self._sync_commands(client, reset_button=True)
 
+        self._startup_phase('running')
         me = client.me
         logger.info(
             "Connected as %s (id=%s)",
@@ -650,6 +671,7 @@ class AgentBot:
         """Extra fields for ``/health``: the lease and the plugin states."""
         disabled = [row["slug"] for row in self.runtime.state() if not row["enabled"]]
         return {
+            "startup_phase": getattr(self, 'startup_phase', 'initializing'),
             "instance": self.lease.state(),
             "plugins_disabled": disabled,
             "events": self.events.count(),

@@ -99,6 +99,8 @@ def test_required_database_log_load_failure_prevents_telegram_start():
                                   load=AsyncMock(), load_error=None),
                               logbook=SimpleNamespace(hydrate=AsyncMock(side_effect=LogSettingsError('read failed'))),
                               build=AsyncMock())
+        bot._startup_phase = AgentBot._startup_phase.__get__(bot)
+        bot._startup_step = AgentBot._startup_step.__get__(bot)
         await AgentBot._run(bot)
         assert 'log destination' in bot.fatal_reason
         bot.build.assert_not_awaited()
