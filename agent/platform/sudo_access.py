@@ -8,7 +8,24 @@ Schema statements are additive and idempotent startup migrations.
 import logging
 
 logger = logging.getLogger(__name__)
-CAPABILITIES = frozenset({"diagnostics.read"})
+CAPABILITY_DESCRIPTIONS = {
+    "diagnostics.read": "Sanitized database connection status via /db",
+    "health.read": "Read-only process health via /watchdog (no arguments)",
+    "plugins.inspect": "Read-only plugin inventory via /plugins",
+}
+CAPABILITIES = frozenset(CAPABILITY_DESCRIPTIONS)
+OWNER_ONLY_CAPABILITIES = frozenset(
+    {
+        "sudo.manage",
+        "premium.manage",
+        "plugins.approve",
+        "plugins.manage",
+        "clones.manage_others",
+        "system.restart",
+        "system.cleanup",
+        "secrets.manage",
+    }
+)
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS agent_sudo_grants (
         tenant TEXT NOT NULL, user_id BIGINT NOT NULL CHECK(user_id>0),
@@ -43,9 +60,14 @@ class SudoAccess:
     def _validate(user_id, capability, group_id):
         if type(user_id) is not int or not 0 < user_id < 2**63:
             raise SudoError("Use a positive Telegram user id.")
-        if capability not in CAPABILITIES:
+        if (
+            not isinstance(capability, str)
+            or capability in OWNER_ONLY_CAPABILITIES
+            or capability not in CAPABILITIES
+        ):
             raise SudoError(
-                "Unknown or Owner-only capability. Available: diagnostics.read"
+                "Unknown or Owner-only capability. Available: "
+                + ", ".join(sorted(CAPABILITIES))
             )
         if type(group_id) is not int or not -(2**63) < group_id <= 0:
             raise SudoError("Scope must be global or a negative group id.")
@@ -120,17 +142,16 @@ class SudoAccess:
                         )
                         changed = True
                     else:
-                        changed = bool(
-                            await conn.fetchval(
-                                """DELETE FROM agent_sudo_grants
-                            WHERE tenant=$1 AND user_id=$2 AND capability=$3 AND group_id=$4 RETURNING 1""",
-                                self.db.scope,
-                                user_id,
-                                capability,
-                                group_id,
-                                timeout=5,
-                            )
+                        expires = await conn.fetchval(
+                            """DELETE FROM agent_sudo_grants
+                            WHERE tenant=$1 AND user_id=$2 AND capability=$3 AND group_id=$4 RETURNING expires_at""",
+                            self.db.scope,
+                            user_id,
+                            capability,
+                            group_id,
+                            timeout=5,
                         )
+                        changed = expires is not None
                     await conn.execute(
                         """INSERT INTO agent_sudo_audit
                         (tenant,actor_id,user_id,capability,group_id,action,reason,expires_at,changed)
@@ -154,33 +175,41 @@ class SudoAccess:
                 "Sudo change not confirmed; inspect grants before retrying."
             ) from None
 
-    async def listing(self, actor, *, page=0, user_id=None):
-        return await self._read(actor, "grants", page, user_id)
+    async def listing(self, actor, *, page=0, user_id=None, page_size=50):
+        return await self._read(actor, "grants", page, user_id, page_size)
 
-    async def history(self, actor, *, page=0):
-        return await self._read(actor, "audit", page, None)
+    async def history(self, actor, *, page=0, page_size=50):
+        return await self._read(actor, "audit", page, None, page_size)
 
-    async def _read(self, actor, kind, page, user_id):
+    async def _read(self, actor, kind, page, user_id, page_size):
         self._owner(actor)
         if type(page) is not int or not 0 <= page <= 10000:
             raise SudoError("Page is out of range.")
+        if type(page_size) is not int or not 1 <= page_size <= 50:
+            raise SudoError("Page size must be 1–50.")
+        if user_id is not None and (
+            type(user_id) is not int or not 0 < user_id < 2**63
+        ):
+            raise SudoError("Use a positive Telegram user id.")
         try:
             async with self._pool().acquire(timeout=5) as conn:
                 if kind == "audit":
                     rows = await conn.fetch(
-                        "SELECT * FROM agent_sudo_audit WHERE tenant=$1 ORDER BY id DESC LIMIT 50 OFFSET $2",
+                        "SELECT * FROM agent_sudo_audit WHERE tenant=$1 ORDER BY id DESC LIMIT $3 OFFSET $2",
                         self.db.scope,
-                        page * 50,
+                        page * page_size,
+                        page_size,
                         timeout=5,
                     )
                 else:
                     rows = await conn.fetch(
-                        """SELECT * FROM agent_sudo_grants WHERE tenant=$1
+                        """SELECT *,expires_at>now() AS active FROM agent_sudo_grants WHERE tenant=$1
                         AND ($3::bigint IS NULL OR user_id=$3) ORDER BY user_id,capability,group_id
-                        LIMIT 50 OFFSET $2""",
+                        LIMIT $4 OFFSET $2""",
                         self.db.scope,
-                        page * 50,
+                        page * page_size,
                         user_id,
+                        page_size,
                         timeout=5,
                     )
             return [dict(row) for row in rows]

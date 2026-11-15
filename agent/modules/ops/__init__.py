@@ -160,6 +160,11 @@ def build(ctx):
             return False
         return True
 
+    async def _delegated(message, capability):
+        uid = getattr(getattr(message, "from_user", None), "id", None)
+        chat_id = getattr(getattr(message, "chat", None), "id", 0)
+        return await capabilities.allowed(uid, capability, chat_id if type(chat_id) is int and chat_id < 0 else 0)
+
     # -- /restart ----------------------------------------------------------
 
     async def restart(_client, message):
@@ -190,9 +195,18 @@ def build(ctx):
     # -- /watchdog ---------------------------------------------------------
 
     async def watchdog(_client, message):
-        if not await _owner_gate(message):
-            return
         args = [a.lower() for a in _args(message)[1:]]
+        if not _is_owner(message):
+            if not args and await _delegated(message, "health.read"):
+                rows = [("State", "Health monitor unavailable")]
+                if ctx.monitor is not None:
+                    snapshot = ctx.monitor.snapshot()
+                    rows = [("State", snapshot.state), ("Process uptime", format_uptime(snapshot.uptime_seconds))]
+                await reply(message, panel("Runtime health", table=kv_table(rows),
+                    note="Read-only process status. Cleanup and restart remain Owner-only."))
+            else:
+                await _owner_gate(message)
+            return
         mode = args[0] if args else ""
 
         if mode in ("run", "clean"):
@@ -409,6 +423,20 @@ def build(ctx):
         )
 
     async def plugins(_client, message):
+        if not _is_owner(message) and await _delegated(message, "plugins.inspect"):
+            if runtime is None:
+                await reply(message, "Plugin inventory is unavailable.")
+                return
+            from ...platform.policy import GROUP_CORE
+            state = runtime.state()
+            management = [entry for entry in state if entry["slug"] in GROUP_CORE]
+            rows = [("Group Management", "On" if all(entry["enabled"] for entry in management) else "Degraded")] if management else []
+            rows += [(entry.get("name") or entry["slug"], "Off" if not entry["enabled"] else "On" if entry["commands"] else "Idle")
+                     for entry in state if entry["slug"] not in {*GROUP_CORE, "ops", "core"}]
+            await reply(message, panel("Plugin inventory", subtitle="Read-only runtime inspection",
+                table=Table(headers=("Plugin", "Runtime"), rows=tuple(rows)),
+                note="Runtime availability is not group activation. Approval and runtime changes remain Owner-only; group activation requires group-admin rights."))
+            return
         if getattr(getattr(message, "chat", None), "id", 0) < 0:
             show = getattr(ctx, "group_plugin_panel", None)
             if show is not None:

@@ -38,3 +38,44 @@ def test_premium_revocation_blocks_restart_even_for_owner(tmp_path):
     premium.ids.clear()
     with pytest.raises(CloneError, match="premium"):
         asyncio.run(ctx.clones.start(record))
+
+
+@pytest.mark.parametrize("user_id", [OWNER, MEMBER])
+def test_expired_premium_blocks_callbacks_recovery_and_restart(tmp_path, user_id):
+    from test_clone import FakeQuery
+
+    async def scenario():
+        premium = FakePremium({user_id})
+        ctx, _, commands = build(tmp_path, premium=premium)
+        ctx.sudo.change(OWNER, MEMBER, add=True)
+        await commands["clone"](
+            None, FakeMessage("/clone " + TOKEN_A + " files", uid=user_id)
+        )
+        premium.ids.clear()
+        await ctx.clones.stop(111111111)
+        assert await ctx.clones.restore() == ()
+        with pytest.raises(CloneError, match="premium"):
+            await ctx.clones.restart(ctx.clones.record(111111111))
+        for action in ("start", "profile", "p:tiny"):
+            press = FakeQuery("clone:111111111:" + action, uid=user_id)
+            await ctx.actions.dispatch(None, press)
+            assert "premium" in press.answers[-1][0].lower()
+            assert not ctx.clones.is_running(111111111)
+        assert ctx.clones.record(111111111) is not None
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("user_id", [OWNER, MEMBER])
+def test_supervisor_stops_expired_clone_without_deleting_record(tmp_path, user_id):
+    async def scenario():
+        premium = FakePremium({user_id})
+        ctx, _, commands = build(tmp_path, premium=premium)
+        await commands["clone"](None, FakeMessage("/clone " + TOKEN_A, uid=user_id))
+        premium.ids.clear()
+        assert await ctx.clones.supervise() == ()
+        assert not ctx.clones.is_running(111111111)
+        record = ctx.clones.record(111111111)
+        assert record is not None and record.disabled
+
+    asyncio.run(scenario())
