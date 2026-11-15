@@ -342,14 +342,16 @@ def test_the_store_keeps_tokens_out_of_sight_and_off_other_accounts(tmp_path):
 
 
 def test_a_record_survives_a_reload(tmp_path):
-    store = CloneStore(tmp_path)
+    from agent.platform.secrets import box_from
+    box = box_from(Settings.from_env(ENV))
+    store = CloneStore(tmp_path, box=box)
     store.add(Clone(bot_id=1, owner_id=2, token=TOKEN_A, username="demo"))
 
-    again = CloneStore(tmp_path)
+    again = CloneStore(tmp_path, box=box)
     assert again.get(1).username == "demo"
     assert again.by_owner(2)[0].bot_id == 1
     assert again.remove(1) is True
-    assert CloneStore(tmp_path).count() == 0
+    assert CloneStore(tmp_path, box=box).count() == 0
 
 
 # --- profiles --------------------------------------------------------------

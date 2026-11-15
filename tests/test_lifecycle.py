@@ -148,7 +148,8 @@ def make(tmp_path, **kwargs):
             "PLUGINS": "ops,core,clone,filestore",
         }
     )
-    store = CloneStore(tmp_path / "clones")
+    from agent.platform.secrets import SecretBox
+    store = CloneStore(tmp_path / "clones", box=SecretBox("MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="))
     made = []
 
     def factory(built):

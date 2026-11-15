@@ -169,11 +169,12 @@ def test_a_different_key_cannot_read_it():
         SecretBox(base64.urlsafe_b64encode(b"z" * 32).decode()).decrypt(sealed)
 
 
-def test_no_key_keeps_plaintext_and_says_so(caplog):
+def test_no_key_refuses_secret_writes_but_allows_legacy_reads(caplog):
     box = SecretBox(None)
 
     assert box.enabled is False
-    assert box.encrypt("token") == "token"
+    with pytest.raises(SecretError, match='required'):
+        box.encrypt("token")
     assert box.decrypt("token") == "token"
 
 
@@ -224,14 +225,16 @@ def test_a_record_this_key_cannot_read_is_skipped_not_crashed(tmp_path):
     assert store.count() == 0
 
 
-def test_without_a_key_the_store_still_works_in_plaintext(tmp_path):
+def test_without_a_key_store_refuses_token_write_and_preserves_legacy_file(tmp_path):
+    path = tmp_path / 'clones.json'
+    original = json.dumps([{'bot_id': 1, 'owner_id': 7, 'token': '123:AAlegacy'}])
+    path.write_text(original)
     store = CloneStore(tmp_path, box=SecretBox(None))
-    store.add(Clone(bot_id=1, owner_id=7, token="123:AAplain"))
-
-    raw = (tmp_path / "clones.json").read_text()
-
-    assert "AAplain" in raw
-    assert store.encrypted() is False
+    assert store.get(1).token == '123:AAlegacy'
+    with pytest.raises(SecretError, match='TOKEN_KEY'):
+        store.add(Clone(bot_id=2, owner_id=7, token='456:AAnew'))
+    assert store.count() == 1 and path.read_text() == original
+    assert not store.encrypted()
 
 
 def test_a_clone_runs_in_its_own_database_scope(tmp_path):
@@ -245,3 +248,16 @@ def test_a_clone_runs_in_its_own_database_scope(tmp_path):
     assert clone_settings.db_scope == "clone:99"
     assert clone_settings.bot_token == "99:AAx"
     assert clone_settings.owner_id == 1
+
+
+def test_unkeyed_legacy_mutation_failure_restores_cached_records(tmp_path):
+    path = tmp_path / 'clones.json'
+    original = json.dumps([{'bot_id': n, 'owner_id': 7, 'token': f'{n}:AAlegacy'} for n in (1, 2)])
+    path.write_text(original)
+    store = CloneStore(tmp_path, box=SecretBox(None))
+    with pytest.raises(SecretError):
+        store.update(1, owner_id=99)
+    assert store.get(1).owner_id == 7
+    with pytest.raises(SecretError):
+        store.remove(1)
+    assert store.count() == 2 and path.read_text() == original

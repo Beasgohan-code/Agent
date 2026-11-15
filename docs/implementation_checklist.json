@@ -1584,6 +1584,28 @@
         "Legacy encryption, archive recovery and wider audit remain separate pending tasks; no feature expansion",
         "No production deployment, migration, record rewrite or PR merge"
       ]
+    },
+    {
+      "id": "refuse-plaintext-clone-credential-writes",
+      "status": "completed",
+      "implemented": [
+        "SecretBox.encrypt refuses nonempty secret writes without key; legacy plaintext decrypt compatibility remains read-only",
+        "CloneStore serializer independently requires enabled encryption for bot token writes; removed plaintext token output branch",
+        "Unkeyed local legacy reads no longer trigger failed automatic rewrite; file remains untouched on read",
+        "Failed local add/update/remove preserves store contents; update/remove cache restoration added",
+        "Legitimate writing tests use explicit deterministic test-only keys; no production TOKEN_KEY/token changes"
+      ],
+      "validation": [
+        "Regression validates missing-key SecretBox rejection, legacy-read compatibility, new store write refusal, unchanged legacy file and mutation cache rollback",
+        "Full disposable PostgreSQL suite 1628 passed, no skips, 17.16 seconds",
+        "compileall/Pyflakes/diff checks passed before final explanatory error wording edit; static checks rerun after"
+      ],
+      "remaining": [
+        "Existing keyed-local automatic legacy rewrite is pre-existing behavior and still requires controlled migration/key-rotation design; no production migration executed",
+        "No general OS secret sandboxing or comprehensive encryption audit claim",
+        "Durable archive recovery, plugin cleanup/authority audit and diagnostics retrieval remain pending",
+        "No deployment, production data rewrite, schema migration or PR merge"
+      ]
     }
   ],
   "production_changes": false,

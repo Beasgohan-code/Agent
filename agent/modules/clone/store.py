@@ -2,8 +2,8 @@
 
 A clone is one bot token plus the person who added it. Tokens and optional AI
 provider keys are secrets, so the file is written ``0600``, the panel never shows
-more than its first digits, and the record is **encrypted at rest** when
-``TOKEN_KEY`` is configured (:mod:`agent.platform.secrets`). Masking is a screen
+more than its first digits, and credential writes require encryption with
+``TOKEN_KEY`` (:mod:`agent.platform.secrets`). Masking is a screen
 concern; encryption is a database concern, and this store needs both.
 
 Records written before encryption existed still load: a plaintext token is read
@@ -102,12 +102,12 @@ class CloneStore:
         self.path = Path(root) / "clones.json"
         #: With a database, clone records survive a redeploy on any instance.
         self._db = db
-        #: Token encryption at rest; a box without a key stores plaintext.
+        #: Token encryption at rest; no key permits legacy reads only.
         self._box = box if box is not None else SecretBox(None)
         #: Set when a plaintext record was read and should be rewritten.
         self._needs_rewrite = False
         self._items: dict[int, Clone] = self._load()
-        if self._db is None and self._needs_rewrite and self._items:
+        if self._db is None and self._box.enabled and self._needs_rewrite and self._items:
             # A record read in the old plaintext shape is rewritten encrypted,
             # so a deployment that adds TOKEN_KEY does not keep old rows naked.
             self._needs_rewrite = False
@@ -198,10 +198,9 @@ class CloneStore:
             if not box.enabled:
                 raise SecretError("AI clone credentials require TOKEN_KEY.")
             data["ai_api_key_enc"] = box.encrypt(str(ai_key))
-        if box.enabled:
-            data["token_enc"] = box.encrypt(str(token))
-        else:
-            data["token"] = str(token)
+        if not box.enabled:
+            raise SecretError('Clone token writes require TOKEN_KEY.')
+        data["token_enc"] = box.encrypt(str(token))
         return data
 
     def _save(self) -> None:
@@ -370,16 +369,26 @@ class CloneStore:
         clone = self._items.get(int(bot_id))
         if clone is None:
             return None
+        previous = copy.deepcopy(clone)
         for key, value in fields.items():
             if hasattr(clone, key):
                 setattr(clone, key, value)
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            self._items[int(bot_id)] = previous
+            raise
         return clone
 
     def remove(self, bot_id: int) -> bool:
         if self._db is not None:
             raise RuntimeError("Awaited PostgreSQL clone operation required")
-        if self._items.pop(int(bot_id), None) is None:
+        previous = self._items.pop(int(bot_id), None)
+        if previous is None:
             return False
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            self._items[int(bot_id)] = previous
+            raise
         return True

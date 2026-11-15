@@ -234,7 +234,8 @@ def test_revoked_token_at_confirmation_does_not_create_clone(tmp_path):
 def test_clone_record_cannot_be_overwritten_by_another_owner(tmp_path):
     from agent.modules.clone.store import CloneStore, Clone
 
-    store = CloneStore(tmp_path)
+    from agent.platform.secrets import SecretBox
+    store = CloneStore(tmp_path, box=SecretBox("MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="))
     store.add(Clone(bot_id=111111111, owner_id=22, token=TOKEN_A))
     with pytest.raises(ValueError, match="ownership cannot be overwritten"):
         store.add(Clone(bot_id=111111111, owner_id=33, token=TOKEN_A))
