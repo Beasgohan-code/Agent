@@ -956,6 +956,27 @@
         "Remaining mapped repo workflows still incomplete; tests are not proof of upstream parity",
         "Requested branch push handled separately; no merge or deployment"
       ]
+    },
+    {
+      "id": "remote-history-and-missrose-docs-reconciliation",
+      "status": "completed",
+      "implemented": [
+        "Fetched current remote branch and reconciled overlapping historical commits with tested cumulative implementation, preserving both histories; no force-push",
+        "Preserved README and 37 architecture/reference documents rather than accepting historical deletions; old deletion state safely retained in named stash and intentionally not reapplied",
+        "Added docs/MISS_ROSE_STATUS.md with source audit paths, honest feature-group counts, current product boundaries and pending work",
+        "README and group architecture document now point to current audits and label older checkpoints as historical; no retired commands reintroduced"
+      ],
+      "validation": [
+        "Rose audit rerun: 50 reviewed pages, 31 feature groups; 18 partial, 11 not implemented, one reference-only, one implemented with differences",
+        "Full disposable PostgreSQL suite after reconciliation: 1559 passed, no skips, 16.25 seconds",
+        "compileall, Pyflakes and Node bridge syntax checks passed"
+      ],
+      "remaining": [
+        "Miss Rose source not re-fetched; host not in workspace allowlist",
+        "Docker build/live Telegram/voice/TypeTube/provider validation pending",
+        "Rose and all supplied reference feature parity remain incomplete",
+        "No production deployment or PR merge; normal branch push follows history reconciliation"
+      ]
     }
   ],
   "production_changes": false,

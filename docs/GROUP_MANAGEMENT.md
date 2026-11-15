@@ -1,3 +1,8 @@
+> **Historical architecture checkpoint:** consult [current Rose status](MISS_ROSE_STATUS.md)
+> and `group_management_review.json` for implemented behavior and remaining gaps.
+> Legacy mentions of trust or optional-runtime limitations below are historical;
+> `/trust` remains removed and current policy/gate tests govern runtime behavior.
+
 # Agent — group-management architecture audit
 
 ## Product contract
