@@ -38,6 +38,10 @@ from ...utils.rich import reply
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
+    required_credentials=("assistant_session",),
+    required_capabilities=("postgresql", "voice"),
     slug="music",
     name="Music · VC player",
     version="1.0.0",

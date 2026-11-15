@@ -33,7 +33,7 @@ def test_real_clone_build_registers_selected_plugin_and_mandatory_core(tmp_path,
         token=TOKEN_A,
         selected_plugins=(slug,),
         profile="tiny",
-        ai_api_key="clone-provider-key" if slug == "ai_agent" else None,
+        ai_api_key="sk-clone_provider_key_1234567890" if slug == "ai_agent" else None,
         ai_model="clone-model" if slug == "ai_agent" else None,
         storage_channel=-100111,
     )
@@ -221,13 +221,14 @@ def test_real_full_suite_worker_registers_all_features_without_parent_secrets(tm
     from agent.modules import music
     monkeypatch.setattr(bot_module, 'capability', lambda session: (True, ''))
     monkeypatch.setattr(music, 'capability', lambda session: (True, ''))
+    monkeypatch.setattr('agent.platform.voice.capability', lambda session: (True, ''))
     monkeypatch.setattr(assistant, 'validate_session', lambda session: None)
     ctx, _, _ = build(tmp_path)
     ctx.clones._settings = replace(ctx.settings, database_url='postgresql://test',
         ai_api_key='parent-secret', ai_model='parent-model', session_string='parent-session')
     record = Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A,
         selected_plugins=FULL_SUITE, storage_channel=-100123,
-        assistant_session='own-assistant', ai_api_key='own-provider', ai_model='own-model')
+        assistant_session='own-assistant', ai_api_key='sk-own_provider_key_1234567890', ai_model='own-model')
     settings = ctx.clones.settings_for(record)
     worker = _default_factory(settings)
     worker.build()
@@ -238,7 +239,7 @@ def test_real_full_suite_worker_registers_all_features_without_parent_secrets(tm
     assert set(GROUP_CORE) <= set(manifests)
     assert 'clone' not in manifests
     assert worker.settings.session_string == 'own-assistant'
-    assert worker.settings.ai_api_key == 'own-provider'
+    assert worker.settings.ai_api_key == 'sk-own_provider_key_1234567890'
     assert worker.settings.ai_model == 'own-model'
     assert worker.settings.db_scope == 'clone:111111111'
     assert worker.deeplinks._routes.get('archive') is not None
@@ -259,6 +260,7 @@ def test_full_suite_worker_postgres_lifecycle_and_restart(tmp_path, monkeypatch)
     monkeypatch.setattr(assistant, 'validate_session', lambda session: None)
     monkeypatch.setattr(bot_module, 'capability', lambda session: (True, ''))
     monkeypatch.setattr(music, 'capability', lambda session: (True, ''))
+    monkeypatch.setattr('agent.platform.voice.capability', lambda session: (True, ''))
 
     async def scenario():
         ctx, _, _ = build(tmp_path)
@@ -287,7 +289,7 @@ def test_full_suite_worker_postgres_lifecycle_and_restart(tmp_path, monkeypatch)
         bot_id = 800000000 + secrets.randbelow(90000000)
         record = Clone(bot_id=bot_id, owner_id=MEMBER, token=f'{bot_id}:private-test-token',
             selected_plugins=FULL_SUITE, storage_channel=-100123,
-            assistant_session='own-assistant', ai_api_key='own-provider', ai_model='own-model')
+            assistant_session='own-assistant', ai_api_key='sk-own_provider_key_1234567890', ai_model='own-model')
         manager._store.add(record)
         try:
             await manager.start(record)
@@ -301,7 +303,7 @@ def test_full_suite_worker_postgres_lifecycle_and_restart(tmp_path, monkeypatch)
             second = made[-1]
             assert second is not first
             assert second.database.get('fullsuite-state') == {'owner': MEMBER}
-            assert second.settings.ai_api_key == 'own-provider'
+            assert second.settings.ai_api_key == 'sk-own_provider_key_1234567890'
             assert second.settings.session_string == 'own-assistant'
             assert second.voice.connected and manager.is_running(bot_id)
         finally:

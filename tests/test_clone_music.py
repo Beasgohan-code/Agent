@@ -23,6 +23,7 @@ def ready(ctx, monkeypatch):
     ctx.clones._settings = ctx.settings
     ctx.db = SimpleNamespace(connected=True)
     monkeypatch.setattr(wizard_module, 'capability', lambda session: (True, ''))
+    monkeypatch.setattr('agent.platform.voice.capability', lambda session: (True, ''))
 
 
 def parser(monkeypatch, **overrides):
@@ -112,7 +113,7 @@ def test_music_session_is_never_written_as_plaintext(tmp_path):
 def test_music_settings_fail_without_private_session_or_postgres(tmp_path):
     ctx, _, _ = build(tmp_path)
     record = Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A, selected_plugins=('music',))
-    with pytest.raises(CloneError, match='PostgreSQL'):
+    with pytest.raises(CloneError, match='missing credentials|missing capabilities'):
         ctx.clones.settings_for(record)
 
 
@@ -212,7 +213,7 @@ def test_full_suite_guided_credentials_are_isolated_encrypted_and_started(tmp_pa
         await wizard.press(None, query(state), state.nonce + ':create')
         record = wizard.store.all()[0]
         settings = ctx.clones.settings_for(record)
-        assert settings.plugins == FULL_SUITE
+        assert settings.plugins == tuple(sorted(FULL_SUITE))
         assert settings.owner_id == MEMBER
         assert settings.session_string == SESSION
         assert settings.ai_api_key == key and settings.ai_model == 'chosen-model'
@@ -223,7 +224,7 @@ def test_full_suite_guided_credentials_are_isolated_encrypted_and_started(tmp_pa
         assert SESSION not in raw and key not in raw and TOKEN_A not in raw
         assert not state.assistant_session and not state.ai_api_key and not state.token
         restored = CloneStore(wizard.store.path.parent, box=wizard.store._box).get(record.bot_id)
-        assert restored.selected_plugins == FULL_SUITE
+        assert restored.selected_plugins == tuple(sorted(FULL_SUITE))
         assert restored.assistant_session == SESSION and restored.ai_api_key == key
         assert ctx.clones.is_running(record.bot_id)
         await ctx.clones.stop(record.bot_id)

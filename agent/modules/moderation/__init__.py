@@ -48,6 +48,8 @@ from .locks import COMMANDS as LOCK_COMMANDS, build as build_locks, enforce as e
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="moderation",
     name="Moderation",
     version="1.0.0",

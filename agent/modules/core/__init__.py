@@ -25,6 +25,8 @@ from ...utils.rich import reply
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=False,
     slug="core",
     name="Core extras",
     version="1.0.0",

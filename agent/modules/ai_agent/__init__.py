@@ -48,6 +48,9 @@ def answer_preview(raw, budget=2600):
 
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
+    required_credentials=("ai_api_key", "ai_model"),
     slug="ai_agent",
     name="AI Agent",
     version="1.0.0",

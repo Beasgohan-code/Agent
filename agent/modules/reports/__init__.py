@@ -30,6 +30,8 @@ from .queue import _args, _reason, _notify_owner
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="reports",
     name="Reports & appeals",
     version="1.0.0",

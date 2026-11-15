@@ -24,6 +24,8 @@ from ...utils.rich import reply
 from ...platform.attachments import CAPTION_KEY, MAX_CAPTION, THUMB_KEY, caption_for
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=False,
     slug="renamer",
     name="Renamer",
     version="1.0.0",

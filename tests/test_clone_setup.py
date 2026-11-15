@@ -315,7 +315,7 @@ def test_unreviewed_template_callback_cannot_select_feature(tmp_path, action):
 
 
 @pytest.mark.parametrize(
-    "selection", [("clone",), ("encoder", "leech"), ("filestore", "filestore")]
+    "selection", [("clone",), ("encoder", "unknown"), ("filestore", "ops")]
 )
 def test_persisted_unsupported_selection_fails_closed(tmp_path, selection):
     from agent.modules.clone.manager import CloneError
@@ -570,9 +570,9 @@ def test_guided_file_suite_requires_archive_and_preserves_all_selected_plugins(
         assert state.step == "confirm"
         await wizard.press(None, query(state), state.nonce + ":create")
         record = ctx.clones.current()[0]
-        assert record.selected_plugins == FILE_SUITE
+        assert record.selected_plugins == tuple(sorted(FILE_SUITE))
         assert record.storage_channel == -100100
-        assert ctx.clones.settings_for(record).plugins == FILE_SUITE
+        assert ctx.clones.settings_for(record).plugins == tuple(sorted(FILE_SUITE))
         assert selection_label(("filestore",)) == "FileStore"
         assert wizard.active(MEMBER) is None
 

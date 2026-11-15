@@ -23,6 +23,16 @@ class PluginManifest:
     #: "builtin" for the plugins shipped with the bot, "installed" for one that
     #: arrived through :mod:`agent.platform.installer` and was approved.
     origin: str = "builtin"
+    dependencies: tuple[str, ...] = ()
+    conflicts: tuple[str, ...] = ()
+    required_credentials: tuple[str, ...] = ()
+    required_capabilities: tuple[str, ...] = ()
+    # Unknown third-party metadata never opts into cloning implicitly.
+    clone_compatible: bool = False
+    group_compatible: bool = False
+    premium_required: bool = False
+    resource_requirements: dict[str, int] = field(default_factory=dict)
+    default_enabled: bool = True
 
 
 @dataclass
@@ -57,7 +67,8 @@ class PluginRegistry:
 
         for command in manifest.commands:
             self._command_owner[command] = manifest.slug
-        self._plugins[manifest.slug] = RegisteredPlugin(manifest=manifest, handlers=dict(handlers))
+        self._plugins[manifest.slug] = RegisteredPlugin(manifest=manifest, handlers=dict(handlers),
+                                                         enabled=manifest.default_enabled)
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -106,3 +117,9 @@ class PluginRegistry:
             for command, slug in self._command_owner.items()
             if self._plugins[slug].enabled
         )
+
+
+def resolve_selection(selected, *, manifests, **kwargs):
+    """Compatibility facade; the pure implementation lives in selection."""
+    from .selection import resolve_selection as resolve
+    return resolve(selected, manifests=manifests, **kwargs)

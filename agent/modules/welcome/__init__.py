@@ -19,6 +19,8 @@ from ...ui.tables import kv_table, panel
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="welcome",
     name="Welcome",
     version="1.0.0",

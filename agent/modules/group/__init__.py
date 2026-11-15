@@ -48,6 +48,8 @@ from ...utils.rich import reply
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="group",
     name="Group management",
     version="1.0.0",

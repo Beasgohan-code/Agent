@@ -26,6 +26,8 @@ from .options import USAGE, VideoOptions, parse_options, audio_options, screen_c
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=False,
+    clone_compatible=True,
     slug="encoder",
     name="Encoder",
     version="1.0.0",

@@ -20,6 +20,8 @@ __all__ = ["MANIFEST", "build", "render"]
 
 logger = logging.getLogger(__name__)
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="postmaker", name="Post maker", version="1.1.0",
     description="Compose and publish formatted posts from a per-chat template.",
     commands=("post",),

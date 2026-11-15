@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 LeechError = LinkError
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="leech",
     name="Leech",
     version="1.0.0",

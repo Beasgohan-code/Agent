@@ -25,6 +25,8 @@ from .limits import pitch, rows, until_text, usage_rows
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=False,
     slug="premium",
     name="Premium",
     version="1.0.0",

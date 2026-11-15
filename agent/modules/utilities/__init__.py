@@ -17,6 +17,8 @@ from ..moderation import is_moderator
 from ...utils.rich import reply
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=False,
     slug="utilities",
     name="Utilities",
     version="1.0.0",

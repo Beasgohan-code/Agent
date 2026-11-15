@@ -25,7 +25,7 @@ from dataclasses import replace
 from typing import Callable
 
 from . import lifecycle, profiles
-from .catalog import ALLOWED_PLUGINS, SUPPORTED_SELECTIONS
+from .catalog import validate_selection, plan_selection
 from .lifecycle import State, WorkerState
 from .store import Clone, CloneStore
 
@@ -63,25 +63,31 @@ class CloneManager:
         self._clock = time.monotonic
 
     # -- settings ---------------------------------------------------------
-    def settings_for(self, clone: Clone):
+    def settings_for(self, clone: Clone, *, premium=False):
         """The settings a clone runs with: its token, directories and profile.
 
         Optional features come from a guided selection or legacy profile;
         mandatory core is added by Agent's module selector. Credentials and
         resource destinations never fall through to the parent's values.
         """
-        if clone.selected_plugins and clone.selected_plugins not in SUPPORTED_SELECTIONS:
-            raise CloneError("The guided clone selection is unsupported. Restart setup.")
-        if "ai_agent" in clone.selected_plugins and (not clone.ai_api_key or not clone.ai_model):
-            raise CloneError("AI Agent requires this clone's own provider key and model.")
-        if "music" in clone.selected_plugins:
-            if not clone.assistant_session or not self._settings.database_url:
-                raise CloneError("Music requires its own assistant session and PostgreSQL.")
-            from .assistant import validate_session
+        selection = ()
+        if clone.selected_plugins:
+            from ...platform.selection import SelectionError
+            capabilities = {'postgresql'} if self._settings.database_url else set()
             try:
-                validate_session(clone.assistant_session)
-            except Exception:
-                raise CloneError("The assistant session is unsupported. Restart setup.") from None
+                planned = plan_selection(clone.selected_plugins)
+            except SelectionError as exc:
+                raise CloneError('Clone selection unsupported: ' + str(exc)) from None
+            if 'music' in planned:
+                from ...platform.voice import capability
+                if capability('dependency-check-only')[0]:
+                    capabilities.add('voice')
+            try:
+                selection = validate_selection(
+                    clone.selected_plugins, ai_api_key=clone.ai_api_key, ai_model=clone.ai_model,
+                    assistant_session=clone.assistant_session, capabilities=capabilities, premium=premium)
+            except SelectionError as exc:
+                raise CloneError('Clone selection unsupported: ' + str(exc)) from None
         return replace(
             self._settings,
             bot_token=clone.token,
@@ -94,15 +100,15 @@ class CloneManager:
             log_channel=clone.log_channel,
             storage_channel=clone.storage_channel,
             # Never share the deployment's user-session credential with clones.
-            session_string=clone.assistant_session if "music" in clone.selected_plugins else None,
-            ai_api_key=clone.ai_api_key if "ai_agent" in clone.selected_plugins else None,
-            ai_model=clone.ai_model if "ai_agent" in clone.selected_plugins else None,
+            session_string=clone.assistant_session if "music" in selection else None,
+            ai_api_key=clone.ai_api_key if "ai_agent" in selection else None,
+            ai_model=clone.ai_model if "ai_agent" in selection else None,
             health_port=None,
             # Its own rows in PostgreSQL. Without this every clone would write
             # the same ``runtime``/``premium``/``chats`` documents as the main
             # bot and the last writer would silently win.
             db_scope=f"clone:{clone.bot_id}",
-            plugins=tuple(name for name in clone.selected_plugins if name in ALLOWED_PLUGINS)
+            plugins=selection
             if clone.selected_plugins else profiles.plugins_for(clone.profile, self._settings),
         )
 
@@ -171,7 +177,8 @@ class CloneManager:
                 clone = current
             if automatic and clone.disabled:
                 raise CloneError("Disabled clones cannot be automatically restarted.")
-            if self.eligible is not None and not await self._eligible(clone.owner_id):
+            premium = await self._eligible(clone.owner_id) if self.eligible is not None else False
+            if self.eligible is not None and not premium:
                 raise CloneError("Clone owner no longer has bot premium eligibility.")
             if clone.bot_id in self._running:
                 return self._running[clone.bot_id][2]
@@ -179,7 +186,8 @@ class CloneManager:
             client = None
             self._states.move(clone.bot_id, State.VALIDATING)
             try:
-                bot = self._factory(self.settings_for(clone))
+                settings = self.settings_for(clone, premium=premium)
+                bot = self._factory(settings)
                 database = getattr(bot, "database", None)
                 if database is not None:
                     if not await database.connect():
@@ -204,7 +212,7 @@ class CloneManager:
                 if registry is not None and clone.selected_plugins:
                     manifests = {manifest.slug: manifest for manifest in registry.manifests()}
                     if any(slug not in manifests or not manifests[slug].commands
-                           or not registry.is_enabled(slug) for slug in clone.selected_plugins):
+                           or not registry.is_enabled(slug) for slug in settings.plugins):
                         raise CloneError("A selected clone plugin is unavailable.")
                 self._states.move(clone.bot_id, State.STARTING)
                 await client.start()
@@ -229,11 +237,13 @@ class CloneManager:
                 sync_commands = getattr(bot, "_sync_commands", None)
                 if sync_commands is not None:
                     await sync_commands(client, reset_button=True)
-                if "music" in clone.selected_plugins and (voice is None or not voice.connected):
+                if clone.selected_plugins and "music" in settings.plugins and (voice is None or not voice.connected):
                     raise CloneError("The Music assistant did not connect.")
             except (Exception, asyncio.CancelledError) as exc:  # noqa: BLE001 - the reason is the message
                 category = "UNAUTHORIZED" if "UNAUTHORIZED" in str(exc).upper() else type(exc).__name__
                 reason = f"Clone {clone.bot_id} could not start ({category})."
+                if isinstance(exc, CloneError) and str(exc).startswith('Clone selection unsupported:'):
+                    reason = str(exc)  # resolver emits only safe codes/slugs/field names
                 self._states.move(clone.bot_id, State.FAILED, error=reason)
                 logger.warning("clone %s failed to start (%s)", clone.bot_id, type(exc).__name__)
                 await self._cleanup_worker(bot, client)

@@ -31,6 +31,8 @@ from .store import Clone, CloneStore, parse_token
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=False,
+    clone_compatible=False,
     slug="clone",
     name="Clone",
     version="1.0.0",

@@ -40,6 +40,8 @@ from ..filestore.vault import MAX_BOT_DOWNLOAD, media_of, media_name, media_size
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=False,
+    clone_compatible=True,
     slug="linkshare",
     name="Linkshare",
     version="1.1.0",

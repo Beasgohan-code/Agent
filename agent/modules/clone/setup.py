@@ -10,10 +10,9 @@ from ...platform.commands import command_name
 import asyncio
 import html
 import secrets
-import re
 import time
 from weakref import WeakValueDictionary
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import aiohttp
 from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
@@ -21,7 +20,10 @@ from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup 
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply, edit
 from .store import Clone, parse_token
-from .catalog import TEMPLATES, TEMPLATE_PLUGINS
+from .manager import CloneError
+from .catalog import TEMPLATES, TEMPLATE_PLUGINS, plan_selection, selection_label
+from ...platform.credentials import validate_ai_key, validate_ai_model, CredentialError
+from ...platform.selection import SelectionError
 from .assistant import validate_session
 from ...platform.voice import capability
 
@@ -54,6 +56,7 @@ class Setup:
     log_channel: int | None = None
     storage_channel: int | None = None
     template: str = 'files'
+    selected_plugins: tuple[str, ...] | None = None
     ai_api_key: str = field(default='', repr=False)
     ai_model: str = ''
     assistant_session: str = field(default='', repr=False)
@@ -89,12 +92,37 @@ class CloneSetup:
         rows.append([Button('Cancel setup', callback_data=f'csetup:{state.nonce}:cancel')])
         return Keyboard(rows)
 
+    def plugins(self, state):
+        return state.selected_plugins if state.selected_plugins is not None else TEMPLATE_PLUGINS[state.template]
+
+    def select_plugins(self, state, requested):
+        """Edit a live draft only; validation precedes any mutation."""
+        if self.active(state.user_id) is not state or state.step == 'starting':
+            raise SetupError('Clone draft is no longer editable.')
+        selection = plan_selection(requested)
+        if not selection:
+            # Explicit group-core-only guided selection, not legacy profile fallback.
+            selection = ('moderation',)
+        state.selected_plugins = selection
+        if 'ai_agent' not in selection:
+            state.ai_api_key, state.ai_model = '', ''
+        if 'music' not in selection:
+            state.assistant_session = ''
+        return selection
+
+    def selection_keyboard(self, state):
+        selected = self.plugins(state)
+        options = [(('✓ ' if slug in selected else '+ ') + name, 'toggle:' + slug)
+                   for action, (slug, name, _) in TEMPLATES.items()
+                   if action not in ('moderation', 'file_suite', 'full_suite')]
+        return self.keyboard(state, options + [('Continue with selected plugins', 'apply')])
+
     def review(self, state):
         return panel('Clone review', icon=self.ctx.theme.emoji('diamond'),
             subtitle=f"{self.ctx.theme.emoji('shield')} Verify before creating · isolated bot setup",
             table=kv_table([
                 ('Bot', '@' + state.username if state.username else str(state.bot_id)),
-                ('Owner', str(state.user_id)), ('Plugin', TEMPLATES[state.template][1]),
+                ('Owner', str(state.user_id)), ('Plugins', selection_label(self.plugins(state))),
                 ('Log channel', str(state.log_channel) if state.log_channel else 'not configured'),
                 ('Archive channel', str(state.storage_channel) if state.storage_channel else 'not configured'),
                 ('Credentials', 'held privately for setup; never displayed'),
@@ -123,7 +151,7 @@ class CloneSetup:
         elif state.step == 'music_consent':
             options = [('I consent · continue', 'music_consent')]
         elif state.step == 'confirm':
-            options = [('Create clone', 'create')]
+            options = [('Edit plugins', 'edit_plugins'), ('Create clone', 'create')]
         body = self.review(state) if state.step == 'confirm' else panel(
             'Resume clone setup', icon=self.ctx.theme.emoji('bot'),
             table=kv_table([('Current step', state.step.replace('_', ' ')),
@@ -239,7 +267,7 @@ class CloneSetup:
                     except Exception:
                         raise SetupError('That session is unsupported. Use a production Telethon IPv4 StringSession on port 443; never send a phone number, password or OTP.') from None
                     state.assistant_session = text
-                    if 'ai_agent' in TEMPLATE_PLUGINS[state.template]:
+                    if 'ai_agent' in self.plugins(state):
                         state.step = 'ai_key'
                         await reply(message, 'Session structure accepted, not yet authorized. Account identity and exclusivity are checked at startup. Next send this clone’s own OpenAI API key; it will be encrypted. Messages are deleted best-effort, not guaranteed. No paid validation request is made.')
                     else:
@@ -252,13 +280,17 @@ class CloneSetup:
                         pass
                     if self.active(user_id) is not state or not await self.entitled(user_id):
                         return
-                    if not re.fullmatch(r'sk-[A-Za-z0-9_-]{16,250}', text):
+                    try:
+                        validate_ai_key(text)
+                    except CredentialError:
                         raise SetupError('Send an OpenAI API key beginning with sk-. It is not validated with a paid request.')
                     state.ai_api_key = text
                     state.step = 'ai_model'
                     await reply(message, 'Send the OpenAI model id to use. Compatibility and billing depend on your provider account. No test request is made during setup.')
                 elif state.step == 'ai_model':
-                    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}', text):
+                    try:
+                        validate_ai_model(text)
+                    except CredentialError:
                         raise SetupError('Send a model id of at most 128 letters, numbers or model-id punctuation, without spaces.')
                     state.ai_model = text
                     state.step = 'log'
@@ -286,16 +318,16 @@ class CloneSetup:
                             state.log_channel = channel
                         else:
                             state.storage_channel = channel
-                    if state.step == 'log' and TEMPLATES[state.template][2]:
+                    if state.step == 'log' and ('filestore' in self.plugins(state)):
                         state.step = 'storage'
                         await reply(message, 'Send the FileStore archive channel id. Add the clone bot as an administrator with permission to post. You must administer it too.')
                     else:
                         state.step = 'confirm'
                         await reply(message, self.review(state),
-                            reply_markup=self.keyboard(state, [('Create clone', 'create')]))
+                            reply_markup=self.keyboard(state, [('Edit plugins', 'edit_plugins'), ('Create clone', 'create')]))
                 else:
                     await reply(message, 'Use the buttons on the latest setup panel, or /cancel.')
-            except SetupError as exc:
+            except (SetupError, SelectionError, CloneError) as exc:
                 await reply(message, str(exc))
 
     async def press(self, client, query, rest):
@@ -324,14 +356,39 @@ class CloneSetup:
                        'Never send a phone number, password, recovery code or OTP. Use /cancel to stop.']))
             await query.answer()
             return
-        if action in TEMPLATES and state.step == 'plugin':
-            if 'music' in TEMPLATE_PLUGINS[action]:
+        if action == 'edit_plugins' and state.step == 'confirm':
+            state.step = 'plugin'
+            await edit(query, panel('Select clone plugins', lines=[
+                'Group Management is always included. Toggle optional plugins, then continue.',
+                'New selections recheck credentials and channels before creation.']),
+                reply_markup=self.selection_keyboard(state))
+            await query.answer()
+            return
+        if action.startswith('toggle:') and state.step == 'plugin':
+            slug = action.partition(':')[2]
+            choices = {value[0] for key, value in TEMPLATES.items()
+                       if key not in ('moderation', 'file_suite', 'full_suite')}
+            if slug not in choices:
+                await query.answer('Unsupported optional plugin.', show_alert=True)
+                return
+            selected = set(self.plugins(state))
+            selected.symmetric_difference_update({slug})
+            self.select_plugins(state, selected)
+            await edit(query, panel('Select clone plugins', lines=[
+                'Group Management is always included.', selection_label(self.plugins(state))]),
+                reply_markup=self.selection_keyboard(state))
+            await query.answer()
+            return
+        if (action in TEMPLATES or action == 'apply') and state.step == 'plugin':
+            if action in TEMPLATES:
+                self.select_plugins(state, TEMPLATE_PLUGINS[action])
+                state.template = action
+            if 'music' in self.plugins(state):
                 ok, _ = capability('dependency-check-only')
                 db = getattr(self.ctx, 'db', None)
                 if not ok or db is None or not db.connected or not self.ctx.settings.database_url:
                     await query.answer('Music setup requires connected PostgreSQL and installed voice dependencies. Do not send a session.', show_alert=True)
                     return
-                state.template = action
                 state.step = 'music_consent'
                 await edit(query, panel('Assistant account consent', icon=self.ctx.theme.emoji('shield'),
                     lines=['A session string grants access to a Telegram USER account, not just voice calls.',
@@ -342,8 +399,7 @@ class CloneSetup:
                     reply_markup=self.keyboard(state, [('I control this dedicated account — continue', 'music_consent')]))
                 await query.answer()
                 return
-            state.template = action
-            if 'ai_agent' in TEMPLATE_PLUGINS[action]:
+            if 'ai_agent' in self.plugins(state):
                 state.step = 'ai_key'
                 await edit(query, panel('Private AI credentials', icon=self.ctx.theme.emoji('gear'),
                     lines=['Send your own OpenAI API key here. It will be encrypted with TOKEN_KEY.',
@@ -369,6 +425,7 @@ class CloneSetup:
                 return
             # Revalidate identity immediately before persisting/starting.
             try:
+                snapshot = replace(state)
                 me = await self.api(state.token, 'getMe')
                 if me.get('id') != state.bot_id or me.get('is_bot') is not True or self.store.get(state.bot_id):
                     raise SetupError('Bot identity or availability changed. Restart setup.')
@@ -385,9 +442,18 @@ class CloneSetup:
                     return
                 if self.store.get(state.bot_id):
                     raise SetupError('That bot was added while setup was running. No duplicate was created.')
+                # Validation occurs before persistence; Premium was just rechecked.
+                candidate = Clone(bot_id=state.bot_id, owner_id=user_id, token=state.token,
+                    selected_plugins=self.plugins(state), ai_api_key=state.ai_api_key or None,
+                    ai_model=state.ai_model or None, assistant_session=state.assistant_session or None)
+                self.manager.settings_for(candidate, premium=True)
+                if not await self.entitled(user_id):
+                    raise SetupError('Clone Premium eligibility changed. No clone was created.')
+                if self.active(user_id) is not state or state != snapshot:
+                    raise SetupError('Clone draft changed during validation. Restart setup; no clone was created.')
                 state.step = 'starting'
                 record = Clone(bot_id=state.bot_id, owner_id=user_id, token=state.token,
-                    username=state.username, assistant_session=state.assistant_session or None, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=TEMPLATE_PLUGINS[state.template], managed_owner=True,
+                    username=state.username, assistant_session=state.assistant_session or None, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=self.plugins(state), managed_owner=True,
                     log_channel=state.log_channel, storage_channel=state.storage_channel)
                 await self.store.aadd(record, owner_limit=limit, total_limit=self.ctx.settings.clone_limit)
                 try:
@@ -401,9 +467,9 @@ class CloneSetup:
                 self.cancel(user_id)
                 await reply(query.message, panel('Clone ready', icon=self.ctx.theme.emoji('sparkles'),
                     lines=[f'Bot id: <code>{record.bot_id}</code>', f'Bot: @{html.escape(username or state.username)}',
-                           f'Owner: <code>{user_id}</code>', f'{TEMPLATES[state.template][1]} is configured. Manage it with /mybots.',
+                           f'Owner: <code>{user_id}</code>', f'{selection_label(self.plugins(state))} is configured. Manage it with /mybots.',
                            'Group use still requires approval and activation through /plugin and group /plugins.']))
-            except SetupError as exc:
+            except (SetupError, SelectionError, CloneError) as exc:
                 self.cancel(user_id)
                 await reply(query.message, str(exc))
             except Exception:

@@ -24,6 +24,8 @@ COMMANDS = (
     *ROLE_COMMANDS,
 )
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="federations",
     name="Federations",
     version="1.0.0",

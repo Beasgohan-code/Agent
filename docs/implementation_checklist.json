@@ -2341,6 +2341,87 @@
         "database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); pass s.get_uri() as AGENT_TEST_DATABASE_URL to subprocess; finally s.cleanup()"
       },
       "implementation_status": "No runtime implementation in this commit; tests intentionally leave suite red until next authorized implementation slice. Audit and proposed contracts only. No deploy, production env change, PR merge or destructive migration."
+    },
+    {
+      "id": "phase2-pure-plugin-resolver-and-reviewed-clone-selection",
+      "status": "completed",
+      "starting_commit": "f0f48100ac282d97ed1071c408c41ee43b00f926",
+      "preparation": [
+        "Verified current branch and exact starting commit; inspected existing JSON audit, all 20 builtin manifest objects, original six red contracts and current creation/start/restart/restore paths",
+        "Searched /home/user to depth 4 for SKILL.md, AGENTS.md, TDD/interface guidance; no matching guidance assets available. Applied explicit red/green tests, pure interface contracts, structured errors and no-IO resolver separation",
+        "New resolver tests first failed collection because module absent; original six red tests preserved unchanged. Pure resolver green before clone integration; initial combined run had 12 passes/4 remaining clone-validation failures"
+      ],
+      "sources": {
+        "manifest": "agent/platform/manifest.py:PluginManifest, PluginRegistry.register, resolve_selection compatibility facade",
+        "pure_resolver": "agent/platform/selection.py:SelectionError, catalogue, _ordered, resolve_selection",
+        "credentials": "agent/platform/credentials.py:CredentialError, validate_ai_key, validate_ai_model",
+        "reviewed_catalogue": "agent/modules/clone/catalog.py:plan_selection, validate_selection; explicit compatibility metadata in all 20 agent/modules/*/__init__.py manifests",
+        "setup": "agent/modules/clone/setup.py:Setup.selected_plugins, CloneSetup.select_plugins, selection_keyboard, review, press create preflight/snapshot check",
+        "startup_recovery": "agent/modules/clone/manager.py:settings_for, start, restore (existing restart/restore reuse start)"
+      },
+      "implemented": [
+        "Backward-compatible dependencies/conflicts/required_credentials/required_capabilities/clone_compatible/group_compatible/premium_required/resource_requirements/default_enabled fields; clone/group compatibility default deny and explicit builtin declarations; registry respects default_enabled",
+        "Pure resolver accepts supplied manifests only; normalizes/deduplicates requests, stable lexicographic DFS dependency order, validates duplicate slugs/unknown dependency or conflict/cycles/contradictions/malformed declarations, symmetric selected conflicts, explicit clone/group compatibility, required credentials/capabilities and Premium",
+        "SelectionError(ValueError) exposes code/plugin/fields and as_dict; no credential values retained in messages. Known AI credential names share pure format validators",
+        "Reviewed clone adapter validates mandatory GROUP_CORE without charging optional slots; injected core is supplied by existing module selector, not duplicated in optional stored set",
+        "Removed finite tuple-membership gate from runtime. SUPPORTED_SELECTIONS remains compatibility metadata, not authorization. Unknown/incompatible plugins never filtered out and started partially",
+        "Existing guided presets persist canonical combinations; existing review gains edit/toggle/continue callbacks within csetup namespace, not new commands. Required secret collection and channel checks use actual selection; unused draft AI/music secrets cleared on deselection",
+        "Creation validates before aadd, rechecks entitlement immediately before persistence, detects concurrent draft changes during awaited checks; start refreshes canonical persisted record and validates before factory/lease/client construction; recovery reuses it",
+        "Shared OpenAI key/model syntax validation and existing Telethon session structural validator; no remote key/model authorization claim; secret encryption path unchanged",
+        "Existing PostgreSQL authority, Premium-only ordinary create/start policy including Owner/sudo, clone scopes/leases, tenant namespaces, group approval/activation/three-slot limit and external execution refusal preserved"
+      ],
+      "tests": {
+        "original_red_contracts": "All 6 original tests in tests/test_plugin_selection_contract.py now pass without edits to that file",
+        "new_tests": [
+          "tests/test_selection_resolver.py",
+          "tests/test_clone_selection_foundation.py"
+        ],
+        "focused_command": ".venv/bin/python -m pytest -o addopts= -q tests/test_plugin_selection_contract.py tests/test_selection_resolver.py tests/test_clone_selection_foundation.py --tb=short",
+        "focused_result": "25 passed in 0.36s",
+        "full_command": "AGENT_TEST_DATABASE_URL=<disposable pgserver URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "full_database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); subprocess environment AGENT_TEST_DATABASE_URL=s.get_uri(); finally s.cleanup()",
+        "full_result": "1673 passed, no skips, 17.39s",
+        "static_command": ".venv/bin/python -m compileall -q agent tests tools start.py && .venv/bin/python -m pyflakes agent tests tools && git diff --check",
+        "coverage": [
+          "single/arbitrary/transitive/duplicate/unknown selection, symmetric conflicts and mandatory-core conflict, cycles and catalogue validation, stable order across request permutations",
+          "missing credentials/capabilities, malformed key/model, explicit clone/group compatibility and Premium requirements, default-disabled registration",
+          "canonical encrypted persistence/readback, malformed persisted selection refused on restore before factory, no record/worker mutation on validation failure",
+          "preset editing and actual guided arbitrary-combination creation, concurrent draft mutation refusal",
+          "existing PostgreSQL activation races, Premium authority, tenant isolation, worker startup/cleanup/lease and clone recovery suites included"
+        ],
+        "existing_test_adjustments": [
+          "Replaced obsolete reject-compatible-pair/reject-duplicate selection cases with genuinely invalid unknown/ops cases; new resolver tests explicitly assert compatible combinations and dedup",
+          "Suite persistence/settings assertions now expect canonical order; no features removed from suites",
+          "AI worker test dummy keys now meet the same format validation as real setup; fake voice-engine tests explicitly mock the new dependency capability observation",
+          "Music missing-requirement assertion checks structured failure rather than obsolete PostgreSQL prose"
+        ],
+        "intermediate_failures": "Initial full integration run: 41 failed/1628 passed; exposed accidental music-connectivity enforcement on legacy empty selections plus test diagnostic-field typo. Fixed code to preserve explicit-versus-legacy semantics and test to inspect WorkerState.last_error. Subsequent final full run passed.",
+        "property_testing": "No Hypothesis dependency declared; used itertools permutations rather than introducing a dependency."
+      },
+      "examples": {
+        "compatible": [
+          "encoder + postmaker",
+          "encoder + leech",
+          "duplicate filestore requests normalize to one entry"
+        ],
+        "incompatible": [
+          "encoder + ops (clone incompatible)",
+          "encoder + unknown (unknown plugin)",
+          "music without own assistant or voice/PostgreSQL capabilities",
+          "ai_agent with malformed/missing own provider key/model"
+        ],
+        "conflict_note": "No fabricated conflicts between compatible shipped plugins; synthetic declarations prove symmetric conflict rejection."
+      },
+      "remaining": [
+        "Resource requirements are typed metadata, not OS quotas; workers remain in-process, not sandboxed",
+        "Pure resolver consumes caller-supplied authority/capabilities; mandatory GROUP_CORE policy is supplied by reviewed clone adapter. It never activates group plugins or fetches entitlement itself",
+        "Only existing reviewed eight template features plus mandatory core are clone-compatible; renamer/utilities not newly approved in this slice",
+        "Empty persisted selection keeps legacy profile behavior; no data/schema migration or automatic rewrite. New guided core-only selection uses moderation sentinel rather than legacy empty tuple",
+        "Premium check and clone insertion/start remain separate transactions; revocation is not atomically coordinated with worker transition",
+        "AI key/model format validation supports existing fixed OpenAI configuration; no paid/provider verification or live Telegram validation performed",
+        "Per-clone applied revisions/profile rollback, durable cleanup replay, process isolation and dashboard redesign remain separate work",
+        "No external plugin execution, deployment, production environment/database changes, destructive migration or PR merge"
+      ]
     }
   ],
   "production_changes": false,

@@ -49,6 +49,8 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="security",
     name="Security & verification",
     version="1.0.0",

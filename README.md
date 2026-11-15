@@ -126,22 +126,25 @@ full per-group feature-data migration and external process isolation remain open
 
 ## Clones
 
-Send **`/clone` in private** to open Clone studio. This requires bot premium,
-sudo access or the bot Owner. `TOKEN_KEY` must be configured before credentials
+Send **`/clone` in private** to open Clone studio. Creation and ordinary starts require **Meiko Premium**,
+including for Owner and sudo users; Telegram Premium is unrelated. `TOKEN_KEY` must be configured before credentials
 are requested. Guided setup supports **Encoder, Moderation, Post maker,
-Linkshare, FileStore, Leech, Music and AI Agent**, one plugin at a
-time:
+Linkshare, FileStore, Leech, Music and AI Agent** in compatible combinations:
 
 1. Send a token from @BotFather. Agent checks `getMe` and the bot id; format alone
    is not accepted as identity. Secret messages are deleted best-effort.
-2. Choose a reviewed template with a button. Mandatory group core stays available.
+2. Choose a reviewed template or suite preset. On the review screen, **Edit plugins**
+   lets you add or remove individual optional plugins before confirmation. Mandatory
+   Group Management stays included. Selections are normalized and revalidated;
+   unknown/incompatible plugins are rejected, never silently dropped.
 3. For AI Agent, privately supply your own OpenAI key and model id first.
    No paid validation request is made; compatibility is checked on first use.
    Then send a log channel id, or `skip`.
 4. For FileStore, send the archive channel id. Both the operator and clone must be
    channel administrators; the clone needs posting permission. Rights are checked
    again before creation.
-5. Confirm creation. The signed-in setup user becomes the clone's Owner, in its
+5. Confirm creation. Identity, channel permissions, selection, credential syntax,
+   Premium and capacity are checked again. The signed-in setup user becomes the clone's Owner, in its
    own bot tenant—not an Owner of this deployment. Telegram does not reveal a
    bot's human owner from its token, so Agent does not pretend to fetch one.
 

@@ -28,6 +28,8 @@ from .vault import (
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="filestore",
     name="Filestore",
     version="1.0.0",

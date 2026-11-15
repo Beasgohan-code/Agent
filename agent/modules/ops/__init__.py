@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 PLUGIN_PREFIX = "plugin"
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=False,
     slug="ops",
     name="Operations",
     version="1.0.0",
