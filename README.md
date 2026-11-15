@@ -1,10 +1,3 @@
-> **Current Meiko work:** see [Miss Rose status](docs/MISS_ROSE_STATUS.md),
-> [source workflow checklist](docs/implementation_checklist.json), and
-> [TypeTube installation/limitations](tools/typetube/README.md). The documentation
-> below contains historical checkpoints; it is not a claim of full source parity.
-> `/panel` is the private clone controller. Full Meiko suite is a reviewed
-> combined AgentBot template, not a separate bot framework.
-
 # Agent
 
 A professional Telegram group-management bot with mandatory moderation and

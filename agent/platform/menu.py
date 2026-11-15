@@ -50,6 +50,10 @@ DESCRIPTIONS: dict[str, str] = {
     "delclone": "Delete one of your clones",
     "clonestats": "Clone counts (owner)",
     # moderation
+    "lock": "Delete selected non-admin content types",
+    "unlock": "Stop deleting selected content types",
+    "locks": "View content lock settings",
+    "locktypes": "List supported content lock types",
     "warn": "Warn a member",
     "warnings": "List a member's warnings",
     "warns": "Alias of /warnings",
@@ -264,7 +268,7 @@ DESCRIPTIONS: dict[str, str] = {
 #: Commands that only make sense inside a group.
 GROUP_ONLY = frozenset(
     {
-        "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
+        "lock", "unlock", "locks", "locktypes", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "settings", "rules", "setrules", "pin", "unpin",
         "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror", "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "admins", "warnlimit", "resetwarns", "lockdown",

@@ -1,0 +1,111 @@
+import asyncio
+from types import SimpleNamespace as NS
+from unittest.mock import AsyncMock
+import test_moderation as fixtures
+from agent.modules.moderation import locks
+from agent.modules import moderation
+
+
+def test_locks_multitype_persistence_and_input_permissions(tmp_path):
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        commands = moderation.build(ctx)[1]
+        denied = fixtures.FakeMessage('/lock gif video')
+        await commands['lock'](fixtures.FakeClient(caller=fixtures.MEMBER), denied)
+        assert locks.read(ctx, denied.chat.id) == set()
+        await commands['lock'](fixtures.FakeClient(), fixtures.FakeMessage('/lock gif video sticker'))
+        assert locks.read(ctx, denied.chat.id) == {'gif','video','sticker'}
+        await commands['unlock'](fixtures.FakeClient(), fixtures.FakeMessage('/unlock video'))
+        assert locks.read(ctx, denied.chat.id) == {'gif','sticker'}
+        await commands['lock'](fixtures.FakeClient(), fixtures.FakeMessage('/lock photo unsupported'))
+        assert locks.read(ctx, denied.chat.id) == {'gif','sticker'}
+        ctx.db = NS(connected=True, flush=AsyncMock(return_value=0))
+        failed = fixtures.FakeMessage('/lock photo')
+        await commands['lock'](fixtures.FakeClient(), failed)
+        assert 'not confirmed' in failed.replies[-1]
+        assert locks.read(ctx, failed.chat.id) == {'gif','sticker'}
+        ctx.db.connected = False
+        await commands['unlock'](fixtures.FakeClient(), fixtures.FakeMessage('/unlock all'))
+        ctx.db = None
+        assert locks.read(ctx, failed.chat.id) == {'gif','sticker'}
+    asyncio.run(scenario())
+
+
+def test_lock_enforcement_admin_exemption_bot_rights_and_blocklist_precedence(tmp_path, monkeypatch):
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        ctx.chats.put(-100500, locks.KEY, ['gif'])
+        message = fixtures.FakeMessage('')
+        message.animation = NS(file_id='animation')
+        client = fixtures.FakeClient()
+        client.get_me = AsyncMock(return_value=NS(id=99))
+        async def member(chat, uid):
+            return fixtures.member(fixtures.ADMIN if uid == 99 else fixtures.MEMBER)
+        client.get_chat_member = AsyncMock(side_effect=member)
+        client.delete_messages = AsyncMock(return_value=True)
+        assert await locks.enforce(ctx, client, message)
+        client.delete_messages.assert_awaited_once_with(-100500, message.id)
+        client.delete_messages.reset_mock()
+        blocklist = AsyncMock(return_value=False)
+        monkeypatch.setattr(moderation, 'enforce_blocklist', blocklist)
+        monkeypatch.setattr(moderation, 'clean_service', AsyncMock(return_value=False))
+        await moderation.watch(ctx)(client, message)
+        blocklist.assert_not_awaited()
+        client.get_chat_member.side_effect = None
+        client.get_chat_member.return_value = fixtures.member(fixtures.ADMIN)
+        client.delete_messages.reset_mock()
+        assert not await locks.enforce(ctx, client, message)
+        client.delete_messages.assert_not_awaited()
+        client.get_chat_member.side_effect = member
+        client.delete_messages.side_effect = RuntimeError('secret API details')
+        assert await locks.enforce(ctx, client, message)
+        assert not message.replies
+    asyncio.run(scenario())
+
+
+def test_lock_state_is_group_scoped_and_all_means_supported_types_only(tmp_path):
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        commands = locks.build(ctx)
+        await commands['lock'](fixtures.FakeClient(), fixtures.FakeMessage('/lock all'))
+        assert locks.read(ctx, -100500) == set(locks.TYPES)
+        assert locks.read(ctx, -100501) == set()
+        await commands['unlock'](fixtures.FakeClient(), fixtures.FakeMessage('/unlock all'))
+        assert locks.read(ctx, -100500) == set()
+    asyncio.run(scenario())
+
+
+def test_locks_persist_in_existing_postgres_chat_store_and_isolate_clone(tmp_path):
+    import os
+    import uuid
+    import pytest
+    from agent.platform.db import Database
+    from agent.platform.chats import ChatStore
+    if not os.environ.get('AGENT_TEST_DATABASE_URL'):
+        pytest.skip('PostgreSQL required')
+    async def scenario():
+        scope = 'locks-test:' + uuid.uuid4().hex
+        dbs = [Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=value, required=True)
+               for value in (scope, scope, scope + ':clone')]
+        try:
+            first = dbs[0]
+            assert await first.connect()
+            await first.load()
+            ctx = fixtures.ctx.__wrapped__(tmp_path)
+            ctx.db = first
+            ctx.chats = ChatStore(tmp_path / 'first', db=first)
+            await locks.build(ctx)['lock'](fixtures.FakeClient(), fixtures.FakeMessage('/lock gif sticker'))
+            assert locks.read(ctx, -100500) == {'gif','sticker'}
+            for index, db in enumerate(dbs[1:], 1):
+                assert await db.connect()
+                await db.load()
+                other = NS(db=db, chats=ChatStore(tmp_path / str(index), db=db))
+                assert locks.read(other, -100500) == ({'gif','sticker'} if index == 1 else set())
+                assert locks.read(other, -100501) == set()
+        finally:
+            if dbs[0].connected:
+                async with dbs[0]._pool.acquire() as conn:
+                    await conn.execute('DELETE FROM agent_documents WHERE name LIKE $1', scope + ':%')
+            for db in dbs:
+                await db.close()
+    asyncio.run(scenario())

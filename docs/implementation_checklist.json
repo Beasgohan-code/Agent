@@ -977,6 +977,29 @@
         "Rose and all supplied reference feature parity remain incomplete",
         "No production deployment or PR merge; normal branch push follows history reconciliation"
       ]
+    },
+    {
+      "id": "rose-typed-content-locks-runtime",
+      "status": "completed",
+      "source": "https://missrose.org/docs/anti-spam/locks/ fetched and read this turn",
+      "implemented": [
+        "Deleted unwanted docs/MISS_ROSE_STATUS.md and removed its README/architecture-document additions; no replacement Markdown created",
+        "Actual lock/unlock/locks/locktypes commands integrated into mandatory moderation and clone group core",
+        "Sixteen explicitly supported native content types, multiple types per request and supported-types-only all; unsupported syntax refused before changes",
+        "Actual message watcher enforces matching locks before blocklists; Telegram admins exempt; bot delete permission checked",
+        "Existing tenant/group ChatStore reused with awaited DB flush, same-process mutation/read serialization and failed-write cache restoration; no schema migration"
+      ],
+      "validation": [
+        "Tests cover admin refusal, multi-type add/remove, unknown type atomic refusal, zero flush/offline refusal, all behavior, group isolation, native media deletion, admin exemption, deletion failure and precedence",
+        "Actual disposable PostgreSQL test verifies persisted settings hydrate into another store with same tenant and do not cross clone/group scopes",
+        "Full disposable PostgreSQL suite: 1563 passed, no skips, 15.27 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Partial Rose locks only: additional types, allowlists, lock warnings/custom actions and approved-user semantics not implemented",
+        "No new enforcement action-claim/audit SQL tables; multi-process revision transactions not implemented",
+        "No live Telegram deletion validation; no deployment or PR merge"
+      ]
     }
   ],
   "production_changes": false,

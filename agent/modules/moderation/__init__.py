@@ -43,6 +43,8 @@ from ...platform.manifest import PluginManifest
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
 
+from .locks import COMMANDS as LOCK_COMMANDS, build as build_locks, enforce as enforce_locks
+
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
@@ -52,7 +54,7 @@ MANIFEST = PluginManifest(
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *BLOCKLIST_COMMANDS, "cleanservice", "cleancommand", "keepcommand",
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *LOCK_COMMANDS, *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *BLOCKLIST_COMMANDS, "cleanservice", "cleancommand", "keepcommand",
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -357,6 +359,8 @@ def watch(ctx):
             chat = getattr(message, "chat", None)
             user = getattr(message, "from_user", None)
             if await clean_service(ctx, client, message):
+                return
+            if await enforce_locks(ctx, client, message):
                 return
             if await enforce_blocklist(ctx, client, message):
                 return
@@ -837,6 +841,7 @@ def build(ctx):
         return guarded
 
     return MANIFEST, {
+        **build_locks(ctx),
         **build_antiflood(ctx),
         **build_restrictions(ctx),
         **build_blocklists(ctx),

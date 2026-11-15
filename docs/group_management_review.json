@@ -207,15 +207,21 @@
         "https://missrose.org/docs/anti-spam/locks/"
       ],
       "source_text_reviewed": true,
-      "assessment": "not_implemented",
+      "assessment": "partial",
       "code": [
-        "agent/modules/group/__init__.py"
+        "agent/modules/moderation/locks.py",
+        "agent/modules/moderation/__init__.py"
       ],
       "tests": [
-        "tests/test_group.py"
+        "tests/test_content_locks.py"
       ],
-      "implemented_commands": [],
-      "differences_and_remaining": "Existing lockdown and link/invite switches are not typed content locks. Lock types, precedence, per-type actions and allowlists remain absent."
+      "implemented_commands": [
+        "lock",
+        "unlock",
+        "locks",
+        "locktypes"
+      ],
+      "differences_and_remaining": "Typed native-message deletion locks now run before blocklists, exempt Telegram admins, verify bot delete rights and use existing tenant/group ChatStore with confirmed PostgreSQL flush. Supports audio/contact/document/gif/location/photo/poll/sticker/video/videonote/voice/game/emojigame/album/inline/text; all means only this explicit set. Multi-type changes validate before mutation; failure restores prior cached policy. No schema migration. Remaining: other Rose types, entity/url/invite matching, warn/custom modes, reasons, allowlists, approved-user semantics, durable enforcement claim/audit tables and cross-process settings revision transactions. Existing optional antiflood watcher remains independent; this is not full Rose precedence across all protection systems. No live Telegram validation."
     },
     {
       "feature": "antiraid",
