@@ -7,7 +7,7 @@ punishments, allowlists, join/reaction events or warning escalation are implied.
 import asyncio
 import logging
 from weakref import WeakValueDictionary
-from pyrogram.enums import ChatType, ChatMemberStatus
+from pyrogram.enums import ChatType, ChatMemberStatus, MessageEntityType as Entity
 from ...ui.tables import panel, Table
 from ...utils.rich import reply
 
@@ -20,6 +20,32 @@ TYPES = {
     'emojigame': 'dice', 'album': 'media_group_id', 'inline': 'via_bot',
     'text': 'text',
 }
+ENTITY_LOCKS = {
+    'url': (Entity.URL, Entity.TEXT_LINK),
+    'email': (Entity.EMAIL,),
+    'phone': (Entity.PHONE_NUMBER,),
+    'spoiler': (Entity.SPOILER,),
+    'cashtag': (Entity.CASHTAG,),
+    'emojicustom': (Entity.CUSTOM_EMOJI,),
+    'command': (Entity.BOT_COMMAND,),
+}
+TYPES.update({kind: None for kind in ENTITY_LOCKS})
+TYPES.update({'forward': None, 'stickeranimated': None, 'stickerpremium': None})
+
+
+def matches(message, kind):
+    if kind in ENTITY_LOCKS:
+        entities = list(getattr(message, 'entities', None) or []) + list(getattr(message, 'caption_entities', None) or [])
+        return any(getattr(entity, 'type', None) in ENTITY_LOCKS[kind] for entity in entities)
+    if kind == 'forward':
+        return any(getattr(message, field, None) is not None for field in (
+            'forward_origin', 'forward_date', 'forward_from', 'forward_from_chat', 'forward_sender_name'))
+    if kind in ('stickeranimated', 'stickerpremium'):
+        sticker = getattr(message, 'sticker', None)
+        return bool(sticker and getattr(sticker, 'is_animated' if kind == 'stickeranimated' else 'premium_animation', None))
+    return bool(getattr(message, TYPES[kind], None))
+
+
 KEY = 'typed_content_locks'
 _LOCKS = WeakValueDictionary()
 logger = logging.getLogger(__name__)
@@ -95,7 +121,7 @@ async def enforce(ctx, client, message):
             kinds = read(ctx, chat.id)
         except ValueError:
             return False
-    if not any(getattr(message, TYPES[kind], None) for kind in kinds):
+    if not any(matches(message, kind) for kind in kinds):
         return False
     try:
         member = await client.get_chat_member(chat.id, user.id)

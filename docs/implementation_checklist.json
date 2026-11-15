@@ -1000,6 +1000,29 @@
         "No new enforcement action-claim/audit SQL tables; multi-process revision transactions not implemented",
         "No live Telegram deletion validation; no deployment or PR merge"
       ]
+    },
+    {
+      "id": "rose-entity-forward-sticker-locks",
+      "status": "completed",
+      "source": "Previously fetched https://missrose.org/docs/anti-spam/locks/ actual lock-type definitions",
+      "implemented": [
+        "Extended actual content locks from 16 to 26 supported types",
+        "URL covers Telegram URL and hidden TEXT_LINK entities; email/phone/spoiler/cashtag/custom emoji/command use explicit Telegram entities in text or captions",
+        "Forward detection supports legacy forwarding fields and forward_origin; animated/premium sticker subtypes use Telegram metadata",
+        "No broad regex/text heuristics for URL/email/phone; admin exemption, confirmed settings persistence and locks-before-blocklists retained"
+      ],
+      "validation": [
+        "Entity-kind matrix checks text/caption metadata and unrelated entity nonmatches",
+        "Forward/sticker subtype tests reject unrelated reply/static/nonpremium messages",
+        "Actual watcher test deletes hidden-link caption before blocklist handler",
+        "Full disposable PostgreSQL suite: 1566 passed, no skips, 15.77 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Invite links, allowlists, lock warnings/custom modes and other Rose event types pending",
+        "No live Telegram validation or production deployment",
+        "No new Markdown files created"
+      ]
     }
   ],
   "production_changes": false,

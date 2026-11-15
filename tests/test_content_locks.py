@@ -109,3 +109,51 @@ def test_locks_persist_in_existing_postgres_chat_store_and_isolate_clone(tmp_pat
             for db in dbs:
                 await db.close()
     asyncio.run(scenario())
+
+
+def test_entity_locks_handle_captions_and_hidden_links_without_text_heuristics():
+    from pyrogram.enums import MessageEntityType as E
+    for kind, entity in [('url', E.URL), ('url', E.TEXT_LINK), ('email', E.EMAIL),
+                         ('phone', E.PHONE_NUMBER), ('spoiler', E.SPOILER),
+                         ('cashtag', E.CASHTAG), ('emojicustom', E.CUSTOM_EMOJI), ('command', E.BOT_COMMAND)]:
+        message = NS(text='not a URL', entities=[NS(type=entity)], caption_entities=[])
+        assert locks.matches(message, kind)
+        message.entities = []
+        message.caption_entities = [NS(type=entity)]
+        assert locks.matches(message, kind)
+        message.caption_entities = [NS(type=E.BOLD)]
+        assert not locks.matches(message, kind)
+    assert not locks.matches(NS(text='https://example.test @user 12345'), 'url')
+
+
+def test_forward_and_sticker_subtype_locks_do_not_delete_unrelated_types():
+    assert locks.matches(NS(forward_from=NS(id=11)), 'forward')
+    assert locks.matches(NS(forward_origin=NS()), 'forward')
+    assert not locks.matches(NS(reply_to_message=NS()), 'forward')
+    assert locks.matches(NS(sticker=NS(is_animated=True)), 'stickeranimated')
+    assert not locks.matches(NS(sticker=NS(is_animated=False)), 'stickeranimated')
+    assert locks.matches(NS(sticker=NS(premium_animation=NS(file_id='premium'))), 'stickerpremium')
+    assert not locks.matches(NS(sticker=NS()), 'stickerpremium')
+
+
+def test_url_caption_lock_is_enforced_before_blocklists(tmp_path, monkeypatch):
+    from pyrogram.enums import MessageEntityType as E
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        ctx.chats.put(-100500, locks.KEY, ['url'])
+        message = fixtures.FakeMessage('')
+        message.caption = 'click here'
+        message.caption_entities = [NS(type=E.TEXT_LINK, url='https://example.test')]
+        client = fixtures.FakeClient()
+        client.get_me = AsyncMock(return_value=NS(id=99))
+        async def member(chat, uid):
+            return fixtures.member(fixtures.ADMIN if uid == 99 else fixtures.MEMBER)
+        client.get_chat_member = AsyncMock(side_effect=member)
+        client.delete_messages = AsyncMock(return_value=True)
+        blocklist = AsyncMock(return_value=False)
+        monkeypatch.setattr(moderation, 'enforce_blocklist', blocklist)
+        monkeypatch.setattr(moderation, 'clean_service', AsyncMock(return_value=False))
+        await moderation.watch(ctx)(client, message)
+        client.delete_messages.assert_awaited_once_with(-100500, message.id)
+        blocklist.assert_not_awaited()
+    asyncio.run(scenario())
