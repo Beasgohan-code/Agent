@@ -1793,6 +1793,554 @@
         "No new status Markdown",
         "No deployment, environment change, destructive migration, user-data deletion or PR merge"
       ]
+    },
+    {
+      "id": "plugin-platform-source-schema-reference-audit-and-red-contracts",
+      "status": "audit_complete_for_requested_catalogue_selection_slice_implementation_not_started",
+      "audited_agent_commit": "c237631439c1b203f812c2a73cf6ccc7c3dd4230",
+      "scope_note": "Finishes source/schema/Videl1 review for the requested selection and lifecycle boundaries, not a security certification of every upstream repository or proof that the nine-phase rework exists. No production code modified.",
+      "selected_plugins_literal_read_write_inventory": [
+        {
+          "source": "agent/modules/clone/__init__.py:L128",
+          "expression": "selection_label(clone.selected_plugins) if clone.selected_plugins else profiles.label(clone.profile),"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L187",
+          "expression": "current = None if clone.selected_plugins else profiles.clean(clone.profile)"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L188",
+          "expression": "active_label = selection_label(clone.selected_plugins) if clone.selected_plugins else profiles.label(current)"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L189",
+          "expression": "active_size = \"guided selection + group core\" if clone.selected_plugins else profiles.summary(current, ctx.settings)"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L477",
+          "expression": "if target.selected_plugins and action == \"p\":"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L479",
+          "expression": "table=kv_table([(\"Current features\", selection_label(target.selected_plugins)),"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L488",
+          "expression": "await store.aupdate(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None)"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L550",
+          "expression": "features = selection_label(target.selected_plugins) if target.selected_plugins else profiles.describe(target.profile)"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L73",
+          "expression": "if clone.selected_plugins and clone.selected_plugins not in SUPPORTED_SELECTIONS:"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L75",
+          "expression": "if \"ai_agent\" in clone.selected_plugins and (not clone.ai_api_key or not clone.ai_model):"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L77",
+          "expression": "if \"music\" in clone.selected_plugins:"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L97",
+          "expression": "session_string=clone.assistant_session if \"music\" in clone.selected_plugins else None,"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L98",
+          "expression": "ai_api_key=clone.ai_api_key if \"ai_agent\" in clone.selected_plugins else None,"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L99",
+          "expression": "ai_model=clone.ai_model if \"ai_agent\" in clone.selected_plugins else None,"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L105",
+          "expression": "plugins=tuple(name for name in clone.selected_plugins if name in ALLOWED_PLUGINS)"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L106",
+          "expression": "if clone.selected_plugins else profiles.plugins_for(clone.profile, self._settings),"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L139",
+          "expression": "return \"custom\" if clone and clone.selected_plugins else profiles.clean(getattr(clone, \"profile\", None))"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L204",
+          "expression": "if registry is not None and clone.selected_plugins:"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L207",
+          "expression": "or not registry.is_enabled(slug) for slug in clone.selected_plugins):"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L232",
+          "expression": "if \"music\" in clone.selected_plugins and (voice is None or not voice.connected):"
+        },
+        {
+          "source": "agent/modules/clone/setup.py:L390",
+          "expression": "username=state.username, assistant_session=state.assistant_session or None, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=TEMPLATE_PLUGINS[state.template], managed_owner=True,"
+        },
+        {
+          "source": "agent/modules/clone/store.py:L70",
+          "expression": "selected_plugins: tuple[str, ...] = ()"
+        },
+        {
+          "source": "agent/modules/clone/store.py:L172",
+          "expression": "selected_plugins=tuple(entry.get(\"selected_plugins\") or ()),"
+        },
+        {
+          "source": "agent/modules/clone/store.py:L275",
+          "expression": "\"selected_plugins\","
+        }
+      ],
+      "selection_flow": [
+        {
+          "finding": "Clone dataclass field defaults to empty tuple. as_json uses dataclasses.asdict; _payload encrypts secrets but leaves selected_plugins in the serialized record; JSON converts tuple to list; _decode restores tuple without semantic selection validation.",
+          "sources": [
+            "agent/modules/clone/store.py:L55-L93",
+            "agent/modules/clone/store.py:L124-L204"
+          ]
+        },
+        {
+          "finding": "Guided setup chooses TEMPLATES action, not editable arbitrary set. On confirmation, getMe and channel permissions are rechecked then TEMPLATE_PLUGINS is copied into Clone and aadd awaited. Failed/cancelled initial startup attempts aremove; this compensating deletion is not one transaction with startup. A kill between persistence/start/compensation can leave an incomplete record.",
+          "sources": [
+            "agent/modules/clone/catalog.py:L3-L44",
+            "agent/modules/clone/setup.py:L301-L413"
+          ]
+        },
+        {
+          "finding": "settings_for rejects nonempty tuples absent from SUPPORTED_SELECTIONS, so ordering and duplicates can reject semantically equivalent sets. Empty means legacy profile, not explicit custom selection with zero optionals. Music checks structural session and PostgreSQL; AI checks nonempty key/model, not setup syntax. Credential validity must not be equated with remote authorization.",
+          "sources": [
+            "agent/modules/clone/manager.py:L66-L106",
+            "agent/modules/clone/profiles.py:L35-L66"
+          ]
+        },
+        {
+          "finding": "Startup refreshes authoritative record, derives own settings, builds and checks each selected plugin registered commands/enabled. start, restart, restore and automatic recovery reuse settings_for. Profile display is custom when tuple nonempty. Supervisor compares token/owner but not selected plugins/config revision on connected workers.",
+          "sources": [
+            "agent/modules/clone/manager.py:L133-L144",
+            "agent/modules/clone/manager.py:L160-L265",
+            "agent/modules/clone/manager.py:L328-L330",
+            "agent/modules/clone/manager.py:L365-L499"
+          ]
+        },
+        {
+          "finding": "mybots/list/detail consume selected_plugins for labels. Confirmed legacy profile replacement clears tuple and AI/music credentials before restart; failure does not roll back configuration. Delete stops then removes entire registry record, including tuple; no clone data-directory or tenant document purge in these handlers.",
+          "sources": [
+            "agent/modules/clone/__init__.py:L107-L139",
+            "agent/modules/clone/__init__.py:L185-L237",
+            "agent/modules/clone/__init__.py:L405-L425",
+            "agent/modules/clone/__init__.py:L462-L507",
+            "agent/modules/clone/__init__.py:L550-L599"
+          ]
+        },
+        {
+          "finding": "Generic mutation entry points: aupdate permits selected_plugins and secret fields; update sets any existing attribute locally and persists with rollback on save error. These do not invoke a dependency resolver. Runtime enable/disable operates a worker registry, not Clone.selected_plugins.",
+          "sources": [
+            "agent/modules/clone/store.py:L216-L332",
+            "agent/modules/clone/store.py:L371-L411",
+            "agent/platform/runtime.py:L119-L177"
+          ]
+        }
+      ],
+      "manifest_inventory": [
+        {
+          "slug": "ops",
+          "source": "agent/modules/ops/__init__.py:L38",
+          "scope": "all",
+          "permissions": [
+            "process.control",
+            "plugins.manage",
+            "files.write"
+          ],
+          "config_schema": {},
+          "gaps": "Process control, file IO and plugin management; metadata is descriptive, not OS capability enforcement."
+        },
+        {
+          "slug": "core",
+          "source": "agent/modules/core/__init__.py:L27",
+          "scope": "all",
+          "permissions": [
+            "messages.read"
+          ],
+          "config_schema": {},
+          "gaps": "Shell/navigation; available regardless of optional selection."
+        },
+        {
+          "slug": "ai_agent",
+          "source": "agent/modules/ai_agent/__init__.py:L50",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "network"
+          ],
+          "config_schema": {
+            "AI_API_KEY": "secret; deployment environment only",
+            "AI_MODEL": "required model id"
+          },
+          "gaps": "AI key/model are prose config_schema entries, not typed validation; network credential syntax enforced by setup but not settings_for. Provider authorization/billing unverified."
+        },
+        {
+          "slug": "clone",
+          "source": "agent/modules/clone/__init__.py:L33",
+          "scope": "private",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "process.spawn"
+          ],
+          "config_schema": {},
+          "gaps": "Token encryption key, PostgreSQL, Telegram identity/channel verification and Premium authority requirements are not manifest fields. process.spawn describes intent; workers are in-process."
+        },
+        {
+          "slug": "encoder",
+          "source": "agent/modules/encoder/__init__.py:L28",
+          "scope": "private",
+          "permissions": [
+            "messages.read",
+            "files.write",
+            "process.spawn"
+          ],
+          "config_schema": {},
+          "gaps": "ffmpeg resolution at __init__.py:64-75 and job/process/disk needs are not typed prerequisites/resource budgets."
+        },
+        {
+          "slug": "filestore",
+          "source": "agent/modules/filestore/__init__.py:L30",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "storage.read",
+            "storage.write"
+          ],
+          "config_schema": {},
+          "gaps": "Shared storage/archive channel setup requirements are not manifest requirements; local versus durable remote storage must remain distinct."
+        },
+        {
+          "slug": "filters",
+          "source": "agent/modules/filters/__init__.py:L26",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Group message watcher and shared filter store; no typed service/dependency/resource declaration."
+        },
+        {
+          "slug": "federations",
+          "source": "agent/modules/federations/__init__.py:L26",
+          "scope": "all",
+          "permissions": [],
+          "config_schema": {},
+          "gaps": "Empty permissions tuple despite federation/group operations; needs operation-level permission inventory, not a fabricated claim of no permissions."
+        },
+        {
+          "slug": "group",
+          "source": "agent/modules/group/__init__.py:L50",
+          "scope": "group",
+          "permissions": [
+            "chats.read",
+            "chats.restrict",
+            "chats.pin",
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Group administration and shared services; command scope is plugin-wide, not per-handler metadata."
+        },
+        {
+          "slug": "leech",
+          "source": "agent/modules/leech/__init__.py:L37",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "storage.write",
+            "http.outbound"
+          ],
+          "config_schema": {},
+          "gaps": "Binary resolution at __init__.py:54-64; outbound requests, subprocess paths, temporary disk and jobs not fully expressed by current permissions."
+        },
+        {
+          "slug": "linkshare",
+          "source": "agent/modules/linkshare/__init__.py:L42",
+          "scope": "private",
+          "permissions": [
+            "messages.read",
+            "storage.read",
+            "storage.write"
+          ],
+          "config_schema": {},
+          "gaps": "Storage, link-signing and delivery dependencies are implicit shared services, not necessarily other plugin dependencies."
+        },
+        {
+          "slug": "moderation",
+          "source": "agent/modules/moderation/__init__.py:L50",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.delete",
+            "chats.restrict",
+            "chats.ban"
+          ],
+          "config_schema": {},
+          "gaps": "Mandatory core with delete/restrict/ban; no typed resource/config prerequisites."
+        },
+        {
+          "slug": "music",
+          "source": "agent/modules/music/__init__.py:L40",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "voice.stream"
+          ],
+          "config_schema": {},
+          "gaps": "capability check at __init__.py:72, assistant session/voice libraries and PostgreSQL assistant exclusivity are not in manifest. Runtime authorization still required."
+        },
+        {
+          "slug": "postmaker",
+          "source": "agent/modules/postmaker/__init__.py:L22",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Post-template persistence and group-admin configuration prerequisites implicit."
+        },
+        {
+          "slug": "premium",
+          "source": "agent/modules/premium/__init__.py:L27",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Owner-granted PostgreSQL entitlement authority, distinct from Telegram Premium; no Stars/subscription workflow."
+        },
+        {
+          "slug": "renamer",
+          "source": "agent/modules/renamer/__init__.py:L26",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Media/file IO/process/service requirements need declaration; messages.read/send alone is not a complete operational permission description."
+        },
+        {
+          "slug": "reports",
+          "source": "agent/modules/reports/__init__.py:L32",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Admin report routing/storage requirements implicit."
+        },
+        {
+          "slug": "security",
+          "source": "agent/modules/security/__init__.py:L51",
+          "scope": "group",
+          "permissions": [
+            "messages.send",
+            "chats.restrict",
+            "chats.ban"
+          ],
+          "config_schema": {},
+          "gaps": "Verification/restriction work and state services implicit; permissions are not capability restrictions."
+        },
+        {
+          "slug": "utilities",
+          "source": "agent/modules/utilities/__init__.py:L19",
+          "scope": "all",
+          "permissions": [
+            "messages.read"
+          ],
+          "config_schema": {},
+          "gaps": "Group configuration paths need send/config permission inventory beyond messages.read."
+        },
+        {
+          "slug": "welcome",
+          "source": "agent/modules/welcome/__init__.py:L21",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Join/leave watchers and shared greeting configuration services implicit."
+        }
+      ],
+      "universal_manifest_gaps": {
+        "source": "agent/platform/manifest.py:L9-L31",
+        "missing": [
+          "category",
+          "plugin dependencies/version constraints",
+          "conflicts",
+          "typed required configuration vs optional configuration",
+          "credential declarations and validators",
+          "service/binary prerequisites",
+          "resource requests/limits",
+          "clone compatibility",
+          "per-command/watcher handler scopes",
+          "capabilities distinct from descriptive permissions",
+          "installation verification and upgrade records"
+        ],
+        "notes": [
+          "All 20 builtin manifest objects inspected; only AI currently supplies nonempty config_schema. These dictionaries/permission strings are metadata, not enforcement.",
+          "No plugin conflicts should be invented between compatible shipped features. Synthetic test manifests exercise conflict handling.",
+          "Installation/upgrade state belongs in separate observed records, not mutable fields conflated with immutable source metadata."
+        ]
+      },
+      "transaction_boundaries": [
+        {
+          "source": "agent/modules/clone/store.py:L216-L327",
+          "finding": "aadd/aupdate/aremove require connected PostgreSQL when configured. Tenant db.name_for(clones) advisory transaction lock plus SELECT FOR UPDATE serializes canonical whole-document mutations; counts and duplicate checks occur inside transaction; encrypted payload upsert commits before local cache replacement. aupdate has no expected revision/CAS and can overwrite concurrent intent. Local fallback is separate and only used when no db configured."
+        },
+        {
+          "source": "agent/modules/clone/setup.py:L362-L413",
+          "finding": "_finish_lock serializes this setup instance, not all controllers. Token/channel/Premium checks and worker start are outside CloneStore transaction. aadd counts are atomic but entitlement grant/revoke and insertion do not share one lock/transaction. Revocation between final check and commit/start is a TOCTOU window; manager checks entitlement again, supervisor enforces later, not instantaneous serializable entitlement+creation."
+        },
+        {
+          "source": "agent/platform/plugin_access.py:L94-L204",
+          "finding": "Approve/history commit together. Activation checks live admin before transaction, locks approval FOR SHARE then tenant/group advisory lock, counts and inserts with history atomically. Revocation UPDATE conflicts with approval SHARE lock, deletes activations and marks resources cleanup_pending in same transaction; cleanup callback runs after commit. Deactivate serializes group deletion/resource marking then cleanup. Three-slot invariant is application lock/count, not a SQL count constraint; all writers must use service."
+        },
+        {
+          "source": "agent/platform/plugin_access.py:L19-L45; agent/platform/db.py:L71-L89,L209-L239",
+          "finding": "Catalogue/global approval, group activation/config/history/resources are tenant-keyed relational tables. Clones are encrypted JSONB in agent_documents, leases in agent_lease; no clone-plugin revision table exists. Startup runs additive CREATE IF NOT EXISTS schema statements sequentially without an enclosing all-schema migration transaction. No destructive or production schema operation performed."
+        },
+        {
+          "source": "agent/platform/entitlements.py:L11-L118; agent/platform/premium.py:L163-L199",
+          "finding": "Premium operates separate tenant advisory-lock transactions and one-time legacy import. ais_premium reads authority rather than trusting UI cache. Owner/sudo policy is explicitly Premium-only for ordinary clone starts; this does not mean grant/revoke is atomic with clone setup/start."
+        }
+      ],
+      "concurrency_failure_cleanup_review": [
+        {
+          "sources": [
+            "agent/modules/clone/manager.py:L160-L265,L267-L330",
+            "tests/test_clone_cleanup_batch.py:L18-L107"
+          ],
+          "finding": "Manager-wide asyncio lock guards startup/stop locally; database lease prevents cross-controller serving. Build/database/voice/client failures and cancellation enter cleanup/release paths. Cleanup isolates service errors but has no durable retry record for a failed disconnect/release; cancellation or blocking cooperative cleanup can still interrupt teardown. restart is separate stop/start, not one atomic config transition."
+        },
+        {
+          "sources": [
+            "agent/modules/clone/__init__.py:L462-L507",
+            "agent/modules/clone/store.py:L271-L295"
+          ],
+          "finding": "Concurrent profile confirmations are last committed write wins; restart reads canonical record but callbacks can report their requested profile, not an applied revision. No per-clone desired/applied transition state exists. Supervisor does not reconcile a changed plugin tuple on an already connected worker."
+        },
+        {
+          "sources": [
+            "agent/platform/plugin_access.py:L135-L204",
+            "agent/platform/execution.py:L30-L60,L130-L145"
+          ],
+          "finding": "New group calls check authority; known invocation tasks/jobs are cancelled on revocation. Failed cleanup hook retains _seen for two-second reconciliation retry while process survives. _seen is memory-only. Search of agent found resource schema and cleanup_pending updates but no general resource registration/drain/replay consumer: do not claim restart-durable cleanup."
+        },
+        {
+          "sources": [
+            "agent/modules/clone/manager.py:L365-L435",
+            "agent/modules/clone/__init__.py:L87-L103,L576-L599",
+            "tests/test_clone_premium_policy.py:L13-L101",
+            "tests/test_premium_authority.py"
+          ],
+          "finding": "Supervisor refreshes records and checks entitlement; confirmed revocation stops worker and marks disabled without deleting record. Authority outage stops and queues recovery rather than permanently revoking. Enforcement is periodic, not instant cancellation concurrent with grant/revoke; manager rechecks ordinary start. Stop/view/delete remain available independently of Premium."
+        },
+        {
+          "sources": [
+            "agent/modules/clone/manager.py:L85-L106",
+            "agent/platform/db.py:L174-L180",
+            "agent/platform/instance.py:L138-L217,L244-L276",
+            "tests/test_atomic_clones.py:L28-L121",
+            "tests/test_clone_recovery_pg.py:L12-L65"
+          ],
+          "finding": "Preserve clone:<bot_id> database scope, individual session/data directory, sender owner, no inherited parent AI/session/archive channels, lease heartbeat and durable restart budget. These provide namespace/lifecycle isolation, not a separate OS security boundary."
+        }
+      ],
+      "videl_comparison": [
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/core/plugin_manager.py#L158-L180",
+          "finding": "Richer manifest includes dependencies, required_env and lifecycle settings. Useful vocabulary; not evidence of a plugin dependency closure resolver."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/core/plugin_manager.py#L538-L643",
+          "finding": "set_enabled persists enabled before hook/load completes; validate_prerequisites checks required_env; dependency helper reports Python distributions. Direct importlib/exec_module execution and shared module state are unsuitable for Agent external plugins. Retain installer.load refusal."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/core/plugin_manager.py#L648-L676",
+          "finding": "Bounded shutdown hooks and tracked handler removal are useful ideas; unload logs failures and is not transactional rollback."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/worker_bot/engine.py#L40-L105",
+          "finding": "Batch boot, bot-keyed in-process clients, message/callback last-active middleware. Duplicate check lock is released before app.start and registration at lines 656-657; not a PostgreSQL lease substitute or security sandbox."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/worker_bot/engine.py#L645-L694",
+          "finding": "Per-worker startup failure handling, task cancellation and bounded disconnect; adapt scoped lifecycle concepts, not its Mongo/shared-process architecture."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/database/worker_db.py#L8-L29",
+          "finding": "Bot-prefixed Mongo collections; Agent already has tenant-scoped PostgreSQL. Keep existing scopes, do not adopt a second worker database."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/database/worker_db.py#L248-L290",
+          "finding": "Reference copy/purge helpers clear collections. Do not import these destructive operations for selection changes."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/main_bot/plugins/clone_lifecycle.py#L24-L115",
+          "finding": "Inactivity warnings then stop/deactivation preserve data; useful configurable policy concept, distinct from heartbeat or Premium expiry. Agent should not inherit reference tier exceptions or silently add auto-suspension."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/main_bot/plugins/create_bot.py#L80-L154",
+          "finding": "Token-acceptance flow is useful presentation reference; Agent must continue describing verified bot-token control, not BotFather human ownership."
+        }
+      ],
+      "proposed_smallest_slice": {
+        "name": "Pure builtin selection resolver plus pre-build credential syntax validation",
+        "steps": [
+          "Add backwards-compatible dependencies/conflicts fields to PluginManifest and a pure resolve_selection over an explicit manifest catalogue; stable topological order, dedup, unknown/missing dependencies, cycles and symmetric conflicts. No imports, installation or network calls.",
+          "Replace finite tuple-membership gate only after tests prove safe canonical selection; constrain to reviewed clone-compatible builtins. Preserve empty tuple legacy profile semantics and mandatory core injection. Do not yet add wizard buttons or new plugins.",
+          "Reuse setup key/model/session syntax validation at worker settings boundary for persisted records; distinguish syntax validation from remote authorization; no paid validation requests.",
+          "Extend red contracts with cycles, unsupported clone slugs, deterministic ordering and unchanged tenant settings; run existing clone suite and full PostgreSQL suite before claiming implementation."
+        ],
+        "out_of_scope": [
+          "wizard multi-select UI",
+          "per-clone revision transactions and compensation",
+          "cleanup replay schema",
+          "resource/process isolation",
+          "external execution",
+          "new commands",
+          "production migrations"
+        ]
+      },
+      "red_regression_evidence": {
+        "file": "tests/test_plugin_selection_contract.py",
+        "command": ".venv/bin/python -m pytest -o addopts= -q tests/test_plugin_selection_contract.py --tb=short",
+        "result": "6 failed in 0.32s, exit 1; intentional unmarked red tests, not skipped/xfail",
+        "failures": [
+          "encoder + postmaker rejected by settings_for finite SUPPORTED_SELECTIONS",
+          "dependency resolver absent",
+          "symmetric conflict resolver absent",
+          "invalid AI key accepted",
+          "invalid model id accepted",
+          "whitespace key accepted"
+        ],
+        "full_suite_command": "AGENT_TEST_DATABASE_URL=<disposable pgserver URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "full_suite_result": "6 failed, 1648 passed, no skips in 17.79s; exit 1. The six failures are exactly the new red contracts. No existing tests weakened/deleted.",
+        "database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); pass s.get_uri() as AGENT_TEST_DATABASE_URL to subprocess; finally s.cleanup()"
+      },
+      "implementation_status": "No runtime implementation in this commit; tests intentionally leave suite red until next authorized implementation slice. Audit and proposed contracts only. No deploy, production env change, PR merge or destructive migration."
     }
   ],
   "production_changes": false,
