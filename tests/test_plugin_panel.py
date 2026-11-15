@@ -73,6 +73,7 @@ def test_the_default_build_ships_nine_plugins_plus_the_shell(tmp_path):
 
     assert registered == {
         "ops",
+        "premium",
         "core",
         "clone",
         "filestore",
@@ -85,7 +86,7 @@ def test_the_default_build_ships_nine_plugins_plus_the_shell(tmp_path):
         "ai_agent",
     } | set(GROUP_CORE)
     # Optional modules left out by the deployment register nothing.
-    assert {"renamer", "premium", "utilities"} <= set(not_selected(bot.settings.plugins))
+    assert {"renamer", "utilities"} <= set(not_selected(bot.settings.plugins))
     assert "encode" in set(bot.registry.active_commands())
     assert {"get", "leech", "ban", "plugins"} <= set(bot.registry.active_commands())
 

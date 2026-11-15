@@ -1172,6 +1172,26 @@
         "Partial Telegram handler attachment/removal failures and cross-process runtime changes still need reconciliation; this change only guards synchronous settings-save failure",
         "No deployment, Premium grants, migrations or PR merge performed"
       ]
+    },
+    {
+      "id": "premium-default-plan-options",
+      "status": "completed",
+      "implemented": [
+        "Premium now included in DEFAULT_PLUGINS so default installation registers /premium, /addpremium and real entitlement controls",
+        "Native /premium options for compare plans, refresh own plan and activation guidance; no fabricated payment/trial workflows",
+        "Activation screen identifies actual user; configured Owner gets exact one-day self-test grant command; ordinary callers get safe grant instructions",
+        "Callback reads use actual presser and require their private chat; browsing never grants Premium"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL suite 1589 passed, no skips, 16.87 seconds",
+        "Callback regression verifies Owner guidance, no implicit grant, and foreign-chat rejection",
+        "Default-build expectation updated; compileall/Pyflakes passed; whitespace warning corrected and diff check rerun"
+      ],
+      "remaining": [
+        "Custom explicit PLUGINS selections must still include premium; existing persisted disabled state is preserved",
+        "No payment checkout/trial/gift backend parity with Videl1 claimed",
+        "No live deployment, subscription grant or merge performed; running bot must be updated with authorization"
+      ]
     }
   ],
   "production_changes": false,

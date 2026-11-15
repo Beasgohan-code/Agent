@@ -27,6 +27,7 @@ class ConfigError(RuntimeError):
 #: Primary optional features plus the platform controls. Mandatory group core
 #: is added by module selection and does not consume optional slots.
 DEFAULT_PLUGINS: tuple[str, ...] = (
+    "premium",
     "ops",
     "core",
     "clone",

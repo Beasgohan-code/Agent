@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import logging
 import time
+from types import SimpleNamespace
+
+from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
 
 from ...platform.manifest import PluginManifest
 from ...platform.premium import TIERS
@@ -92,11 +95,55 @@ def build(ctx):
                     + "."
                 ],
                 note=pitch(),
-                footer="Counters reset at midnight UTC.",
+                footer=f'Your user ID: {user.id} · Counters reset at midnight UTC.',
             ),
-            reply_markup=nav_keyboard(),
+            reply_markup=Keyboard([
+                [Button('Compare plans', callback_data='prem:plans'), Button('Refresh my plan', callback_data='prem:status')],
+                [Button('How to activate Premium', callback_data='prem:activate')],
+                [Button('‹ Main menu', callback_data='menu:home')],
+            ]),
         )
         logger.info("premium status user=%s premium=%s", user.id, book.is_premium(user.id))
+
+    async def premium_press(client, query, rest):
+        user = getattr(query, 'from_user', None)
+        origin = getattr(query, 'message', None)
+        if user is None or origin is None:
+            await query.answer('Open /premium privately.', show_alert=True)
+            return
+        # Only the actual caller can view their own plan; never bot-message author.
+        if getattr(getattr(origin, 'chat', None), 'id', None) != user.id:
+            await query.answer('Open /premium in a private chat for plan options.', show_alert=True)
+            return
+        message = SimpleNamespace(from_user=user, chat=origin.chat, reply=origin.reply)
+        try:
+            if rest == 'status':
+                await premium(client, message)
+            elif rest == 'plans':
+                await plans(client, message)
+            elif rest == 'activate':
+                owner = ctx.settings.owner_id
+                lines = ['Premium is granted by this bot’s configured Owner. No checkout or payment collection is enabled here.',
+                         f'Your Telegram ID: <code>{user.id}</code>.',
+                         'Premium applies only to this bot. Creating and starting clones requires Premium, including for Owner and sudo.']
+                if owner is not None and user.id == int(owner):
+                    lines += [f'You are the configured Owner. Grant yourself one test day: <code>/addpremium {user.id} 1</code>.',
+                              'Use 0 days only for an intentional lifetime grant. /premiumusers lists current grants.']
+                else:
+                    lines += ['Ask this bot’s Owner to grant your user ID Premium. Never send your bot token or account session to buy a plan.']
+                await reply(message, panel('Activate Premium', lines=lines), reply_markup=Keyboard([
+                    [Button('My plan', callback_data='prem:status')], [Button('‹ Main menu', callback_data='menu:home')]]))
+            else:
+                await query.answer('Unknown Premium option.', show_alert=True)
+                return
+            await query.answer()
+        except Exception:
+            logger.warning('#Errors Premium screen could not load')
+            await query.answer('Premium status could not be confirmed. Check database availability; no grant was attempted.', show_alert=True)
+
+    actions = getattr(ctx, 'actions', None)
+    if actions is not None:
+        actions.register('prem', premium_press)
 
     # -- /myplan -----------------------------------------------------------
 

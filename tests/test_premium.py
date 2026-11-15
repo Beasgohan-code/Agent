@@ -288,3 +288,23 @@ def test_invalid_grant_arguments_never_silently_grant_default_or_lifetime(tmp_pa
     run(commands['addpremium'], message)
     assert not ctx.premium.is_premium(USER)
     assert 'Premium granted' not in str(message.replies)
+
+
+def test_premium_activation_screen_uses_presser_and_never_grants(tmp_path):
+    from unittest.mock import AsyncMock
+    from agent.platform.actions import ActionRouter
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        ctx.actions = ActionRouter()
+        premium_module.build(ctx)
+        origin = SimpleNamespace(chat=SimpleNamespace(id=OWNER), reply=AsyncMock())
+        query = SimpleNamespace(data='prem:activate', from_user=SimpleNamespace(id=OWNER), message=origin, answer=AsyncMock())
+        await ctx.actions.dispatch(None, query)
+        assert f'/addpremium {OWNER} 1' in str(origin.reply.await_args.args[0])
+        assert not ctx.premium.is_premium(OWNER)
+        origin.reply.reset_mock()
+        query.from_user = SimpleNamespace(id=USER)
+        await ctx.actions.dispatch(None, query)
+        origin.reply.assert_not_awaited()
+        assert query.answer.await_args.kwargs['show_alert']
+    asyncio.run(scenario())
