@@ -287,3 +287,37 @@ def test_failed_document_load_is_distinguishable_from_empty_database():
     db._pool = Pool()
     assert asyncio.run(db.load()) == 0
     assert db.load_error == 'RuntimeError'
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_failed_schema_initialization_disposes_pool_and_redacts_errors(monkeypatch, caplog, cancelled):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+    async def scenario():
+        error = asyncio.CancelledError() if cancelled else RuntimeError('postgresql://private:password@private-host/db')
+        connection = SimpleNamespace(execute=AsyncMock(side_effect=error))
+        class Acquisition:
+            async def __aenter__(self):
+                return connection
+            async def __aexit__(self, *args):
+                pass
+        pool = SimpleNamespace(acquire=lambda: Acquisition(), terminate=Mock())
+        driver = SimpleNamespace(create_pool=AsyncMock(return_value=pool))
+        monkeypatch.setattr(Database, '_driver', staticmethod(lambda: driver))
+        db = Database('postgresql://user@host/db')
+        if cancelled:
+            with pytest.raises(asyncio.CancelledError):
+                await db.connect()
+        else:
+            assert not await db.connect()
+            assert db.error == 'RuntimeError'
+        assert db._pool is None and not db.connected
+        pool.terminate.assert_called_once()
+        assert 'password' not in caplog.text and 'private-host' not in caplog.text
+        # Retry creates a fresh, usable pool, never a half-initialized one.
+        connection.execute.side_effect = None
+        assert await db.connect()
+        assert await db.connect()  # Existing connected pool is reused.
+        assert driver.create_pool.await_count == 2
+        assert db.connected and db._pool is pool
+    asyncio.run(scenario())

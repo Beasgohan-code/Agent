@@ -205,6 +205,8 @@ class Database:
     # -- lifecycle ---------------------------------------------------------
     async def connect(self) -> bool:
         """Connect and apply the schema. The bot refuses startup on failure."""
+        if self.connected and self._pool is not None:
+            return True
         if self.url is None:
             return False
         if not self.driver_installed():
@@ -222,18 +224,28 @@ class Database:
             async with self._pool.acquire() as connection:
                 for statement in SCHEMA:
                     await connection.execute(statement)
-        except Exception as exc:  # noqa: BLE001 - a database is an option, not a requirement
-            self.error = f"{type(exc).__name__}: {exc}"
-            logger.warning(
-                "Could not use PostgreSQL (%s); no local-state fallback.", self.error
-            )
-            self._pool = None
-            self.connected = False
+        except asyncio.CancelledError:
+            self._discard_failed_pool()
+            raise
+        except Exception as exc:
+            self.error = type(exc).__name__
+            logger.warning('Could not initialize PostgreSQL (%s); no local-state fallback.', self.error)
+            self._discard_failed_pool()
             return False
         self.connected = True
         self.error = None
         logger.info("PostgreSQL connected; stores are backed by agent_documents")
         return True
+
+    def _discard_failed_pool(self) -> None:
+        """No usable pool escapes a failed/cancelled initialization attempt."""
+        pool, self._pool = self._pool, None
+        self.connected = False
+        if pool is not None:
+            try:
+                pool.terminate()
+            except Exception as error:
+                logger.warning('#Errors Failed PostgreSQL pool disposal (%s)', type(error).__name__)
 
     async def load(self) -> int:
         """Read every stored document into memory. Returns how many were found."""

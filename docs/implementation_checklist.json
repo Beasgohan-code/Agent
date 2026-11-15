@@ -1364,6 +1364,27 @@
         "Primary Telegram stop is intentionally not skipped to force faster lease release; database/lease cleanup and cancelled background tasks may need further investigation",
         "Live reported outage root cause remains unknown without hosting logs; no deployment/merge performed"
       ]
+    },
+    {
+      "id": "database-failed-startup-pool-disposal",
+      "status": "completed",
+      "implemented": [
+        "PostgreSQL initialization failure after pool creation terminates owned failed pool instead of dropping/leaking reference",
+        "Cancellation during schema setup also disposes owned pool and propagates CancelledError",
+        "Connection startup errors store/log exception class instead of raw backend message that might contain credentials",
+        "Repeated connect on a usable pool returns true without creating another pool"
+      ],
+      "validation": [
+        "25 focused database/startup tests passed",
+        "Parametrized schema-error/cancellation tests verify pool termination, disconnected state, safe logs, successful retry and no duplicate pool on repeated connect",
+        "Full disposable PostgreSQL suite 1611 passed, no skips, 16.02 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "No production schema changes executed; normal existing application schema setup is unchanged",
+        "Cancellation inside driver pool construction before return remains driver-managed",
+        "Exact user-reported outage cause requires hosting startup log; no deployment, production connection or merge performed"
+      ]
     }
   ],
   "production_changes": false,
