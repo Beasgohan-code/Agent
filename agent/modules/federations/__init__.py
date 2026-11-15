@@ -2,6 +2,7 @@
 
 import html
 from pyrogram.enums import ChatType, ChatMemberStatus
+from .roles import COMMANDS as ROLE_COMMANDS, build as build_roles
 from ...platform.federations import operate, fed_id, FederationError
 from ...platform.manifest import PluginManifest
 from ...ui.tables import panel, Table, kv_table
@@ -17,6 +18,7 @@ COMMANDS = (
     "joinfed",
     "leavefed",
     "chatfed",
+    *ROLE_COMMANDS,
 )
 MANIFEST = PluginManifest(
     slug="federations",
@@ -208,7 +210,7 @@ def build(ctx):
                                 ),
                             ]
                         ),
-                        note="Federation metadata and membership only. Cross-chat ban delivery and federation-admin invitations are not available yet.",
+                        note="Cross-chat ban delivery is not available yet. Federation admin invitations and ownership transfer require private confirmation.",
                     ),
                 )
             except FederationError as error:
@@ -221,4 +223,7 @@ def build(ctx):
 
         return call
 
-    return MANIFEST, {command: handler(command) for command in COMMANDS}
+    return MANIFEST, {
+        **{command: handler(command) for command in COMMANDS if command not in ROLE_COMMANDS},
+        **build_roles(ctx),
+    }

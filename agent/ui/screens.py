@@ -158,7 +158,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (
             "settings", "rules", "setrules", "pin", "unpin", "admins",
             "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
-            "newfed", "renamefed", "delfed", "myfeds", "fedinfo", "fedadmins", "joinfed", "leavefed", "chatfed",
+            "fedpromote", "feddemote", "feddemoteme", "fedtransfer", "newfed", "renamefed", "delfed", "myfeds", "fedinfo", "fedadmins", "joinfed", "leavefed", "chatfed",
             "warnlimit", "resetwarns", "lockdown",
             "filter", "filters", "stopfilter",
             "setwelcome", "welcome", "goodbye",
