@@ -154,7 +154,7 @@ def build(ctx):
                 ("Goodbye", _on_off(goodbye.get("enabled"))),
                 ("Filters", str(len(current_filters))),
                 ("Rules", f"{len(rules)} chars" if rules else "not set"),
-                ("Trusted", str(trusted)),
+                ("Approved", str(trusted)),
                 ("Log channel", str(log_channel or "not set")),
             ]
         )

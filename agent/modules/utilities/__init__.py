@@ -115,8 +115,12 @@ def build(ctx):
             warnings = ctx.chats.active_warning_count(message.chat.id, target.id)
             if warnings:
                 lines.append(f"Warnings: {warnings}")
-            if ctx.chats.is_trusted(message.chat.id, target.id):
-                lines.append("Trusted: yes")
+            from ...platform.group_trust import trusted_members, TrustError
+            try:
+                if target.id in await trusted_members(ctx, message.chat.id):
+                    lines.append("Approved: yes")
+            except TrustError:
+                lines.append("Approval: unavailable")
         if member is None:
             lines.append('Status here: unavailable (lookup not confirmed)')
         await reply(message, panel('Member profile', icon=ctx.theme.emoji('user'),

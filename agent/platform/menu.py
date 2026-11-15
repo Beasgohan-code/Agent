@@ -59,7 +59,10 @@ DESCRIPTIONS: dict[str, str] = {
     "unban": "Lift a ban",
     "purge": "Delete the last N messages",
     "note": "Attach a private note to a member",
-    "trust": "Toggle a member's trusted flag",
+    "approve": "Exempt a member from automatic anti-spam",
+    "unapprove": "Remove a member approval",
+    "approval": "Check a member approval",
+    "approved": "List approved members",
     "antispam": "Anti-spam policy for this group",
     "modlog": "Recent moderation actions",
     # group management
@@ -198,7 +201,7 @@ DESCRIPTIONS: dict[str, str] = {
 GROUP_ONLY = frozenset(
     {
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "trust", "antispam", "modlog",
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog",
         "settings", "rules", "setrules", "pin", "unpin",
         "admins", "warnlimit", "resetwarns", "lockdown",
         "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",

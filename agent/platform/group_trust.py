@@ -19,9 +19,9 @@ class TrustError(RuntimeError):
     """Trusted-member state is not confirmed."""
 
 
-async def trusted_members(ctx, group_id, *, toggle=None, actor=None):
+async def trusted_members(ctx, group_id, *, toggle=None, actor=None, approved=None):
     if type(group_id) is not int or not -(2**63) < group_id < 0:
-        raise TrustError("Trust belongs to a group.")
+        raise TrustError("Approvals belong to a group.")
     if toggle is not None and (
         type(toggle) is not int
         or not 0 < toggle < 2**63
@@ -29,13 +29,17 @@ async def trusted_members(ctx, group_id, *, toggle=None, actor=None):
         or not 0 < actor < 2**63
     ):
         raise TrustError("Personal member and administrator identities are required.")
+    if approved is not None and (type(approved) is not bool or toggle is None):
+        raise TrustError("Invalid approval state.")
     db = getattr(ctx, "db", None)
     if db is None:
-        if toggle is not None:
+        if toggle is not None and (
+            approved is None or ctx.chats.is_trusted(group_id, toggle) != approved
+        ):
             result = ctx.chats.toggle_trust(group_id, toggle)
             ctx.chats.log(
                 group_id,
-                "trust" if result else "untrust",
+                "approve" if result else "unapprove",
                 actor_id=actor,
                 target_id=toggle,
             )
@@ -45,7 +49,7 @@ async def trusted_members(ctx, group_id, *, toggle=None, actor=None):
             if member.get("trusted")
         }
     if not db.connected or getattr(db, "_pool", None) is None:
-        raise TrustError("PostgreSQL trust state unavailable. No changes confirmed.")
+        raise TrustError("PostgreSQL approval state unavailable. No changes confirmed.")
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():
@@ -85,7 +89,9 @@ async def trusted_members(ctx, group_id, *, toggle=None, actor=None):
                     row = {"members": members, "version": 0}
                 members = set(row["members"])
                 if toggle is not None:
-                    enabled = toggle not in members
+                    enabled = toggle not in members if approved is None else approved
+                    if (toggle in members) == enabled:
+                        return members
                     members.symmetric_difference_update({toggle})
                     version = row["version"] + 1
                     await conn.execute(
@@ -111,7 +117,7 @@ async def trusted_members(ctx, group_id, *, toggle=None, actor=None):
         raise
     except Exception:
         raise TrustError(
-            "Trust state unavailable or result unconfirmed. Refresh before retrying."
+            "Approval state unavailable or result unconfirmed. Refresh before retrying."
         ) from None
 
 
@@ -120,7 +126,7 @@ async def trust_history(ctx, group_id):
     if db is None:
         return []
     if not db.connected or getattr(db, "_pool", None) is None:
-        raise TrustError("Trust history unavailable.")
+        raise TrustError("Approval history unavailable.")
     try:
         async with db._pool.acquire(timeout=5) as conn:
             rows = await conn.fetch(
@@ -132,7 +138,7 @@ async def trust_history(ctx, group_id):
             )
         return [
             {
-                "action": "trust" if row["trusted"] else "untrust",
+                "action": "approve" if row["trusted"] else "unapprove",
                 "actor": row["actor_id"],
                 "target": row["target_id"],
                 "at": float(row["at"]),
@@ -141,4 +147,4 @@ async def trust_history(ctx, group_id):
             for row in rows
         ]
     except Exception:
-        raise TrustError("Trust history unavailable.") from None
+        raise TrustError("Approval history unavailable.") from None

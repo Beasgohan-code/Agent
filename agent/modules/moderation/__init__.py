@@ -42,7 +42,7 @@ MANIFEST = PluginManifest(
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "trust", "antispam", "modlog",
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog",
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -458,7 +458,7 @@ def build(ctx):
         if note:
             lines.append(f"Note: {html.escape(note)}")
         if trusted:
-            lines.append("Trusted: yes")
+            lines.append("Approved: yes")
         table = Table(
             headers=("#", "Reason", "By", "When"),
             rows=rows_out,
@@ -638,23 +638,63 @@ def build(ctx):
         )
         await reply(message, f"<b>Note saved</b>\nMember: {mention}")
 
-    async def trust(client, message):
+    async def approval_command(client, message, desired=None, listing=False):
+        chat = getattr(message, "chat", None)
+        user = getattr(message, "from_user", None)
+        if (getattr(chat, "type", None) not in (ChatType.GROUP, ChatType.SUPERGROUP)
+                or type(getattr(user, "id", None)) is not int or user.id <= 0):
+            await reply(message, "Use approval commands as yourself inside a group.")
+            return
         if not await is_moderator(client, message, need="can_manage_chat"):
             await reply(message, DENIED)
             return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to trust them.")
-            return
-        target_id, mention = target
+        args = _args(message)
         try:
-            trusted = target_id in await trusted_members(ctx, message.chat.id, toggle=target_id, actor=message.from_user.id)
+            if listing:
+                if len(args) > 2 or (len(args) == 2 and (not args[1].isascii() or not args[1].isdecimal() or len(args[1]) > 8 or int(args[1]) < 1)):
+                    await reply(message, "Usage: <code>/approved [page]</code>")
+                    return
+                members = sorted(await trusted_members(ctx, chat.id))
+                page = int(args[1]) if len(args) == 2 else 1
+                pages = max(1, (len(members) + 19) // 20)
+                if page > pages:
+                    await reply(message, f"Choose an approvals page from 1 to {pages}.")
+                    return
+                await reply(message, panel("Approved members", table=Table(
+                    headers=("Member ID",), rows=tuple((str(uid),) for uid in members[(page-1)*20:page*20])),
+                    lines=[] if members else ["No approved members in this group."],
+                    footer=f"Page {page}/{pages} · /approved [page]",
+                    note="Approved members are exempt from automatic anti-spam actions, not manual moderation."))
+                return
+            if len(args) > 2:
+                await reply(message, "Reply to a member or provide one numeric member ID.")
+                return
+            target = parse_target(message)
+            if target is None:
+                await reply(message, "Reply to a member or provide their numeric ID.")
+                return
+            target_id, mention = target
+            if not 0 < target_id < 2**63:
+                await reply(message, "Provide a valid personal member ID.")
+                return
+            members = await trusted_members(ctx, chat.id, toggle=target_id if desired is not None else None,
+                                           actor=user.id, approved=desired)
+            state = "approved" if target_id in members else "not approved"
+            await reply(message, f"<b>Member {state}</b>\nMember: {mention}")
         except TrustError as error:
             await reply(message, str(error))
-            return
-        await reply(message, 
-            f"<b>{'Member trusted' if trusted else 'Trust removed'}</b>\nMember: {mention}"
-        )
+
+    async def approve(client, message):
+        await approval_command(client, message, desired=True)
+
+    async def unapprove(client, message):
+        await approval_command(client, message, desired=False)
+
+    async def approval(client, message):
+        await approval_command(client, message)
+
+    async def approved(client, message):
+        await approval_command(client, message, listing=True)
 
     async def antispam(client, message):
         chat = getattr(message, "chat", None)
@@ -699,7 +739,7 @@ def build(ctx):
                     "<code>links off</code> · <code>invites off</code> · <code>keyword word</code> · "
                     "<code>keyword-clear</code>"
                 ),
-                footer="Staff and trusted members are never auto-punished.",
+                footer="Staff and approved members are never auto-punished.",
             )
         )
 
@@ -774,7 +814,7 @@ def build(ctx):
         "unban": report_api_failure(unban),
         "purge": purge,
         "note": note,
-        "trust": trust,
+        "approve": approve, "unapprove": unapprove, "approval": approval, "approved": approved,
         "antispam": antispam,
         "modlog": modlog,
     }

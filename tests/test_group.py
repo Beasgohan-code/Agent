@@ -209,7 +209,7 @@ def test_settings_show_live_values_in_a_table(ctx):
     assert "5 -> ban" in table                    # warn threshold as configured
     assert "on" in table                          # welcome enabled
     assert str(CHAT) in body                      # this chat's id
-    assert "Trusted" in table and "1" in table
+    assert "Approved" in table and "1" in table
 
 
 def test_settings_report_the_log_channel_and_rules_state(ctx):
