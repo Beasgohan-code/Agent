@@ -85,19 +85,16 @@ def _on_off(flag: object) -> str:
     return "on" if flag else "off"
 
 
-def _plugin_keyboard():
-    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup([[InlineKeyboardButton("Optional plugins ›", callback_data="gplug:page:0")]])
-
-
 def build(ctx):
     """Wire the group-management commands to the shared chat store."""
 
     from .plugin_panel import build as build_plugin_panel
     ctx.group_plugin_panel = build_plugin_panel(ctx)
+    from .controls import register, keyboard as management_keyboard
+    register(ctx)
 
     async def _guard(client, message, need: str | None = None) -> bool:
-        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
+        if await is_moderator(client, message, need=need):
             return True
         await reply(message, DENIED)
         return False
@@ -116,8 +113,14 @@ def build(ctx):
         chat_id = message.chat.id
         policy = ctx.chats.antispam(chat_id)
         limit, action = warn_policy(ctx.chats, chat_id)
-        greeting = ctx.chats.greeting(chat_id, "welcome")
-        goodbye = ctx.chats.greeting(chat_id, "goodbye")
+        from ..welcome import read_greeting
+        try:
+            greeting = await read_greeting(ctx, chat_id, "welcome")
+            goodbye = await read_greeting(ctx, chat_id, "goodbye")
+        except Exception as error:
+            logger.warning("Group greeting state unavailable (%s)", type(error).__name__)
+            await reply(message, "Group settings could not be loaded. Please try again shortly; no changes were made.")
+            return
         rules = (ctx.chats.get(chat_id, "rules", "") or "").strip()
         trusted = ctx.chats.trusted_count(chat_id)
         # The log channel is switched at runtime by /setlog, so read the live
@@ -135,6 +138,7 @@ def build(ctx):
         ) else "off"
         table = kv_table(
             [
+                ("Group", str(chat_id)),
                 ("Anti-spam", f"{policy_state} / {policy.get('action', 'warn')}"),
                 ("Flood", f"{policy.get('flood_messages')} per {policy.get('flood_window_seconds')}s"),
                 ("Links", "blocked" if policy.get("links_enabled") else "allowed"),
@@ -151,9 +155,9 @@ def build(ctx):
         )
         await reply(message, 
             panel(
-                "Group settings",
+                "Group Management",
                 icon=ctx.theme.emoji("gear"),
-                subtitle=f"Chat <code>{chat_id}</code> — live values, nothing cached.",
+                subtitle="Protection, greetings and group tools in one place.",
                 table=table,
                 note=(
                     "Change them with <code>/antispam</code>, <code>/warnlimit</code>, "
@@ -162,7 +166,7 @@ def build(ctx):
                 ),
                 footer="Administrators with the change-info right only.",
             ),
-            reply_markup=_plugin_keyboard() if ctx.group_plugin_panel else None,
+            reply_markup=management_keyboard(ctx) if getattr(ctx, "actions", None) is not None else None,
         )
 
     # -- /rules and /setrules ---------------------------------------------
