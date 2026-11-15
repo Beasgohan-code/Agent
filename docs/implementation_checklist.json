@@ -1065,6 +1065,30 @@
         "Lock warning/custom-mode actions, invite handling and other allowlist kinds pending",
         "No live Telegram or production validation; no new Markdown files"
       ]
+    },
+    {
+      "id": "videl1-style-plugin-workspaces",
+      "status": "completed",
+      "source": "Reviewed https://github.com/Beasgohan-code/Videl1 VidelBot/core/menus.py @ ac16395e5c4054e8db74f0684a99a0ca7104fdd1: feature-specific rich help/setup navigation. Independently adapted; no unlicensed source copied.",
+      "implemented": [
+        "Existing group /plugins panel now offers per-tool About/setup workspace cards with actual runtime, approval, active slot, command scope and registered-command data",
+        "Feature guidance for Music, FileStore, Encoder, Leech, Linkshare, Post maker and AI Agent uses existing installed workflows; no unsupported buttons or provider-health claims",
+        "Contextual activation only when available, approved and under slot cap; disable remains available for active revoked/unavailable tools",
+        "Refresh and back navigation reuse live service.status and actual presser authorization; unknown/unapproved info routes refused",
+        "Repeated unchanged screen edits now answer successfully rather than report false failure; hub instructions shortened",
+        "Existing native rich message renderer reused; no parallel UI framework, Markdown docs or standalone bots added"
+      ],
+      "validation": [
+        "10 focused group-plugin-panel tests passed",
+        "Two new router regressions cover workspace state/commands, no side effects, back/activate callbacks, unchanged refresh, revocation and runtime-down disable",
+        "Full disposable PostgreSQL suite: 1573 passed, no skips, 15.66 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Not complete Videl1 functionality or copied visual parity",
+        "No live Telegram rendering/provider connectivity verified; private Owner runtime panel unchanged",
+        "Remaining plugin feature integrations still tracked separately; no deployment or PR merge"
+      ]
     }
   ],
   "production_changes": false,

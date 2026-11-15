@@ -129,3 +129,44 @@ def test_active_plugin_does_not_claim_usable_when_runtime_off(monkeypatch):
         assert 'runtime unavailable' in body.lower()
         assert '2 / 3 slots available' in body
     asyncio.run(scenario())
+
+
+def test_plugin_workspace_reads_live_state_without_mutation_and_refreshes_safely(monkeypatch):
+    from pyrogram.errors import MessageNotModified
+    async def scenario():
+        editor = AsyncMock()
+        monkeypatch.setattr('agent.modules.group.plugin_panel.edit', editor)
+        ctx, service, _ = setup()
+        press = query('gplug:info:music:0')
+        await ctx.actions.dispatch(None, press)
+        body = str(editor.await_args.args[1])
+        assert 'Music · Plugin workspace' in body
+        assert 'registered and enabled' in body and 'not activated' in body
+        assert '/play' in body and 'not proof of live' in body
+        data = [b.callback_data for row in editor.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+        assert 'gplug:on:music:0' in data and 'gplug:page:0' in data
+        service.activate.assert_not_awaited(); service.deactivate.assert_not_awaited()
+        editor.side_effect = MessageNotModified()
+        press.answer.reset_mock()
+        await ctx.actions.dispatch(None, press)
+        press.answer.assert_awaited_once_with()
+        service.status.return_value = [{'slug':'music','approved':False,'active':False}]
+        await ctx.actions.dispatch(None, press)
+        assert 'not approved' in press.answer.await_args.args[0]
+    asyncio.run(scenario())
+
+
+def test_workspace_keeps_disable_available_when_runtime_down_and_blocks_activation(monkeypatch):
+    async def scenario():
+        editor = AsyncMock()
+        monkeypatch.setattr('agent.modules.group.plugin_panel.edit', editor)
+        ctx, service, _ = setup()
+        service.status.return_value = [{'slug':'music','approved':False,'active':True}]
+        ctx.runtime.state = lambda: [{'slug':'music','enabled':False,'commands':[],'scope':'group'}]
+        await ctx.actions.dispatch(None, query('gplug:info:music:0'))
+        body = str(editor.await_args.args[1])
+        assert 'revoked' in body and 'unavailable or disabled' in body
+        data = [b.callback_data for row in editor.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+        assert 'gplug:ask:music:0' in data
+        assert not any(':on:' in entry for entry in data)
+    asyncio.run(scenario())
