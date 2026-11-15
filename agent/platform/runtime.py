@@ -124,14 +124,7 @@ class PluginRuntime:
             return False
         if slug not in self._handlers and not self.registry.is_enabled(slug):
             return False
-        self._set_disabled(slug, True)
-        if self._client is not None:
-            for handler, group in self._handlers.get(slug, []):
-                try:
-                    self._client.remove_handler(handler, group)
-                except Exception:  # noqa: BLE001 - already gone
-                    logger.debug("handler for %s was not registered", slug)
-        self.registry.disable(slug)
+        self._switch(slug, enabled=False)
         self._notify_change()
         return True
 
@@ -141,13 +134,45 @@ class PluginRuntime:
             return False
         if self.registry.is_enabled(slug) and slug not in self._disabled:
             return False
-        self._set_disabled(slug, False)
-        if self._client is not None:
-            for handler, group in self._handlers[slug]:
-                self._client.add_handler(handler, group)
-        self.registry.enable(slug)
+        self._switch(slug, enabled=True)
         self._notify_change()
         return True
+
+    def _switch(self, slug: str, *, enabled: bool) -> None:
+        """Compensate completed synchronous handler operations on failure.
+
+        Client calls can schedule work asynchronously; this is not a Telegram
+        dispatcher acknowledgement or a cross-process transaction.
+        """
+        previous_disabled = set(self._disabled)
+        self._set_disabled(slug, not enabled)
+        completed = []
+        try:
+            if self._client is not None:
+                operation = self._client.add_handler if enabled else self._client.remove_handler
+                for handler, group in self._handlers.get(slug, []):
+                    operation(handler, group)
+                    completed.append((handler, group))
+        except Exception as error:
+            rollback_failed = False
+            reverse = self._client.remove_handler if enabled else self._client.add_handler
+            for handler, group in reversed(completed):
+                try:
+                    reverse(handler, group)
+                except Exception:
+                    rollback_failed = True
+            self._disabled = previous_disabled
+            try:
+                self._save()
+            except Exception:
+                rollback_failed = True
+            logger.error('#Errors Plugin %s switch failed; rollback %s', slug,
+                         'incomplete: restart/reconciliation needed' if rollback_failed else 'attempted')
+            raise RuntimeError('Plugin handler change failed; no success confirmed. Refresh state and inspect #Errors before retrying.') from error
+        if enabled:
+            self.registry.enable(slug)
+        else:
+            self.registry.disable(slug)
 
     def _notify_change(self):
         if self.change_hook is not None:

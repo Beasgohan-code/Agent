@@ -268,3 +268,17 @@ def test_already_on_and_unavailable_callbacks_explain_specific_state(tmp_path):
     assert 'AI_API_KEY' in missing.answers[0][0]
     assert missing.answers[0][1] is True
     assert not any(b.callback_data == 'plugin:on:ai_agent' for b in buttons(missing.edits[0][1]))
+
+
+def test_runtime_failures_have_actionable_sanitized_callback_reply(tmp_path, monkeypatch):
+    bot = make_bot(tmp_path)
+    ops.build(bot.modules)
+    def fail(slug):
+        raise RuntimeError('secret database details')
+    monkeypatch.setattr(bot.runtime, 'disable', fail)
+    query = FakeQuery('plugin:off:filestore')
+    asyncio.run(bot.actions.dispatch(None, query))
+    assert 'could not be confirmed' in query.answers[0][0]
+    assert '/errors' in query.answers[0][0]
+    assert 'secret' not in query.answers[0][0]
+    assert query.answers[0][1]

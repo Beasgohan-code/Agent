@@ -402,6 +402,9 @@ def build(ctx):
         except ValueError as exc:
             await query.answer(str(exc), show_alert=True)
             return
+        except RuntimeError:
+            await query.answer('Runtime change could not be confirmed. Check /errors and refresh before retrying; no success is claimed.', show_alert=True)
+            return
         message = (f'{slug} is off — its handlers are detached.' if action == 'off' else
                    f'{slug} runtime is on. Next: /plugin {slug} approve, then group-admin activation in /plugins.')
         if not changed:
@@ -547,14 +550,14 @@ def build(ctx):
         if action not in ("on", "off"):
             await reply(message, "Usage: <code>/plugin &lt;slug&gt; on|off</code>")
             return
-        if action == "on":
-            changed = runtime.enable(slug)
-        else:
-            try:
-                changed = runtime.disable(slug)
-            except ValueError as exc:
-                await reply(message, str(exc))
-                return
+        try:
+            changed = runtime.enable(slug) if action == 'on' else runtime.disable(slug)
+        except ValueError as exc:
+            await reply(message, str(exc))
+            return
+        except RuntimeError:
+            await reply(message, 'Runtime change could not be confirmed. Check /errors and refresh /plugins before retrying; no success is claimed.')
+            return
         if not changed:
             current = next(row for row in runtime.state() if row['slug'] == slug)
             if action == 'on' and not current.get('tracked_handlers'):

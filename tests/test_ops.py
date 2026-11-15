@@ -359,3 +359,54 @@ def test_runtime_save_failure_keeps_registry_and_handlers_unchanged(tmp_path, mo
     assert registry.is_enabled('demo') == enabled
     assert runtime._disabled == previous
     assert client.added == added and client.removed == removed
+
+
+@pytest.mark.parametrize('action', ['enable', 'disable'])
+def test_partial_handler_failure_compensates_completed_work_and_settings(tmp_path, action):
+    registry, runtime, _, first = make_runtime(tmp_path)
+    second = object()
+    runtime.track('demo', second, 2)
+    if action == 'enable':
+        runtime.disable('demo')
+    prior_enabled = registry.is_enabled('demo')
+    prior_disabled = set(runtime._disabled)
+    calls = []
+    class PartialClient:
+        def add_handler(self, handler, group):
+            calls.append(('add', handler, group))
+            if action == 'enable' and handler is second:
+                raise RuntimeError('injected failure')
+        def remove_handler(self, handler, group):
+            calls.append(('remove', handler, group))
+            if action == 'disable' and handler is second:
+                raise RuntimeError('injected failure')
+    runtime.attach(PartialClient())
+    notices = []
+    runtime.change_hook = lambda: notices.append('changed')
+    with pytest.raises(RuntimeError, match='no success confirmed'):
+        getattr(runtime, action)('demo')
+    assert registry.is_enabled('demo') == prior_enabled
+    assert runtime._disabled == prior_disabled
+    assert notices == []
+    assert calls[-1] == ('remove' if action == 'enable' else 'add', first, 0)
+    reloaded = PluginRuntime(registry, state_path=runtime.state_path)
+    assert reloaded._disabled == prior_disabled
+
+
+def test_failed_handler_compensation_is_logged_without_claiming_success(tmp_path, caplog):
+    registry, runtime, _, _ = make_runtime(tmp_path)
+    runtime.disable('demo')
+    runtime.track('demo', object(), 2)
+    class BrokenClient:
+        calls = 0
+        def add_handler(self, *args):
+            self.calls += 1
+            if self.calls == 2:
+                raise RuntimeError('add failed')
+        def remove_handler(self, *args):
+            raise RuntimeError('rollback failed')
+    runtime.attach(BrokenClient())
+    with pytest.raises(RuntimeError, match='no success confirmed'):
+        runtime.enable('demo')
+    assert not registry.is_enabled('demo')
+    assert '#Errors' in caplog.text and 'reconciliation needed' in caplog.text

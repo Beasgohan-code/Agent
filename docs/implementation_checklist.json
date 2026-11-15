@@ -1192,6 +1192,27 @@
         "No payment checkout/trial/gift backend parity with Videl1 claimed",
         "No live deployment, subscription grant or merge performed; running bot must be updated with authorization"
       ]
+    },
+    {
+      "id": "runtime-partial-operation-compensation",
+      "status": "completed",
+      "implemented": [
+        "Runtime no longer swallows synchronous handler removal failures and claims successful disable",
+        "Enable/disable compensate completed synchronous handler operations in reverse order on failure and attempt to restore saved disabled state; registry changes only after operation loop succeeds",
+        "Failed compensation/settings restoration logs #Errors requiring reconciliation rather than success",
+        "Owner callbacks and text runtime commands handle RuntimeError with sanitized actionable errors, not leaked backend details"
+      ],
+      "validation": [
+        "1593 tests passed with disposable PostgreSQL, no skips, 15.85 seconds",
+        "New tests exercise enable/disable partial failure rollback, persisted settings restoration, no success notification, rollback failure logging and sanitized callback handling",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Pyrogram handler API may schedule actual dispatcher work asynchronously; synchronous rollback is not dispatcher acknowledgement",
+        "A failing handler call may itself have partial effects; compensation only covers calls that returned successfully",
+        "PostgreSQL runtime settings remain legacy queued writes, not distributed transactional state",
+        "No live Telegram/provider validation, deployment, migrations or PR merge; not an all-bugs-fixed claim"
+      ]
     }
   ],
   "production_changes": false,
