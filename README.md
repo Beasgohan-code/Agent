@@ -378,6 +378,13 @@ permits automatic provider requests for qualifying messages; charges may apply. 
 Obvious token/key patterns are rejected, but this is not a comprehensive secret
 scanner: never include private information. Responses are untrusted AI output.
 Requests have bounded size, concurrency, timeout and a per-user cooldown.
+On draft-capable clients, AI replies show a Richgram thinking indicator and
+stream answer text into a throttled rich message draft, then send one final
+RichMessage through the existing rich/classic fallback. Older clients can use
+plain `send_message_draft`; rejected drafts fall back to a final-only response
+without retrying the provider. Drafts are ephemeral and may expire on cancellation.
+The thinking indicator is status only, never model reasoning. No stop button is
+advertised because generation-stop handling is not implemented.
 No key/model means no `/ask`, `/autochat`, or auto-chat watcher. Parent AI credentials never pass into clones.
 AI Agent clones instead require their own private guided key/model setup; keys
 are encrypted at rest and cleared from cancelled or expired drafts. Changing a

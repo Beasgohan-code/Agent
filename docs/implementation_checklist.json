@@ -1697,6 +1697,29 @@
         "Wider reliability audit, measured latency and production verification remain pending",
         "No deployment, migration or PR merge"
       ]
+    },
+    {
+      "id": "ai-richgram-streaming-answer-drafts",
+      "status": "completed",
+      "implemented": [
+        "Uses installed Richgram rich_thinking and Wzgram InputRichMessage/send_rich_message_draft APIs for ephemeral generation status and answer previews",
+        "Provider SSE enabled for draft-capable requests; bounded 64KiB parser handles chunk/UTF8 boundaries and requires DONE before successful completion",
+        "Only public content deltas emitted; reasoning/tool events never rendered; escaped bounded preview",
+        "Per-request draft IDs, topic propagation and 1.5-second throttle; plain send_message_draft for clients without rich draft API",
+        "Draft rejection disables progress for that request without provider retries; final delivery retains existing rich/classic reply path",
+        "Auto-chat proxy preserves original client/message/topic context so final rich replies retain normal reply identity"
+      ],
+      "validation": [
+        "Six offline streaming tests cover SSE/public-content boundary, truncated/oversize streams, escaped thinking drafts, throttle/topic identity, plain drafts, provider SSE flag and final-only fallback",
+        "Full disposable PostgreSQL suite: 1648 passed, no skips, 18.56 seconds",
+        "compileall, Pyflakes and diff checks passed before final documentation update"
+      ],
+      "remaining": [
+        "No Telegram or live paid-provider verification; draft support depends on Telegram/client capabilities",
+        "Drafts are ephemeral and can expire on cancellation; no stop button or generation-stop handler advertised",
+        "No streaming of unrelated static screens or fabricated tool/model reasoning",
+        "No deployment, migration or PR merge"
+      ]
     }
   ],
   "production_changes": false,

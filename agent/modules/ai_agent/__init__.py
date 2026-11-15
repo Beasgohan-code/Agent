@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import time
+import secrets
 from collections import OrderedDict
 from dataclasses import replace
 from types import SimpleNamespace
@@ -15,6 +16,8 @@ from types import SimpleNamespace
 from pyrogram import filters
 from pyrogram.enums import ChatType, ChatMemberStatus
 from pyrogram.handlers import MessageHandler
+from pyrogram.types import InputRichMessage
+from richgram import rich_thinking
 
 import aiohttp
 
@@ -63,7 +66,7 @@ class AIUnavailable(RuntimeError):
     pass
 
 
-async def complete(key, model, question):
+async def complete(key, model, question, on_delta=None):
     """A fixed HTTPS endpoint; never accept a provider URL from a chat message."""
     try:
         timeout = aiohttp.ClientTimeout(total=30, connect=10)
@@ -82,6 +85,7 @@ async def complete(key, model, question):
                         {"role": "user", "content": question},
                     ],
                     "max_completion_tokens": 700,
+                    **({"stream": True} if on_delta else {}),
                 },
             ) as response:
                 if response.status == 429:
@@ -92,6 +96,8 @@ async def complete(key, model, question):
                     raise AIUnavailable(
                         "The AI provider refused this request. Ask the Owner to check provider configuration."
                     )
+                if on_delta:
+                    return await read_stream(response.content, on_delta)
                 chunks, size = [], 0
                 async for chunk in response.content.iter_chunked(8192):
                     size += len(chunk)
@@ -116,6 +122,74 @@ async def complete(key, model, question):
         raise AIUnavailable(
             "The AI request could not be completed. No group action was taken."
         ) from None
+
+
+async def read_stream(content, on_delta):
+    """Bounded SSE parser: only answer deltas, never reasoning/tool events."""
+    buffer, answer, size = b'', '', 0
+    async for chunk in content.iter_chunked(8192):
+        size += len(chunk)
+        if size > 65536:
+            raise AIUnavailable('The AI response exceeded the safety limit.')
+        buffer += chunk
+        while b'\n' in buffer:
+            line, buffer = buffer.split(b'\n', 1)
+            line = line.rstrip(b'\r')
+            if not line.startswith(b'data:'):
+                continue
+            data = line[5:].strip()
+            if data == b'[DONE]':
+                if not answer.strip():
+                    raise AIUnavailable('The AI provider returned no text answer.')
+                return answer.strip()
+            event = json.loads(data)
+            if 'error' in event:
+                raise AIUnavailable('The AI provider interrupted this response.')
+            choices = event.get('choices', [])
+            if not choices:
+                continue
+            text = choices[0].get('delta', {}).get('content')
+            if text is not None:
+                if not isinstance(text, str):
+                    raise AIUnavailable('The AI provider returned invalid text.')
+                answer += text
+                if text:
+                    await on_delta(answer)
+    # Never present a truncated transport as a successfully finished answer.
+    raise AIUnavailable('The AI response was interrupted. No automatic retry was attempted.')
+
+
+class AnswerDraft:
+    """Best-effort ephemeral progress; failures never retry a provider request."""
+    def __init__(self, client, message):
+        self.client = client
+        self.chat_id = getattr(getattr(message, 'chat', None), 'id', None)
+        self.thread_id = getattr(message, 'message_thread_id', None)
+        self.draft_id = secrets.randbits(63) or 1
+        self.last = -100.0
+        self.rich = callable(getattr(client, 'send_rich_message_draft', None))
+        self.enabled = type(self.chat_id) is int and (self.rich or callable(getattr(client, 'send_message_draft', None)))
+
+    async def update(self, text=''):
+        now = time.monotonic()
+        if not self.enabled or now - self.last < 1.5:
+            return
+        self.last = now
+        escaped, _ = answer_preview(text)
+        try:
+            kwargs = dict(chat_id=self.chat_id, draft_id=self.draft_id,
+                          message_thread_id=self.thread_id)
+            if self.rich:
+                await self.client.send_rich_message_draft(
+                    **kwargs, rich_text=InputRichMessage(html=str(card(
+                        'AI Agent · Meiko', escaped + rich_thinking(),
+                        note='Generating an AI answer · external provider · no Telegram actions.'))))
+            else:
+                await self.client.send_message_draft(
+                    **kwargs, text=('Meiko · Generating…\n' + text)[:3000], parse_mode=None)
+        except Exception:
+            # Drafts are cosmetic. Do not retry ambiguous/flood/permission errors.
+            self.enabled = False
 
 
 def build(ctx):
@@ -202,8 +276,13 @@ def build(ctx):
         while len(recent) > 1000:
             recent.popitem(last=False)
         async with requests:
+            draft = AnswerDraft(_client, message)
+            await draft.update()
             try:
-                answer = await complete(key, model, question)
+                if draft.enabled:
+                    answer = await complete(key, model, question, on_delta=draft.update)
+                else:
+                    answer = await complete(key, model, question)
             except AIUnavailable as exc:
                 await reply(
                     message,
@@ -312,7 +391,10 @@ def build(ctx):
             return
         # Reuse the exact question validation/rate limits/provider boundary.
         request = SimpleNamespace(text='/ask ' + text, from_user=user, chat=chat,
-                                  reply=message.reply, sender_chat=None)
+                                  reply=message.reply, sender_chat=None,
+                                  _client=getattr(message, '_client', None),
+                                  id=getattr(message, 'id', None),
+                                  message_thread_id=getattr(message, 'message_thread_id', None))
         await ask(client, request)
 
     ctx.ai_autochat_handler = automatic
