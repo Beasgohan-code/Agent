@@ -273,29 +273,27 @@ def build(ctx):
         real table, and a button press edits it as a rich message rather than
         dropping it back to a grid.
         """
-        state = runtime.state()
-        idle = [row for row in state if row["enabled"] and not row["commands"]]
-        rows = tuple(
-            (row["slug"], _state_text(row), str(len(row["commands"])))
-            for row in state
-        )
-        enabled = sum(1 for row in state if row["enabled"])
+        from ...platform.policy import GROUP_CORE
+        raw = runtime.state()
+        management = [row for row in raw if row["slug"] in GROUP_CORE]
+        state = [row for row in raw if row["slug"] not in {*GROUP_CORE, "ops", "core"}]
+        if management:
+            state.insert(0, {
+                "slug": "group", "name": "Group Management", "enabled": all(row["enabled"] for row in management),
+                "commands": list({cmd for row in management for cmd in row["commands"]}),
+                "protected": True,
+            })
+        rows = tuple((row.get("name") or row["slug"], _state_text(row)) for row in state)
         body = panel(
-            "Plugin runtime",
-            icon=ctx.theme.emoji("gear"),
-            subtitle=(
-                f"<b>{enabled}</b> of <b>{len(state)}</b> plugins enabled. "
-                "A disabled plugin registers nothing at all."
-            ),
-            table=Table(headers=("Plugin", "State", "Cmds"), rows=rows, aligns=("left", "left", "right")),
-            lines=(["Idle (enabled, no commands):"] + [f"<code>{row['slug']}</code> — {_idle_reason(row)}" for row in idle] if idle else []),
-            note=(
-                "Tap a plugin to switch it on or off, or use "
-                "<code>/plugin &lt;slug&gt; on|off</code>. <code>ops</code> and "
-                "<code>core</code> are locked: they are the controls and the front "
-                "door, so the bot cannot lose the way back in."
-            ),
-            footer="Counts come from the live registry, not a stored copy.",
+            "Plugin runtime", icon=ctx.theme.emoji("gear"),
+            subtitle="One Group Management suite · optional tools below",
+            table=Table(headers=("Plugin", "State"), rows=rows),
+            lines=["Group Management includes moderation, welcome messages, anti-spam, filters, reports and verification."] + [
+                f"{html.escape(row.get('name') or row['slug'])}: {html.escape(_idle_reason(row))}"
+                for row in state if row["enabled"] and not row["commands"]
+            ],
+            note="Group Management stays on and uses no optional slots. Group admins configure its individual rules through /settings.",
+            footer="Optional switches control this bot’s runtime. Group activation still requires approval and an available slot.",
         )
         buttons: list[list[Button]] = []
         row_buttons: list[Button] = []
@@ -303,7 +301,7 @@ def build(ctx):
             locked = entry["protected"]
             row_buttons.append(
                 Button(
-                    text=f"{'🔒' if locked else ('✅' if entry['enabled'] else '⛔')} {entry['slug']}",
+                    text=f"{'🔒' if locked else ('✅' if entry['enabled'] else '⛔')} {entry.get('name') or entry['slug']}",
                     callback_data=f"{PLUGIN_PREFIX}:{entry['slug']}",
                     style=(ButtonStyle.SUCCESS if entry["enabled"] else ButtonStyle.DEFAULT),
                     disabled=locked,

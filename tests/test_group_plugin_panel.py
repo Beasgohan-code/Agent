@@ -85,3 +85,18 @@ def test_private_only_plugin_not_offered_for_group_activation(monkeypatch):
         markup = sender.await_args.kwargs['reply_markup']
         assert all('gplug:on' not in b.callback_data for row in markup.inline_keyboard for b in row)
     asyncio.run(scenario())
+
+
+def test_unapproved_inactive_tools_do_not_clutter_panel(monkeypatch):
+    async def scenario():
+        sender = AsyncMock()
+        monkeypatch.setattr('agent.modules.group.plugin_panel.reply', sender)
+        ctx, service, show = setup()
+        service.status.return_value = [{'slug': 'music', 'approved': False, 'active': False}]
+        await show(None, SimpleNamespace())
+        body = str(sender.await_args.args[1])
+        assert 'Group Management' in body
+        assert 'No optional plugins approved yet' in body
+        keyboard = sender.await_args.kwargs['reply_markup']
+        assert not any('music' in (b.callback_data or '') for row in keyboard.inline_keyboard for b in row)
+    asyncio.run(scenario())

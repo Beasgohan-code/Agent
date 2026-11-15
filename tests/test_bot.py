@@ -345,7 +345,7 @@ def test_the_plugins_command_answers_instead_of_reporting_no_runtime(tmp_path):
     body = message.replies[0]
     assert "Plugin runtime" in body
     assert "unavailable" not in body
-    assert "encoder" in body
+    assert "Encoder" in body
 
 
 def test_the_events_command_sees_the_real_event_log(tmp_path):

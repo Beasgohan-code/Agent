@@ -166,6 +166,7 @@ def build(ctx):
                     ),
                 ]
             )
+            buttons.append([Button("ℹ Details & storage", callback_data=f"{PREFIX}:{clone.bot_id}:details")])
         buttons.append(
             [
                 Button("\u21a9\ufe0f Menu", callback_data="menu:home", style=ButtonStyle.PRIMARY),
@@ -370,10 +371,13 @@ def build(ctx):
 
     # -- /mybots -----------------------------------------------------------
     async def mybots(_client, message):
-        await store.aall()
         user = getattr(message, "from_user", None)
         if user is None:
             return
+        if getattr(getattr(message, "chat", None), "id", None) != user.id:
+            await reply(message, "Open /mybots privately to manage your bots and storage destinations.")
+            return
+        await store.aall()
         text, keyboard = _panel(user.id)
         await reply(message, text, reply_markup=keyboard)
 
@@ -497,6 +501,36 @@ def build(ctx):
         if not _may_manage(presser, target):
             await query.answer("Only its owner can control this clone.", show_alert=True)
             return
+        if action == "details":
+            if getattr(getattr(query.message, "chat", None), "id", None) != presser:
+                await query.answer("Open /mybots privately to view storage details.", show_alert=True)
+                return
+            features = selection_label(target.selected_plugins) if target.selected_plugins else profiles.describe(target.profile)
+            text = panel("Clone details", icon=ctx.theme.emoji("bot"),
+                table=kv_table([
+                    ("Bot ID", str(target.bot_id)),
+                    ("Features", features),
+                    ("Group Management", "Included · always available"),
+                    ("Runtime", "Running in this process" if manager.is_running(bot_id) else "Not running in this process"),
+                    ("Archive channel", str(target.storage_channel) if target.storage_channel else "Not configured"),
+                    ("Log channel", str(target.log_channel) if target.log_channel else "Not configured"),
+                    ("Credential encryption", "Enabled" if store.encrypted() else "Unavailable"),
+                ]),
+                note="A file-processing clone uses its own token, storage metadata and jobs. It never inherits the parent’s archive channel.",
+                footer="An archive channel is required for durable remote copies. Without one, local files can be lost on restart or redeploy.")
+            await _redraw(query, client, text, Keyboard([[Button("Back to clones", callback_data=f"{PREFIX}:{bot_id}:back")]]))
+            await query.answer()
+            return
+        if action == "delete":
+            await _redraw(query, client, panel("Delete this clone?", lines=[
+                f"Stop and remove bot <code>{bot_id}</code> from this manager?",
+                "This does not delete messages or files already sent to Telegram."
+            ]), Keyboard([
+                [Button("Confirm delete", callback_data=f"{PREFIX}:{bot_id}:delete_confirm", style=ButtonStyle.DANGER)],
+                [Button("Keep clone", callback_data=f"{PREFIX}:{bot_id}:back")],
+            ]))
+            await query.answer()
+            return
         if action in ("start", "profile", "p") and not await entitled(presser):
             await query.answer("Starting or reconfiguring clones requires bot premium, including for Owner and sudo users.", show_alert=True)
             return
@@ -517,7 +551,7 @@ def build(ctx):
                 return
             await store.aupdate(bot_id, disabled=True)
             said = f"{target.handle} is stopped."
-        elif action == "delete":
+        elif action == "delete_confirm":
             await manager.stop(bot_id)
             await store.aremove(bot_id)
             said = f"{target.handle} was deleted."
@@ -526,7 +560,7 @@ def build(ctx):
         else:
             await query.answer("That button is stale.", show_alert=True)
             return
-        if events is not None and action != "delete":
+        if events is not None and action != "delete_confirm":
             events.emit(f"clone:{action}", bot_id=bot_id, by=presser)
         logger.info("clone %s %s by %s from the panel", bot_id, action, presser)
         text, keyboard = _panel(target.owner_id)

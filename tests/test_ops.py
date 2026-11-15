@@ -294,7 +294,8 @@ def test_plugins_lists_state(ctx):
     run(handlers(ctx)["plugins"], message)
 
     body = message.replies[0]
-    assert "ops" in body and "demo" in body
+    assert "demo" in body
+    assert "plugin:ops" not in str(message.replies)
 
 
 def test_plugin_off_and_on(ctx):

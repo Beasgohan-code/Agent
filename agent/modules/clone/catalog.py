@@ -4,7 +4,7 @@
 TEMPLATES = {
     'files': ('filestore', 'FileStore', True),
     'encoder': ('encoder', 'Encoder', False),
-    'moderation': ('moderation', 'Moderation', False),
+    'moderation': ('moderation', 'Group Management', False),
     'postmaker': ('postmaker', 'Post maker', False),
     'linkshare': ('linkshare', 'Linkshare', False),
     'leech': ('leech', 'Leech', False),

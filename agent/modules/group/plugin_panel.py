@@ -9,6 +9,10 @@ from ...utils.rich import reply, edit
 
 PREFIX = 'gplug'
 PAGE_SIZE = 5
+LABELS = {'music': 'Music', 'filestore': 'FileStore', 'encoder': 'Encoder',
+          'leech': 'Leech', 'linkshare': 'Linkshare', 'postmaker': 'Post Maker',
+          'ai_agent': 'AI Agent', 'clone': 'Clones', 'renamer': 'Renamer',
+          'premium': 'Premium', 'utilities': 'Utilities'}
 
 
 def build(ctx):
@@ -19,21 +23,23 @@ def build(ctx):
     async def render(client, message, page=0):
         state = await service.status(client, message)
         used = sum(row['active'] for row in state)
+        state = [row for row in state if row['approved'] or row['active']]
         page = max(0, min(page, (len(state) - 1) // PAGE_SIZE))
         visible = state[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
         runtime = {row['slug']: row for row in ctx.runtime.state()}
-        rows, buttons = [], []
+        rows, buttons = [("Group Management", "Always on · no slots")], []
         for row in visible:
             slug = row['slug']
+            name = LABELS.get(slug, slug)
             deployment = runtime.get(slug)
             available = bool(deployment and deployment['enabled'] and deployment['commands'] and deployment.get('scope') in ('all', 'group'))
             label = ('Active' if row['active'] else 'Not approved' if not row['approved']
                      else 'Available' if available else 'Unavailable here')
-            rows.append((slug, label))
+            rows.append((name, label))
             if row['active']:
-                buttons.append([Button(f'Disable {slug}', callback_data=f'{PREFIX}:ask:{slug}:{page}')])
+                buttons.append([Button(f'Disable {name}', callback_data=f'{PREFIX}:ask:{slug}:{page}')])
             elif row['approved'] and available and used < 3:
-                buttons.append([Button(f'Activate {slug}', callback_data=f'{PREFIX}:on:{slug}:{page}')])
+                buttons.append([Button(f'Activate {name}', callback_data=f'{PREFIX}:on:{slug}:{page}')])
         nav = []
         if page:
             nav.append(Button('‹ Previous', callback_data=f'{PREFIX}:page:{page-1}'))
@@ -42,9 +48,11 @@ def build(ctx):
         if nav:
             buttons.append(nav)
         buttons.append([Button('Refresh', callback_data=f'{PREFIX}:page:{page}')])
-        return panel('Optional plugins', subtitle=f'Group control › Plugins · {3-used} / 3 slots available',
+        return panel('Group plugins', subtitle=f'{3-used} / 3 slots available',
                      table=Table(headers=['Plugin', 'Status'], rows=rows, aligns=['left', 'left'], total_width=48),
-                     footer='Mandatory moderation is always active and uses no slots.'), Keyboard(buttons)
+                     lines=['Welcome · anti-spam · filters · moderation · reports · verification',
+                            *([] if state else ['No optional plugins approved yet. Ask the bot owner to approve the tools you need.'])],
+                     footer='Group Management is included. Only approved optional tools appear here.'), Keyboard(buttons)
 
     async def show(client, message):
         try:

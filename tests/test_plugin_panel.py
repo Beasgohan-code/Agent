@@ -123,7 +123,7 @@ def test_star_selects_everything_compiled():
 # --- the panel ------------------------------------------------------------
 
 
-def test_the_panel_has_one_styled_button_per_plugin(tmp_path):
+def test_the_panel_has_one_management_suite_and_optional_buttons(tmp_path):
     bot = make_bot(tmp_path)
     _, commands = ops.build(bot.modules)
     message = FakeMessage("/plugins")
@@ -133,10 +133,10 @@ def test_the_panel_has_one_styled_button_per_plugin(tmp_path):
     assert "<pre>" in message.replies[0]          # editable classic grid
     slugs = [m.slug for m in bot.registry.manifests()]
     data = [b.callback_data for b in buttons(message.markup)]
-    assert data == [f"plugin:{slug}" for slug in slugs]
+    assert data == ["plugin:group"] + [f"plugin:{slug}" for slug in slugs if slug not in {*GROUP_CORE, "ops", "core"}]
     for button in buttons(message.markup):
         assert button.style is ButtonStyle.SUCCESS
-        if button.callback_data == "plugin:ops":
+        if button.callback_data == "plugin:group":
             assert button.disabled is True        # the control plane is locked
 
 
