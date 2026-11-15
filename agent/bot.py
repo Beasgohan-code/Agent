@@ -41,6 +41,8 @@ from .utils.sender import ScreenSender
 from .watchdog import build_watchdog
 
 
+OPTIONAL_STARTUP_TIMEOUT = 30.0
+
 def _scope_filter(scope: str):
     """Where a module's commands may run, as declared by its manifest."""
     if scope == "group":
@@ -486,33 +488,12 @@ class AgentBot:
             await self._shutdown(client)
             raise
 
-        # Start the voice engine after the bot is up: a failure there must not
-        # take the command surface down with it.
-        if self.voice is not None:
-            try:
-                await self.voice.start()
-            except Exception:  # noqa: BLE001 - the music commands report the reason
-                logger.exception("Voice chat engine failed to start; the player is inert.")
-
-        # Clones that were running when this process last stopped are started
-        # again here, one at a time: a revoked token must not take the main bot
-        # down with it.
-        clones = getattr(self.modules, "clones", None)
-        if clones is not None:
-            try:
-                await clones.restore()
-            except Exception:  # noqa: BLE001 - clones are a feature, not the bot
-                logger.exception("Could not restore clones; continuing without them.")
-            # Then keep watching: a clone that drops its connection is restarted
-            # with a capped backoff, instead of being reported as up forever.
-            if getattr(clones, "watch", None) is not None and self.settings.clone_limit:
-                self._supervisor = asyncio.create_task(
-                    clones.watch(self.settings.watchdog_interval), name="clone-supervisor"
-                )
-
-        # A completed handshake is a successful probe.
+        # The primary bot is connected now. Optional services must not hide
+        # this milestone or delay health readiness indefinitely.
         self.health.record_success()
         self.events.emit("start", version=__version__)
+        logger.info('Main Telegram client connected; starting optional services with bounded waits.')
+        await self._start_optional_services()
 
         # Make Telegram's own command menu match what this process actually
         # registered — a disabled plugin must not linger in the menu either.
@@ -543,6 +524,33 @@ class AgentBot:
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
             await self._cleanup_services(client)
+
+    async def _start_optional_services(self):
+        """Bound optional integrations; neither may block the main bot forever."""
+        # Start the voice engine after the bot is up: a failure there must not
+        # take the command surface down with it.
+        if self.voice is not None:
+            try:
+                await asyncio.wait_for(self.voice.start(), timeout=OPTIONAL_STARTUP_TIMEOUT)
+            except Exception:  # noqa: BLE001 - the music commands report the reason
+                logger.exception("Voice chat engine failed to start; the player is inert.")
+
+        # Clones that were running when this process last stopped are started
+        # again here, one at a time: a revoked token must not take the main bot
+        # down with it.
+        clones = getattr(self.modules, "clones", None)
+        if clones is not None:
+            try:
+                await asyncio.wait_for(clones.restore(), timeout=OPTIONAL_STARTUP_TIMEOUT)
+            except Exception:  # noqa: BLE001 - clones are a feature, not the bot
+                logger.exception("Could not restore clones; continuing without them.")
+            # Then keep watching: a clone that drops its connection is restarted
+            # with a capped backoff, instead of being reported as up forever.
+            if getattr(clones, "watch", None) is not None and self.settings.clone_limit:
+                self._supervisor = asyncio.create_task(
+                    clones.watch(self.settings.watchdog_interval), name="clone-supervisor"
+                )
+
 
     async def _sync_commands(self, client, *, reset_button=False):
         async with self._menu_sync_lock:

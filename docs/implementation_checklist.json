@@ -1278,6 +1278,31 @@
         "No invite-specific allowlist, URL-encoded invite normalization or live Telegram validation",
         "Other lock modes/events and broader integrations remain separately pending; no deployment or merge"
       ]
+    },
+    {
+      "id": "startup-announcement-and-optional-service-deadlines",
+      "status": "completed",
+      "trigger": "User reports bot stopped/no startup notification after 084d7bd; exact production cause not established",
+      "inspected": [
+        "084d7bd changes: Premium default selection and plan callbacks; optional module build failures are caught by existing build loop",
+        "Main startup path: required PostgreSQL loading, token lease, Telegram handshake, voice start, clone restore, start event, command publishing"
+      ],
+      "implemented": [
+        "Primary Telegram handshake now records health success and emits start before optional voice/clone initialization",
+        "Voice start and clone restore each bounded to 30 seconds; exceptions/timeouts logged and do not abort main controller",
+        "Extracted optional-service startup for direct cancellation/failure regressions"
+      ],
+      "validation": [
+        "20 focused startup/bot tests passed",
+        "Full disposable PostgreSQL suite 1605 passed, no skips, 16.13 seconds",
+        "Regression stalls both optional services, verifies timeout cancellation and continued return; voice failure still permits clone restore",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "No production startup logs yet: exact reported root cause unresolved; missing #Start alone is not proof of dead process",
+        "Required database/lease/Telegram connection failures still correctly prevent unsafe startup; no bypasses introduced",
+        "No live network/deployment validation, migrations, automatic rollback or PR merge performed"
+      ]
     }
   ],
   "production_changes": false,
