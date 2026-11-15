@@ -35,9 +35,48 @@ class PolicyError(RuntimeError):
 
 def _apply(policy, operation, value):
     work = copy.deepcopy(policy)
-    if operation in ("on", "off"):
+    if (
+        operation == "consecutive"
+        and type(value) is int
+        and (value == 0 or 2 <= value <= 1000)
+    ):
+        work["consecutive_limit"] = value
+        work["flood_enabled"] = False
+    elif (
+        operation == "floodtimer"
+        and isinstance(value, (tuple, list))
+        and len(value) == 2
+        and all(type(v) is int for v in value)
+        and (
+            tuple(value) == (0, 0)
+            or (2 <= value[0] <= 1000 and 30 <= value[1] <= 86400)
+        )
+    ):
+        work["timed_flood_count"], work["timed_flood_seconds"] = value
+        work["flood_enabled"] = False
+    elif (
+        operation == "floodmode"
+        and isinstance(value, (tuple, list))
+        and len(value) == 2
+        and type(value[1]) is int
+        and (
+            (value[0] in ("ban", "mute", "kick") and value[1] == 0)
+            or (value[0] in ("tban", "tmute") and 30 <= value[1] <= 365 * 86400)
+        )
+    ):
+        work["flood_action"], work["flood_action_seconds"] = value
+    elif operation == "clearflood" and type(value) is bool:
+        work["clear_flood"] = value
+    elif operation in ("consecutive", "floodtimer", "floodmode", "clearflood"):
+        raise PolicyError(
+            "Invalid antiflood setting. Counts: 2–1000 or off; timed windows: 30s–1d; timed actions: 30s–365d."
+        )
+    elif operation in ("on", "off"):
         for flag in FLAGS if operation == "off" else FLAGS[:4]:
             work[flag] = operation == "on"
+        if operation == "off":
+            work["consecutive_limit"] = 0
+            work["timed_flood_count"] = 0
         if operation == "on":
             work["keywords_enabled"] = bool(work.get("blocked_keywords"))
     elif operation in ("links", "invites", "flood", "duplicates") and value in (

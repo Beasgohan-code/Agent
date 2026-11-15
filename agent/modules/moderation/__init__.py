@@ -25,6 +25,7 @@ from pyrogram.errors import RPCError, FloodWait
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
+from .antiflood import COMMANDS as FLOOD_COMMANDS, build as build_antiflood, watch as watch_antiflood
 from ...platform.group_rules import rules_history, RulesError
 from ...platform.admin_settings import options as admin_options, denied, AdminStateError
 from ...platform.group_trust import trusted_members, trust_history, TrustError
@@ -43,7 +44,7 @@ MANIFEST = PluginManifest(
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog",
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *FLOOD_COMMANDS,
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -392,7 +393,7 @@ def watch(ctx):
 
 def extra_handlers(ctx):
     """The anti-spam watcher, registered by the bot in its own handler group."""
-    return [MessageHandler(watch(ctx), tg_filters.group)]
+    return [MessageHandler(watch(ctx), tg_filters.group), MessageHandler(watch_antiflood(ctx), tg_filters.group)]
 
 
 # -- handlers ---------------------------------------------------------------
@@ -818,6 +819,7 @@ def build(ctx):
         return guarded
 
     return MANIFEST, {
+        **build_antiflood(ctx),
         "warn": warn,
         "warnings": warnings,
         "warns": warnings,

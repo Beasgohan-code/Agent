@@ -63,6 +63,11 @@ DESCRIPTIONS: dict[str, str] = {
     "unapprove": "Remove a member approval",
     "approval": "Check a member approval",
     "approved": "List approved members",
+    "flood": "Show antiflood settings",
+    "setflood": "Set the consecutive-message flood limit",
+    "setfloodtimer": "Set the timed flood limit",
+    "floodmode": "Set the antiflood action",
+    "clearflood": "Toggle flood message cleanup",
     "antispam": "Anti-spam policy for this group",
     "modlog": "Recent moderation actions",
     # group management
@@ -207,7 +212,7 @@ DESCRIPTIONS: dict[str, str] = {
 GROUP_ONLY = frozenset(
     {
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog",
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "settings", "rules", "setrules", "pin", "unpin",
         "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror", "admins", "warnlimit", "resetwarns", "lockdown",
         "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",

@@ -104,6 +104,33 @@ def test_pg_policy_atomic_changes_isolation_and_audit(tmp_path):
             with pytest.raises(PolicyError):
                 await change_policy(contexts[0], -100, "action", "arbitrary", actor=11)
             assert await read_policy(contexts[1], -100) == state
+            await asyncio.gather(
+                change_policy(contexts[0], -100, "consecutive", 7, actor=11),
+                change_policy(contexts[1], -100, "floodtimer", (10, 30), actor=22),
+                change_policy(
+                    contexts[0], -100, "floodmode", ("tban", 259200), actor=11
+                ),
+                change_policy(contexts[1], -100, "clearflood", False, actor=22),
+            )
+            state = await read_policy(contexts[1], -100)
+            assert state["consecutive_limit"] == 7 and state["timed_flood_count"] == 10
+            assert state["flood_action"] == "tban" and not state["clear_flood"]
+            assert not (await read_policy(contexts[2], -100)).get("consecutive_limit")
+            async with dbs[0]._pool.acquire() as conn:
+                await conn.execute("""CREATE OR REPLACE FUNCTION pg_temp.reject_flood_audit() RETURNS trigger LANGUAGE plpgsql
+                    AS $$ BEGIN RAISE EXCEPTION 'reject'; END $$""")
+                await conn.execute(f"""CREATE TRIGGER reject_flood_audit BEFORE INSERT ON agent_antispam_history FOR EACH ROW
+                    WHEN (NEW.tenant = '{scope}') EXECUTE FUNCTION pg_temp.reject_flood_audit()""")
+                try:
+                    with pytest.raises(PolicyError):
+                        await change_policy(
+                            contexts[0], -100, "consecutive", 0, actor=11
+                        )
+                    assert await read_policy(contexts[1], -100) == state
+                finally:
+                    await conn.execute(
+                        "DROP TRIGGER reject_flood_audit ON agent_antispam_history"
+                    )
         finally:
             for db in (dbs[0], dbs[2]):
                 if db.connected:
