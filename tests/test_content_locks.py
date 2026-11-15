@@ -262,3 +262,45 @@ def test_url_buttons_lock_and_domain_exemptions_do_not_treat_callbacks_as_links(
         assert await locks.enforce(ctx, client, msg)
         client.delete_messages.assert_awaited_once_with(-100500, msg.id)
     asyncio.run(scenario())
+
+
+def test_script_locks_cover_text_captions_and_supplementary_characters():
+    for kind, samples in {'cjk': ['中文', 'ひらがな', 'カタカナ', '한글', '𠀀', 'ｶﾀｶﾅ'],
+                          'cyrillic': ['Привет', 'Ї', 'ꙮ'],
+                          'rtl': ['مرحبا', 'שלום', '\u202ehello', '\u2067hello']}.items():
+        for sample in samples:
+            assert locks.matches(NS(text='prefix ' + sample), kind)
+            assert locks.matches(NS(caption=sample), kind)
+        assert not locks.matches(NS(text='hello 123 😀', caption='English'), kind)
+        assert not locks.matches(NS(), kind)
+    assert not locks.matches(NS(text='മലയാളം'), 'cjk')
+    assert not locks.matches(NS(text='മലയാളം'), 'rtl')
+
+
+def test_new_metadata_locks_distinguish_external_replies_and_story_shares():
+    for kind, field in [('externalreply', 'external_reply'), ('forwardstory', 'story'), ('checklist', 'checklist')]:
+        assert locks.matches(NS(**{field: NS()}), kind)
+        assert not locks.matches(NS(reply_to_message=NS(), reply_to_story=NS()), kind)
+
+
+def test_script_caption_lock_actual_enforcement_keeps_admin_exemption(tmp_path):
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        commands = moderation.build(ctx)[1]
+        await commands['lock'](fixtures.FakeClient(), fixtures.FakeMessage('/lock cjk cyrillic rtl externalreply forwardstory checklist'))
+        assert locks.read(ctx, -100500) == {'cjk','cyrillic','rtl','externalreply','forwardstory','checklist'}
+        message = fixtures.FakeMessage('')
+        message.caption = 'Mixed caption 中文'
+        client = fixtures.FakeClient()
+        client.get_me = AsyncMock(return_value=NS(id=99))
+        async def member(chat, uid):
+            return fixtures.member(fixtures.ADMIN if uid == 99 else fixtures.MEMBER)
+        client.get_chat_member = AsyncMock(side_effect=member)
+        client.delete_messages = AsyncMock(return_value=True)
+        assert await locks.enforce(ctx, client, message)
+        client.delete_messages.assert_awaited_once()
+        client.delete_messages.reset_mock()
+        client.get_chat_member = AsyncMock(return_value=fixtures.member(fixtures.ADMIN))
+        assert not await locks.enforce(ctx, client, message)
+        client.delete_messages.assert_not_awaited()
+    asyncio.run(scenario())

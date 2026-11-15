@@ -1235,6 +1235,28 @@
         "No live TypeTube provider/Telegram upload/voice verification or deployment",
         "Pending broader workflows remain separately tracked; no all-bugs-fixed or full upstream parity claim"
       ]
+    },
+    {
+      "id": "rose-script-and-current-message-locks",
+      "status": "completed",
+      "source": "https://missrose.org/docs/anti-spam/locks/ reread this turn",
+      "implemented": [
+        "Six new lock types: cjk/cyrillic/rtl/externalreply/forwardstory/checklist; 36 supported types total",
+        "Unicode character-name checks for CJK families and Cyrillic, Unicode bidi classes for RTL including directional override/isolate characters; text and captions supported",
+        "Uses installed Wzgram Message.external_reply/story/checklist fields, checked actual constructor before implementation",
+        "Same persisted locks, all/unlock semantics, group admin checks and admin exemption; no new commands or competing watchers"
+      ],
+      "validation": [
+        "Focused tests: 14 passed, 1 PostgreSQL test skipped without test DB; authoritative full run below had no skips",
+        "Full disposable PostgreSQL suite: 1600 passed, no skips, 15.87 seconds",
+        "New regression tests cover mixed scripts/captions, supplementary CJK, halfwidth Japanese, Malayalam/Latin negative cases, native metadata distinction and real command/enforcement/admin exemption path",
+        "compileall/Pyflakes/diff checks passed"
+      ],
+      "remaining": [
+        "Unicode-name script classification is explicit local behavior, not exact Rose script implementation parity",
+        "Invite/bot links, channel identities, warning/custom modes and additional allowlist kinds still pending",
+        "No live Telegram validation/deployment or PR merge"
+      ]
     }
   ],
   "production_changes": false,

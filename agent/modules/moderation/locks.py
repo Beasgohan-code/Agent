@@ -8,6 +8,7 @@ import asyncio
 import logging
 import re
 import ipaddress
+import unicodedata
 from urllib.parse import urlsplit
 from weakref import WeakValueDictionary
 from pyrogram.enums import ChatType, ChatMemberStatus, MessageEntityType as Entity, MessageOriginType as Origin
@@ -21,7 +22,8 @@ TYPES = {
     'poll': 'poll', 'sticker': 'sticker', 'video': 'video',
     'videonote': 'video_note', 'voice': 'voice', 'game': 'game',
     'emojigame': 'dice', 'album': 'media_group_id', 'inline': 'via_bot',
-    'text': 'text',
+    'text': 'text', 'checklist': 'checklist',
+    'externalreply': 'external_reply', 'forwardstory': 'story',
 }
 ENTITY_LOCKS = {
     'url': (Entity.URL, Entity.TEXT_LINK),
@@ -32,11 +34,21 @@ ENTITY_LOCKS = {
     'emojicustom': (Entity.CUSTOM_EMOJI,),
     'command': (Entity.BOT_COMMAND,),
 }
-TYPES.update({kind: None for kind in ENTITY_LOCKS})
+SCRIPT_LOCKS = {'cjk', 'cyrillic', 'rtl'}
+TYPES.update({kind: None for kind in ENTITY_LOCKS.keys() | SCRIPT_LOCKS})
 TYPES.update({kind: None for kind in ('forward', 'forwarduser', 'forwardbot', 'forwardchannel', 'button', 'stickeranimated', 'stickerpremium')})
 
 
 def matches(message, kind):
+    if kind in SCRIPT_LOCKS:
+        text = (getattr(message, 'text', None) or '') + (getattr(message, 'caption', None) or '')
+        if kind == 'rtl':
+            return any(unicodedata.bidirectional(char) in ('R', 'AL', 'RLE', 'RLO', 'RLI') for char in text)
+        names = (unicodedata.name(char, '') for char in text)
+        if kind == 'cyrillic':
+            return any('CYRILLIC' in name for name in names)
+        return any(name.startswith(('CJK ', 'HIRAGANA ', 'KATAKANA ', 'HANGUL ', 'BOPOMOFO ',
+                                    'HALFWIDTH KATAKANA ', 'HALFWIDTH HANGUL ')) for name in names)
     if kind in ENTITY_LOCKS:
         entities = list(getattr(message, 'entities', None) or []) + list(getattr(message, 'caption_entities', None) or [])
         return any(getattr(entity, 'type', None) in ENTITY_LOCKS[kind] for entity in entities)
