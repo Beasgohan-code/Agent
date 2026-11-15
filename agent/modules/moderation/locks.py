@@ -9,7 +9,7 @@ import logging
 import re
 import ipaddress
 import unicodedata
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 from weakref import WeakValueDictionary
 from pyrogram.enums import ChatType, ChatMemberStatus, MessageEntityType as Entity, MessageOriginType as Origin
 from ...ui.tables import panel, Table
@@ -36,7 +36,7 @@ ENTITY_LOCKS = {
 }
 SCRIPT_LOCKS = {'cjk', 'cyrillic', 'rtl'}
 TYPES.update({kind: None for kind in ENTITY_LOCKS.keys() | SCRIPT_LOCKS})
-TYPES.update({kind: None for kind in ('forward', 'forwarduser', 'forwardbot', 'forwardchannel', 'button', 'stickeranimated', 'stickerpremium')})
+TYPES.update({kind: None for kind in ('forward', 'forwarduser', 'forwardbot', 'forwardchannel', 'button', 'stickeranimated', 'stickerpremium', 'invitelink')})
 
 
 def matches(message, kind):
@@ -52,6 +52,8 @@ def matches(message, kind):
     if kind in ENTITY_LOCKS:
         entities = list(getattr(message, 'entities', None) or []) + list(getattr(message, 'caption_entities', None) or [])
         return any(getattr(entity, 'type', None) in ENTITY_LOCKS[kind] for entity in entities)
+    if kind == 'invitelink':
+        return any(private_invite(value) for value in message_urls(message) + button_urls(message))
     if kind == 'button':
         return bool(button_urls(message))
     if kind in ('forwarduser', 'forwardbot', 'forwardchannel'):
@@ -127,9 +129,13 @@ def link_allowed(value, domains):
         return False
 
 
-def url_allowed(message, domains):
-    """Every URL entity must be allowed; unknown/malformed links fail closed."""
-    urls = []
+def message_urls(message):
+    """Extract URL entities using Telegram UTF-16 offsets; ignore broken entities.
+
+    URL-button extraction is separate so each allowlist exemption remains
+    scoped to its own lock type.
+    """
+    values = []
     for text_key, entities_key in (('text', 'entities'), ('caption', 'caption_entities')):
         text = getattr(message, text_key, None) or ''
         for entity in getattr(message, entities_key, None) or []:
@@ -139,20 +145,44 @@ def url_allowed(message, domains):
             try:
                 if kind == Entity.TEXT_LINK:
                     value = entity.url
+                    if not isinstance(value, str):
+                        raise ValueError()
                 else:
                     offset, length = entity.offset, entity.length
                     if type(offset) is not int or type(length) is not int or offset < 0 or length <= 0:
-                        return False
+                        raise ValueError()
                     encoded = text.encode('utf-16-le')
                     if (offset + length) * 2 > len(encoded):
-                        return False
+                        raise ValueError()
                     value = encoded[offset*2:(offset+length)*2].decode('utf-16-le')
-                if not link_allowed(value, domains):
-                    return False
-                urls.append(value)
+                values.append(value)
             except (ValueError, UnicodeError, AttributeError, TypeError):
-                return False
-    return bool(urls)
+                values.append('')  # Broken entities can never grant exemptions.
+    return values
+
+
+def private_invite(value):
+    try:
+        if not value or len(value) > 8192 or any(char.isspace() for char in value):
+            return False
+        parts = urlsplit(value if '://' in value else 'https://' + value)
+        if parts.username is not None or parts.password is not None:
+            return False
+        if parts.scheme == 'tg':
+            return parts.netloc == 'join' and any(parse_qs(parts.query).get('invite', []))
+        if parts.scheme not in ('http', 'https') or parts.port not in (None, 80, 443):
+            return False
+        if (parts.hostname or '').lower() not in ('t.me', 'telegram.me', 'telegram.dog', 'www.t.me', 'www.telegram.me', 'www.telegram.dog'):
+            return False
+        return bool(re.fullmatch(r'/(?:\+|joinchat/)[A-Za-z0-9_-]+/?', parts.path))
+    except (ValueError, UnicodeError, TypeError):
+        return False
+
+
+def url_allowed(message, domains):
+    """Every text/caption URL entity must be allowed; malformed links fail closed."""
+    values = message_urls(message)
+    return bool(values) and all(link_allowed(value, domains) for value in values)
 
 
 def read_domains(ctx, group):
@@ -232,7 +262,7 @@ def build(ctx):
                 await reply(message, panel('Content locks', icon=ctx.theme.emoji('shield'),
                     table=Table(headers=('Type', 'State'), rows=tuple((kind, 'locked' if kind in current else 'open') for kind in kinds)),
                     lines=[] if kinds else ['No supported content types are locked.'],
-                    note='Deletes matching non-admin messages before blocklist handling. Admins are exempt. All means only the supported types listed by /locktypes; no warning or custom punishment.',
+                    note='Invitelink detects explicit private invites only, not public usernames. Deletes matching non-admin messages before blocklist handling. Admins are exempt. All means only the supported types listed by /locktypes; no warning or custom punishment.',
                     footer='/lock gif video sticker · /unlock video · /locks list'))
         except ValueError as error:
             await reply(message, str(error))

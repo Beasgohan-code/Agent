@@ -1257,6 +1257,27 @@
         "Invite/bot links, channel identities, warning/custom modes and additional allowlist kinds still pending",
         "No live Telegram validation/deployment or PR merge"
       ]
+    },
+    {
+      "id": "rose-explicit-private-invite-lock",
+      "status": "completed",
+      "implemented": [
+        "Added invitelink lock for explicit private t.me/telegram.me/telegram.dog +hash or joinchat/hash forms and tg://join?invite= links; 37 supported lock types with invitelink explicitly partial",
+        "Shared safe URL-entity extraction handles UTF-16 offsets/hidden text and captions; invite detector also checks inline URL buttons",
+        "Domain allowlisting does not bypass invitelink; independent URL/button exemption boundaries preserved",
+        "Lock screen explains private-invite scope; public username links are not guessed to be groups"
+      ],
+      "validation": [
+        "17 focused lock tests passed; standalone PostgreSQL test skipped without test DB",
+        "Authoritative full disposable PostgreSQL: 1603 passed, no skips, 16.37 seconds",
+        "Tests cover private invite variants, lookalikes, public username negatives, credentials/malformed port, hidden captions, astral offsets, buttons and real URL-allowlist-versus-invite enforcement",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Public usernames require safe chat identity resolution; no full Rose invitelink parity claim",
+        "No invite-specific allowlist, URL-encoded invite normalization or live Telegram validation",
+        "Other lock modes/events and broader integrations remain separately pending; no deployment or merge"
+      ]
     }
   ],
   "production_changes": false,

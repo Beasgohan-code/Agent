@@ -304,3 +304,42 @@ def test_script_caption_lock_actual_enforcement_keeps_admin_exemption(tmp_path):
         assert not await locks.enforce(ctx, client, message)
         client.delete_messages.assert_not_awaited()
     asyncio.run(scenario())
+
+
+def test_private_invite_formats_and_lookalikes():
+    for value in ['https://t.me/+Ab_cd-12', 't.me/joinchat/Ab_cd-12', 'https://telegram.me/+abc',
+                  'https://telegram.dog/joinchat/abc', 'tg://join?invite=Ab_cd-12']:
+        assert locks.private_invite(value)
+    for value in ['https://t.me/username', 'https://t.me/channel/42', 'https://t.me.evil.test/+abc',
+                  'https://evil.test/t.me/+abc', 'https://user:pass@t.me/+abc',
+                  'tg://resolve?domain=someone', 'tg://join?invite=', 'https://t.me:bad/+abc', '']:
+        assert not locks.private_invite(value)
+
+
+def test_invites_in_hidden_caption_emoji_offsets_and_buttons():
+    from pyrogram.enums import MessageEntityType as E
+    url = 'https://t.me/+abcdef'
+    assert locks.matches(NS(caption='😀 ' + url, caption_entities=[NS(type=E.URL, offset=3, length=len(url))]), 'invitelink')
+    assert locks.matches(NS(text='hidden', entities=[NS(type=E.TEXT_LINK, url=url)]), 'invitelink')
+    assert locks.matches(NS(reply_markup=NS(inline_keyboard=[[NS(url=url)]])), 'invitelink')
+    assert not locks.matches(NS(text='public', entities=[NS(type=E.TEXT_LINK, url='https://t.me/public')]), 'invitelink')
+
+
+def test_allowed_telegram_domain_does_not_bypass_invite_lock(tmp_path):
+    from pyrogram.enums import MessageEntityType as E
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        ctx.chats.put(-100500, locks.KEY, ['url', 'invitelink'])
+        ctx.chats.put(-100500, locks.ALLOW_KEY, ['t.me'])
+        message = fixtures.FakeMessage('https://t.me/+abcdef')
+        message.entities = [NS(type=E.URL, offset=0, length=len(message.text))]
+        assert locks.url_allowed(message, {'t.me'})
+        client = fixtures.FakeClient()
+        client.get_me = AsyncMock(return_value=NS(id=99))
+        async def member(chat, uid):
+            return fixtures.member(fixtures.ADMIN if uid == 99 else fixtures.MEMBER)
+        client.get_chat_member = AsyncMock(side_effect=member)
+        client.delete_messages = AsyncMock(return_value=True)
+        assert await locks.enforce(ctx, client, message)
+        client.delete_messages.assert_awaited_once()
+    asyncio.run(scenario())
