@@ -36,6 +36,13 @@ def home_keyboard(*, active=None) -> Keyboard:
         shortcuts.append(Button("🗂 Vault & downloads", callback_data="help:vault-downloads"))
     if shortcuts:
         rows.append(shortcuts)
+    tools = []
+    if active is None or "play" in active:
+        tools.append(Button("♫ Music", callback_data="help:music-voice-chat", style=ButtonStyle.PRIMARY))
+    if active is None or "encode" in active:
+        tools.append(Button("🎞 Media studio", callback_data="help:encoding-files"))
+    if tools:
+        rows.append(tools)
     rows.append([Button("↗ Project source", url=SOURCE_URL)])
     return Keyboard(rows)
 

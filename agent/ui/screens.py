@@ -9,6 +9,7 @@ command, which is the whole point of ``/help``.
 from __future__ import annotations
 
 import re
+import difflib
 from dataclasses import dataclass
 from typing import Callable
 
@@ -344,7 +345,7 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
             f"<code>{int(user_id)}</code>" if isinstance(user_id, int) else "unknown",
         ),
         ("Language", rich_esc(language)),
-        ("Premium", premium_text),
+        ("Telegram Premium", premium_text),
     ]
 
     text = (
@@ -355,7 +356,7 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
         + kv_table(rows).block()
         + "\n"
         + rich_hr()
-        + rich_footer(f"{theme.emoji('id')} Nothing is stored — details are read live.")
+        + rich_footer("Telegram profile details are read live. Agent Premium is separate; use /myplan to check your plan.")
     )
     return Screen(text, keyboards.info_keyboard(user_id if isinstance(user_id, int) else None))
 
@@ -380,10 +381,37 @@ def help_lookup_screen(
     """
     from ..platform.menu import DESCRIPTIONS
 
-    query = (argument or "").strip().lstrip("/").lower()
+    query = (argument or "").strip().lstrip("/").lower()[:64]
     for _icon, title, commands in HELP_SECTIONS:
         if query and query in {title.lower(), section_slug(title)}:
             return _section_builder(title)(user, theme, active=active)
+    if query and query not in DESCRIPTIONS:
+        # Short category names should work without knowing the display title.
+        aliases = {"music": "Music (voice chat)", "vault": "Vault & downloads",
+                   "media": "Encoding & files", "groups": "Group management"}
+        title = aliases.get(query)
+        if title:
+            return help_section_screen(title, user, theme, active=active)
+        candidates = sorted(name for name in DESCRIPTIONS
+                            if help_visible((name,), active) and _section_of(name))
+        matches = [name for name in candidates if query in name] if len(query) >= 3 else []
+        if not matches and len(query) >= 3:
+            matches = difflib.get_close_matches(query, candidates, n=6, cutoff=0.65)
+        matches = matches[:6]
+        if matches:
+            body = (
+                rich_heading("Find your next action", 2) + "\n"
+                + rich_note(f"Tools matching <b>{rich_esc(query)}</b>. Use <code>/help command</code> for a closer look.")
+                + "\n" + Table(headers=("Command", "What it does"), rows=tuple(
+                    (markup(f"<code>/{name}</code>"), DESCRIPTIONS[name]) for name in matches
+                )).block()
+            )
+            titles = list(dict.fromkeys(_section_of(name) for name in matches))
+            buttons = [[Button(title, callback_data=f"help:{section_slug(title)}")]
+                       for title in titles if title]
+            buttons.append([Button("All categories", callback_data=f"help:{ALL_SECTIONS}"),
+                            Button("Menu", callback_data=keyboards.CB_HOME)])
+            return Screen(body, InlineKeyboardMarkup(buttons))
     if query not in DESCRIPTIONS:
         body = (
             rich_heading(f"{theme.emoji('sparkles')} Help", 2)
