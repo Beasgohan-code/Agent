@@ -401,6 +401,8 @@ def test_authority_recovery_has_bounded_failed_restart_attempts(tmp_path):
         ctx.clones._store.aall = AsyncMock(
             side_effect=[RuntimeError("offline")] + [(record,)] * 5
         )
+        ticks = iter(range(0, 1000, 100))
+        ctx.clones._clock = lambda: next(ticks)
         await ctx.clones.supervise(max_attempts=2)
         for _ in range(5):
             assert await ctx.clones.supervise(max_attempts=2) == ()
@@ -535,6 +537,9 @@ def test_disconnected_worker_retries_after_first_restart_fails(tmp_path):
         ctx.clones._factory = factory
         assert await ctx.clones.supervise() == ()
         assert not ctx.clones.running()
+        # Retry waits for exponential backoff, not the next immediate tick.
+        assert await ctx.clones.supervise() == ()
+        ctx.clones._clock = lambda: ctx.clones._restart_history[record.bot_id][-1] + 16
         assert await ctx.clones.supervise() == (record.bot_id,)
         assert len(attempts) == 2
         await ctx.clones.stop_all()
@@ -560,10 +565,37 @@ def test_disconnection_recovery_obeys_restart_attempt_limit(tmp_path):
             return worker
 
         ctx.clones._factory = factory
+        ticks = iter(range(0, 1000, 100))
+        ctx.clones._clock = lambda: next(ticks)
         for _ in range(6):
             assert await ctx.clones.supervise(max_attempts=2) == ()
         assert len(attempts) == 2
         assert not ctx.clones.running()
         assert not ctx.clones._pending_recovery
 
+    asyncio.run(scenario())
+
+
+def test_successful_reconnects_do_not_reset_rolling_restart_budget(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        record = ctx.clones._store.add(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A))
+        now = [0.0]
+        ctx.clones._clock = lambda: now[0]
+        await ctx.clones.start(record)
+        for attempt in range(2):
+            ctx.clones._running[record.bot_id][1].is_connected = False
+            if attempt:
+                assert await ctx.clones.supervise(max_attempts=2) == ()
+                assert record.bot_id in ctx.clones._pending_recovery
+                now[0] += 16
+            assert await ctx.clones.supervise(max_attempts=2) == (record.bot_id,)
+            assert ctx.clones.state(record.bot_id).attempts == 0
+        ctx.clones._running[record.bot_id][1].is_connected = False
+        assert await ctx.clones.supervise(max_attempts=2) == ()
+        assert not ctx.clones.is_running(record.bot_id)
+        assert len(ctx.clones._restart_history[record.bot_id]) == 2
+        assert record.bot_id not in ctx.clones._pending_recovery
+        now[0] += 3601
+        assert ctx.clones._restart_permission(record.bot_id, 2) == 'ready'
     asyncio.run(scenario())

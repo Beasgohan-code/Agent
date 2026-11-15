@@ -20,6 +20,7 @@ import asyncio
 import inspect
 import logging
 import hashlib
+import time
 from dataclasses import replace
 from typing import Callable
 
@@ -56,6 +57,10 @@ class CloneManager:
         self._lease_monitors = {}
         # Only supervisor-authorized transient stops enter this queue.
         self._pending_recovery: dict[int, int] = {}
+        # Separate from consecutive startup failures: RUNNING never resets
+        # the rolling automatic-restart budget.
+        self._restart_history: dict[int, list[float]] = {}
+        self._clock = time.monotonic
 
     # -- settings ---------------------------------------------------------
     def settings_for(self, clone: Clone):
@@ -323,6 +328,18 @@ class CloneManager:
         for bot_id in tuple(self._running):
             await self.stop(bot_id)
 
+    def _restart_permission(self, bot_id, maximum):
+        now = self._clock()
+        history = self._restart_history.setdefault(bot_id, [])
+        history[:] = [stamp for stamp in history if now - stamp < 3600]
+        if len(history) >= maximum:
+            logger.error('Clone %s automatic restart circuit open (%s retries/hour)', bot_id, maximum)
+            return 'exhausted'
+        if history and now < history[-1] + lifecycle.backoff(len(history)):
+            return 'waiting'
+        history.append(now)  # Counts failed attempts and successful reconnects.
+        return 'ready'
+
     async def supervise(self, *, max_attempts: int = 5) -> tuple[int, ...]:
         """One pass: notice dead clients, stop them, start them again if allowed.
 
@@ -345,6 +362,12 @@ class CloneManager:
             record = self._store.get(bot_id)
             if record is None or record.disabled or attempts >= max_attempts:
                 self._pending_recovery.pop(bot_id, None)
+                continue
+            permission = self._restart_permission(bot_id, max_attempts)
+            if permission == 'exhausted':
+                self._pending_recovery.pop(bot_id, None)
+                continue
+            if permission == 'waiting':
                 continue
             self._pending_recovery[bot_id] = attempts + 1
             try:
@@ -401,6 +424,12 @@ class CloneManager:
                     bot_id,
                     self.state(bot_id).attempts,
                 )
+                continue
+            permission = self._restart_permission(bot_id, max_attempts)
+            if permission == 'exhausted':
+                continue
+            if permission == 'waiting':
+                self._pending_recovery[bot_id] = 0
                 continue
             try:
                 await self.start(clone, automatic=True)
