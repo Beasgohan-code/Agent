@@ -22,7 +22,7 @@ DESCRIPTIONS = {
     'leech': ('Downloads and YouTube audio', 'Use /leech URL or reply to one public URL. TypeTube handles YouTube audio; private upload settings live in /leech.'),
     'linkshare': ('Controlled file sharing', 'Share owned files with expiry/use limits. Required-channel membership is configured privately by this bot’s Owner.'),
     'postmaker': ('Rich posts', 'Compose posts with the installed Post Maker commands. Publishing still requires the relevant Telegram permissions.'),
-    'ai_agent': ('Explicit AI questions', 'Uses this bot’s own provider key/model. No automatic group-history upload or autonomous actions.'),
+    'ai_agent': ('Questions and opt-in chat', 'Uses this bot’s own provider key/model. /autochat enables private text or group mention/reply triggers. No chat history or autonomous actions.'),
 }
 
 

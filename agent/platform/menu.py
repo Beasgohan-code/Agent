@@ -256,6 +256,7 @@ DESCRIPTIONS: dict[str, str] = {
     "delsudo": "Revoke a scoped capability (owner)",
     "sudolist": "List capability grants or history (owner)",
     "sudoperms": "Capability catalog or user grants (owner)",
+    "autochat": "Opt-in private chat and group mention/reply AI mode",
     "ask": "Ask AI Agent; question goes to an external provider",
     "watchdog": "Runtime health; cleanup is Owner-only",
     "plugins": "Group controls or authorized plugin inspection",

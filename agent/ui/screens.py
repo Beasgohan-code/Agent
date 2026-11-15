@@ -136,7 +136,7 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
 BUILTIN = frozenset({"start", "help", "ping"})
 
 HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("sparkles", "AI Agent", ("ask",)),
+    ("sparkles", "AI Agent", ("ask", "autochat")),
     (
         "bolt",
         "Essentials",

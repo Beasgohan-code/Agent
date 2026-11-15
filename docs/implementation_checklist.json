@@ -1653,6 +1653,31 @@
         "User newly requested AI automatic chat; scope/opt-in trigger confirmation pending, no ordinary conversations auto-uploaded",
         "No web dashboard, deployment, migration or PR merge"
       ]
+    },
+    {
+      "id": "opt-in-ai-private-and-group-directed-autochat",
+      "status": "completed",
+      "authorization": "User selected Both: opt-in private auto-chat plus group mention/reply-triggered responses",
+      "implemented": [
+        "Configured AI Agent registers /autochat on|off|status alongside /ask; settings default off",
+        "Private mode restricts configuration to sender own private chat; group mode requires live owner/administrator status",
+        "Native text watcher registered through existing AgentBot extra_handlers and plugin gate; existing Owner approval/group activation/three-slot authority still applies",
+        "Group triggers require current bot username mention boundary or reply to bot ID; only current text becomes question, never replied message/history",
+        "Bot/service/sender-chat/forward/inline sources and command-prefixed text ignored; existing ask credential checks, 2000-character bound, ten-second user cooldown and two-request concurrency reused",
+        "Existing native cards disclose provider transmission and off command; help/menu/plugin workspace guidance updated"
+      ],
+      "validation": [
+        "New tests cover default-off, private opt-in/off, disclosure, credentials, command exclusion, rate limit, group mention and reply prompts, unrelated group text, nonadmin denial and actual PluginGate approval refusal",
+        "Parametrized privacy regressions ignore forwarded/service/channel/inline/bot sources",
+        "Full disposable PostgreSQL suite 1641 passed, no skips, 18.20 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Stateless replies only: no conversation memory, media input, autonomous moderation or tools",
+        "Configuration uses existing ChatStore persistence and legacy flush acknowledgement; no cross-process setting revision mechanism added",
+        "No live paid provider or Telegram verification performed; configured provider may charge for opt-in triggering messages",
+        "Existing UI preview regeneration and wider security/reliability audit remain pending; no deployment or PR merge"
+      ]
     }
   ],
   "production_changes": false,

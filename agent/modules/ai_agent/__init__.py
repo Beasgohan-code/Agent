@@ -1,4 +1,4 @@
-"""AI Agent: explicit, stateless questions; no autonomous moderation or tools."""
+"""AI Agent: explicit questions and opt-in stateless chat; no moderation tools."""
 
 from __future__ import annotations
 
@@ -10,6 +10,11 @@ import re
 import time
 from collections import OrderedDict
 from dataclasses import replace
+from types import SimpleNamespace
+
+from pyrogram import filters
+from pyrogram.enums import ChatType, ChatMemberStatus
+from pyrogram.handlers import MessageHandler
 
 import aiohttp
 
@@ -43,8 +48,8 @@ MANIFEST = PluginManifest(
     slug="ai_agent",
     name="AI Agent",
     version="1.0.0",
-    description="Answer an explicit question through a configured AI provider; no chat-history collection or moderation powers.",
-    commands=("ask",),
+    description="Explicit questions and opt-in private/group-directed chat through a configured AI provider; no chat-history collection or moderation powers.",
+    commands=("ask", "autochat"),
     permissions=("messages.read", "messages.send", "network"),
     scope="all",
     config_schema={
@@ -232,4 +237,88 @@ def build(ctx):
                 ),
             )
 
-    return MANIFEST, {"ask": ask}
+    async def autochat(client, message):
+        chat, user = getattr(message, 'chat', None), getattr(message, 'from_user', None)
+        chat_id, uid = getattr(chat, 'id', None), getattr(user, 'id', None)
+        if type(uid) is not int or uid <= 0 or getattr(message, 'sender_chat', None) is not None:
+            await reply(message, 'Use your personal Telegram identity to configure auto-chat.')
+            return
+        private = getattr(chat, 'type', None) == ChatType.PRIVATE and chat_id == uid
+        group = getattr(chat, 'type', None) in (ChatType.GROUP, ChatType.SUPERGROUP)
+        if not private and not group:
+            return
+        if group:
+            member = await client.get_chat_member(chat_id, uid)
+            if member.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR):
+                await reply(message, 'Only group administrators can configure AI auto-chat.')
+                return
+        parts = (getattr(message, 'text', '') or '').split()
+        action = parts[1].lower() if len(parts) == 2 else 'status' if len(parts) == 1 else ''
+        if action not in ('on', 'off', 'status'):
+            await reply(message, 'Use /autochat on|off|status.')
+            return
+        db, chats = getattr(ctx, 'db', None), getattr(ctx, 'chats', None)
+        if chats is None or (db is not None and not db.connected):
+            await reply(message, 'Auto-chat settings unavailable. No change confirmed.')
+            return
+        previous = chats.get(chat_id, 'ai_autochat', False)
+        if action != 'status':
+            enabled = action == 'on'
+            try:
+                chats.put(chat_id, 'ai_autochat', enabled)
+                if db is not None and await db.flush() <= 0:
+                    raise RuntimeError('unconfirmed write')
+            except Exception:
+                chats.put(chat_id, 'ai_autochat', previous)
+                await reply(message, 'Auto-chat change unconfirmed; previous cached setting retained.')
+                return
+        enabled = chats.get(chat_id, 'ai_autochat', False) is True
+        await reply(message, card('AI Agent · Auto-chat',
+            f'State: <b>{"on" if enabled else "off"}</b>. ' +
+            ('Ordinary private text can receive AI replies.' if private else 'Only mentions of Meiko or replies to this bot can receive AI replies.'),
+            note='Only the triggering message goes to the external AI provider, without conversation history. Do not send secrets. Use /autochat off to stop; /ask remains available. Group Owner approval and plugin activation are still required.'))
+
+    async def automatic(client, message):
+        chat, user = getattr(message, 'chat', None), getattr(message, 'from_user', None)
+        text = getattr(message, 'text', None)
+        uid, chat_id = getattr(user, 'id', None), getattr(chat, 'id', None)
+        if (type(uid) is not int or uid <= 0 or getattr(user, 'is_bot', False)
+                or getattr(message, 'sender_chat', None) is not None
+                or getattr(message, 'service', None) or getattr(message, 'via_bot', None)
+                or any(getattr(message, field, None) for field in ('forward_origin', 'forward_date', 'forward_from', 'forward_from_chat', 'forward_sender_name'))
+                or not isinstance(text, str) or not text.strip() or text.lstrip().startswith(('/', '!', '.', '?'))):
+            return
+        db, chats = getattr(ctx, 'db', None), getattr(ctx, 'chats', None)
+        if chats is None or (db is not None and not db.connected) or chats.get(chat_id, 'ai_autochat', False) is not True:
+            return
+        if getattr(chat, 'type', None) == ChatType.PRIVATE:
+            if chat_id != uid:
+                return
+        elif getattr(chat, 'type', None) in (ChatType.GROUP, ChatType.SUPERGROUP):
+            me = getattr(client, 'me', None)
+            if me is None:
+                return
+            replied_user = getattr(getattr(message, 'reply_to_message', None), 'from_user', None)
+            is_reply = getattr(replied_user, 'id', None) == me.id
+            username = getattr(me, 'username', None)
+            mention = re.compile(r'(?<![\w@])@' + re.escape(username) + r'\b', re.I) if username else None
+            if not is_reply and not (mention and mention.search(text)):
+                return
+            if mention:
+                text = mention.sub('', text).strip()
+            if not text:
+                return
+        else:
+            return
+        # Reuse the exact question validation/rate limits/provider boundary.
+        request = SimpleNamespace(text='/ask ' + text, from_user=user, chat=chat,
+                                  reply=message.reply, sender_chat=None)
+        await ask(client, request)
+
+    ctx.ai_autochat_handler = automatic
+    return MANIFEST, {"ask": ask, "autochat": autochat}
+
+
+def extra_handlers(ctx):
+    handler = getattr(ctx, 'ai_autochat_handler', None)
+    return [MessageHandler(handler, filters.text)] if handler is not None else []
