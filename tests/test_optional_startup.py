@@ -92,6 +92,7 @@ def test_post_connection_failure_and_cancellation_always_cleanup(monkeypatch):
                    _cleanup_services=AsyncMock())
         owner._startup_phase = AgentBot._startup_phase.__get__(owner)
         owner._startup_step = AgentBot._startup_step.__get__(owner)
+        owner._connect_telegram = AgentBot._connect_telegram.__get__(owner)
         getattr(owner, failure_stage).side_effect = failure
         try:
             await AgentBot._run(owner)
@@ -135,4 +136,52 @@ def test_stalled_optional_shutdowns_do_not_prevent_telegram_disconnect(monkeypat
         owner.events.emit.assert_called_once_with('stop')
         assert 'TimeoutError' in caplog.text
         assert 'private-token' not in caplog.text and 'private-database-url' not in caplog.text
+    asyncio.run(scenario())
+
+
+def test_floodwait_startup_respects_delay_and_retries_without_fatal_error(monkeypatch):
+    from pyrogram.errors import FloodWait
+    async def scenario():
+        original_wait = asyncio.wait_for
+        delays = []
+        async def wait(awaitable, timeout):
+            if timeout == 6:
+                delays.append(timeout)
+                awaitable.close()
+                raise asyncio.TimeoutError()
+            return await original_wait(awaitable, timeout)
+        monkeypatch.setattr(bot_module.asyncio, 'wait_for', wait)
+        owner = NS(fatal_reason='', _startup_phase=lambda phase: None)
+        owner._startup_step = AgentBot._startup_step.__get__(owner)
+        client = NS(start=AsyncMock(side_effect=[FloodWait(5), None]))
+        assert await AgentBot._connect_telegram(owner, client, asyncio.Event())
+        assert delays == [6] and client.start.await_count == 2
+        assert owner._telegram_started and owner.fatal_reason == ''
+    asyncio.run(scenario())
+
+
+def test_stop_during_floodwait_cooldown_prevents_further_handshake():
+    from pyrogram.errors import FloodWait
+    async def scenario():
+        stop = asyncio.Event()
+        async def limited():
+            stop.set()
+            raise FloodWait(600)
+        owner = NS(fatal_reason='', _startup_phase=lambda phase: None)
+        owner._startup_step = AgentBot._startup_step.__get__(owner)
+        client = NS(start=AsyncMock(side_effect=limited))
+        assert not await AgentBot._connect_telegram(owner, client, stop)
+        assert not owner._telegram_started
+        client.start.assert_awaited_once()
+    asyncio.run(scenario())
+
+
+def test_never_connected_bot_does_not_send_false_stop_notification():
+    from unittest.mock import Mock
+    async def scenario():
+        owner = NS(_telegram_started=False, voice=None, modules=NS(),
+                   events=NS(emit=Mock()), logbook=NS(close=AsyncMock()), _shutdown=AsyncMock())
+        await AgentBot._cleanup_services(owner, 'client')
+        owner.events.emit.assert_not_called()
+        owner._shutdown.assert_awaited_once_with('client')
     asyncio.run(scenario())

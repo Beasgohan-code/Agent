@@ -1425,6 +1425,28 @@
         "No full cross-process document revision or durable acknowledgement added",
         "Live startup incident still unconfirmed without hosting logs; no deployment, migration or PR merge performed"
       ]
+    },
+    {
+      "id": "telegram-startup-floodwait-cooldown",
+      "status": "completed",
+      "trigger": "User hosting log confirms FloodWait during telegram-connect, then wrapped RuntimeError and secondary BotStopped post failure because client never started",
+      "implemented": [
+        "Required-step wrapper preserves FloodWait for Telegram connector instead of converting it to fatal RuntimeError",
+        "Main Telegram connector logs requested delay, waits requested seconds plus one-second margin in-process and retries only after cooldown",
+        "Cooldown outside per-attempt handshake deadline; exclusive token lease heartbeat continues; stop/lease-loss event interrupts wait and prevents retry",
+        "Tracks successful main Telegram startup; suppresses stop event/log-channel notification when never started, avoiding observed secondary client-not-started error"
+      ],
+      "validation": [
+        "9 focused startup tests passed",
+        "New regressions verify FloodWait(5) schedules six-second delay before second handshake, stop event cancels FloodWait(600) without retry, and never-connected cleanup emits no false stop event",
+        "Full disposable PostgreSQL suite 1618 passed, no skips, 17.04 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No production deployment or recovery claim; live cooldown duration was absent from supplied older wrapped log",
+        "Cooldown is process-local; forced restarts do not preserve its remaining duration; operator should avoid repeated restart/deploy loops",
+        "Telegram can issue another FloodWait or reject invalid credentials independently; no rate-limit bypass or token changes introduced"
+      ]
     }
   ],
   "production_changes": false,

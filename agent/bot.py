@@ -8,6 +8,7 @@ import signal
 from contextlib import suppress
 
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 from pyrogram.enums import ParseMode
 from pyrogram.types import LinkPreviewOptions
 from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
@@ -437,10 +438,36 @@ class AgentBot:
             return await asyncio.wait_for(operation(), timeout=REQUIRED_STARTUP_TIMEOUT)
         except asyncio.CancelledError:
             raise
+        except FloodWait:
+            # The Telegram connector owns server-directed cooldown/retry.
+            raise
         except Exception as error:
             self.fatal_reason = f'Startup failed at {phase} ({type(error).__name__}); check hosting configuration and connectivity'
             logger.error('#Errors %s', self.fatal_reason)
             raise RuntimeError(self.fatal_reason) from None
+
+    async def _connect_telegram(self, client, stop_event):
+        """Respect server-directed FloodWait without crashing into a restart loop.
+
+        Each handshake has its own deadline; cooldown intentionally is not
+        covered by that deadline. Lease heartbeat continues while waiting.
+        """
+        self._telegram_started = False
+        while not stop_event.is_set():
+            try:
+                await self._startup_step('telegram-connect', client.start)
+                self._telegram_started = True
+                return True
+            except FloodWait as error:
+                seconds = max(1, int(error.value) + 1)
+                self._startup_phase('telegram-floodwait')
+                logger.warning('Telegram startup rate-limited: waiting %s seconds before retry; do not restart repeatedly.', seconds)
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=seconds)
+                except asyncio.TimeoutError:
+                    continue
+                return False
+        return False
 
     async def _run(self) -> None:
         """Connect only after obtaining exclusive ownership of this bot token."""
@@ -509,7 +536,8 @@ class AgentBot:
             self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
             logger.info("Starting Meiko (token=%s)", self.settings.masked_token)
             try:
-                await self._startup_step('telegram-connect', client.start)
+                if not await self._connect_telegram(client, stop_event):
+                    return
             except Exception:
                 logger.exception(
                     "Could not connect to Telegram. Check BOT_TOKEN, API_ID, API_HASH "
@@ -651,7 +679,7 @@ class AgentBot:
         # Emit while connected, then drain only this bot's delivery tasks.
         # A bounded log-channel failure must never prevent Telegram shutdown.
         try:
-            if not getattr(self, "_stop_event_emitted", False):
+            if getattr(self, '_telegram_started', True) and not getattr(self, "_stop_event_emitted", False):
                 self._stop_event_emitted = True
                 self.events.emit("stop")
             await self.logbook.close(timeout=5.0)
