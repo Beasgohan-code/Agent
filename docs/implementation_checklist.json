@@ -1720,6 +1720,79 @@
         "No streaming of unrelated static screens or fabricated tool/model reasoning",
         "No deployment, migration or PR merge"
       ]
+    },
+    {
+      "id": "plugin-platform-rework-architecture-audit",
+      "status": "in_progress",
+      "scope": "Phase 1 initial catalogue/clone-selection architecture map; not completion of all nine phases or exhaustive reference review",
+      "architecture_map": {
+        "implemented": [
+          "PluginManifest and PluginRegistry own static metadata, command collision validation and runtime registration (agent/platform/manifest.py)",
+          "PluginRuntime tracks handler attachment and persisted disable state; protected shell and group core cannot be disabled through runtime controls",
+          "PluginAccess separately persists tenant approval and group activation with PostgreSQL locking and three optional slots; revoke removes activations and marks resource cleanup pending",
+          "CloneStore persists selected_plugins plus encrypted clone credentials; manager builds individual AgentBot instances with clone database scope/data directory, lease and startup cleanup",
+          "Premium authority uses relational PostgreSQL entitlement operations; clone ordinary start/setup use entitlement checks without intended Owner/sudo exemption",
+          "External installer load explicitly refuses third-party execution; AST/digest inspection is not sandboxing"
+        ],
+        "ui_or_limited_representation": [
+          "Clone template selection offers individual plugins and two fixed suites, not arbitrary editable multi-select",
+          "mybots profile screen replaces guided selection with a legacy profile; not an individual-plugin transaction manager",
+          "Plugin registration counts prove registration, not group approval, credential health or running worker health"
+        ],
+        "incomplete": [
+          "Manifest lacks typed dependency/conflict/credential/resource/clone-compatibility fields and separate installation/upgrade lifecycle",
+          "No shared dependency resolver: clone manager checks selected tuple against finite SUPPORTED_SELECTIONS plus ad hoc AI/music requirements",
+          "Clone transitions lack pending/applied/failed plugin-revision workflow and restart recovery",
+          "Renamer and utilities exist as builtin modules but are absent from guided template catalogue; compatibility must be verified before offering",
+          "Workers are in-process clients, not security-isolated processes; full persistent worker metrics and configurable inactivity policies require separate work",
+          "Custom emoji currently uses boolean USE_PREMIUM_EMOJI and Theme toggles; full automatic/enabled/disabled centralized context capability is not implemented"
+        ],
+        "reuse": [
+          "Existing AgentBot module selection, immutable manifests, mandatory GROUP_CORE, typed Clone record and selected_plugins storage",
+          "Existing PluginAccess authority, PluginGate job cancellation and reconciliation, clone supervisor restart budget/leases",
+          "Existing guided token/channel checks and credential-specific music consent/AI setup; preserve token-control wording",
+          "Existing native rich panels, callback namespaces, encryption and Premium authority tests"
+        ],
+        "redesign": [
+          "Catalogue should expose independent available/installed/verified/runtime/global/group/clone dimensions rather than one enabled flag",
+          "Resolve a canonical plugin set with dependency closure and conflict/config/credential validation at selection and worker start; legacy profiles must remain readable",
+          "Replace fixed final suites with editable presets; collect only selection-required secrets and revalidate at atomic creation",
+          "Use per-clone desired/applied configuration revisions and recoverable transitions before adding plugin toggles; do not mutate main registry or other clones",
+          "Separate installation records from static manifests; do not claim inspections are verified safe executable plugins"
+        ]
+      },
+      "reference_review": {
+        "repository": "Beasgohan-code/Videl1",
+        "observed_head": "6a00a55f6ad013c85e14c39a9b06922c1bb6f08c",
+        "inspected_paths": [
+          "VidelBot/core/plugin_manager.py",
+          "VidelBot/filestore/main_bot/plugins/create_bot.py",
+          "VidelBot/filestore/worker_bot/engine.py",
+          "VidelBot/filestore/database/worker_db.py",
+          "VidelBot/filestore/main_bot/plugins/clone_lifecycle.py"
+        ],
+        "observations": [
+          "Manifest/dependency/config checks and tracked handler lifecycle provide design reference, not code copied",
+          "Worker engine activity middleware and inactivity warning/suspension lifecycle are useful reference concepts; retain Agent PostgreSQL and tenant isolation"
+        ],
+        "limitations": [
+          "Initial structural inspection only; remaining relevant source bodies and previously supplied repositories still need detailed review",
+          "Upstream root licensing remains unresolved; no upstream source imported or executed"
+        ]
+      },
+      "validation": [
+        "Focused PostgreSQL-backed baseline: 128 passed, no skips, 1.30 seconds (plugins, clone integration/setup/Premium, atomic clones, PostgreSQL access, installer, entitlement authority)",
+        "No runtime implementation changes in this audit slice; no newly implemented behavior claimed"
+      ],
+      "next": [
+        "Finish targeted source/test/schema/reference audit before runtime edits",
+        "Write failing dependency/conflict/canonical-selection regression tests before adding resolver and richer manifest fields",
+        "Then wire resolver into existing startup and selection without new commands; wizard and transactional clone editing follow as separate coherent changes"
+      ],
+      "restrictions": [
+        "No new status Markdown",
+        "No deployment, environment change, destructive migration, user-data deletion or PR merge"
+      ]
     }
   ],
   "production_changes": false,
