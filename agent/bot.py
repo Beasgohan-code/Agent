@@ -36,6 +36,7 @@ from .platform.logbook import LogBook, subscribe
 from .platform.menu import publish as publish_menu, reset_menu_button
 from .platform.premium import PremiumBook
 from .platform.runtime import PluginRuntime
+from .platform.startup_cooldown import StartupCooldown
 from .platform.voice import VoiceEngine, capability
 from .ui.theme import Theme
 from .utils.sender import ScreenSender
@@ -102,6 +103,7 @@ class AgentBot:
             else None
         )
         db = self.database
+        self._telegram_cooldown = StartupCooldown(db) if db is not None else None
         self.incidents = ErrorIncidents(db)
         self.users = UserIndex(settings.data_dir, db=db)
         self.logbook = LogBook(
@@ -453,6 +455,18 @@ class AgentBot:
         covered by that deadline. Lease heartbeat continues while waiting.
         """
         self._telegram_started = False
+        cooldown = getattr(self, '_telegram_cooldown', None)
+        if cooldown is not None:
+            seconds = await self._startup_step('telegram-cooldown-load', cooldown.remaining)
+            if seconds > 0:
+                self._startup_phase('telegram-floodwait')
+                logger.warning('Restored Telegram startup cooldown: waiting %.1f seconds before connecting.', seconds)
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=seconds)
+                except asyncio.TimeoutError:
+                    pass
+                else:
+                    return False
         while not stop_event.is_set():
             try:
                 await self._startup_step('telegram-connect', client.start)
@@ -460,6 +474,8 @@ class AgentBot:
                 return True
             except FloodWait as error:
                 seconds = max(1, int(error.value) + 1)
+                if cooldown is not None:
+                    await self._startup_step('telegram-cooldown-save', lambda: cooldown.extend(seconds))
                 self._startup_phase('telegram-floodwait')
                 logger.warning('Telegram startup rate-limited: waiting %s seconds before retry; do not restart repeatedly.', seconds)
                 try:

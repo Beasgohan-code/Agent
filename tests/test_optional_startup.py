@@ -185,3 +185,35 @@ def test_never_connected_bot_does_not_send_false_stop_notification():
         owner.events.emit.assert_not_called()
         owner._shutdown.assert_awaited_once_with('client')
     asyncio.run(scenario())
+
+
+def test_restored_cooldown_prevents_connect_when_stopped():
+    async def scenario():
+        stop = asyncio.Event()
+        stop.set()
+        owner = NS(fatal_reason='', _startup_phase=lambda phase: None,
+                   _telegram_cooldown=NS(remaining=AsyncMock(return_value=300)))
+        owner._startup_step = AgentBot._startup_step.__get__(owner)
+        client = NS(start=AsyncMock())
+        assert not await AgentBot._connect_telegram(owner, client, stop)
+        client.start.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_new_cooldown_is_awaited_before_wait_or_retry():
+    from pyrogram.errors import FloodWait
+    async def scenario():
+        stop = asyncio.Event()
+        async def limited():
+            raise FloodWait(42)
+        async def saved(seconds):
+            assert seconds == 43
+            stop.set()
+        owner = NS(fatal_reason='', _startup_phase=lambda phase: None,
+                   _telegram_cooldown=NS(remaining=AsyncMock(return_value=0), extend=AsyncMock(side_effect=saved)))
+        owner._startup_step = AgentBot._startup_step.__get__(owner)
+        client = NS(start=AsyncMock(side_effect=limited))
+        assert not await AgentBot._connect_telegram(owner, client, stop)
+        owner._telegram_cooldown.extend.assert_awaited_once_with(43)
+        client.start.assert_awaited_once()
+    asyncio.run(scenario())

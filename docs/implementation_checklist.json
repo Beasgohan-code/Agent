@@ -1447,6 +1447,29 @@
         "Cooldown is process-local; forced restarts do not preserve its remaining duration; operator should avoid repeated restart/deploy loops",
         "Telegram can issue another FloodWait or reject invalid credentials independently; no rate-limit bypass or token changes introduced"
       ]
+    },
+    {
+      "id": "durable-telegram-startup-cooldown",
+      "status": "completed",
+      "implemented": [
+        "Awaited PostgreSQL cooldown record in existing bot-scoped agent_documents table; stores only retry_at, not credentials or session material",
+        "Main startup loads cooldown after token lease acquisition and waits before Telegram handshake; new FloodWait deadline saved before sleep/retry",
+        "Uses PostgreSQL clock for persisted deadlines and remaining time; upsert never shortens an existing longer cooldown",
+        "Cooldown SQL failures pass through named required-startup error boundary rather than allowing an early retry; stop event interrupts restored wait",
+        "No schema migration, parent credential inheritance or production connection added"
+      ],
+      "validation": [
+        "11 focused startup tests passed",
+        "New regression confirms restored wait prevents connection on stop and newly requested cooldown is persisted before waiting",
+        "Real disposable PostgreSQL regression verifies new controller reads deadline, shorter extension cannot shorten it, separate scopes isolated and expired deadlines return zero",
+        "Full disposable PostgreSQL suite 1621 passed, no skips, 15.94 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "No production deployment/recovery verification; Telegram may impose further waits",
+        "A Telegram wait received before a failed persistence attempt cannot be durably recorded; startup fails safely and operator must avoid forced restart loops",
+        "Broader Rose/plugin integrations remain separately tracked; not all tasks complete"
+      ]
     }
   ],
   "production_changes": false,
