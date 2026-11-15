@@ -89,10 +89,10 @@ def test_build_creates_client_and_registers_handlers():
     assert isinstance(client, Client)
     # Music registers nothing without SESSION_STRING. Count command handlers,
     # callback/error routing and isolated background watchers separately.
-    assert bot.handler_count == 183
+    assert bot.handler_count == 186
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 173
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 176
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -123,7 +123,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 173
+    assert len(messages) == 176
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -138,7 +138,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
         "clone", "panel", "mybots", "delclone", "clonestats",
     }
     assert group == {
-        "lock", "unlock", "locks", "locktypes", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
+        "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "filter", "filters", "stopfilter",
         "setwelcome", "welcome", "goodbye",

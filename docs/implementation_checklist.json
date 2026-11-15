@@ -1023,6 +1023,27 @@
         "No live Telegram validation or production deployment",
         "No new Markdown files created"
       ]
+    },
+    {
+      "id": "rose-url-lock-domain-allowlists",
+      "status": "completed",
+      "source": "https://missrose.org/docs/anti-spam/locks/ chunk 1 read this turn: allowlist/rmallowlist/rmallowlistall",
+      "implemented": [
+        "Actual /allowlist view/add, /rmallowlist batch removal and group-owner-confirmed /rmallowlistall",
+        "Bounded 50-domain per-group policy with 20-domain edit batches; IDNA/domain validation rejects paths, IPs, credentials and unsupported allowlist kinds",
+        "Every Telegram URL or hidden-link entity in text/caption must match domain boundary; UTF-16 offsets decoded correctly",
+        "Allowed URL does not exempt other locked content or suppress blocklists; existing storage confirmation and same-process lock retained"
+      ],
+      "validation": [
+        "Tests cover lookalike hosts, mixed allowed/disallowed links, credentials/malformed ports, hidden links, astral emoji offsets, batch rejection, actual watcher photo-vs-url precedence and owner-confirmed clear",
+        "Full disposable PostgreSQL suite: 1569 passed, no skips, 15.67 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Path-specific domains, invite/inline/sticker/emoji/forward allowlist kinds not implemented",
+        "Warn/custom lock modes and live Telegram validation pending",
+        "No new Markdown files, no deployment or PR merge"
+      ]
     }
   ],
   "production_changes": false,

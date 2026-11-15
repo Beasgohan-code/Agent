@@ -2,16 +2,19 @@
 
 Reference: https://missrose.org/docs/anti-spam/locks/
 Only the explicitly listed native message kinds are implemented. No custom
-punishments, allowlists, join/reaction events or warning escalation are implied.
+punishments, non-domain allowlists, join/reaction events or warning escalation are implied.
 """
 import asyncio
 import logging
+import re
+import ipaddress
+from urllib.parse import urlsplit
 from weakref import WeakValueDictionary
 from pyrogram.enums import ChatType, ChatMemberStatus, MessageEntityType as Entity
 from ...ui.tables import panel, Table
 from ...utils.rich import reply
 
-COMMANDS = ('lock', 'unlock', 'locks', 'locktypes')
+COMMANDS = ('lock', 'unlock', 'locks', 'locktypes', 'allowlist', 'rmallowlist', 'rmallowlistall')
 TYPES = {
     'audio': 'audio', 'contact': 'contact', 'document': 'document',
     'gif': 'animation', 'location': 'location', 'photo': 'photo',
@@ -46,6 +49,7 @@ def matches(message, kind):
     return bool(getattr(message, TYPES[kind], None))
 
 
+ALLOW_KEY = 'content_lock_domains'
 KEY = 'typed_content_locks'
 _LOCKS = WeakValueDictionary()
 logger = logging.getLogger(__name__)
@@ -65,6 +69,74 @@ def read(ctx, group):
     return set(state)
 
 
+def domain(value):
+    if not isinstance(value, str) or not 1 <= len(value) <= 253 or any(char.isspace() for char in value):
+        raise ValueError('Use domain names only, e.g. /allowlist wikipedia.org. Paths, ports and other allowlist kinds are not implemented.')
+    try:
+        host = value.rstrip('.').encode('idna').decode('ascii').lower()
+        if len(host) > 253 or '.' not in host or any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', label) for label in host.split('.')):
+            raise ValueError()
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            return host
+        raise ValueError()
+    except (ValueError, UnicodeError):
+        raise ValueError('Use a domain name without paths, credentials, ports or IP addresses.') from None
+
+
+def url_allowed(message, domains):
+    """Every URL entity must be allowed; unknown/malformed links fail closed."""
+    urls = []
+    for text_key, entities_key in (('text', 'entities'), ('caption', 'caption_entities')):
+        text = getattr(message, text_key, None) or ''
+        for entity in getattr(message, entities_key, None) or []:
+            kind = getattr(entity, 'type', None)
+            if kind not in (Entity.URL, Entity.TEXT_LINK):
+                continue
+            try:
+                if kind == Entity.TEXT_LINK:
+                    value = entity.url
+                else:
+                    offset, length = entity.offset, entity.length
+                    if type(offset) is not int or type(length) is not int or offset < 0 or length <= 0:
+                        return False
+                    encoded = text.encode('utf-16-le')
+                    if (offset + length) * 2 > len(encoded):
+                        return False
+                    value = encoded[offset*2:(offset+length)*2].decode('utf-16-le')
+                parts = urlsplit(value if '://' in value else 'https://' + value)
+                parts.port  # Reject malformed ports before applying an exemption.
+                if parts.scheme not in ('http', 'https') or parts.username is not None or parts.password is not None:
+                    return False
+                host = domain(parts.hostname or '')
+                if not any(host == item or host.endswith('.' + item) for item in domains):
+                    return False
+                urls.append(host)
+            except (ValueError, UnicodeError, AttributeError, TypeError):
+                return False
+    return bool(urls)
+
+
+def read_domains(ctx, group):
+    read(ctx, group)  # Same storage availability boundary as lock configuration.
+    values = ctx.chats.get(group, ALLOW_KEY, [])
+    if not isinstance(values, list) or len(values) > 50:
+        raise ValueError('URL allowlist could not be read safely.')
+    return {domain(value) for value in values}
+
+
+async def persist(ctx, group, key, previous, updated):
+    try:
+        ctx.chats.put(group, key, sorted(updated))
+        db = getattr(ctx, 'db', None)
+        if db is not None and await db.flush() <= 0:
+            raise RuntimeError('unconfirmed write')
+    except Exception:
+        ctx.chats.put(group, key, sorted(previous))
+        raise ValueError('Lock persistence was not confirmed. Previous cached settings retained.') from None
+
+
 def build(ctx):
     from . import is_moderator
     async def handle(client, message):
@@ -82,20 +154,40 @@ def build(ctx):
         try:
             async with mutex(ctx, chat.id):
                 current = read(ctx, chat.id)
+                if command in ('allowlist', 'rmallowlist', 'rmallowlistall'):
+                    previous = read_domains(ctx, chat.id)
+                    updated = set(previous)
+                    if command == 'rmallowlistall':
+                        owner = await client.get_chat_member(chat.id, user.id)
+                        if owner.status != ChatMemberStatus.OWNER:
+                            raise ValueError('Only the current group owner can clear all domain allowlist entries.')
+                        if args != ['confirm']:
+                            raise ValueError('This removes every URL-domain exemption. Confirm with /rmallowlistall confirm. Other lock settings are unchanged.')
+                        updated = set()
+                    elif args:
+                        if len(args) > 20:
+                            raise ValueError('Edit at most 20 domains per command.')
+                        chosen = {domain(value) for value in args}
+                        updated = previous | chosen if command == 'allowlist' else previous - chosen
+                    elif command == 'rmallowlist':
+                        raise ValueError('Use /rmallowlist domain1 [domain2 …].')
+                    if len(updated) > 50:
+                        raise ValueError('At most 50 domain exemptions per group. Remove some first.')
+                    if updated != previous:
+                        await persist(ctx, chat.id, ALLOW_KEY, previous, updated)
+                    await reply(message, panel('URL lock allowlist', icon=ctx.theme.emoji('shield'),
+                        table=Table(headers=('Domain',), rows=tuple((item,) for item in sorted(updated))),
+                        lines=[] if updated else ['No domains are exempt.'],
+                        note='Domain and subdomains only; every link in a message must be allowed. Exempts only the URL lock, not other locks or blocklists. Other Rose allowlist kinds and path-specific rules are not implemented.',
+                        footer='/allowlist wikipedia.org · /rmallowlist wikipedia.org'))
+                    return
                 if command in ('lock', 'unlock'):
                     if not args or len(args) > len(TYPES) or any(kind not in TYPES and kind != 'all' for kind in args):
                         raise ValueError('Use /lock or /unlock with supported types. /locktypes lists them. Custom reasons and modes are not implemented.')
                     chosen = set(TYPES) if 'all' in args else set(args)
                     updated = current | chosen if command == 'lock' else current - chosen
                     if updated != current:
-                        db = getattr(ctx, 'db', None)
-                        try:
-                            ctx.chats.put(chat.id, KEY, sorted(updated))
-                            if db is not None and await db.flush() <= 0:
-                                raise RuntimeError('unconfirmed write')
-                        except Exception:
-                            ctx.chats.put(chat.id, KEY, sorted(current))
-                            raise ValueError('Lock persistence was not confirmed. Previous cached settings retained.') from None
+                        await persist(ctx, chat.id, KEY, current, updated)
                     current = updated
                 elif args and not (command == 'locks' and args == ['list']):
                     raise ValueError('Use /locks, /locks list or /locktypes without other arguments.')
@@ -119,8 +211,11 @@ async def enforce(ctx, client, message):
     async with mutex(ctx, chat.id):
         try:
             kinds = read(ctx, chat.id)
+            domains = read_domains(ctx, chat.id) if 'url' in kinds else set()
         except ValueError:
             return False
+    if 'url' in kinds and url_allowed(message, domains):
+        kinds = kinds - {'url'}
     if not any(matches(message, kind) for kind in kinds):
         return False
     try:

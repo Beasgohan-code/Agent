@@ -157,3 +157,66 @@ def test_url_caption_lock_is_enforced_before_blocklists(tmp_path, monkeypatch):
         client.delete_messages.assert_awaited_once_with(-100500, message.id)
         blocklist.assert_not_awaited()
     asyncio.run(scenario())
+
+
+def test_url_allowlist_uses_domain_boundaries_all_links_and_utf16_offsets():
+    from pyrogram.enums import MessageEntityType as E
+    def linked(*urls):
+        return NS(entities=[NS(type=E.TEXT_LINK, url=url) for url in urls])
+    allowed = {'wikipedia.org'}
+    assert locks.url_allowed(linked('https://en.wikipedia.org/wiki/Test'), allowed)
+    assert not locks.url_allowed(linked('https://wikipedia.org.evil.test'), allowed)
+    assert not locks.url_allowed(linked('https://notwikipedia.org'), allowed)
+    assert not locks.url_allowed(linked('https://wikipedia.org', 'https://evil.test'), allowed)
+    assert not locks.url_allowed(linked('https://wikipedia.org@evil.test'), allowed)
+    assert not locks.url_allowed(linked('https://wikipedia.org:bad'), allowed)
+    text = '😀 https://wikipedia.org'
+    entity = NS(type=E.URL, offset=3, length=len('https://wikipedia.org'))
+    assert locks.url_allowed(NS(text=text, entities=[entity]), allowed)
+    assert locks.url_allowed(NS(caption=text, caption_entities=[entity]), allowed)
+    entity.offset = 999
+    assert not locks.url_allowed(NS(text=text, entities=[entity]), allowed)
+
+
+def test_domain_allowlist_commands_validate_whole_batch_and_do_not_bypass_other_locks(tmp_path):
+    from pyrogram.enums import MessageEntityType as E
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        command = locks.build(ctx)
+        client = fixtures.FakeClient()
+        await command['allowlist'](client, fixtures.FakeMessage('/allowlist wikipedia.org telegram.org'))
+        assert locks.read_domains(ctx, -100500) == {'wikipedia.org','telegram.org'}
+        await command['allowlist'](client, fixtures.FakeMessage('/allowlist safe.test https://unsupported.test/path'))
+        assert locks.read_domains(ctx, -100500) == {'wikipedia.org','telegram.org'}
+        await command['rmallowlist'](client, fixtures.FakeMessage('/rmallowlist telegram.org'))
+        assert locks.read_domains(ctx, -100500) == {'wikipedia.org'}
+        ctx.chats.put(-100500, locks.KEY, ['url'])
+        msg = fixtures.FakeMessage('')
+        msg.caption_entities = [NS(type=E.TEXT_LINK, url='https://en.wikipedia.org')]
+        msg.photo = NS(file_id='photo')
+        client.get_me = AsyncMock(return_value=NS(id=99))
+        async def member(chat, uid):
+            return fixtures.member(fixtures.ADMIN if uid == 99 else fixtures.MEMBER)
+        client.get_chat_member = AsyncMock(side_effect=member)
+        client.delete_messages = AsyncMock(return_value=True)
+        assert not await locks.enforce(ctx, client, msg)
+        client.delete_messages.assert_not_awaited()
+        ctx.chats.put(-100500, locks.KEY, ['url','photo'])
+        assert await locks.enforce(ctx, client, msg)
+        client.delete_messages.assert_awaited_once()
+    asyncio.run(scenario())
+
+
+def test_clear_allowlist_requires_current_group_owner_and_explicit_confirmation(tmp_path):
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        ctx.chats.put(-100500, locks.ALLOW_KEY, ['wikipedia.org'])
+        command = locks.build(ctx)['rmallowlistall']
+        await command(fixtures.FakeClient(), fixtures.FakeMessage('/rmallowlistall confirm'))
+        assert locks.read_domains(ctx, -100500) == {'wikipedia.org'}
+        owner = fixtures.FakeClient(caller=fixtures.OWNER)
+        await command(owner, fixtures.FakeMessage('/rmallowlistall'))
+        assert locks.read_domains(ctx, -100500) == {'wikipedia.org'}
+        await command(owner, fixtures.FakeMessage('/rmallowlistall confirm'))
+        assert locks.read_domains(ctx, -100500) == set()
+    asyncio.run(scenario())
