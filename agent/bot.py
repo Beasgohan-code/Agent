@@ -469,9 +469,21 @@ class AgentBot:
                     return False
         while not stop_event.is_set():
             try:
-                await self._startup_step('telegram-connect', client.start)
-                self._telegram_started = True
-                return True
+                connecting = asyncio.create_task(self._startup_step('telegram-connect', client.start))
+                stopping = asyncio.create_task(stop_event.wait())
+                try:
+                    await asyncio.wait((connecting, stopping), return_when=asyncio.FIRST_COMPLETED)
+                    # Stop/lease loss wins even when both finish in one loop tick.
+                    if stop_event.is_set():
+                        return False
+                    connecting.result()  # Propagate FloodWait to cooldown handling.
+                    self._telegram_started = True
+                    return True
+                finally:
+                    for task in (connecting, stopping):
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(connecting, stopping, return_exceptions=True)
             except FloodWait as error:
                 seconds = max(1, int(error.value) + 1)
                 if cooldown is not None:

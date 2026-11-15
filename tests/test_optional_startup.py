@@ -217,3 +217,31 @@ def test_new_cooldown_is_awaited_before_wait_or_retry():
         owner._telegram_cooldown.extend.assert_awaited_once_with(43)
         client.start.assert_awaited_once()
     asyncio.run(scenario())
+
+
+def test_lease_loss_interrupts_inflight_handshake_and_ignores_late_success():
+    async def scenario(late_success):
+        stop, entered = asyncio.Event(), asyncio.Event()
+        cleaned = []
+        async def start():
+            try:
+                entered.set()
+                if late_success:
+                    stop.set()
+                    return
+                await asyncio.Event().wait()
+            finally:
+                cleaned.append(True)
+        owner = NS(fatal_reason='', _startup_phase=lambda phase: None)
+        owner._startup_step = AgentBot._startup_step.__get__(owner)
+        client = NS(start=AsyncMock(side_effect=start))
+        connecting = asyncio.create_task(AgentBot._connect_telegram(owner, client, stop))
+        await entered.wait()
+        stop.set()
+        assert not await asyncio.wait_for(connecting, timeout=1)
+        assert not owner._telegram_started
+        assert cleaned == [True]
+        client.start.assert_awaited_once()
+        assert owner.fatal_reason == ''
+    asyncio.run(scenario(False))
+    asyncio.run(scenario(True))

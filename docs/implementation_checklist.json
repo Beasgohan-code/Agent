@@ -1470,6 +1470,26 @@
         "A Telegram wait received before a failed persistence attempt cannot be durably recorded; startup fails safely and operator must avoid forced restart loops",
         "Broader Rose/plugin integrations remain separately tracked; not all tasks complete"
       ]
+    },
+    {
+      "id": "telegram-handshake-stop-and-lease-loss-race",
+      "status": "completed",
+      "implemented": [
+        "Main Telegram handshake raced against shared stop event so shutdown or token lease loss cancels in-flight cooperative connection instead of waiting for full handshake timeout",
+        "Stop takes precedence over same-tick successful handshake; no false started flag or start announcement for late success",
+        "Connection/stop wait tasks always cancelled and drained before leaving attempt; FloodWait still reaches durable cooldown handling when not stopped"
+      ],
+      "validation": [
+        "12 focused startup tests passed",
+        "New regression covers blocked handshake cancelled by stop and same-tick late success, asserting task cleanup, single attempt, no successful-start flag and no fatal misclassification",
+        "Full disposable PostgreSQL suite 1622 passed, no skips, 15.96 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Cancellation requires client coroutine cooperation; outer service cleanup still disconnects partial clients",
+        "No live Telegram or deployment verification; main confirmed FloodWait fix still requires authorized running-code update",
+        "Broader plugin/Rose feature work remains separately pending; no merge or migration performed"
+      ]
     }
   ],
   "production_changes": false,
