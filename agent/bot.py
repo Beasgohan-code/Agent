@@ -492,58 +492,58 @@ class AgentBot:
             return
 
         heartbeat_task = self.lease.start_heartbeat(stop_event)
-        self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
-        logger.info("Starting Meiko (token=%s)", self.settings.masked_token)
+        watchdog_task = None
         try:
-            await self._startup_step('telegram-connect', client.start)
-        except Exception:
-            logger.exception(
-                "Could not connect to Telegram. Check BOT_TOKEN, API_ID, API_HASH "
-                "and outbound network access."
+            self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
+            logger.info("Starting Meiko (token=%s)", self.settings.masked_token)
+            try:
+                await self._startup_step('telegram-connect', client.start)
+            except Exception:
+                logger.exception(
+                    "Could not connect to Telegram. Check BOT_TOKEN, API_ID, API_HASH "
+                    "and outbound network access."
+                )
+                # start() may have opened a session before failing. Disconnect it
+                # before the outer wrapper releases exclusive token ownership.
+                raise
+
+            # The primary bot is connected now. Optional services must not hide
+            # this milestone or delay health readiness indefinitely.
+            self.health.record_success()
+            self.events.emit("start", version=__version__)
+            logger.info('Main Telegram client connected; starting optional services with bounded waits.')
+            self._startup_phase('optional-services')
+            await self._start_optional_services()
+            self._startup_phase('command-menu-sync')
+
+            # Make Telegram's own command menu match what this process actually
+            # registered — a disabled plugin must not linger in the menu either.
+            await self._sync_commands(client, reset_button=True)
+
+            self._startup_phase('running')
+            me = client.me
+            logger.info(
+                "Connected as %s (id=%s)",
+                f"@{me.username}" if me.username else me.first_name,
+                me.id,
             )
-            # start() may have opened a session before failing. Disconnect it
-            # before the outer wrapper releases exclusive token ownership.
-            await self._shutdown(client)
-            raise
 
-        # The primary bot is connected now. Optional services must not hide
-        # this milestone or delay health readiness indefinitely.
-        self.health.record_success()
-        self.events.emit("start", version=__version__)
-        logger.info('Main Telegram client connected; starting optional services with bounded waits.')
-        self._startup_phase('optional-services')
-        await self._start_optional_services()
-        self._startup_phase('command-menu-sync')
+            watchdog = build_watchdog(
+                client,
+                self.health,
+                self.settings,
+                on_fatal=lambda: self._request_restart(stop_event),
+            )
+            watchdog_task = asyncio.create_task(watchdog.run(stop_event), name="agent-watchdog")
 
-        # Make Telegram's own command menu match what this process actually
-        # registered — a disabled plugin must not linger in the menu either.
-        await self._sync_commands(client, reset_button=True)
-
-        self._startup_phase('running')
-        me = client.me
-        logger.info(
-            "Connected as %s (id=%s)",
-            f"@{me.username}" if me.username else me.first_name,
-            me.id,
-        )
-
-        watchdog = build_watchdog(
-            client,
-            self.health,
-            self.settings,
-            on_fatal=lambda: self._request_restart(stop_event),
-        )
-        watchdog_task = asyncio.create_task(watchdog.run(stop_event), name="agent-watchdog")
-
-        try:
             await stop_event.wait()
         finally:
-            watchdog_task.cancel()
+            if watchdog_task is not None:
+                watchdog_task.cancel()
             heartbeat_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await watchdog_task
-            with suppress(asyncio.CancelledError):
-                await heartbeat_task
+            tasks = [heartbeat_task] + ([watchdog_task] if watchdog_task is not None else [])
+            # A failed monitoring task must not skip Telegram disconnect.
+            await asyncio.gather(*tasks, return_exceptions=True)
             await self._cleanup_services(client)
 
     async def _start_optional_services(self):

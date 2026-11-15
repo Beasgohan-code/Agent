@@ -1324,6 +1324,25 @@
         "No claim of production restart or fix verification; no deployment, migrations, lease bypass or merge",
         "Synchronous module/store build and menu sync are separate stages; not every operation has a deadline"
       ]
+    },
+    {
+      "id": "startup-cancellation-cleanup-scope",
+      "status": "completed",
+      "implemented": [
+        "Expanded main client cleanup try/finally to include Telegram start, optional services, command menu sync and watchdog initialization, rather than only final stop-event wait",
+        "Telegram disconnect/service cleanup now runs on cancellation or errors in post-connection startup before outer lease release",
+        "Monitoring tasks cancelled/drained with gather(return_exceptions=True), so failed monitoring does not skip client cleanup"
+      ],
+      "validation": [
+        "Regression invokes real AgentBot._run with injected startup cancellation and command-menu failure after successful simulated Telegram handshake; verifies service cleanup and heartbeat cancellation",
+        "Full disposable PostgreSQL: 1608 passed, no skips, 16.49 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Live outage cause after 084d7bd still unknown without hosting startup logs",
+        "Cleanup service calls may still need individual deadlines; no live Telegram or hosting deployment performed",
+        "No token lease bypass, rollback, schema changes or merge performed"
+      ]
     }
   ],
   "production_changes": false,

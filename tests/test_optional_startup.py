@@ -72,3 +72,38 @@ def test_required_startup_step_preserves_result_and_cancellation():
             raise AssertionError('shutdown cancellation was swallowed')
         assert owner.fatal_reason == ''
     asyncio.run(scenario())
+
+
+def test_post_connection_failure_and_cancellation_always_cleanup(monkeypatch):
+    from unittest.mock import Mock
+    async def scenario(failure_stage, failure):
+        monkeypatch.setattr(bot_module, '_install_signal_handlers', lambda event: None)
+        heartbeat = asyncio.create_task(asyncio.Event().wait())
+        client = NS(start=AsyncMock())
+        owner = NS(database=NS(connect=AsyncMock(return_value=True), load=AsyncMock(), load_error=None),
+                   logbook=NS(hydrate=AsyncMock()), users=None, premium=None,
+                   runtime=NS(), modules=NS(), _client=client, fatal_reason='',
+                   settings=NS(health_port=0, masked_token='masked'),
+                   lease=NS(start_heartbeat=lambda event: heartbeat),
+                   plugin_gate=NS(watch=lambda event: event.wait()),
+                   health=NS(record_success=Mock()), events=NS(emit=Mock()),
+                   _acquire_lease=AsyncMock(return_value=True),
+                   _start_optional_services=AsyncMock(), _sync_commands=AsyncMock(),
+                   _cleanup_services=AsyncMock())
+        owner._startup_phase = AgentBot._startup_phase.__get__(owner)
+        owner._startup_step = AgentBot._startup_step.__get__(owner)
+        getattr(owner, failure_stage).side_effect = failure
+        try:
+            await AgentBot._run(owner)
+        except (RuntimeError, asyncio.CancelledError):
+            pass
+        else:
+            raise AssertionError('injected failure was swallowed')
+        owner._cleanup_services.assert_awaited_once_with(client)
+        client.start.assert_awaited_once()
+        owner.events.emit.assert_called_once()
+        assert heartbeat.cancelled()
+        owner._plugin_watch.cancel()
+        await asyncio.gather(owner._plugin_watch, return_exceptions=True)
+    asyncio.run(scenario('_start_optional_services', asyncio.CancelledError()))
+    asyncio.run(scenario('_sync_commands', RuntimeError('injected menu failure')))
