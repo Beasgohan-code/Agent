@@ -15,6 +15,7 @@ from pyrogram.handlers import MessageHandler
 
 from ...platform.manifest import PluginManifest
 from ...platform.group_filters import operate, FilterError
+from ...platform.admin_settings import denied
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
 
@@ -76,7 +77,7 @@ def build(ctx):
             return False
         if await _is_manager(client, message, ctx.settings.owner_id):
             return True
-        await reply(message, "Only chat administrators can manage filters.")
+        await denied(ctx, message, "Only chat administrators can manage filters.")
         return False
 
     async def add(client, message):

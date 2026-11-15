@@ -157,6 +157,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Group management",
         (
             "settings", "rules", "setrules", "pin", "unpin", "admins",
+            "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
             "warnlimit", "resetwarns", "lockdown",
             "filter", "filters", "stopfilter",
             "setwelcome", "welcome", "goodbye",

@@ -26,6 +26,7 @@ from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
 from ...platform.group_rules import rules_history, RulesError
+from ...platform.admin_settings import options as admin_options, denied, AdminStateError
 from ...platform.group_trust import trusted_members, trust_history, TrustError
 from ...platform.antispam import read_policy, change_policy, policy_history, PolicyError
 from ...platform.chats import SPAM_ACTIONS
@@ -148,13 +149,26 @@ async def _member_of(client, chat_id: int, user_id: int):
         return None
 
 
-async def is_moderator(client, message, *, need: str | None = None, owner_id: int | None = None) -> bool:
+async def is_moderator(client, message, *, need: str | None = None, owner_id: int | None = None, ctx=None) -> bool:
     """True when the caller may act here.
 
         The bot owner always may; an administrator may when they hold the specific
         privilege the command needs (Telegram grants exactly these).
         
     """
+    sender = getattr(message, "sender_chat", None)
+    if sender is not None:
+        if getattr(message, "from_user", None) is None:
+            return False  # downstream audit/mutation paths require a sender identity
+        if getattr(sender, "id", None) != getattr(getattr(message, "chat", None), "id", None):
+            return False  # linked channels are not anonymous group administrators
+        context = ctx or getattr(client, "agent_context", None)
+        if context is None:
+            return False
+        try:
+            return bool((await admin_options(context, message.chat.id))["anonadmin"])
+        except AdminStateError:
+            return False
     user = getattr(message, "from_user", None)
     if user is None:
         return False
@@ -388,9 +402,9 @@ def build(ctx):
     """Wire the moderation commands to this repository's shared state."""
 
     async def _guard(client, message, need: str | None = None) -> bool:
-        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
+        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id, ctx=ctx):
             return True
-        await reply(message, DENIED)
+        await denied(ctx, message, DENIED)
         return False
 
     async def _protected(client, message, target_id: int) -> bool:
@@ -642,11 +656,12 @@ def build(ctx):
         chat = getattr(message, "chat", None)
         user = getattr(message, "from_user", None)
         if (getattr(chat, "type", None) not in (ChatType.GROUP, ChatType.SUPERGROUP)
+                or getattr(message, "sender_chat", None) is not None
                 or type(getattr(user, "id", None)) is not int or user.id <= 0):
             await reply(message, "Use approval commands as yourself inside a group.")
             return
         if not await is_moderator(client, message, need="can_manage_chat"):
-            await reply(message, DENIED)
+            await denied(ctx, message, DENIED)
             return
         args = _args(message)
         try:
@@ -702,7 +717,7 @@ def build(ctx):
             await reply(message, "Anti-spam settings are per group.")
             return
         if not await is_moderator(client, message, need="can_manage_chat"):
-            await reply(message, DENIED)
+            await denied(ctx, message, DENIED)
             return
         args = _args(message)[1:]
         try:

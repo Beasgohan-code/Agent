@@ -212,6 +212,7 @@ class AgentBot:
         self._wire_archive(client)
         self.modules.logbook = self.logbook
         self.modules.client = client
+        client.agent_context = self.modules
 
         from .platform.execution import PluginGate, REGISTERING
         from .platform.plugin_access import PluginAccess

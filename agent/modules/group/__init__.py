@@ -29,6 +29,8 @@ from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from pyrogram.types import ChatPermissions
 
 from ...platform.manifest import PluginManifest
+from ...platform.admin_settings import denied
+from .admin import COMMANDS as ADMIN_COMMANDS, build as build_admin
 from ...ui.tables import Table, kv_table, panel
 from ..moderation import (
     DENIED,
@@ -49,7 +51,7 @@ MANIFEST = PluginManifest(
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
         "settings", "rules", "setrules", "pin", "unpin",
-        "admins", "warnlimit", "resetwarns", "lockdown",
+        "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS,
     ),
     permissions=(
         "chats.read", "chats.restrict", "chats.pin", "messages.read", "messages.send",
@@ -97,9 +99,9 @@ def build(ctx):
     register(ctx)
 
     async def _guard(client, message, need: str | None = None) -> bool:
-        if await is_moderator(client, message, need=need):
+        if await is_moderator(client, message, need=need, ctx=ctx):
             return True
-        await reply(message, DENIED)
+        await denied(ctx, message, DENIED)
         return False
 
     async def _protected(client, message, target_id: int) -> bool:
@@ -494,6 +496,7 @@ def build(ctx):
         await reply(message, panel("Lockdown", icon=ctx.theme.emoji("lock"), lines=[body]))
 
     return MANIFEST, {
+        **build_admin(ctx),
         "settings": settings,
         "rules": rules,
         "setrules": setrules,
