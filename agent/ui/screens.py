@@ -66,12 +66,10 @@ def _username(user) -> str:
 
 
 def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
-    """The first thing a user sees — and the caption of the /start picture.
+    """Compact welcome card for native rich heroes and classic photo captions.
 
-        It has to survive the 1024-character caption cap and still say what the bot
-        is, so it is three parts: a greeting, a small table of facts, and three
-        commands worth trying. Nothing here is decoration that costs a line.
-        
+    Tool suggestions come from the live registry. Avoid unverifiable online or
+    blanket privacy claims; show policy and available navigation instead.
     """
     name = display_name(user)
     greeting = (
@@ -80,47 +78,30 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
         else f"{theme.emoji('wave')} Hello!"
     )
 
-    # No emoji inside a table: their rendered width is the client's choice, so a
-    # glyph in a cell is what makes a monospace grid drift. Glyphs stay in the
-    # prose around it.
-    rows = [
-        ("Version", __version__),
-        ("Status", "online"),
-        ("Privacy", "no message text stored"),
+    rows = [("Version", __version__), ("Core", "Moderation · always available")]
+    if active is not None:
+        rows.append(("Commands", str(len(active))))
+    suggestions = [
+        ("help", "Browse your command library"),
+        ("plugins", "Open plugin controls for this chat"),
+        ("files", "Explore your private vault"),
+        ("play", "Start a voice-chat music session"),
     ]
-    if active:
-        rows.insert(1, ("Commands", str(len(active))))
-    table = kv_table(rows)
-
+    quick = [f"<code>/{command}</code> — {label}" for command, label in suggestions
+             if active is None or command in active]
     text = (
         rich_heading(f"{theme.emoji('diamond')} Agent", 2)
-        + "\n"
-        + greeting
-        + "\n"
-        + rich_note(
-            f"{theme.emoji('shield')} Professional group management first — "
-            "moderation always available, optional tools under your control."
-        )
-        + "\n"
-        + table.block()
-        + "\n"
-        + f"<b>{theme.emoji('bolt')} Try</b>"
-        + "\n"
-        + rich_list(
-            [
-                "<code>/help</code> — every command, one screen per section",
-                "<code>/files</code> — browse your stored files",
-                "<code>/leech</code> — fetch a link and get the file back",
-            ]
-        )
-        + "\n"
-        + rich_hr()
-        + rich_footer(
-            f"{theme.emoji('bot')} <code>/help</code> for every command · "
-            "<code>/about</code> for what this is"
-        )
+        + "\n<b>Your group. Your workspace.</b>\n"
+        + greeting + "\n"
+        + rich_note(f"{theme.emoji('shield')} Keep your community protected. "
+                    "Bring music, media and useful tools into one focused workspace.")
+        + "\n" + kv_table(rows).block()
+        + "\n<b>Try your next action</b>\n"
+        + rich_list(quick or ["Open Help below to explore this workspace."])
+        + "\n" + rich_hr()
+        + rich_footer("Core protection stays on · Optional plugins need Owner approval and group-admin activation.")
     )
-    return Screen(text, keyboards.home_keyboard())
+    return Screen(text, keyboards.home_keyboard(active=active))
 
 
 #: Command reference sections. Names come from the live registry, descriptions

@@ -12,7 +12,7 @@ import re
 
 from pyrogram.enums import ParseMode
 from pyrogram.errors import MessageNotModified
-from pyrogram.types import InputRichMessage, LinkPreviewOptions
+from pyrogram.types import InputRichMessage, InputRichMessageMedia, InputMediaPhoto, LinkPreviewOptions
 from richgram import rich_caption
 
 from ..ui import tables
@@ -122,6 +122,27 @@ class ScreenSender:
             logger.warning("Custom emoji rejected (%s); retrying with unicode.", exc)
             self._theme.disable_custom_emoji()
             return await self._post(chat_id, strip_custom_emoji(text), screen.keyboard)
+
+    async def send_hero(self, chat_id, screen: Screen, photo: str | None):
+        """Native rich image and card in one message, with explicit-only fallback.
+
+        Wzgram binds uploaded/local/URL media to a tg://photo identifier. No
+        custom network downloader or link-preview trick is involved.
+        """
+        if photo and tables.rich_enabled() and rich_utils.available(self._client):
+            try:
+                return await self._client.send_rich_message(
+                    chat_id=chat_id,
+                    rich_text=InputRichMessage(
+                        html='<img src="tg://photo?id=agent_hero" />' + screen.rich_text,
+                        media=[InputRichMessageMedia(id="agent_hero", media=InputMediaPhoto(photo))],
+                    ),
+                    reply_markup=screen.keyboard,
+                )
+            except Exception as exc:
+                if not rich_utils._refused(exc) and not _photo_rejected(exc):
+                    raise
+        return await self.send_photo(chat_id, screen, photo)
 
     async def send_photo(self, chat_id, screen: Screen, photo: str | None, *, caption_limit: int = 1024):
         """Send a screen as the caption of *photo*, falling back to plain text.

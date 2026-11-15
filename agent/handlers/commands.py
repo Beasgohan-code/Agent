@@ -73,7 +73,7 @@ class CommandHandlers:
         """``/start`` gets the picture; everything else gets plain text."""
         chat_id = getattr(getattr(message, "chat", None), "id", None)
         try:
-            await self._sender.send_photo(chat_id, screen, self._start_image)
+            await self._sender.send_hero(chat_id, screen, self._start_image)
         except Exception:
             logger.exception("Failed to deliver the welcome screen to chat %s", chat_id)
             await self._notify_failure(client, chat_id)

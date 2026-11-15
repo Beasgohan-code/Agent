@@ -18,6 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # Application code only — no secrets are ever baked into the image.
 COPY start.py ./
 COPY agent ./agent
+COPY assets ./assets
 
 # Run unprivileged — and give that user the data directory it writes to.
 # Without the chown, the lease and every store fail with PermissionError.

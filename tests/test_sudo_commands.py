@@ -8,9 +8,11 @@ import pytest
 
 from agent.modules.ops.sudo_commands import build
 from agent.platform.sudo_access import SudoError
-from test_ops import FakeMessage
+from test_ops import FakeMessage, ctx as ops_context
 
-pytest_plugins = ["test_ops"]
+@pytest.fixture
+def ctx(tmp_path):
+    return ops_context.__wrapped__(tmp_path)
 from agent.modules import ops
 
 

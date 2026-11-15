@@ -23,17 +23,21 @@ CB_INFO = "menu:info"
 SOURCE_URL = "https://github.com/Beasgohan-code/Agent"
 
 
-def home_keyboard() -> Keyboard:
+def home_keyboard(*, active=None) -> Keyboard:
     """The two things a new user actually wants."""
-    return Keyboard(
-        [
-            [
-                Button("\U0001f4a1 Help", callback_data=CB_HELP, style=ButtonStyle.PRIMARY),
-                Button("\U0001f464 My info", callback_data=CB_INFO),
-            ],
-            [Button("\U0001f517 Source", url=SOURCE_URL)],
-        ]
-    )
+    rows = [[
+        Button("✦ Explore commands", callback_data=CB_HELP, style=ButtonStyle.PRIMARY),
+        Button("◉ My profile", callback_data=CB_INFO),
+    ]]
+    shortcuts = []
+    if active is None or "warn" in active:
+        shortcuts.append(Button("🛡 Group protection", callback_data="help:moderation", style=ButtonStyle.SUCCESS))
+    if active is None or "files" in active:
+        shortcuts.append(Button("🗂 Vault & downloads", callback_data="help:vault-downloads"))
+    if shortcuts:
+        rows.append(shortcuts)
+    rows.append([Button("↗ Project source", url=SOURCE_URL)])
+    return Keyboard(rows)
 
 
 def help_keyboard() -> Keyboard:

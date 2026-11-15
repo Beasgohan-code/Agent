@@ -42,6 +42,9 @@ class FakeSender:
     def __init__(self):
         self.sent = []
 
+    async def send_hero(self, chat_id, screen, photo):
+        return await self.send(chat_id, screen)
+
     async def send(self, chat_id, screen):
         self.sent.append((chat_id, screen))
         return SimpleNamespace(id=1)

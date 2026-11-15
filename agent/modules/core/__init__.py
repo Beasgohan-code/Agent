@@ -60,8 +60,8 @@ def build(ctx):
         active = (
             set(ctx.registry.active_commands()) if ctx.registry is not None else None
         )
-        await ctx.sender.send(
-            message.chat.id, welcome_screen(user, ctx.theme, active=active)
+        await ctx.sender.send_hero(
+            message.chat.id, welcome_screen(user, ctx.theme, active=active), ctx.settings.start_image
         )
 
     def _module_rows() -> tuple[tuple[str, str], ...]:
