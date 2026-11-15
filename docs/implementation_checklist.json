@@ -1630,6 +1630,29 @@
         "Path checks mitigate ordinary unsafe paths/symlinks, not adversarial same-user filesystem TOCTOU replacement",
         "No live archive upload, production deployment, migrations or PR merge"
       ]
+    },
+    {
+      "id": "ui-command-catalogue-scope-and-menu-consistency",
+      "status": "completed",
+      "implemented": [
+        "Built-in start/help/ping remain private-only and are now published private-only, matching actual handlers rather than misleading group menu",
+        "Canonical home/help callback catalogue includes registered active commands plus three built-ins; welcome count/help shortcut no longer exclude them",
+        "Overflow Telegram native menus curate cross-feature entry points within 100-command cap; full active help remains available",
+        "Removed duplicate module-callback activity update and repeated active-set conversion within workspace-row loop",
+        "Existing README FileStore rows corrected: no restored fsave/files/del registration; check/get/custom_batch reflect runtime"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL 1633 passed, no skips, 20.50 seconds",
+        "Menu regressions verify overflow entry points, deduplication, actual built-in published scopes and UI-visible catalogue",
+        "Existing truncation tests updated to check curated subset/cap rather than old first-100 order",
+        "compileall/Pyflakes/diff checks passed"
+      ],
+      "remaining": [
+        "UI_PREVIEW.md historical snapshots still need regeneration; no new Markdown status reports added",
+        "Lazy module imports, command-cache invalidation and measured latency remain unimplemented; no performance benchmark claims",
+        "User newly requested AI automatic chat; scope/opt-in trigger confirmation pending, no ordinary conversations auto-uploaded",
+        "No web dashboard, deployment, migration or PR merge"
+      ]
     }
   ],
   "production_changes": false,

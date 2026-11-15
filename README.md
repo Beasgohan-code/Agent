@@ -196,9 +196,9 @@ Clones are still clients in the parent process, not OS-process isolation.
 
 | Command | What it does |
 | --- | --- |
-| `/fsave` | Keep a replied file in your vault (20 MB cap — the Bot API's, not ours). |
 | `/batch [n]` | Save a run of consecutive files, starting at the replied one. |
-| `/files`, `/check <id>`, `/get <id>`, `/del <id>` | List, inspect, re-send and delete vault entries. |
+| `/check <id>`, `/get <id>` | Inspect or retrieve your own existing stored file. |
+| `/custom_batch first last` | Create a bounded archive-channel message-range link; use `ids` for selected messages. |
 | `/genlink [hours] [uses]` | Store the replied file and answer with a share link (deep link + copy button). |
 | `/share <id> [hours] [uses]` | The same, for a file already in your vault — no second copy. |
 | `/links`, `/revoke` | Every live link with the uses and hours it has left; revoke by token or button. |

@@ -142,6 +142,10 @@ class AgentBot:
     def client(self) -> Client | None:
         return self._client
 
+    def _visible_commands(self):
+        """Canonical UI catalogue includes built-ins outside plugin registry."""
+        return sorted(set(self.registry.active_commands()) | {'start', 'help', 'ping'})
+
     @property
     def handler_count(self) -> int:
         return len(self._handlers) + len(getattr(self, "_watchers", []))
@@ -189,7 +193,7 @@ class AgentBot:
             events=self.events,
             users=self.users,
             start_image=self.settings.start_image,
-            active_commands=self.registry.active_commands,
+            active_commands=self._visible_commands,
             deeplinks=self.deeplinks,
         )
         callbacks = CallbackHandlers(
@@ -197,7 +201,7 @@ class AgentBot:
             self.theme,
             monitor=self.health,
             router=self.actions,
-            active_commands=self.registry.active_commands,
+            active_commands=self._visible_commands,
         )
 
         self._handlers = [
@@ -656,7 +660,7 @@ class AgentBot:
             try:
                 scopes = {command: manifest.scope for manifest in self.registry.manifests()
                           for command in manifest.commands}
-                scopes.update({command: "all" for command in ("start", "help", "ping")})
+                scopes.update({command: "private" for command in ("start", "help", "ping")})
                 await publish_menu(client, ["start", "help", "ping", *self.registry.active_commands()],
                                    command_scopes=scopes)
             except Exception:

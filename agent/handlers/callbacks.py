@@ -34,9 +34,7 @@ class CallbackHandlers:
         logger.info("Callback %r from user %s", data, getattr(user, "id", None))
 
         if self._router is not None and self._router.handles(data):
-            # Answer first: the handler below may answer with its own text.
-            if self._monitor is not None:
-                self._monitor.record_activity("callback")
+            # Module handlers own their callback acknowledgement.
             dispatched = await self._router.dispatch(client, callback_query)
             if dispatched:
                 return

@@ -79,9 +79,10 @@ def workspace_rows(active):
     from ..modules import MODULES
     manifests = {module.MANIFEST.slug: module.MANIFEST for module in MODULES}
     rows = []
+    active = set(active) if active is not None else None
     for slug, label in WORKSPACE_FEATURES:
         manifest = manifests.get(slug)
-        count = len(set(manifest.commands) & set(active)) if active is not None and manifest else 0
+        count = len(set(manifest.commands) & active) if active is not None and manifest else 0
         state = (f"{count} registered" if count else "Not registered") if active is not None else "Browse Help"
         rows.append((label, state))
     return rows

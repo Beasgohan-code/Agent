@@ -292,6 +292,27 @@ def sanitize(name: str) -> str | None:
     return clean if VALID_NAME.match(clean) else None
 
 
+# On overflow, retain useful entry points across features rather than only
+# the first alphabetic commands. The complete active catalogue stays in Help.
+MENU_ENTRY_POINTS = (
+    'start', 'help', 'menu', 'ping', 'status', 'settings', 'plugins',
+    'rules', 'report', 'verify', 'ban', 'mute', 'warn', 'warnings',
+    'lock', 'locks', 'antispam', 'flood', 'filters', 'welcome', 'reports',
+    'play', 'queue', 'stop', 'voicehealth', 'leech', 'encode', 'get', 'batch',
+    'links', 'post', 'ask', 'clone', 'mybots', 'premium', 'plans',
+    'myfeds', 'fedinfo', 'actiontopic', 'jobs', 'cancel', 'errors',
+)
+
+
+def curate(commands):
+    if len(commands) <= MAX_COMMANDS:
+        return commands
+    by_name = {item.command: item for item in commands}
+    priority = [by_name[name] for name in MENU_ENTRY_POINTS if name in by_name]
+    chosen = {item.command for item in priority}
+    return (priority + [item for item in commands if item.command not in chosen])[:MAX_COMMANDS]
+
+
 def build_commands(names: Iterable[str], *, group: bool = False) -> list[BotCommand]:
     """BotCommand list for one scope, filtered and deduplicated."""
     seen: set[str] = set()
@@ -305,7 +326,7 @@ def build_commands(names: Iterable[str], *, group: bool = False) -> list[BotComm
         seen.add(name)
         description = DESCRIPTIONS.get(name, name.replace("_", " ").capitalize())
         commands.append(BotCommand(command=name, description=description[:MAX_DESCRIPTION]))
-    return commands[:MAX_COMMANDS]
+    return curate(commands)
 
 
 async def publish(client, names: Iterable[str], *, command_scopes: dict[str, str] | None = None) -> tuple[int, int]:
@@ -336,7 +357,7 @@ async def publish(client, names: Iterable[str], *, command_scopes: dict[str, str
                 commands.append(BotCommand(command=name, description=DESCRIPTIONS.get(name, name.replace("_", " ").capitalize())[:MAX_DESCRIPTION]))
             if len(commands) > MAX_COMMANDS:
                 logger.warning("Telegram command scope exceeds its 100-command limit; help retains the full active list.")
-            return commands[:MAX_COMMANDS]
+            return curate(commands)
         private, group = scoped(False), scoped(True)
     done = {False: 0, True: 0}
     for is_group, (scope, commands) in zip((False, True), _scopes(private, group)):
