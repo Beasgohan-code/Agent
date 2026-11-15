@@ -103,7 +103,8 @@ def test_the_registry_counts_states():
 
 
 class FakeClient:
-    def __init__(self, *, fail=False, identity=True):
+    def __init__(self, *, fail=False, identity=True, bot_id=111111111):
+        self.bot_id = bot_id
         self.fail = fail
         self.identity = identity
         self.started = 0
@@ -121,7 +122,7 @@ class FakeClient:
     async def get_me(self):
         if not self.identity:
             raise RuntimeError("no identity")
-        return SimpleNamespace(username="helper_bot")
+        return SimpleNamespace(id=self.bot_id, username="helper_bot")
 
     async def send_document(self, **kwargs):
         return SimpleNamespace(document=SimpleNamespace(file_id="x"))
@@ -130,7 +131,7 @@ class FakeClient:
 class FakeBot:
     def __init__(self, settings, *, fail=False, identity=True):
         self.settings = settings
-        self.client = FakeClient(fail=fail, identity=identity)
+        self.client = FakeClient(fail=fail, identity=identity, bot_id=settings.bot_id)
 
     def build(self):
         return self.client

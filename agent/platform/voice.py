@@ -97,6 +97,22 @@ class VoiceEngine:
     def connected(self) -> bool:
         return self._connected
 
+    def diagnostics(self, chat_id: int) -> dict:
+        """Allowlisted cached state for one group, never credentials or sources.
+
+        This does not probe Telegram or measure audio delivery/packet loss.
+        """
+        playback = self.playback(chat_id)
+        lease = self._assistant_lease
+        ready = self._connected and self._call is not None
+        if lease is not None:
+            ready = ready and bool(lease.held)
+        return {
+            "engine_ready": bool(ready),
+            "assistant_lease": "not configured" if lease is None else ("held" if lease.held else "not held"),
+            "playback": "idle" if playback is None else ("paused" if playback.paused else "playing"),
+        }
+
     def set_stream_end_handler(self, handler) -> None:
         """Install the callback fired when a stream finishes on its own."""
         self._on_stream_end = handler
@@ -208,7 +224,7 @@ class VoiceEngine:
         """Join the call in *chat_id* if needed and start streaming *source*."""
         call = self._require()
         try:
-            acknowledged = await call.play(int(chat_id), source)
+            acknowledged = await asyncio.wait_for(call.play(int(chat_id), source), timeout=START_TIMEOUT)
             if acknowledged is False:
                 raise VoiceUnavailable("Playback was not acknowledged.")
         except Exception as exc:  # noqa: BLE001 - the command reports the reason
@@ -218,10 +234,36 @@ class VoiceEngine:
             title=title, source=source, requested_by=requested_by
         )
 
+    async def seek(self, chat_id: int, seconds: int) -> None:
+        """Restart this source at an offset, committing the clock only on ack.
+
+        MediaStream ffmpeg_parameters/video_flags verified against py-tgcalls
+        2.2.11's wheel. Actual installed API availability is checked at use.
+        """
+        if type(seconds) is not int or not 0 <= seconds <= 86400:
+            raise VoiceUnavailable("Seek position must be 0–86400 whole seconds.")
+        call = self._require()
+        playback = self.playback(chat_id)
+        if playback is None:
+            raise VoiceUnavailable("Nothing is playing here.")
+        if playback.paused:
+            raise VoiceUnavailable("Resume playback before seeking.")
+        try:
+            from pytgcalls.types import MediaStream
+            stream = MediaStream(playback.source, video_flags=MediaStream.Flags.IGNORE,
+                                 ffmpeg_parameters=f"-ss {seconds}")
+            acknowledged = await asyncio.wait_for(call.play(int(chat_id), stream), timeout=START_TIMEOUT)
+            if acknowledged is False:
+                raise VoiceUnavailable("Seek was not acknowledged.")
+        except Exception as error:
+            raise VoiceUnavailable(f"Seek was not confirmed ({type(error).__name__}).") from None
+        playback.started_at = time.time() - seconds
+        playback.paused_total = 0.0
+
     async def pause(self, chat_id: int) -> None:
         call = self._require()
         try:
-            if await call.pause(int(chat_id)) is False:
+            if await asyncio.wait_for(call.pause(int(chat_id)), timeout=STOP_TIMEOUT) is False:
                 raise VoiceUnavailable("Pause was not acknowledged.")
         except Exception as error:
             raise VoiceUnavailable(f"Pause was not confirmed ({type(error).__name__}).") from None
@@ -232,7 +274,7 @@ class VoiceEngine:
     async def resume(self, chat_id: int) -> None:
         call = self._require()
         try:
-            if await call.resume(int(chat_id)) is False:
+            if await asyncio.wait_for(call.resume(int(chat_id)), timeout=STOP_TIMEOUT) is False:
                 raise VoiceUnavailable("Resume was not acknowledged.")
         except Exception as error:
             raise VoiceUnavailable(f"Resume was not confirmed ({type(error).__name__}).") from None
@@ -244,15 +286,21 @@ class VoiceEngine:
     async def leave(self, chat_id: int) -> None:
         call = self._require()
         try:
-            await call.leave_call(int(chat_id))
-        finally:
-            self.playbacks.pop(int(chat_id), None)
+            if await asyncio.wait_for(call.leave_call(int(chat_id)), timeout=STOP_TIMEOUT) is False:
+                raise VoiceUnavailable("Leave was not acknowledged.")
+        except Exception as error:
+            raise VoiceUnavailable(f"Leave was not confirmed ({type(error).__name__}).") from None
+        self.playbacks.pop(int(chat_id), None)
 
     async def volume(self, chat_id: int, volume: int) -> None:
         call = self._require()
-        acknowledged = await call.change_volume_call(int(chat_id), max(1, min(200, int(volume))))
-        if acknowledged is False:
-            raise VoiceUnavailable("Voice volume was not acknowledged.")
+        try:
+            acknowledged = await asyncio.wait_for(
+                call.change_volume_call(int(chat_id), max(1, min(200, int(volume)))), timeout=STOP_TIMEOUT)
+            if acknowledged is False:
+                raise VoiceUnavailable("Voice volume was not acknowledged.")
+        except Exception as error:
+            raise VoiceUnavailable(f"Volume was not confirmed ({type(error).__name__}).") from None
 
     def playback(self, chat_id: int) -> Playback | None:
         return self.playbacks.get(int(chat_id))

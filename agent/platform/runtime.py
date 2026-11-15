@@ -99,6 +99,8 @@ class PluginRuntime:
         """Detach every handler of *slug*. False when it is protected/unknown."""
         if self.is_protected(slug):
             raise ValueError(f"{slug!r} cannot be disabled")
+        if not self.registry.is_enabled(slug) and slug in self._disabled:
+            return False
         if slug not in self._handlers and not self.registry.is_enabled(slug):
             return False
         if self._client is not None:
@@ -116,6 +118,8 @@ class PluginRuntime:
     def enable(self, slug: str) -> bool:
         """Re-attach the handlers recorded for *slug*."""
         if slug not in self._handlers:
+            return False
+        if self.registry.is_enabled(slug) and slug not in self._disabled:
             return False
         if self._client is not None:
             for handler, group in self._handlers[slug]:

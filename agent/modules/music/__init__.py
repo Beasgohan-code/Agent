@@ -30,6 +30,8 @@ from .queue import QueueBook, Track
 from .controls import COMMANDS as EXTRA_COMMANDS, build_controls
 from .playlists import COMMANDS as PLAYLIST_COMMANDS, build_playlists
 from .sources import SourceError, resolve
+from ..leech.typetube import youtube_url, resolve_audio
+from ...platform.net import LinkError
 from ...utils import rich as rich_ui
 from ...utils.rich import reply
 
@@ -41,7 +43,7 @@ MANIFEST = PluginManifest(
     version="1.0.0",
     description="Stream audio into the group's voice chat (needs SESSION_STRING).",
     commands=("play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
-              "q", "end", "resetplayer", "playnext", *EXTRA_COMMANDS, *PLAYLIST_COMMANDS),
+              "q", "end", "resetplayer", "playnext", "voicehealth", *EXTRA_COMMANDS, *PLAYLIST_COMMANDS),
     permissions=("messages.read", "messages.send", "voice.stream"),
     scope="group",
 )
@@ -80,6 +82,8 @@ def build(ctx):
         )
 
     queues = QueueBook()
+    from .queue_cards import QueueCards
+    queue_cards = QueueCards()
     history, volumes = {}, {}
     locks = WeakValueDictionary()
 
@@ -122,9 +126,18 @@ def build(ctx):
             queues.drop(chat_id)
             return None
         try:
+            source = track.source
+            if track.youtube_origin:
+                try:
+                    source, _ = await resolve_audio(track.youtube_origin)
+                except LinkError:
+                    raise VoiceUnavailable("TypeTube could not refresh the queued audio. The queue was preserved; retry when the service is available.") from None
+                if gate is not None and not await gate.allowed(chat_id, "music"):
+                    raise VoiceUnavailable("Music is no longer active here. No refreshed track was started.")
             await engine.play(
-                chat_id, track.source, title=track.title, requested_by=track.requested_by
+                chat_id, source, title=track.title, requested_by=track.requested_by
             )
+            track.source = source
         except BaseException:
             queue.current, queue.waiting = previous, waiting
             raise
@@ -133,6 +146,26 @@ def build(ctx):
             "now playing chat=%s title=%r requested_by=%s", chat_id, track.title, track.requested_by
         )
         return track.title
+
+    async def replay_current(chat_id: int):
+        playback = engine.playback(chat_id)
+        if playback is None:
+            raise VoiceUnavailable("Nothing is playing here.")
+        queue = queues.peek(chat_id)
+        track = queue.current if queue is not None else None
+        source = playback.source
+        if track is not None and track.youtube_origin:
+            try:
+                source, _ = await resolve_audio(track.youtube_origin)
+            except LinkError:
+                raise VoiceUnavailable("TypeTube could not refresh the current audio. Playback was not replaced.") from None
+            if gate is not None and not await gate.allowed(chat_id, "music"):
+                raise VoiceUnavailable("Music is no longer active here.")
+            if queues.peek(chat_id) is not queue or queue.current is not track or engine.playback(chat_id) is not playback:
+                raise VoiceUnavailable("Playback changed while refreshing audio. Retry after checking /nowplaying.")
+        await engine.play(chat_id, source, title=playback.title, requested_by=playback.requested_by)
+        if track is not None:
+            track.source = source
 
     async def on_stream_end(chat_id: int) -> None:
         """Called by the engine when a stream finishes on its own."""
@@ -159,11 +192,19 @@ def build(ctx):
             ("Elapsed", clock(playback.elapsed)),
             ("Requested by", str(playback.requested_by or "\u2014")),
         ]
+        queue = queues.peek(chat_id)
+        rows.extend([
+            ("Upcoming", str(len(queue.waiting)) if queue else "0"),
+            ("Repeat", ("one" if queue.loop else "all" if queue.repeat_all else "off") if queue else "off"),
+            ("Volume", f"{volumes[chat_id]}% acknowledged" if chat_id in volumes else "not set this session"),
+        ])
         return panel(
             "Now playing",
-            icon=ctx.theme.emoji("fire"),
+            icon=ctx.theme.emoji("music"),
+            subtitle=f"{ctx.theme.emoji('speaker')} Your group's live player · "
+                     + ("paused" if playback.paused else "playing"),
             table=kv_table(rows),
-            note="Staff and whoever queued the track get the buttons; everyone else can read it.",
+            note=f"{ctx.theme.emoji('shield')} Staff and whoever queued the track get the buttons; everyone else can read it.",
             footer="Elapsed time is measured by this process, not read back from the call.",
         )
 
@@ -232,6 +273,8 @@ def build(ctx):
                         await engine.leave(chat_id)
                     except VoiceUnavailable:
                         logger.debug("leave after an empty skip failed", exc_info=True)
+                        await query.answer("Queue finished, but leaving was not confirmed. Check /voicehealth.", show_alert=True)
+                        return
                     said = "Queue finished \u2014 left the voice chat."
                 else:
                     said = f"Now playing {started}."
@@ -239,8 +282,8 @@ def build(ctx):
                 queues.for_chat(chat_id).stop()
                 await engine.leave(chat_id)
                 said = "Stopped and left the voice chat."
-        except VoiceUnavailable as exc:
-            await query.answer(str(exc), show_alert=True)
+        except VoiceUnavailable:
+            await query.answer("The voice action was not confirmed. Check /voicehealth before retrying.", show_alert=True)
             return
         logger.info(
             "transport %s chat=%s by=%s", action, chat_id, getattr(presser, "id", None)
@@ -272,10 +315,14 @@ def build(ctx):
             await reply(message, "Voice chat only exists in groups.")
             return
         rest = _args(message)
-        if rest[0].split('@')[0].lower() == '/playnext' and not await is_moderator(client, message, owner_id=ctx.settings.owner_id):
+        if rest[0][1:].split('@')[0].lower() == 'playnext' and not await is_moderator(client, message, owner_id=ctx.settings.owner_id):
             await reply(message, "Only group administrators can insert ahead of other queued requests.")
             return
         argument = rest[1].strip() if len(rest) > 1 else ""
+        existing_queue = queues.peek(message.chat.id)
+        if existing_queue is not None and existing_queue.size >= 50:
+            await reply(message, "The music queue is full (50 tracks). Remove upcoming tracks before adding more.")
+            return
         try:
             source, title = await resolve(message, argument or None)
         except SourceError as exc:
@@ -287,12 +334,16 @@ def build(ctx):
             return
         title = title[:160]
         queue = queues.for_chat(message.chat.id)
-        track = Track(title=title, source=source, requested_by=message.from_user.id)
+        try:
+            origin = youtube_url(argument) if argument else None
+        except (LinkError, ValueError):
+            origin = None  # Resolver already validated the actual admitted source.
+        track = Track(title=title, source=source, requested_by=message.from_user.id, youtube_origin=origin)
         playback = engine.playback(message.chat.id)
         if playback is not None or queue.current is not None:
             try:
                 position = queue.add(track)
-                if _args(message)[0].split('@')[0].lower() == '/playnext':
+                if _args(message)[0][1:].split('@')[0].lower() == 'playnext':
                     queue.waiting.insert(0, queue.waiting.pop())
                     position = 1
             except ValueError as error:
@@ -308,11 +359,10 @@ def build(ctx):
                 message.chat.id, source, title=title, requested_by=message.from_user.id
             )
             logger.info(
-                "play started chat=%s title=%r by=%s source=%s",
+                "play started chat=%s title=%r by=%s",
                 message.chat.id,
                 title,
                 message.from_user.id,
-                source,
             )
         except VoiceUnavailable as exc:
             await reply(message, f"<b>Could not start playback</b>\n{exc}")
@@ -361,6 +411,8 @@ def build(ctx):
                 await engine.leave(message.chat.id)
             except Exception:  # noqa: BLE001 - leaving is best effort here
                 logger.debug("leave after empty skip failed", exc_info=True)
+                await reply(message, "Queue finished, but leaving the voice chat was not confirmed. Check /voicehealth and retry /leave.")
+                return
             await reply(message, "Queue finished — left the voice chat.")
             return
         await reply(message, f"Now playing <b>{html.escape(started)}</b>.")
@@ -371,8 +423,8 @@ def build(ctx):
         queues.for_chat(message.chat.id).stop()
         try:
             await engine.leave(message.chat.id)
-        except VoiceUnavailable as exc:
-            await reply(message, f"Stopped, but the engine was already idle ({exc}).")
+        except VoiceUnavailable:
+            await reply(message, "The queue was cleared, but stopping/leaving was not confirmed. Check /voicehealth and retry /leave.")
             return
         logger.info("stopped chat=%s by=%s", message.chat.id, message.from_user.id)
         await reply(message, "Stopped and left the voice chat. The queue is cleared.")
@@ -382,41 +434,58 @@ def build(ctx):
             return
         try:
             await engine.leave(message.chat.id)
-        except VoiceUnavailable as exc:
-            await reply(message, f"I am not in a voice chat here ({exc}).")
+        except VoiceUnavailable:
+            await reply(message, "Leaving the voice chat was not confirmed. Check /voicehealth before retrying.")
             return
         queues.drop(message.chat.id)
         await reply(message, "Left the voice chat.")
 
     # -- reporting ---------------------------------------------------------
 
-    async def show_queue(client, message):
-        queue = queues.for_chat(message.chat.id)
+    async def show_queue(client, message, *, card=None):
+        args = (getattr(message, "text", "") or "").split()[1:]
+        if len(args) > 1 or (args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0]) > 2 or int(args[0]) < 1)):
+            await reply(message, "Use /queue [page] or /q [page], starting at page 1.")
+            return
+        page = int(args[0]) if args else 1
+        queue = queues.peek(message.chat.id)
+        waiting = queue.waiting if queue else []
         playback = engine.playback(message.chat.id)
-        if playback is None and not queue.waiting:
-            await reply(message, 
-                panel(
-                    "Queue",
-                    icon=ctx.theme.emoji("stats"),
-                    lines=["Nothing queued."],
-                    note="<code>/play &lt;url&gt;</code> or reply with <code>/play</code>.",
-                )
-            )
+        pages = max(1, (len(waiting) + 9) // 10)
+        if card is not None:
+            page = min(page, pages)
+        if page > pages:
+            await reply(message, f"Choose a queue page from 1 to {pages}.")
+            return
+        if playback is None and not waiting:
+            await queue_cards.send(message, panel(
+                "Queue", icon=ctx.theme.emoji("music"),
+                lines=[f"{ctx.theme.emoji('sparkles')} Nothing queued."],
+                note="<code>/play &lt;url&gt;</code> or reply with <code>/play</code>.",
+            ), 1, 1, card=card)
             return
         rows = []
         if playback is not None:
-            rows.append(("now", playback.title, "playing" if not playback.paused else "paused"))
-        for position, track in enumerate(queue.waiting[:max(0, 15 - len(rows))], start=1):
+            rows.append(("now", playback.title, "paused" if playback.paused else "playing"))
+        start = (page - 1) * 10
+        for position, track in enumerate(waiting[start:start + 10], start=start + 1):
             rows.append((str(position), track.title, f"by {track.requested_by or '—'}"))
-        await reply(message, 
-            panel(
-                "Queue",
-                icon=ctx.theme.emoji("stats"),
-                subtitle=f"Showing <b>{len(rows)}</b> of {len(queue.waiting) + (1 if playback else 0)} item(s).",
-                table=Table(headers=("#", "Track", "State"), rows=tuple(rows)),
-                note="<code>/skip</code> advances, <code>/stop</code> clears everything.",
-            )
-        )
+        repeat = ("one" if queue.loop else "all" if queue.repeat_all else "off") if queue else "off"
+        navigation = []
+        if page > 1:
+            navigation.append(f"<code>/queue {page - 1}</code> previous")
+        if page < pages:
+            navigation.append(f"<code>/queue {page + 1}</code> next")
+        await queue_cards.send(message, panel(
+            "Queue", icon=ctx.theme.emoji("music"),
+            subtitle=f"{ctx.theme.emoji('stats')} Page <b>{page}/{pages}</b> · "
+                     f"{len(waiting)} upcoming · repeat <b>{repeat}</b>",
+            table=Table(headers=("#", "Track", "State"), rows=tuple(rows)),
+            lines=[" · ".join(navigation)] if navigation else (),
+            note=f"{ctx.theme.emoji('shield')} Upcoming positions stay the same across pages. "
+                 "Admins: <code>/move from to</code> · <code>/remove position</code>.",
+            footer="Session queue · /nowplaying for transport · /stop clears everything",
+        ), page, pages, card=card)
 
     async def nowplaying(client, message):
         playback = engine.playback(message.chat.id)
@@ -428,6 +497,37 @@ def build(ctx):
             _card(message.chat.id),
             reply_markup=_transport(message.chat.id),
         )
+
+    async def voicehealth(client, message):
+        if not await is_moderator(client, message, owner_id=ctx.settings.owner_id):
+            await reply(message, "Only group administrators can inspect voice diagnostics.")
+            return
+        if len(_args(message)) != 1:
+            await reply(message, "Use /voicehealth without arguments.")
+            return
+        snapshot = engine.diagnostics(message.chat.id)
+        # Explicit allowlist: do not render arbitrary engine dictionaries.
+        ready = snapshot.get("engine_ready") is True
+        queue = queues.peek(message.chat.id)
+        rows = [
+            ("Engine readiness", "ready (cached)" if ready else "not ready"),
+            ("Assistant lease", snapshot.get("assistant_lease") if snapshot.get("assistant_lease") in
+             ("held", "not held", "not configured") else "unknown"),
+            ("Playback here", snapshot.get("playback") if snapshot.get("playback") in
+             ("playing", "paused", "idle") else "unknown"),
+            ("Upcoming here", str(len(queue.waiting)) if queue else "0"),
+            ("Repeat mode", ("one" if queue.loop else "all" if queue.repeat_all else "off") if queue else "off"),
+            ("Volume here", f"{volumes[message.chat.id]}% acknowledged" if message.chat.id in volumes else "not set this session"),
+        ]
+        await reply(message, panel(
+            "Voice health", icon=ctx.theme.emoji("speaker"),
+            subtitle=f"{ctx.theme.emoji('check' if ready else 'warn')} "
+                     + ("Engine initialized; inspect the group call below." if ready else "Engine unavailable; playback may need recovery."),
+            table=kv_table(rows),
+            note=f"{ctx.theme.emoji('shield')} Cached state for this group only. "
+                 "Not a live connectivity or audible-stream test. No sources, sessions or account IDs shown.",
+            footer="/nowplaying · /queue · /help voicehealth",
+        ))
 
     def serialized(handler):
         async def wrapped(client, message):
@@ -448,15 +548,36 @@ def build(ctx):
         async with chat_lock(chat_id):
             return await on_transport(client, query, rest)
 
+    async def queue_press(client, query, rest):
+        token, _, action = rest.partition(":")
+        if not queue_cards.resolve(query, token):
+            await query.answer("Queue card expired or belongs to another member. Open /queue.", show_alert=True)
+            return
+        if action == "close":
+            queue_cards.cards.pop(token, None)
+            await query.message.delete()
+            await query.answer()
+            return
+        if not action.isascii() or not action.isdecimal() or not 1 <= len(action) <= 2 or int(action) < 1:
+            await query.answer("Invalid queue page.", show_alert=True)
+            return
+        async with chat_lock(query.message.chat.id):
+            proxy = SimpleNamespace(text=f"/queue {action}", chat=query.message.chat, from_user=query.from_user)
+            await show_queue(client, proxy, card=(query, token))
+        await query.answer()
+
     if hasattr(engine, "set_stream_end_handler"):
         engine.set_stream_end_handler(on_stream_end)
 
     router = getattr(ctx, "actions", None)
     if router is not None and not router.handles(f"{TRANSPORT}:x"):
         router.register(TRANSPORT, transport_locked)
+    if router is not None and not router.handles("mqueue:x"):
+        router.register("mqueue", queue_press)
 
     logger.info("Music handlers registered; engine startup is checked by the bot lifecycle")
     handlers = {
+        "voicehealth": voicehealth,
         "play": play,
         "pause": pause,
         "resume": resume,
@@ -469,7 +590,7 @@ def build(ctx):
         "end": stop,
         "resetplayer": stop,
         "playnext": play,
-        **build_controls(ctx, queues, history, volumes, _play_next),
+        **build_controls(ctx, queues, history, volumes, _play_next, replay_current=replay_current),
     }
     db = getattr(ctx, "db", None)
     if db is not None and db.connected:

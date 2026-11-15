@@ -294,7 +294,8 @@ def test_plugins_lists_state(ctx):
     run(handlers(ctx)["plugins"], message)
 
     body = message.replies[0]
-    assert "ops" in body and "demo" in body
+    assert "demo" in body
+    assert "plugin:ops" not in str(message.replies)
 
 
 def test_plugin_off_and_on(ctx):
@@ -325,3 +326,18 @@ def test_events_lists_recent_activity(ctx):
 
     assert "command" in message.replies[0]
     assert "recorded" in message.replies[0]
+
+
+def test_runtime_on_off_is_idempotent_and_does_not_duplicate_handlers(tmp_path):
+    registry, runtime, client, handler = make_runtime(tmp_path)
+    initial = len(client.added)
+    assert runtime.enable('demo') is False
+    assert len(client.added) == initial
+    assert runtime.disable('demo') is True
+    removed = len(client.removed)
+    assert runtime.disable('demo') is False
+    assert len(client.removed) == removed
+    assert runtime.enable('demo') is True
+    added = len(client.added)
+    assert runtime.enable('demo') is False
+    assert len(client.added) == added

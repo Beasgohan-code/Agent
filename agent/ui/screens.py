@@ -9,6 +9,7 @@ command, which is the whole point of ``/help``.
 from __future__ import annotations
 
 import re
+import difflib
 from dataclasses import dataclass
 from typing import Callable
 
@@ -65,13 +66,32 @@ def _username(user) -> str:
     return f"@{rich_esc(username)}" if username else "not set"
 
 
-def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
-    """The first thing a user sees — and the caption of the /start picture.
+WORKSPACE_FEATURES = (
+    ("encoder", "Encoder"), ("moderation", "Moderation"),
+    ("postmaker", "Post maker"), ("music", "Music"),
+    ("linkshare", "Linkshare"), ("filestore", "FileStore"),
+    ("leech", "Leech"), ("ai_agent", "AI Agent"),
+)
 
-        It has to survive the 1024-character caption cap and still say what the bot
-        is, so it is three parts: a greeting, a small table of facts, and three
-        commands worth trying. Nothing here is decoration that costs a line.
-        
+
+def workspace_rows(active):
+    """Show registration evidence only, never infer group approval or health."""
+    from ..modules import MODULES
+    manifests = {module.MANIFEST.slug: module.MANIFEST for module in MODULES}
+    rows = []
+    for slug, label in WORKSPACE_FEATURES:
+        manifest = manifests.get(slug)
+        count = len(set(manifest.commands) & set(active)) if active is not None and manifest else 0
+        state = (f"{count} registered" if count else "Not registered") if active is not None else "Browse Help"
+        rows.append((label, state))
+    return rows
+
+
+def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+    """Compact welcome card for native rich heroes and classic photo captions.
+
+    Tool suggestions come from the live registry. Avoid unverifiable online or
+    blanket privacy claims; show policy and available navigation instead.
     """
     name = display_name(user)
     greeting = (
@@ -80,47 +100,32 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
         else f"{theme.emoji('wave')} Hello!"
     )
 
-    # No emoji inside a table: their rendered width is the client's choice, so a
-    # glyph in a cell is what makes a monospace grid drift. Glyphs stay in the
-    # prose around it.
-    rows = [
-        ("Version", __version__),
-        ("Status", "online"),
-        ("Privacy", "no message text stored"),
+    rows = [("Version", __version__), ("Core", "Moderation · always available")]
+    if active is not None:
+        rows.append(("Commands", str(len(active))))
+    suggestions = [
+        ("help", "Browse your command library"),
+        ("plugins", "Open plugin controls for this chat"),
+        ("links", "Manage your existing share links"),
+        ("play", "Start a voice-chat music session"),
     ]
-    if active:
-        rows.insert(1, ("Commands", str(len(active))))
-    table = kv_table(rows)
-
+    quick = [f"<code>/{command}</code> — {label}" for command, label in suggestions
+             if active is None or command in active]
     text = (
-        rich_heading(f"{theme.emoji('diamond')} Agent", 2)
-        + "\n"
-        + greeting
-        + "\n"
-        + rich_note(
-            f"{theme.emoji('shield')} Professional group management first — "
-            "moderation always available, optional tools under your control."
-        )
-        + "\n"
-        + table.block()
-        + "\n"
-        + f"<b>{theme.emoji('bolt')} Try</b>"
-        + "\n"
-        + rich_list(
-            [
-                "<code>/help</code> — every command, one screen per section",
-                "<code>/fsave</code> — reply to a file to keep it in your vault",
-                "<code>/leech</code> — fetch a link and get the file back",
-            ]
-        )
-        + "\n"
-        + rich_hr()
-        + rich_footer(
-            f"{theme.emoji('bot')} <code>/help</code> for every command · "
-            "<code>/about</code> for what this is"
-        )
+        rich_heading(f"{theme.emoji('diamond')} Meiko", 2)
+        + "\n<b>Your group. Your workspace.</b>\n"
+        + greeting + "\n"
+        + rich_note(f"{theme.emoji('shield')} Keep your community protected. "
+                    "Bring music, media and useful tools into one focused workspace.")
+        + "\n" + kv_table(rows).block()
+        + "\n<b>Workspace</b>\n"
+        + Table(headers=("Feature", "Commands"), rows=tuple(workspace_rows(active))).block()
+        + "\n<b>Try your next action</b>\n"
+        + rich_list(quick or ["Open Help below to explore this workspace."])
+        + "\n" + rich_hr()
+        + rich_footer("Prefixes: / ! . ? · Registration is not group activation. Optional plugins need Owner approval and group-admin activation.")
     )
-    return Screen(text, keyboards.home_keyboard())
+    return Screen(text, keyboards.home_keyboard(active=active))
 
 
 #: Command reference sections. Names come from the live registry, descriptions
@@ -134,7 +139,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "bolt",
         "Essentials",
-        ("start", "help", "menu", "about", "status", "alive", "uptime", "ping", "cancel", "owner",
+        ("start", "help", "menu", "about", "status", "alive", "uptime", "ping", "cancel", "jobs", "owner",
          "id", "info", "time", "repo"),
     ),
     (
@@ -142,35 +147,33 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Encoding & files",
         (
             "encode", "compress", "sample", "toaudio", "screens",
-            "encinfo", "encpreset", "enccancel",
-            "autorename", "rename", "testrename", "clean",
+            "mediainfo", "autorename", "rename", "testrename", "clean",
             "setthumb", "delthumb", "viewthumb",
-            "setcaption", "delcaption", "viewcaption",
-            "genlink", "share", "links", "revoke",
+            "setcaption", "viewcaption", "set_del_word", "rem_del_word", "set_repl_word", "rem_repl_word",
+            "genlink", "share", "links", "revoke", "linkchannel",
         ),
     ),
     (
         "box",
         "Vault & downloads",
         (
-            "fsave", "get", "files", "batch", "check", "del", "storestats", "storequota",
-            "leech", "mirror", "tasklist", "taskstatus", "leechstats", "taskbackend",
-        ),
+            "get", "batch", "check", "custom_batch", "leech", "mirror", "set_caption", "see_caption", "del_caption", "set_thumb", "view_thumb", "see_thumb", "del_thumb", "delete_thumb", ),
     ),
     (
         "music",
         "Music (voice chat)",
         ("play", "playnext", "pause", "resume", "skip", "stop", "end", "resetplayer",
-         "queue", "q", "nowplaying", "leave", "loop", "shuffle", "clearqueue", "clear",
-         "remove", "move", "jump", "replay", "volume", "volumeup", "volumedown", "history",
-         "saveplaylist", "playlist", "playlists", "deleteplaylist"),
+         "queue", "q", "nowplaying", "voicehealth", "leave", "loop", "shuffle", "clearqueue", "clear",
+         "remove", "move", "jump", "replay", "seek", "fw", "bw", "seekback", "volume", "volumeup", "volumedown", "history",
+         "saveplaylist", "playlist", "playlists", "deleteplaylist", ),
     ),
     (
         "lock",
         "Moderation",
         (
             "warn", "warnings", "unwarn", "mute", "unmute", "kick", "ban", "unban",
-            "purge", "note", "trust", "antispam", "modlog", "warns",
+            "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme",
+            "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
         ),
     ),
     (
@@ -178,7 +181,9 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Group management",
         (
             "settings", "rules", "setrules", "pin", "unpin", "admins",
-            "warnlimit", "resetwarns", "lockdown",
+            "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
+            "fedreason", "fednotif", "quietfed", "fedpromote", "feddemote", "feddemoteme", "fedtransfer", "newfed", "renamefed", "delfed", "myfeds", "fedinfo", "fedadmins", "joinfed", "leavefed", "chatfed",
+            "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "warnlimit", "resetwarns", "lockdown",
             "filter", "filters", "stopfilter",
             "setwelcome", "welcome", "goodbye",
         ),
@@ -188,21 +193,21 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Community & premium",
         (
             "report", "reports", "appeal",
-            "post", "postpreview", "posttemplate", "verify",
+            "post", "verify",
             "premium", "myplan", "plans", "addpremium", "delpremium", "premiumusers",
         ),
     ),
     (
         "search",
         "Clones",
-        ("clone", "mybots", "delclone", "clonestats"),
+        ("clone", "panel", "mybots", "delclone", "clonestats"),
     ),
     (
         "bot",
         "Operations (owner)",
         (
             "restart", "watchdog", "plugins", "plugin", "events", "errors", "db",
-            "setlog", "unsetlog", "log", "sudo",
+            "setlog", "log", "sudo", "addsudo", "delsudo", "sudolist", "sudoperms",
         ),
     ),
 )
@@ -234,21 +239,21 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
     keeps it that way, because the Bot API can edit a rich message too.
     """
     rows: list[tuple[str, str]] = []
-    total = 0
     for icon, title, commands in HELP_SECTIONS:
         visible = help_visible(commands, active)
         if not visible:
             continue
-        total += len(visible)
         rows.append(
             (markup(f"{theme.emoji(icon)} {rich_esc(title)}"), str(len(visible)))
         )
     blocks = [
         rich_heading(f"{theme.emoji('sparkles')} Help", 2),
         rich_note(
-            f"{theme.emoji('info')} <b>{total}</b> commands in "
-            f"<b>{len(rows)}</b> sections. Owner-only commands need "
-            "<code>OWNER_ID</code>; group commands need moderator rights."
+            "<b>What would you like to do?</b>\n"
+            "Choose a category to explore its tools and how to use them.\n"
+            "<b>All commands accept / ! . ?</b> — for example, "
+            "<code>!help</code>, <code>.play</code>, <code>?settings</code>. "
+            "Permissions and plugin availability still apply."
         ),
     ]
     if rows:
@@ -258,8 +263,7 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"{theme.emoji('help')} Tap a section for the sentence behind every "
-            "command, or <code>/menu</code> for the ones you use daily."
+            "Tap a category below · <code>/help play</code> finds a command directly."
         )
     )
     return Screen("\n".join(blocks), _help_keyboard(active))
@@ -281,7 +285,10 @@ def _help_keyboard(active: set[str] | None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+HELP_PAGE_SIZE = 8
+
+
+def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | None = None, page: int = 0) -> Screen:
     """One section of the reference, with a sentence per command."""
     from ..platform.menu import DESCRIPTIONS
 
@@ -293,11 +300,23 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
             icon, commands = section_icon, section_commands
             break
     visible = [name for name in help_visible(commands, active) if name in DESCRIPTIONS]
+    pages = max(1, (len(visible) + HELP_PAGE_SIZE - 1) // HELP_PAGE_SIZE)
+    page = min(max(0, page), pages - 1)
+    selected = visible[page * HELP_PAGE_SIZE:(page + 1) * HELP_PAGE_SIZE]
     blocks = [
         rich_heading(f"{theme.emoji(icon)} {title}", 2),
         rich_note(
-            f"<b>{len(visible)}</b> command(s) ready here · owner-only ones need "
-            "<code>OWNER_ID</code>"
+            {
+                "Essentials": "Your everyday shortcuts. Start here, check your status or get help.",
+                "Moderation": "Keep your community safe. Moderation actions require the appropriate group permissions.",
+                "Group management": "Shape your group’s rules and welcome experience. Settings changes require group-admin permissions.",
+                "Operations (owner)": "System controls for the bot owner. Delegated diagnostics are limited to explicitly granted access.",
+                "Clones": "Create and manage your own bot workspace. Creation and startup require an active Premium entitlement.",
+                "Music (voice chat)": "Build your queue and control playback. Availability depends on this group’s plugin and player settings.",
+                "Vault & downloads": "Save, find and retrieve your files. Use private chat for personal file details.",
+                "Encoding & files": "Prepare your media, refine filenames and manage share links.",
+                "Community & premium": "Community tools, reports and your plan. Administrative actions stay permission-protected.",
+            }.get(title, "Explore the tools below. Each action checks the permissions it needs.")
             if visible
             else "Nothing in this section is available in this deployment."
         ),
@@ -307,7 +326,7 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
             headers=("Command", "What it does"),
             rows=tuple(
                 (markup(f"<code>/{rich_esc(name)}</code>"), rich_esc(DESCRIPTIONS[name]))
-                for name in visible
+                for name in selected
             ),
             aligns=("left", "left"),
             max_column=44,
@@ -319,16 +338,24 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"{theme.emoji('help')} <code>/help</code> lists every section; "
-            "the buttons below move between them."
+            f"Page {page + 1} of {pages} · All commands accept / ! . ? · Choose another category or return to your workspace."
         )
     )
-    return Screen("\n".join(blocks), _section_keyboard())
+    return Screen("\n".join(blocks), _section_keyboard(title, page, pages))
 
 
-def _section_keyboard() -> InlineKeyboardMarkup:
+def _section_keyboard(title=None, page=0, pages=1) -> InlineKeyboardMarkup:
+    navigation = []
+    if title and pages > 1:
+        buttons = []
+        slug = section_slug(title)
+        if page > 0:
+            buttons.append(Button("‹ Previous", callback_data=f"help:{slug}:{page - 1}"))
+        if page + 1 < pages:
+            buttons.append(Button("Next ›", callback_data=f"help:{slug}:{page + 1}", style=ButtonStyle.PRIMARY))
+        navigation.append(buttons)
     return InlineKeyboardMarkup(
-        [
+        navigation + [
             [
                 Button(
                     "\u2b05\ufe0f All sections",
@@ -341,9 +368,9 @@ def _section_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def _section_builder(title: str):
+def _section_builder(title: str, page: int = 0):
     def build(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
-        return help_section_screen(title, user, theme, active=active)
+        return help_section_screen(title, user, theme, active=active, page=page)
 
     return build
 
@@ -362,7 +389,7 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
             f"<code>{int(user_id)}</code>" if isinstance(user_id, int) else "unknown",
         ),
         ("Language", rich_esc(language)),
-        ("Premium", premium_text),
+        ("Telegram Premium", premium_text),
     ]
 
     text = (
@@ -373,7 +400,7 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
         + kv_table(rows).block()
         + "\n"
         + rich_hr()
-        + rich_footer(f"{theme.emoji('id')} Nothing is stored — details are read live.")
+        + rich_footer("Telegram profile details are read live. Meiko Premium is separate; use /myplan to check your plan.")
     )
     return Screen(text, keyboards.info_keyboard(user_id if isinstance(user_id, int) else None))
 
@@ -398,10 +425,37 @@ def help_lookup_screen(
     """
     from ..platform.menu import DESCRIPTIONS
 
-    query = (argument or "").strip().lstrip("/").lower()
+    query = (argument or "").strip().lstrip("/!.?").lower()[:64]
     for _icon, title, commands in HELP_SECTIONS:
         if query and query in {title.lower(), section_slug(title)}:
             return _section_builder(title)(user, theme, active=active)
+    if query and query not in DESCRIPTIONS:
+        # Short category names should work without knowing the display title.
+        aliases = {"music": "Music (voice chat)", "vault": "Vault & downloads",
+                   "media": "Encoding & files", "groups": "Group management"}
+        title = aliases.get(query)
+        if title:
+            return help_section_screen(title, user, theme, active=active)
+        candidates = sorted(name for name in DESCRIPTIONS
+                            if help_visible((name,), active) and _section_of(name))
+        matches = [name for name in candidates if query in name] if len(query) >= 3 else []
+        if not matches and len(query) >= 3:
+            matches = difflib.get_close_matches(query, candidates, n=6, cutoff=0.65)
+        matches = matches[:6]
+        if matches:
+            body = (
+                rich_heading("Find your next action", 2) + "\n"
+                + rich_note(f"Tools matching <b>{rich_esc(query)}</b>. Use <code>/help command</code> for a closer look.")
+                + "\n" + Table(headers=("Command", "What it does"), rows=tuple(
+                    (markup(f"<code>/{name}</code>"), DESCRIPTIONS[name]) for name in matches
+                )).block()
+            )
+            titles = list(dict.fromkeys(_section_of(name) for name in matches))
+            buttons = [[Button(title, callback_data=f"help:{section_slug(title)}")]
+                       for title in titles if title]
+            buttons.append([Button("All categories", callback_data=f"help:{ALL_SECTIONS}"),
+                            Button("Menu", callback_data=keyboards.CB_HOME)])
+            return Screen(body, InlineKeyboardMarkup(buttons))
     if query not in DESCRIPTIONS:
         body = (
             rich_heading(f"{theme.emoji('sparkles')} Help", 2)
@@ -471,6 +525,8 @@ ALL_SECTIONS = "all"
 SCREENS[f"help:{ALL_SECTIONS}"] = help_screen
 for _icon, _title, _commands in HELP_SECTIONS:
     SCREENS[f"help:{section_slug(_title)}"] = _section_builder(_title)
+    for _page in range(max(1, (len(_commands) + HELP_PAGE_SIZE - 1) // HELP_PAGE_SIZE)):
+        SCREENS[f"help:{section_slug(_title)}:{_page}"] = _section_builder(_title, _page)
 
 
 def ping_screen(monitor, theme: Theme) -> Screen:

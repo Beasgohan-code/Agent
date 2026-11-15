@@ -10,7 +10,9 @@ transfers per day    5           50
 encodes per day      3           25
 ===================  ==========  =========
 
-State is JSON on disk next to the other stores: ``until`` in epoch seconds, or
+Production clone eligibility uses relational PostgreSQL entitlements. Legacy
+usage counters and display caches use the existing document store; standalone
+tests can use JSON. Legacy membership expiry is ``until`` in epoch seconds, or
 ``None`` for lifetime. Daily counters carry the UTC date they belong to, so an
 allowance resets at midnight UTC without a scheduler.
 """
@@ -116,6 +118,9 @@ class PremiumBook:
         now: float | None = None,
     ) -> float | None:
         """Give premium for *days* (0 = lifetime). Returns the new expiry."""
+        if self._db is not None:
+            from .entitlements import EntitlementError
+            raise EntitlementError("Awaited PostgreSQL entitlement grant required.")
         moment = time.time() if now is None else now
         current = self.record(user_id) or {}
         if days <= 0:
@@ -134,6 +139,9 @@ class PremiumBook:
         return until
 
     def revoke(self, user_id: int) -> bool:
+        if self._db is not None:
+            from .entitlements import EntitlementError
+            raise EntitlementError("Awaited PostgreSQL entitlement revocation required.")
         removed = self._data["users"].pop(str(int(user_id)), None)
         if removed is not None:
             self._save()
@@ -151,6 +159,43 @@ class PremiumBook:
 
     def count(self) -> int:
         return len(self._data["users"])
+
+    async def ais_premium(self, user_id: int) -> bool:
+        if self._db is None:
+            return self.is_premium(user_id)
+        from .entitlements import operate, EntitlementError
+        try:
+            record = await operate(self._db, "record", user_id)
+            if record is None:
+                self._data["users"].pop(str(user_id), None)
+            else:
+                self._data["users"][str(user_id)] = record
+            return self.is_premium(user_id)
+        except EntitlementError:
+            logger.warning("Authoritative Premium eligibility unavailable; denied")
+            return False
+
+    async def alisting(self):
+        if self._db is None:
+            return self.listing()
+        from .entitlements import operate
+        return await operate(self._db, "list", 1)
+
+    async def agrant(self, user_id: int, days: int = 30, *, by=None):
+        if self._db is None:
+            return self.grant(user_id, days, by=by)
+        from .entitlements import operate
+        until = await operate(self._db, "grant", user_id, days=days, by=by)
+        self._data["users"][str(user_id)] = {"until": until, "by": by}
+        return until
+
+    async def arevoke(self, user_id: int):
+        if self._db is None:
+            return self.revoke(user_id)
+        from .entitlements import operate
+        removed = await operate(self._db, "revoke", user_id)
+        self._data["users"].pop(str(user_id), None)
+        return removed
 
     # -- daily allowances --------------------------------------------------
 

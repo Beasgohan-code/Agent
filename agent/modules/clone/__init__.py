@@ -1,15 +1,17 @@
 """Private, premium-gated clones with guided setup and lifecycle controls.
 
-Reviewed single-feature templates support guided setup. Bot token identity is verified; the setup
+Reviewed single-feature and combined suites support guided setup. Bot token identity is verified; the setup
 user becomes that clone tenant's Owner. Legacy profiles remain supported. No
 clone inherits parent assistant credentials or permits recursive cloning.
 """
 
 from __future__ import annotations
 
+import html
 import logging
 import time
 
+from pyrogram.errors import MessageNotModified
 from pyrogram.enums import ButtonStyle
 from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
@@ -33,7 +35,7 @@ MANIFEST = PluginManifest(
     name="Clone",
     version="1.0.0",
     description="Run this bot on other bot tokens, and control them by button.",
-    commands=("clone", "mybots", "delclone", "clonestats"),
+    commands=("clone", "panel", "mybots", "delclone", "clonestats"),
     permissions=("messages.read", "messages.send", "process.spawn"),
     scope="private",
 )
@@ -82,13 +84,15 @@ def build(ctx):
     if getattr(ctx, "sudo", None) is None:
         ctx.sudo = SudoStore(ctx.settings.data_dir, owner_id=ctx.settings.owner_id, db=getattr(ctx, "db", None))
 
-    def privileged(user_id):
-        return user_id is not None and (user_id == ctx.settings.owner_id or ctx.sudo.contains(user_id))
-
     def quota(user_id):
-        return ctx.settings.clone_limit if privileged(user_id) else allowance(ctx.premium, user_id)[0]
+        return allowance(ctx.premium, user_id)[0]
 
-    def entitled(user_id):
+    async def entitled(user_id):
+        premium = ctx.premium
+        if premium is None or user_id is None:
+            return False
+        if hasattr(premium, "ais_premium"):
+            return await premium.ais_premium(user_id)
         return quota(user_id) > 0
 
     manager.eligible = entitled
@@ -105,15 +109,19 @@ def build(ctx):
         mine = store.by_owner(owner_id)
         if not mine:
             body = panel(
-                "Your clones",
+                "Clone controller",
                 icon=ctx.theme.emoji("bot"),
                 lines=[
                     "You have not cloned this bot yet.",
-                    "Send <code>/clone &lt;bot token&gt;</code> with a token from @BotFather.",
+                    "Open this bot privately and send <code>/clone</code> for guided setup.",
+                    "The studio checks encryption before requesting any credentials.",
                 ],
                 note=pitch(),
             )
-            return body, nav_keyboard()
+            return body, Keyboard([
+                [Button("↻ Refresh all", callback_data="clone:refresh")],
+                [Button("Menu", callback_data="menu:home")],
+            ])
         rows = tuple(
             (
                 clone.handle,
@@ -124,7 +132,7 @@ def build(ctx):
         )
         running = sum(1 for clone in mine if manager.is_running(clone.bot_id))
         body = panel(
-            "Your clones",
+            "Clone controller",
             icon=ctx.theme.emoji("bot"),
             subtitle=(
                 f"<b>{len(mine)}</b> clone(s), <b>{running}</b> running. "
@@ -132,7 +140,7 @@ def build(ctx):
             ),
             table=Table(headers=("Bot", "Profile", "State"), rows=rows),
             lines=tuple(
-                f"<b>{clone.handle}</b> — {state.last_error[:160]}"
+                f"<b>{html.escape(clone.handle)}</b> — {html.escape(state.last_error[:160])}"
                 for clone in mine
                 if (state := manager.state(clone.bot_id)).state is lifecycle.State.FAILED
             ),
@@ -148,7 +156,7 @@ def build(ctx):
             buttons.append(
                 [
                     Button(
-                        "\u23f8 Stop" if live else "\u25b6\ufe0f Start",
+                        f"⏸ {clone.handle} · Stop" if live else f"▶ {clone.handle} · Start",
                         callback_data=f"{PREFIX}:{clone.bot_id}:{'stop' if live else 'start'}",
                         style=ButtonStyle.PRIMARY if not live else ButtonStyle.DEFAULT,
                     ),
@@ -163,6 +171,9 @@ def build(ctx):
                     ),
                 ]
             )
+            buttons.append([Button(f"ℹ {clone.handle} · Details", callback_data=f"{PREFIX}:{clone.bot_id}:details"),
+                            Button("↻ Restart", callback_data=f"{PREFIX}:{clone.bot_id}:restart")])
+        buttons.append([Button("↻ Refresh all", callback_data="clone:refresh")])
         buttons.append(
             [
                 Button("\u21a9\ufe0f Menu", callback_data="menu:home", style=ButtonStyle.PRIMARY),
@@ -252,8 +263,8 @@ def build(ctx):
         if getattr(getattr(message, "chat", None), "id", None) != user.id:
             await reply(message, "Use /clone privately. Never send bot tokens or session strings in groups; revoke any token you already posted publicly.")
             return
-        if not entitled(user.id):
-            await reply(message, "Cloning requires bot premium, sudo access or Owner access.")
+        if not await entitled(user.id):
+            await reply(message, "Cloning requires bot premium, including for Owner and sudo users.")
             return
         parts = (getattr(message, "text", "") or "").split()
         if len(parts) < 2:
@@ -284,6 +295,7 @@ def build(ctx):
         if bot_id == ctx.settings.bot_id:
             await reply(message, "The main bot cannot clone itself.")
             return
+        await store.aall()
         existing = store.get(bot_id)
         if existing is not None:
             await reply(
@@ -292,7 +304,7 @@ def build(ctx):
                 "<code>/mybots</code> shows its state.",
             )
             return
-        allowed, tier = quota(user.id), ("privileged" if privileged(user.id) else "premium")
+        allowed, tier = quota(user.id), "premium"
         mine = store.by_owner(user.id)
         if len(mine) >= allowed:
             await reply(
@@ -314,22 +326,28 @@ def build(ctx):
             )
             return
 
-        record = store.add(
-            Clone(
-                bot_id=bot_id,
-                owner_id=user.id,
-                managed_owner=True,
-                token=parts[1].strip(),
-                profile=profile,
+        try:
+            record = await store.aadd(
+                Clone(
+                    bot_id=bot_id,
+                    owner_id=user.id,
+                    managed_owner=True,
+                    token=parts[1].strip(),
+                    profile=profile,
+                ),
+                owner_limit=allowed,
+                total_limit=ctx.settings.clone_limit,
             )
-        )
+        except RuntimeError:
+            await reply(message, "Clone capacity or persistence was not confirmed. Check /mybots before retrying.")
+            return
         try:
             username = await manager.start(record)
         except CloneError:
-            store.remove(bot_id)
+            await store.aremove(bot_id)
             await reply(message, "<b>Could not start that clone</b>\nTelegram or deployment startup failed. Check bot credentials and try again.")
             return
-        store.update(bot_id, username=username)
+        await store.aupdate(bot_id, username=username)
         if events is not None:
             events.emit("clone:add", bot_id=bot_id, by=user.id)
         logger.info("clone %s added by %s as @%s", bot_id, user.id, username or "?")
@@ -363,11 +381,16 @@ def build(ctx):
         user = getattr(message, "from_user", None)
         if user is None:
             return
+        if getattr(getattr(message, "chat", None), "id", None) != user.id:
+            await reply(message, "Open /mybots privately to manage your bots and storage destinations.")
+            return
+        await store.aall()
         text, keyboard = _panel(user.id)
         await reply(message, text, reply_markup=keyboard)
 
     # -- /delclone ---------------------------------------------------------
     async def delclone(_client, message):
+        await store.aall()
         user = getattr(message, "from_user", None)
         if user is None:
             return
@@ -383,13 +406,14 @@ def build(ctx):
             await reply(message, "That clone belongs to somebody else.")
             return
         await manager.stop(target.bot_id)
-        store.remove(target.bot_id)
+        await store.aremove(target.bot_id)
         if events is not None:
             events.emit("clone:delete", bot_id=target.bot_id, by=user.id)
         await reply(message, f"Deleted the clone <b>{target.handle}</b> and stopped it.")
 
     # -- /clonestats -------------------------------------------------------
     async def clonestats(_client, message):
+        await store.aall()
         owner = ctx.settings.owner_id
         user = getattr(message, "from_user", None)
         if owner is None or user is None or int(user.id) != int(owner):
@@ -429,7 +453,7 @@ def build(ctx):
             await _redraw(query, client, text, keyboard)
             await query.answer("Back to your clones.")
             return
-        if action != "p" or not extra:
+        if action not in ("p", "pc") or not extra:
             text, keyboard = _profile_panel(target)
             await _redraw(query, client, text, keyboard)
             await query.answer("Choose a profile.")
@@ -437,7 +461,18 @@ def build(ctx):
         if profiles.clean(extra) != extra or extra not in profiles.ORDER:
             await query.answer("That profile does not exist.", show_alert=True)
             return
-        store.update(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None)
+        if target.selected_plugins and action == "p":
+            await _redraw(query, client, panel("Replace guided clone setup?", icon=ctx.theme.emoji("shield"),
+                table=kv_table([("Current features", selection_label(target.selected_plugins)),
+                                ("Replacement profile", profiles.label(extra))]),
+                lines=["This replaces the guided feature selection and removes this clone’s stored Music assistant session and AI key/model.",
+                       "A running worker will restart. Re-adding credential-bearing features requires guided setup; the removed credentials cannot be recovered from this panel."],
+                note="The bot token, owned files and configured channels are not deleted."),
+                Keyboard([[Button("Confirm replacement", callback_data=f"{PREFIX}:{target.bot_id}:pc:{extra}", style=ButtonStyle.DANGER)],
+                          [Button("Keep current setup", callback_data=f"{PREFIX}:{target.bot_id}:profile")]]))
+            await query.answer("Review before replacing the guided setup.")
+            return
+        await store.aupdate(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None)
         said = f"{target.handle} is on {extra}."
         if manager.is_running(target.bot_id):
             try:
@@ -445,7 +480,7 @@ def build(ctx):
             except CloneError as exc:
                 await query.answer(str(exc), show_alert=True)
                 return
-            store.update(target.bot_id, username=username or target.username)
+            await store.aupdate(target.bot_id, username=username or target.username)
             said = f"{target.handle} restarted on {extra}."
         if events is not None:
             events.emit("clone:profile", bot_id=target.bot_id, by=presser)
@@ -462,13 +497,25 @@ def build(ctx):
         """Draw a panel in place; a message that is gone is not a failed click."""
         try:
             await rich_ui.edit(query, text, reply_markup=keyboard)
+        except MessageNotModified:
+            return  # Repeated refresh must not send duplicate controller messages.
         except Exception:  # noqa: BLE001 - a stale panel is not a failed control
             chat_id = getattr(getattr(query.message, "chat", None), "id", None)
             if chat_id is not None:
                 await rich_ui.send(client, chat_id, text, reply_markup=keyboard)
 
     async def on_clone_press(client, query, rest: str):
+        await store.aall()
         """``<bot_id>:<start|stop|delete|profile|p|back>[:<profile>]``."""
+        if rest == "refresh":
+            user_id = getattr(getattr(query, "from_user", None), "id", None)
+            if not user_id or getattr(getattr(query.message, "chat", None), "id", None) != user_id:
+                await query.answer("Open /panel privately.", show_alert=True)
+                return
+            text, keyboard = _panel(user_id)
+            await _redraw(query, client, text, keyboard)
+            await query.answer("Controller refreshed.")
+            return
         parts = (rest or "").split(":")
         if len(parts) < 2 or not parts[0].isdigit():
             await query.answer("That button is stale.", show_alert=True)
@@ -483,36 +530,66 @@ def build(ctx):
         if not _may_manage(presser, target):
             await query.answer("Only its owner can control this clone.", show_alert=True)
             return
-        if action in ("start", "profile", "p") and not entitled(presser):
-            await query.answer("Starting or reconfiguring clones requires premium, sudo or Owner access.", show_alert=True)
+        if action == "details":
+            if getattr(getattr(query.message, "chat", None), "id", None) != presser:
+                await query.answer("Open /mybots privately to view storage details.", show_alert=True)
+                return
+            features = selection_label(target.selected_plugins) if target.selected_plugins else profiles.describe(target.profile)
+            text = panel("Clone details", icon=ctx.theme.emoji("bot"),
+                table=kv_table([
+                    ("Bot ID", str(target.bot_id)),
+                    ("Features", features),
+                    ("Group Management", "Included · always available"),
+                    ("Runtime", "Running in this process" if manager.is_running(bot_id) else "Not running in this process"),
+                    ("Archive channel", str(target.storage_channel) if target.storage_channel else "Not configured"),
+                    ("Log channel", str(target.log_channel) if target.log_channel else "Not configured"),
+                    ("Credential encryption", "Enabled" if store.encrypted() else "Unavailable"),
+                ]),
+                note="A file-processing clone uses its own token, storage metadata and jobs. It never inherits the parent’s archive channel.",
+                footer="An archive channel is required for durable remote copies. Without one, local files can be lost on restart or redeploy.")
+            await _redraw(query, client, text, Keyboard([[Button("Back to clones", callback_data=f"{PREFIX}:{bot_id}:back")]]))
+            await query.answer()
             return
-        if action in ("profile", "p", "back"):
+        if action == "delete":
+            await _redraw(query, client, panel("Delete this clone?", lines=[
+                f"Stop and remove bot <code>{bot_id}</code> from this manager?",
+                "This does not delete messages or files already sent to Telegram."
+            ]), Keyboard([
+                [Button("Confirm delete", callback_data=f"{PREFIX}:{bot_id}:delete_confirm", style=ButtonStyle.DANGER)],
+                [Button("Keep clone", callback_data=f"{PREFIX}:{bot_id}:back")],
+            ]))
+            await query.answer()
+            return
+        if action in ("start", "restart", "profile", "p", "pc") and not await entitled(presser):
+            await query.answer("Starting or reconfiguring clones requires bot premium, including for Owner and sudo users.", show_alert=True)
+            return
+        if action in ("profile", "p", "pc", "back"):
             await _profile_press(client, query, target, action, extra, presser)
             return
-        if action == "start":
+        if action in ("start", "restart"):
             try:
-                username = await manager.start(target)
+                username = await manager.restart(target) if action == "restart" else await manager.start(target)
             except CloneError as exc:
                 await query.answer(str(exc), show_alert=True)
                 return
-            store.update(bot_id, username=username or target.username, disabled=False)
+            await store.aupdate(bot_id, username=username or target.username, disabled=False)
             said = f"{target.handle} is running."
         elif action == "stop":
             if not await manager.stop(bot_id):
                 await query.answer("It was already stopped.", show_alert=True)
                 return
-            store.update(bot_id, disabled=True)
+            await store.aupdate(bot_id, disabled=True)
             said = f"{target.handle} is stopped."
-        elif action == "delete":
+        elif action == "delete_confirm":
             await manager.stop(bot_id)
-            store.remove(bot_id)
+            await store.aremove(bot_id)
             said = f"{target.handle} was deleted."
             if events is not None:
                 events.emit("clone:delete", bot_id=bot_id, by=presser)
         else:
             await query.answer("That button is stale.", show_alert=True)
             return
-        if events is not None and action != "delete":
+        if events is not None and action != "delete_confirm":
             events.emit(f"clone:{action}", bot_id=bot_id, by=presser)
         logger.info("clone %s %s by %s from the panel", bot_id, action, presser)
         text, keyboard = _panel(target.owner_id)
@@ -527,6 +604,7 @@ def build(ctx):
     return MANIFEST, {
         "clone": clone,
         "mybots": mybots,
+        "panel": mybots,
         "delclone": delclone,
         "clonestats": clonestats,
     }

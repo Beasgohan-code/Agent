@@ -9,12 +9,14 @@ a write queue that never blocks a handler.
 import asyncio
 import time
 
+import pytest
+
 from agent.modules.clone.store import Clone, CloneStore
 from agent.platform.audience import UserIndex
 from agent.platform.chats import ChatStore
 from agent.platform.db import Database, normalise_url
 from agent.platform.instance import InstanceLease
-from agent.platform.links import LinkStore
+from agent.platform.links import LinkStore, LinkError
 from agent.platform.premium import PremiumBook
 from agent.platform.runtime import PluginRuntime
 
@@ -138,23 +140,20 @@ def test_premium_ledger_round_trips_through_the_database(tmp_path):
     book = PremiumBook(tmp_path, db=database)
     assert book.is_premium(7) is True  # lifetime
 
-    book.grant(8, days=1, by=1)
-    assert "8" in database.saved["premium"]["users"]
+    from agent.platform.entitlements import EntitlementError
+    with pytest.raises(EntitlementError, match="Awaited"):
+        book.grant(8, days=1, by=1)
+    assert not database.saved
     assert not (tmp_path / "premium.json").exists()
 
-    # A second process reads exactly what the first one wrote.
-    again = PremiumBook(tmp_path, db=FakeDB({"premium": database.saved["premium"]}))
-    assert again.is_premium(8) is True
 
-
-def test_links_are_saved_as_a_single_document(tmp_path):
+def test_links_require_awaited_database_operations(tmp_path):
     database = FakeDB()
-
     links = LinkStore(tmp_path, "secret", db=database)
-    record = links.create("file-1", owner_id=7, ttl_hours=1)
-
-    assert set(database.saved["links"]) == {record.token}
-    assert record.file_id in database.saved["links"][record.token]["file_id"]
+    with pytest.raises(LinkError, match="Awaited"):
+        links.create("file-1", owner_id=7, ttl_hours=1)
+    assert not database.saved
+    assert not (tmp_path / "links.json").exists()
 
 
 def test_the_user_index_and_the_plugin_runtime_use_the_database(tmp_path):
@@ -176,9 +175,10 @@ def test_clone_records_are_shared_through_the_database(tmp_path):
     store = CloneStore(tmp_path, db=database)
     assert store.get(1).owner_id == 2
 
-    store.add(Clone(bot_id=3, owner_id=4, token="3:def"))
-    assert len(database.saved["clones"]) == 2
-    assert CloneStore(tmp_path, db=database).count() == 2
+    with pytest.raises(RuntimeError, match="Awaited"):
+        store.add(Clone(bot_id=3, owner_id=4, token="3:def"))
+    assert not database.saved
+    assert store.count() == 1
 
 
 def test_a_store_refuses_file_fallback_when_configured_database_is_down(tmp_path):

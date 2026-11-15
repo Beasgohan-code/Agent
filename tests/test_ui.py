@@ -48,7 +48,7 @@ def test_welcome_screen_greets_the_user_and_shows_the_menu():
     screen = welcome_screen(make_user(), Theme())
 
     assert "Ada Lovelace" in screen.rich_text
-    assert "Agent" in screen.rich_text
+    assert "Meiko" in screen.rich_text
     assert "Try" in screen.rich_text                 # three commands to start from
     # The menu buttons plus the source link; the callbacks are the first two.
     assert callbacks(screen.keyboard)[:2] == [CB_HELP, CB_INFO]
@@ -339,3 +339,17 @@ def test_ping_screen_renders_to_parseable_html():
     assert "<h2>" not in rendered
     parsed = asyncio.run(Parser(None).parse(rendered, ParseMode.HTML))
     assert parsed["message"].strip()
+
+
+def test_help_copy_is_user_facing_not_deployment_instructions():
+    from agent.ui.screens import HELP_SECTIONS, help_section_screen
+
+    screens = [help_screen(make_user(), Theme())]
+    screens += [help_section_screen(title, make_user(), Theme()) for _, title, _ in HELP_SECTIONS]
+    for screen in screens:
+        assert 'OWNER_ID' not in screen.rich_text
+        assert 'group commands need moderator rights' not in screen.rich_text
+        assert 'command(s) ready here' not in screen.rich_text
+    assert 'Choose a category' in screens[0].rich_text
+    essentials = help_section_screen('Essentials', make_user(), Theme())
+    assert 'owner-only ones need' not in essentials.rich_text

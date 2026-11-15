@@ -92,7 +92,7 @@ def test_group_commands_do_not_leak_into_private_chats():
     assert names_of(group) == ["ban", "filter"]
 
 
-def test_every_registered_command_is_grouped_somewhere():
+def test_registered_commands_are_grouped_up_to_telegram_scope_limit():
     from agent.modules import MODULES
 
     all_names = ["start", "help", "ping"] + [
@@ -101,7 +101,15 @@ def test_every_registered_command_is_grouped_somewhere():
     private = names_of(menu.build_commands(all_names, group=False))
     group = names_of(menu.build_commands(all_names, group=True))
 
-    assert sorted(private + group) == sorted(set(all_names))
+    # Telegram caps each scope at 100 entries; /help retains all handlers.
+    unique = list(dict.fromkeys(all_names))
+    expected_private = [name for name in unique if name not in menu.GROUP_ONLY]
+    expected_group = [name for name in unique if name in menu.GROUP_ONLY]
+    assert private == expected_private[:menu.MAX_COMMANDS]
+    assert group == expected_group[:menu.MAX_COMMANDS]
+    from agent.ui.screens import HELP_SECTIONS
+    help_names = {name for _, _, commands in HELP_SECTIONS for name in commands}
+    assert set(unique) <= help_names | {"start", "help", "ping"}
 
 
 def test_names_are_validated_and_deduplicated():

@@ -7,9 +7,9 @@ Two sources are supported, and both are real:
 * a Telegram media reply — downloaded by the bot (≤20 MB, the Bot API cap) and
   streamed from disk.
 
-``yt-dlp`` handling is deliberately absent: py-tgcalls can stream a *direct*
-media URL, and offering arbitrary site support without the extractor installed
-would be a promise the deployment cannot keep.
+YouTube video links use the shared TypeTube public-cluster resolver when its
+Node.js dependency is installed. Signed stream URLs are session-only; automatic
+expiry refresh and arbitrary-site extraction are not implemented.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import logging
 from pathlib import Path
 
 from ...platform.net import LinkError, check_target, parse_url
+from ..leech.typetube import youtube_url, resolve_audio
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,11 @@ async def resolve(message, arg: str | None) -> tuple[str, str]:
         try:
             url = parse_url(arg)
             await check_target(url)
-        except LinkError as exc:
+            youtube = youtube_url(url)
+            if youtube:
+                source, filename = await resolve_audio(youtube)
+                return source, filename.rsplit('.', 1)[0]
+        except (LinkError, ValueError) as exc:
             raise SourceError(str(exc)) from exc
         return url, Path(url.split("?")[0]).name or url
 

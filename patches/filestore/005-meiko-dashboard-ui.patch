@@ -1,0 +1,389 @@
+--- a/main_bot/plugins/my_bots.py
++++ b/main_bot/plugins/my_bots.py
+@@ -31,14 +31,14 @@
+ 
+     if not bots:
+         await query.message.edit_text(
+-            "<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-            "📋 𝗠𝗬 𝗕𝗢𝗧𝗦\n"
+-            "━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-            "<blockquote>ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ ᴄʀᴇᴀᴛᴇᴅ ᴀɴʏ ʙᴏᴛs ʏᴇᴛ.\n"
+-            "ᴛᴀᴘ <b>⚡ ᴄʀᴇᴀᴛᴇ ʙᴏᴛ</b> ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</blockquote>",
++            "<b>"
++            "📋 Meiko · My bots\n"
++            "</b>\n\n"
++            "<blockquote>you haven't created any bots yet.\n"
++            "tap <b>✨ Create bot</b> to get started!</blockquote>",
+             reply_markup=InlineKeyboardMarkup([
+-                [InlineKeyboardButton("⚡ ᴄʀᴇᴀᴛᴇ ʙᴏᴛ", callback_data="create_bot")],
+-                [InlineKeyboardButton("🔙 ʙᴀᴄᴋ", callback_data="back_menu")],
++                [InlineKeyboardButton("✨ Create bot", callback_data="create_bot")],
++                [InlineKeyboardButton("← Back", callback_data="back_menu")],
+             ]),
+         )
+         await query.answer()
+@@ -60,13 +60,13 @@
+             )
+         ])
+ 
+-    buttons.append([InlineKeyboardButton("🔙 ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ", callback_data="back_menu")])
++    buttons.append([InlineKeyboardButton("← Main menu", callback_data="back_menu")])
+ 
+     await query.message.edit_text(
+-        f"<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-        f"📋 𝗠𝗬 𝗕𝗢𝗧𝗦  [{len(bots)}/5]\n"
+-        f"━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-        f"<blockquote>sᴇʟᴇᴄᴛ ᴀ ʙᴏᴛ ᴛᴏ ᴏᴘᴇɴ ɪᴛs ᴅᴀsʜʙᴏᴀʀᴅ:</blockquote>",
++        f"<b>"
++        f"📋 Meiko · My bots  [{len(bots)}/5]\n"
++        f"</b>\n\n"
++        f"<blockquote>select a bot to open its dashboard:</blockquote>",
+         reply_markup=InlineKeyboardMarkup(buttons),
+     )
+     await query.answer()
+@@ -82,7 +82,7 @@
+     import re
+     match = re.search(r"_(\d+)$", query.data)
+     if not match:
+-        await query.answer("❌ Invalid bot!", show_alert=True)
++        await query.answer("⚠️ Meiko · Invalid bot!", show_alert=True)
+         return
+ 
+     bot_id = int(match.group(1))
+@@ -94,12 +94,12 @@
+     # Verify ownership
+     bot = await main_db.get_bot(bot_id)
+     if not bot or bot["owner_id"] != user_id:
+-        await query.answer("❌ Bot not found or access denied!", show_alert=True)
++        await query.answer("⚠️ Meiko · Bot not found or access denied!", show_alert=True)
+         return
+ 
+     from worker_bot.engine import worker_engine
+     is_live = worker_engine.get_worker(bot_id) is not None
+-    status = "🟢 ʀᴜɴɴɪɴɢ" if is_live else "🔴 sᴛᴏᴘᴘᴇᴅ"
++    status = "🟢 running" if is_live else "🔴 stopped"
+     username = bot.get("bot_username", "unknown")
+     channel = bot.get("log_channel_id", "Not set")
+ 
+@@ -107,60 +107,60 @@
+     settings = bot.get("settings", {})
+     shortener = bot.get("shortener", {})
+     auto_del = settings.get("auto_delete_time", 0)
+-    auto_del_text = f"{auto_del}s" if auto_del > 0 else "ᴅɪsᴀʙʟᴇᴅ"
++    auto_del_text = f"{auto_del}s" if auto_del > 0 else "disabled"
+     shortener_status = "✅" if shortener.get("enabled") else "❌"
+-    protect_status = "✅ ᴏɴ" if settings.get("protect_content") else "❌ ᴏꜰꜰ"
+-    perm_link_status = "✅ ᴏɴ" if settings.get("permanent_link") else "❌ ᴏꜰꜰ"
++    protect_status = "✅ on" if settings.get("protect_content") else "❌ off"
++    perm_link_status = "✅ on" if settings.get("permanent_link") else "❌ off"
+ 
+     text = (
+-        f"<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-        f"⚙️ 𝗕𝗢𝗧 𝗗𝗔𝗦𝗛𝗕𝗢𝗔𝗥𝗗\n"
+-        f"━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
++        f"<b>"
++        f"⚙️ Meiko · Bot dashboard\n"
++        f"</b>\n\n"
+         f"<blockquote>"
+-        f"◈ <b>ʙᴏᴛ:</b> @{username}\n"
+-        f"◈ <b>sᴛᴀᴛᴜs:</b> {status}\n"
+-        f"◈ <b>ᴄʜᴀɴɴᴇʟ:</b> <code>{channel}</code>\n"
+-        f"◈ <b>ᴀᴜᴛᴏ-ᴅᴇʟ:</b> {auto_del_text}\n"
+-        f"◈ <b>sʜᴏʀᴛᴇɴᴇʀ:</b> {shortener_status}\n"
+-        f"◈ <b>ᴘʀᴏᴛᴇᴄᴛɪᴏɴ:</b> {protect_status}\n"
+-        f"◈ <b>ᴘᴇʀᴍ ʟɪɴᴋ:</b> {perm_link_status}"
++        f"◈ <b>bot:</b> @{username}\n"
++        f"◈ <b>status:</b> {status}\n"
++        f"◈ <b>channel:</b> <code>{channel}</code>\n"
++        f"◈ <b>auto-del:</b> {auto_del_text}\n"
++        f"◈ <b>shortener:</b> {shortener_status}\n"
++        f"◈ <b>protection:</b> {protect_status}\n"
++        f"◈ <b>perm link:</b> {perm_link_status}"
+         f"</blockquote>"
+     )
+ 
+     keyboard = InlineKeyboardMarkup([
+         [
+-            InlineKeyboardButton("📢 ʟᴏɢ ᴄʜᴀɴɴᴇʟ", callback_data=f"set_channel_{bot_id}"),
+-            InlineKeyboardButton("⏱ ᴀᴜᴛᴏ-ᴅᴇʟ", callback_data=f"auto_delete_{bot_id}"),
+-        ],
+-        [
+-            InlineKeyboardButton("🔗 ᴘᴇʀᴍᴀɴᴇɴᴛ ʟɪɴᴋ", callback_data=f"toggle_permanent_link_{bot_id}"),
+-        ],
+-        [
+-            InlineKeyboardButton("🔗 ꜰsᴜʙ", callback_data=f"fsub_{bot_id}"),
+-            InlineKeyboardButton("🔗 sʜᴏʀᴛᴇɴᴇʀ", callback_data=f"shortener_{bot_id}"),
+-        ],
+-        [
+-            InlineKeyboardButton("👥 ᴀᴅᴍɪɴs", callback_data=f"admins_{bot_id}"),
+-            InlineKeyboardButton("📩 sᴛᴀʀᴛ ᴄꜰɢ", callback_data=f"startcfg_{bot_id}"),
+-        ],
+-        [
+-            InlineKeyboardButton("📝 ᴄᴀᴘᴛɪᴏɴ", callback_data=f"captioncfg_{bot_id}"),
+-            InlineKeyboardButton("📊 sᴛᴀᴛs", callback_data=f"stats_{bot_id}"),
+-        ],
+-        [
+-            InlineKeyboardButton("🛡️ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ", callback_data=f"toggle_protect_{bot_id}"),
+-            InlineKeyboardButton("📦 ᴛʀᴀɴsꜰᴇʀ", callback_data=f"transfer_{bot_id}"),
+-        ],
+-        [
+-            InlineKeyboardButton("🗑 ᴅᴇʟᴇᴛᴇ", callback_data=f"confirm_delete_{bot_id}"),
++            InlineKeyboardButton("📢 log channel", callback_data=f"set_channel_{bot_id}"),
++            InlineKeyboardButton("⏱ auto-del", callback_data=f"auto_delete_{bot_id}"),
++        ],
++        [
++            InlineKeyboardButton("🔗 permanent link", callback_data=f"toggle_permanent_link_{bot_id}"),
++        ],
++        [
++            InlineKeyboardButton("🔗 fsub", callback_data=f"fsub_{bot_id}"),
++            InlineKeyboardButton("🔗 shortener", callback_data=f"shortener_{bot_id}"),
++        ],
++        [
++            InlineKeyboardButton("👥 admins", callback_data=f"admins_{bot_id}"),
++            InlineKeyboardButton("📩 start cfg", callback_data=f"startcfg_{bot_id}"),
++        ],
++        [
++            InlineKeyboardButton("📝 caption", callback_data=f"captioncfg_{bot_id}"),
++            InlineKeyboardButton("📊 stats", callback_data=f"stats_{bot_id}"),
++        ],
++        [
++            InlineKeyboardButton("🛡️ protection", callback_data=f"toggle_protect_{bot_id}"),
++            InlineKeyboardButton("📦 transfer", callback_data=f"transfer_{bot_id}"),
++        ],
++        [
++            InlineKeyboardButton("🗑 delete", callback_data=f"confirm_delete_{bot_id}"),
+         ],
+         [
+             InlineKeyboardButton(
+-                "🔴 sᴛᴏᴘ" if is_live else "🟢 sᴛᴀʀᴛ",
++                "🔴 stop" if is_live else "🟢 start",
+                 callback_data=f"toggle_bot_{bot_id}",
+             ),
+         ],
+-        [InlineKeyboardButton("🔙 ʙᴀᴄᴋ ᴛᴏ ᴍʏ ʙᴏᴛs", callback_data="my_bots")],
++        [InlineKeyboardButton("← My bots", callback_data="my_bots")],
+     ])
+ 
+     from pyrogram.errors import MessageNotModified
+@@ -189,7 +189,7 @@
+ 
+     bot = await main_db.get_bot(bot_id)
+     if not bot or bot["owner_id"] != user_id:
+-        await query.answer("❌ Access denied!", show_alert=True)
++        await query.answer("⚠️ Meiko · Access denied!", show_alert=True)
+         return
+ 
+     from worker_bot.engine import worker_engine
+@@ -197,12 +197,12 @@
+ 
+     if is_live:
+         # Answer immediately before slow stop
+-        await query.answer("🔴 sᴛᴏᴘᴘɪɴɢ...", show_alert=False)
++        await query.answer("🔴 stopping...", show_alert=False)
+         await worker_engine.stop_worker(bot_id)
+         await main_db.set_bot_active(bot_id, False)
+     else:
+         # Answer immediately before slow start
+-        await query.answer("🟢 sᴛᴀʀᴛɪɴɢ...", show_alert=False)
++        await query.answer("🟢 starting...", show_alert=False)
+         bot_doc = await main_db.get_bot(bot_id)
+         try:
+             await worker_engine.start_worker(bot_doc)
+@@ -228,7 +228,7 @@
+ 
+     bot = await main_db.get_bot(bot_id)
+     if not bot or bot["owner_id"] != user_id:
+-        await query.answer("❌ Access denied!", show_alert=True)
++        await query.answer("⚠️ Meiko · Access denied!", show_alert=True)
+         return
+ 
+     settings = bot.get("settings", {})
+@@ -262,7 +262,7 @@
+ 
+     bot = await main_db.get_bot(bot_id)
+     if not bot or bot["owner_id"] != user_id:
+-        await query.answer("❌ Access denied!", show_alert=True)
++        await query.answer("⚠️ Meiko · Access denied!", show_alert=True)
+         return
+ 
+     settings = bot.get("settings", {})
+@@ -325,22 +325,22 @@
+ 
+     bot = await main_db.get_bot(bot_id)
+     if not bot or bot["owner_id"] != query.from_user.id:
+-        await query.answer("❌ Access denied!", show_alert=True)
++        await query.answer("⚠️ Meiko · Access denied!", show_alert=True)
+         return
+ 
+     username = bot.get("bot_username", "unknown")
+ 
+     await query.message.edit_text(
+-        f"<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-        f"⚠️ 𝗗𝗘𝗟𝗘𝗧𝗘 @{username}?\n"
+-        f"━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-        f"<blockquote>ᴛʜɪs ᴡɪʟʟ ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ᴅᴇʟᴇᴛᴇ ᴛʜᴇ ʙᴏᴛ "
+-        f"ᴀɴᴅ ᴀʟʟ ɪᴛs ᴅᴀᴛᴀ (ᴜsᴇʀs, ᴄʜᴀɴɴᴇʟs, sᴇᴛᴛɪɴɢs).\n\n"
+-        f"<b>ᴛʜɪs ᴀᴄᴛɪᴏɴ ᴄᴀɴɴᴏᴛ ʙᴇ ᴜɴᴅᴏɴᴇ!</b></blockquote>",
++        f"<b>"
++        f"⚠️ Meiko · Delete @{username}?\n"
++        f"</b>\n\n"
++        f"<blockquote>this will permanently delete the bot "
++        f"and all its data (users, channels, settings).\n\n"
++        f"<b>this action cannot be undone!</b></blockquote>",
+         reply_markup=InlineKeyboardMarkup([
+             [
+-                InlineKeyboardButton("✅ ʏᴇs, ᴅᴇʟᴇᴛᴇ", callback_data=f"delete_bot_{bot_id}"),
+-                InlineKeyboardButton("❌ ᴄᴀɴᴄᴇʟ", callback_data=f"dashboard_{bot_id}"),
++                InlineKeyboardButton("✅ yes, delete", callback_data=f"delete_bot_{bot_id}"),
++                InlineKeyboardButton("✖️ Cancel", callback_data=f"dashboard_{bot_id}"),
+             ],
+         ]),
+     )
+@@ -360,7 +360,7 @@
+ 
+     bot = await main_db.get_bot(bot_id)
+     if not bot or bot["owner_id"] != query.from_user.id:
+-        await query.answer("❌ Access denied!", show_alert=True)
++        await query.answer("⚠️ Meiko · Access denied!", show_alert=True)
+         return
+ 
+     # Stop the worker
+@@ -382,20 +382,20 @@
+     )
+ 
+     await query.message.edit_text(
+-        f"<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-        f"🗑 𝗕𝗢𝗧 𝗗𝗘𝗟𝗘𝗧𝗘𝗗\n"
+-        f"━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-        f"<blockquote>@{username} ʜᴀs ʙᴇᴇɴ ʀᴇᴍᴏᴠᴇᴅ.\n\n"
+-        f"📦 <b>ʏᴏᴜʀ ᴅᴀᴛᴀ ɪs sᴀꜰᴇ!</b>\n"
+-        f"ᴜsᴇʀs, ᴀᴅᴍɪɴs, ᴄʜᴀɴɴᴇʟs ᴀʀᴇ ᴘʀᴇsᴇʀᴠᴇᴅ.\n"
+-        f"ʏᴏᴜ ᴄᴀɴ ᴛʀᴀɴsꜰᴇʀ ᴛʜᴇᴍ ᴛᴏ ᴀ ɴᴇᴡ ʙᴏᴛ\n"
+-        f"ᴠɪᴀ ᴛʜᴇ <b>📦 ᴛʀᴀɴsꜰᴇʀ ᴅᴀᴛᴀ</b> ʙᴜᴛᴛᴏɴ\n"
+-        f"ɪɴ ʏᴏᴜʀ ɴᴇᴡ ʙᴏᴛ's ᴅᴀsʜʙᴏᴀʀᴅ.</blockquote>",
++        f"<b>"
++        f"🗑 Meiko · Bot removed\n"
++        f"</b>\n\n"
++        f"<blockquote>@{username} has been removed.\n\n"
++        f"📦 <b>your data is safe!</b>\n"
++        f"users, admins, channels are preserved.\n"
++        f"you can transfer them to a new bot\n"
++        f"via the <b>📦 transfer data</b> button\n"
++        f"in your new bot's dashboard.</blockquote>",
+         reply_markup=InlineKeyboardMarkup([
+-            [InlineKeyboardButton("🔙 ʙᴀᴄᴋ ᴛᴏ ᴍʏ ʙᴏᴛs", callback_data="my_bots")],
++            [InlineKeyboardButton("← My bots", callback_data="my_bots")],
+         ]),
+     )
+-    await query.answer("✅ ʙᴏᴛ ᴅᴇʟᴇᴛᴇᴅ!", show_alert=True)
++    await query.answer("✅ bot deleted!", show_alert=True)
+ 
+ 
+ # =============================================================================
+@@ -413,7 +413,7 @@
+     # Verify ownership of target bot
+     target_bot = await main_db.get_bot(target_bot_id)
+     if not target_bot or target_bot["owner_id"] != user_id:
+-        await query.answer("❌ Access denied!", show_alert=True)
++        await query.answer("⚠️ Meiko · Access denied!", show_alert=True)
+         return
+ 
+     # Get deleted bots
+@@ -423,7 +423,7 @@
+     deleted_bots = [b for b in deleted_bots if b["_id"] != target_bot_id]
+ 
+     if not deleted_bots:
+-        await query.answer("📭 ɴᴏ ᴅᴇʟᴇᴛᴇᴅ ʙᴏᴛs ꜰᴏᴜɴᴅ ᴛᴏ ᴛʀᴀɴsꜰᴇʀ ꜰʀᴏᴍ.", show_alert=True)
++        await query.answer("📭 no deleted bots found to transfer from.", show_alert=True)
+         return
+ 
+     buttons = []
+@@ -437,15 +437,15 @@
+             )
+         ])
+ 
+-    buttons.append([InlineKeyboardButton("🔙 ʙᴀᴄᴋ", callback_data=f"dashboard_{target_bot_id}")])
++    buttons.append([InlineKeyboardButton("← Back", callback_data=f"dashboard_{target_bot_id}")])
+ 
+     await query.message.edit_text(
+-        f"<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-        f"📦 𝗧𝗥𝗔𝗡𝗦𝗙𝗘𝗥 𝗗𝗔𝗧𝗔\n"
+-        f"━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-        f"<blockquote>sᴇʟᴇᴄᴛ ᴀ ᴅᴇʟᴇᴛᴇᴅ ʙᴏᴛ ᴛᴏ ᴛʀᴀɴsꜰᴇʀ\n"
+-        f"ɪᴛs ᴅᴀᴛᴀ (ᴜsᴇʀs, ᴀᴅᴍɪɴs, ᴄʜᴀɴɴᴇʟs)\n"
+-        f"ɪɴᴛᴏ ʏᴏᴜʀ ᴄᴜʀʀᴇɴᴛ ʙᴏᴛ.</blockquote>",
++        f"<b>"
++        f"📦 Meiko · Transfer data\n"
++        f"</b>\n\n"
++        f"<blockquote>select a deleted bot to transfer\n"
++        f"its data (users, admins, channels)\n"
++        f"into your current bot.</blockquote>",
+         reply_markup=InlineKeyboardMarkup(buttons),
+     )
+     await query.answer()
+@@ -467,17 +467,17 @@
+     # Verify ownership of target
+     target_bot = await main_db.get_bot(target_bot_id)
+     if not target_bot or target_bot["owner_id"] != user_id:
+-        await query.answer("❌ Access denied!", show_alert=True)
++        await query.answer("⚠️ Meiko · Access denied!", show_alert=True)
+         return
+ 
+     # Verify ownership of source
+     source_bot = await main_db.get_bot(source_bot_id)
+     if not source_bot or source_bot["owner_id"] != user_id:
+-        await query.answer("❌ Source bot not found!", show_alert=True)
++        await query.answer("⚠️ Meiko · Source bot not found!", show_alert=True)
+         return
+ 
+     await query.message.edit_text(
+-        "<b>⏳ ᴛʀᴀɴsꜰᴇʀʀɪɴɢ ᴅᴀᴛᴀ...</b>"
++        "<b>⏳ transferring data...</b>"
+     )
+ 
+     from database.worker_db import WorkerDB
+@@ -487,10 +487,10 @@
+         stats = await target_db.copy_data_from(source_bot_id)
+     except Exception as e:
+         await query.message.edit_text(
+-            f"<b>❌ ᴛʀᴀɴsꜰᴇʀ ꜰᴀɪʟᴇᴅ</b>\n\n"
++            f"<b>❌ transfer failed</b>\n\n"
+             f"<blockquote>{e}</blockquote>",
+             reply_markup=InlineKeyboardMarkup([
+-                [InlineKeyboardButton("🔙 ʙᴀᴄᴋ", callback_data=f"dashboard_{target_bot_id}")],
++                [InlineKeyboardButton("← Back", callback_data=f"dashboard_{target_bot_id}")],
+             ]),
+         )
+         return
+@@ -499,7 +499,7 @@
+     stats_lines = []
+     for key, count in stats.items():
+         stats_lines.append(f"◈ <b>{key}:</b> {count}")
+-    stats_text = "\n".join(stats_lines) if stats_lines else "ɴᴏ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ"
++    stats_text = "\n".join(stats_lines) if stats_lines else "no data found"
+ 
+     src_username = source_bot.get("bot_username", "unknown")
+ 
+@@ -509,15 +509,14 @@
+     await main_db.purge_bot(source_bot_id)
+ 
+     await query.message.edit_text(
+-        f"<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-        f"✅ 𝗧𝗥𝗔𝗡𝗦𝗙𝗘𝗥 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘\n"
+-        f"━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-        f"<blockquote>ᴅᴀᴛᴀ ꜰʀᴏᴍ @{src_username} ʜᴀs ʙᴇᴇɴ\n"
+-        f"ᴛʀᴀɴsꜰᴇʀʀᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ!\n\n"
++        f"<b>"
++        f"✅ Meiko · Transfer complete\n"
++        f"</b>\n\n"
++        f"<blockquote>data from @{src_username} has been\n"
++        f"transferred successfully!\n\n"
+         f"{stats_text}</blockquote>",
+         reply_markup=InlineKeyboardMarkup([
+-            [InlineKeyboardButton("🔙 ᴅᴀsʜʙᴏᴀʀᴅ", callback_data=f"dashboard_{target_bot_id}")],
++            [InlineKeyboardButton("← Dashboard", callback_data=f"dashboard_{target_bot_id}")],
+         ]),
+     )
+-    await query.answer("✅ ᴛʀᴀɴsꜰᴇʀ ᴅᴏɴᴇ!", show_alert=True)
+-
++    await query.answer("✅ transfer done!", show_alert=True)

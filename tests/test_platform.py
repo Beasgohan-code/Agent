@@ -206,9 +206,7 @@ def test_only_owner_can_revoke(tmp_path):
 def test_tampered_signature_is_rejected(tmp_path):
     links = LinkStore(tmp_path / "l", "secret")
     record = links.create("f", 1)
-    payload, _, _sig = record.token.rsplit(".", 1)[0], None, record.token.rsplit(".", 1)[1]
-
-    forged = f"{payload}.{'A' * len(_sig)}"
+    forged = record.token[:-1] + ("A" if record.token[-1] != "A" else "B")
 
     with pytest.raises(LinkError, match="bad signature"):
         links.resolve(forged)

@@ -21,9 +21,8 @@ PostgreSQL transaction, not by rewriting a whole JSON settings document. Log
 destinations also use a dedicated table so /setlog confirms an awaited write.
 
 Writes are batched: a mutation queues the document and one background task
-flushes the queue, so a handler never waits on the network. A database that is
-missing or unreachable is logged once and the bot keeps running on its files —
-losing the database must not take the bot down with it.
+flushes the queue, so a handler never waits on the network. Normal runtime requires PostgreSQL; a configured database never falls back to
+local files. Dedicated feature tables use awaited writes where documented.
 
 **Every row is scoped to one bot.** The main bot and each clone connect to the
 same database, and they all keep a document called ``runtime``, ``premium`` or
@@ -44,9 +43,26 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .group_rules import SCHEMA as GROUP_RULES_SCHEMA
+from .group_trust import SCHEMA as GROUP_TRUST_SCHEMA
+from .admin_settings import SCHEMA as ADMIN_SETTINGS_SCHEMA
+from .federations import SCHEMA as FEDERATION_SCHEMA
+from .federation_roles import SCHEMA as FEDERATION_ROLES_SCHEMA
+from .restriction_cases import SCHEMA as RESTRICTION_CASE_SCHEMA
+from .blocklists import SCHEMA as BLOCKLIST_SCHEMA
+from .service_cleaning import SCHEMA as SERVICE_CLEANING_SCHEMA
+from .command_cleaning import SCHEMA as COMMAND_CLEANING_SCHEMA
+from .action_topics import SCHEMA as ACTION_TOPIC_SCHEMA
+from .archive_links import SCHEMA as ARCHIVE_LINK_SCHEMA
+from .group_filters import SCHEMA as GROUP_FILTERS_SCHEMA
+from .antispam import SCHEMA as ANTISPAM_SCHEMA
+from .sudo_access import SCHEMA as SUDO_SCHEMA
+from .entitlements import SCHEMA as ENTITLEMENT_SCHEMA
 from .plugin_access import SCHEMA as PLUGIN_SCHEMA
 from .music_lists import SCHEMA as MUSIC_SCHEMA
 from .incidents import SCHEMA as INCIDENT_SCHEMA
+from .post_templates import SCHEMA as POST_TEMPLATE_SCHEMA
+from .greetings import SCHEMA as GREETING_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +85,7 @@ SCHEMA: tuple[str, ...] = (
     """,
 )
 
-SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + (
+SCHEMA += ARCHIVE_LINK_SCHEMA + ACTION_TOPIC_SCHEMA + COMMAND_CLEANING_SCHEMA + SERVICE_CLEANING_SCHEMA + BLOCKLIST_SCHEMA + RESTRICTION_CASE_SCHEMA + FEDERATION_SCHEMA + FEDERATION_ROLES_SCHEMA + ADMIN_SETTINGS_SCHEMA + GROUP_TRUST_SCHEMA + GROUP_FILTERS_SCHEMA + GROUP_RULES_SCHEMA + ANTISPAM_SCHEMA + SUDO_SCHEMA + ENTITLEMENT_SCHEMA + PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + POST_TEMPLATE_SCHEMA + GREETING_SCHEMA + (
     """CREATE TABLE IF NOT EXISTS agent_log_settings (
         tenant TEXT PRIMARY KEY,
         channel_id BIGINT CHECK (channel_id IS NULL OR channel_id < 0),

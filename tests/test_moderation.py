@@ -250,13 +250,13 @@ def test_note_is_stored_and_surfaced_by_warnings(ctx):
     assert "watch this one" in listing.replies[0]
 
 
-def test_trust_toggles(ctx):
+def test_approve_and_unapprove(ctx):
     client = FakeClient(caller=ADMIN)
 
-    run(handlers(ctx)["trust"], client, FakeMessage("/trust", reply=True))
+    run(handlers(ctx)["approve"], client, FakeMessage("/approve", reply=True))
     assert ctx.chats.is_trusted(-100500, 22) is True
 
-    run(handlers(ctx)["trust"], client, FakeMessage("/trust", reply=True))
+    run(handlers(ctx)["unapprove"], client, FakeMessage("/unapprove", reply=True))
     assert ctx.chats.is_trusted(-100500, 22) is False
 
 

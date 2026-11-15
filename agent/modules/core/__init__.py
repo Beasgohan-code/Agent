@@ -13,6 +13,7 @@ rather than guessing.
 from __future__ import annotations
 
 import logging
+import re
 
 from ... import __version__
 from ...platform.manifest import PluginManifest
@@ -28,7 +29,7 @@ MANIFEST = PluginManifest(
     name="Core extras",
     version="1.0.0",
     description="Menu, about, runtime status, job cancellation and the owner panel.",
-    commands=("menu", "about", "status", "alive", "uptime", "cancel", "owner"),
+    commands=("menu", "about", "status", "alive", "uptime", "cancel", "jobs", "owner"),
     permissions=("messages.read",),
     scope="all",
 )
@@ -60,8 +61,8 @@ def build(ctx):
         active = (
             set(ctx.registry.active_commands()) if ctx.registry is not None else None
         )
-        await ctx.sender.send(
-            message.chat.id, welcome_screen(user, ctx.theme, active=active)
+        await ctx.sender.send_hero(
+            message.chat.id, welcome_screen(user, ctx.theme, active=active), ctx.settings.start_image
         )
 
     def _module_rows() -> tuple[tuple[str, str], ...]:
@@ -165,6 +166,21 @@ def build(ctx):
         if user is None or ctx.jobs is None:
             await reply(message, "Nothing to cancel.")
             return
+        parts = (getattr(message, "text", None) or "").split()
+        if len(parts) > 1:
+            if len(parts) != 2:
+                await reply(message, "Use /cancel for all your active jobs, or /cancel <job-id> for one.")
+                return
+            job_id = parts[1]
+            job = ctx.jobs.get(job_id)
+            if job is None or job.owner_id != user.id:
+                await reply(message, "No matching job belongs to you. Open /jobs privately to check your IDs.")
+                return
+            if not ctx.jobs.cancel(job_id, owner_id=user.id):
+                await reply(message, "That job has already finished. Nothing was cancelled.")
+                return
+            await reply(message, "Cancelled the selected job. Your other jobs are unchanged.")
+            return
         setup = getattr(ctx, "clone_setup", None)
         if setup is not None and setup.active(user.id) is not None and message.chat.id == user.id:
             await setup.receive(_client, message)
@@ -219,6 +235,30 @@ def build(ctx):
             reply_markup=nav_keyboard(),
         )
 
+    async def jobs(_client, message):
+        user = getattr(message, "from_user", None)
+        uid = getattr(user, "id", None)
+        if type(uid) is not int or uid <= 0 or getattr(message.chat, "id", None) != uid:
+            await reply(message, "Open /jobs privately with your personal Telegram account.")
+            return
+        if ctx.jobs is None:
+            await reply(message, "The job queue is unavailable.")
+            return
+        args = (getattr(message, "text", None) or "").split()[1:]
+        if len(args) > 1 or (args and not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", args[0])):
+            await reply(message, "Use /jobs or /jobs <module>, for example /jobs encoder or /jobs leech.")
+            return
+        module = args[0] if args else None
+        owned = ctx.jobs.for_owner(uid)
+        recent = sorted((job for job in owned if module is None or job.module == module),
+                        key=lambda job: job.created_at, reverse=True)[:20]
+        await reply(message, panel("Your recent jobs" + (f" · {module}" if module else ""), icon=ctx.theme.emoji("gear"),
+            table=Table(headers=("Job", "Module", "State", "Progress"), rows=tuple(
+                (job.id, job.module, job.state.value, f"{max(0, min(100, int(job.progress * 100)))}%") for job in recent)),
+            lines=[] if recent else ["No matching jobs are recorded for you in this process session."],
+            note="Latest 20 jobs in this bot only. Source links, local paths and raw error details are hidden. /cancel &lt;job-id&gt; stops one job; /cancel stops all your active jobs.",
+            footer="Process memory only; history does not survive restart."))
+
     return MANIFEST, {
         "menu": menu,
         "about": about,
@@ -226,5 +266,6 @@ def build(ctx):
         "alive": status,
         "uptime": uptime,
         "cancel": cancel,
+        "jobs": jobs,
         "owner": owner,
     }

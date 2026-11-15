@@ -35,6 +35,7 @@ from ...ui.tables import Table, kv_table, panel
 from ...utils import rich as rich_ui
 from ...utils.delivery import send_stored
 from ...utils.rich import reply
+from ..filestore.vault import MAX_BOT_DOWNLOAD, media_of, media_name, media_size
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ MANIFEST = PluginManifest(
     name="Linkshare",
     version="1.1.0",
     description="Share a stored file as a link that delivers it, with a use cap.",
-    commands=("genlink", "share", "links", "revoke"),
+    commands=("genlink", "share", "links", "revoke", "linkchannel"),
     permissions=("messages.read", "storage.read", "storage.write"),
 )
 
@@ -56,7 +57,7 @@ DEEP_PREFIX = "link"
 #: Extensions Telegram should show as a playable video rather than a document.
 VIDEO_SUFFIXES = (".mp4", ".mov", ".mkv", ".webm", ".m4v")
 
-#: Bounds on what one link may be given; both are clamped, never rejected.
+#: Explicit bounds; invalid values are rejected before any creation or download.
 MAX_TTL_HOURS = 24 * 30
 MAX_USES = 1000
 
@@ -100,7 +101,7 @@ def build(ctx):
         """The share card: what it is, how long it lives, and how to send it."""
         url = _link_url(username, record.token)
         rows = [
-            ("File", html.escape(stored.name if stored else record.file_id)),
+            ("File", stored.name if stored else "file unavailable"),
             ("Size", f"{stored.size:,} bytes" if stored else "unknown"),
             ("Expires", f"in {_hours_left(record):.0f}h"),
             ("Uses", _uses_text(record)),
@@ -144,27 +145,24 @@ def build(ctx):
                 else "Telegram did not report this bot's username, so only the token "
                 "is shown: send it as <code>/start link_&lt;token&gt;</code>."
             ),
-            footer="<code>/links</code> lists every live link; the button above kills this one.",
+            footer="/links lists your records. Revocation does not erase delivered copies; never share sensitive bearer links publicly.",
         )
         return body, Keyboard(buttons)
 
     def _limits(parts, command: str) -> tuple[int | None, int, str]:
         """``(ttl_hours, max_uses, problem)`` from the numbers after a command."""
-        numbers = [part for part in parts if part.isdigit()]
-        if len(numbers) != len(parts):
-            return (
-                None,
-                0,
-                f"Both numbers must be whole numbers: <code>/{command} 48 5</code>.",
-            )
-        ttl = max(1, min(MAX_TTL_HOURS, int(numbers[0]))) if numbers else None
-        uses = max(0, min(MAX_USES, int(numbers[1]))) if len(numbers) > 1 else 0
+        if len(parts) > 2 or any(not part.isascii() or not part.isdecimal() or len(part) > 4 for part in parts):
+            return None, 0, f"Use <code>/{command}</code> with at most two whole numbers: hours (1–{MAX_TTL_HOURS}), then uses (0–{MAX_USES}; 0 means unlimited)."
+        ttl = int(parts[0]) if parts else None
+        uses = int(parts[1]) if len(parts) > 1 else 0
+        if (ttl is not None and not 1 <= ttl <= MAX_TTL_HOURS) or not 0 <= uses <= MAX_USES:
+            return None, 0, f"Choose hours from 1 to {MAX_TTL_HOURS} and uses from 0 to {MAX_USES}; 0 uses means unlimited. No link was created."
         return ttl, uses, ""
 
     async def _grant(client, message, stored, ttl, uses, *, source: str) -> None:
         """Create the link for *stored* and answer with the share card."""
         owner = message.from_user.id
-        record = ctx.links.create(stored.id, owner, ttl_hours=ttl, max_uses=uses)
+        record = await ctx.links.acreate(stored.id, owner, ttl_hours=ttl, max_uses=uses)
         if getattr(ctx, "events", None) is not None:
             ctx.events.emit("link", owner=owner, uses=uses)
         logger.info(
@@ -190,7 +188,7 @@ def build(ctx):
                         f"Send <code>/share &lt;id&gt;</code> — you have "
                         f"<b>{len(owned)}</b> file(s) in the vault."
                         if owned
-                        else "Your vault is empty: <code>/fsave</code> a file first."
+                        else "Your vault is empty: use <code>/batch</code> on replied files to save them."
                     ),
                     table=Table(
                         headers=("Id", "Name", "Size"),
@@ -205,7 +203,7 @@ def build(ctx):
                     if owned
                     else None,
                     note="Optional numbers after the id: hours, then uses.",
-                    footer="<code>/files</code> lists the rest of the vault.",
+                    footer="Use the ID returned by a successful save; /links lists your existing share links.",
                 ),
                 reply_markup=nav_keyboard(),
             )
@@ -214,7 +212,7 @@ def build(ctx):
         if stored is None or ctx.storage.owner_of(parts[0]) != message.from_user.id:
             await reply(
                 message,
-                "No file with that id in your vault. <code>/files</code> lists them.",
+                "No file with that id belongs to you. Use an ID returned by a successful save.",
             )
             return
         ttl, uses, problem = _limits(parts[1:], "share")
@@ -224,12 +222,11 @@ def build(ctx):
         await _grant(client, message, stored, ttl, uses, source=f"/share {parts[0]}")
 
     async def genlink(client, message):
-        replied = getattr(message, "reply_to_message", None)
-        media = replied and (getattr(replied, "document", None) or getattr(replied, "video", None))
-        if not media:
+        found = media_of(message)
+        if found is None:
             await reply(
                 message,
-                "Reply to a file with <code>/genlink</code>. Two numbers are "
+                "Reply to a file (document, video, audio, voice note, animation or photo) with <code>/genlink</code>. Two numbers are "
                 "optional: hours until it expires, and how many times it may be "
                 "opened — <code>/genlink 48 5</code>. A file already in the vault "
                 "is shared with <code>/share &lt;id&gt;</code>.",
@@ -241,23 +238,44 @@ def build(ctx):
             await reply(message, problem)
             return
 
+        replied, media = found
         owner = message.from_user.id
+        size = media_size(media)
+        if size > MAX_BOT_DOWNLOAD:
+            await reply(message, "That file exceeds this workflow's 20 MB download limit. No link was created.")
+            return
+        book = getattr(ctx, "premium", None)
+        allowance = book.tier(owner).quota_bytes if book is not None else None
         try:
+            # Admission only; save_path checks the actual downloaded size again.
+            ctx.storage.check_quota(owner, size, quota_bytes=allowance)
             source = await replied.download()
-            stored = ctx.storage.save_path(owner, source, name=media.file_name or "file.bin")
+            if not source:
+                await reply(message, "Telegram returned no file. No link was created.")
+                return
+            stored = ctx.storage.save_path(owner, source, name=media_name(media), quota_bytes=allowance)
         except Exception as exc:  # noqa: BLE001 - quota and IO errors reach the user
-            logger.exception("genlink failed")
+            logger.warning("genlink save unconfirmed (%s)", type(exc).__name__)
             await reply(
                 message,
-                f"Could not store that file: {type(exc).__name__}: {html.escape(str(exc))}",
+                f"Could not confirm that save ({type(exc).__name__}). Check the replied file and current /links before retrying.",
             )
             return
 
         await _grant(client, message, stored, ttl_hours, max_uses, source="/genlink")
 
     async def links(_client, message):
+        parts = _args(message)[1:]
+        if len(parts) > 1 or (parts and (not parts[0].isascii() or not parts[0].isdecimal() or len(parts[0]) > 8 or int(parts[0]) < 1)):
+            await reply(message, "Usage: <code>/links [page]</code>, starting at page 1.")
+            return
+        page = int(parts[0]) if parts else 1
         owner = message.from_user.id
-        records = ctx.links.owned(owner)
+        records = await ctx.links.aowned(owner)
+        pages = max(1, (len(records) + 9) // 10)
+        if page > pages:
+            await reply(message, f"Choose a links page from 1 to {pages}.")
+            return
         if not records:
             await reply(
                 message,
@@ -266,7 +284,7 @@ def build(ctx):
             return
 
         rows = []
-        for record in records[:15]:
+        for record in records[(page - 1) * 10:page * 10]:
             state = (
                 "revoked"
                 if record.revoked
@@ -277,7 +295,7 @@ def build(ctx):
                 else "live"
             )
             file = ctx.storage.get(record.file_id)
-            name = file.name if file else record.file_id
+            name = file.name if file else "file unavailable"
             rows.append(
                 (
                     state,
@@ -291,14 +309,18 @@ def build(ctx):
             for record in records
             if not (record.revoked or record.expired or record.exhausted)
         )
-        more = len(records) - len(rows)
+        navigation = []
+        if page > 1:
+            navigation.append(f"<code>/links {page - 1}</code> previous")
+        if page < pages:
+            navigation.append(f"<code>/links {page + 1}</code> next")
         await reply(
             message,
             panel(
                 "Your links",
                 icon=ctx.theme.emoji("link"),
                 subtitle=(
-                    f"<b>{len(records)}</b> link(s), <b>{live}</b> still live, newest first."
+                    f"{ctx.theme.emoji('diamond')} Page <b>{page}/{pages}</b> · <b>{len(records)}</b> link(s), <b>{live}</b> still live, newest first."
                 ),
                 table=Table(
                     headers=("State", "File", "Uses", "Expires"),
@@ -307,21 +329,21 @@ def build(ctx):
                     max_column=26,
                     total_width=54,
                 ),
-                lines=[f"Plus {more} older link(s) not shown."] if more > 0 else [],
+                lines=[" · ".join(navigation)] if navigation else [],
                 note="Revoke one with <code>/revoke &lt;token&gt;</code> or its own button.",
-                footer="Tokens are signed; anyone holding one can download the file.",
+                footer="Tokens are hidden here. Lists are visible in this chat; use private chat for sensitive filenames.",
             ),
             reply_markup=nav_keyboard(),
         )
 
     async def revoke(_client, message):
         parts = _args(message)
-        if len(parts) < 2:
+        if len(parts) != 2:
             await reply(message, "Usage: <code>/revoke &lt;token&gt;</code>")
             return
         owner = message.from_user.id
         try:
-            record = ctx.links.resolve(parts[1].strip())
+            record = await ctx.links.aresolve(parts[1].strip())
         except LinkError as exc:
             # A revoked token must still be revocable-by-owner idempotently;
             # anything else is a genuine failure.
@@ -331,8 +353,10 @@ def build(ctx):
                 await reply(message, f"Invalid link: {html.escape(str(exc))}")
             return
 
-        if ctx.links.revoke(record.token, owner_id=owner):
-            await reply(message, "Link revoked.")
+        if await ctx.links.arevoke(record.token, owner_id=owner):
+            await reply(message, panel("Link revoked", icon=ctx.theme.emoji("check"),
+                lines=["Link revoked. Future redemptions are blocked."],
+                note="Already delivered files and in-flight deliveries are not erased.", footer="/links"))
         else:
             await reply(message, "That link does not belong to you.")
 
@@ -340,7 +364,7 @@ def build(ctx):
     async def redeem(client, message, token: str):
         """Send the file behind *token*, or say precisely why it cannot be sent."""
         try:
-            record = ctx.links.consume(token)
+            record = await ctx.links.aresolve(token)
         except LinkError as exc:
             reason = {
                 "link revoked": "The owner revoked this link.",
@@ -352,10 +376,22 @@ def build(ctx):
             await _refused(message, reason)
             return
 
+        from .subscription import allowed as subscription_allowed
+        if not await subscription_allowed(ctx, client, message):
+            return
+
         stored = ctx.storage.get(record.file_id)
         if stored is None:
             logger.warning("link %s… points at a missing file", record.token[:12])
             await _refused(message, "The file behind this link is no longer stored.")
+            return
+
+        # No use is spent for a missing metadata entry. Consume immediately
+        # before delivery, with a second expiry/revocation/cap check.
+        try:
+            record = await ctx.links.aconsume(token)
+        except LinkError:
+            await _refused(message, "This link is no longer available.")
             return
 
         caption = (
@@ -399,14 +435,14 @@ def build(ctx):
             return
         presser = getattr(getattr(query, "from_user", None), "id", None)
         try:
-            record = ctx.links.resolve(token)
+            record = await ctx.links.aresolve(token)
         except LinkError as exc:
             await query.answer(f"Nothing to revoke: {exc}.", show_alert=True)
             return
         if presser is None or record.owner_id != int(presser):
             await query.answer("Only the owner of this link can revoke it.", show_alert=True)
             return
-        ctx.links.revoke(token, owner_id=int(presser))
+        await ctx.links.arevoke(token, owner_id=int(presser))
         stored = ctx.storage.get(record.file_id)
         username = await _username(client)
         text, keyboard = _panel(record, stored, username)
@@ -428,9 +464,21 @@ def build(ctx):
         deep.register(DEEP_PREFIX, redeem)
 
     logger.info("Linkshare wired (share links redeem through /start %s_…)", DEEP_PREFIX)
-    return MANIFEST, {
+    def identified(handler):
+        async def wrapped(client, message):
+            user_id = getattr(getattr(message, "from_user", None), "id", None)
+            if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+                await reply(message, "Use your personal Telegram user identity for link commands.")
+                return
+            return await handler(client, message)
+        return wrapped
+
+    from .subscription import build as build_subscription
+    handlers = {
+        "linkchannel": build_subscription(ctx),
         "genlink": genlink,
         "share": share,
         "links": links,
         "revoke": revoke,
     }
+    return MANIFEST, {name: identified(handler) for name, handler in handlers.items()}

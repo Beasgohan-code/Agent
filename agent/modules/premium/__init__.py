@@ -13,6 +13,7 @@ import time
 
 from ...platform.manifest import PluginManifest
 from ...platform.premium import TIERS
+from ...platform.entitlements import EntitlementError
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
@@ -70,6 +71,7 @@ def build(ctx):
         user = getattr(message, "from_user", None)
         if user is None:
             return
+        await book.ais_premium(user.id)
         until = book.until(user.id)
         await reply(
             message,
@@ -100,6 +102,7 @@ def build(ctx):
         user = getattr(message, "from_user", None)
         if user is None:
             return
+        await book.ais_premium(user.id)
         tier = book.tier(user.id)
         rows = [row for row in usage_rows(book, user.id) if row[0] != "Tier"]
         await reply(
@@ -148,7 +151,11 @@ def build(ctx):
         days = DEFAULT_DAYS
         if len(parts) > 2 and parts[2].isdigit():
             days = max(0, min(MAX_DAYS, int(parts[2])))
-        until = book.grant(target, days, by=message.from_user.id)
+        try:
+            until = await book.agrant(target, days, by=message.from_user.id)
+        except EntitlementError as exc:
+            await reply(message, str(exc))
+            return
         events = getattr(ctx, "events", None)
         if events is not None:
             events.emit("premium:grant", user=target, days=days, by=message.from_user.id)
@@ -186,7 +193,11 @@ def build(ctx):
         if target is None:
             await reply(message, "Usage: <code>/delpremium &lt;user_id&gt;</code>")
             return
-        removed = book.revoke(target)
+        try:
+            removed = await book.arevoke(target)
+        except EntitlementError as exc:
+            await reply(message, str(exc))
+            return
         events = getattr(ctx, "events", None)
         if events is not None and removed:
             events.emit("premium:revoke", user=target, by=message.from_user.id)
@@ -202,7 +213,11 @@ def build(ctx):
     async def premiumusers(client, message):
         if not await _owner(client, message):
             return
-        entries = book.listing()
+        try:
+            entries = await book.alisting()
+        except EntitlementError as exc:
+            await reply(message, str(exc))
+            return
         if not entries:
             await reply(
                 message,
@@ -219,7 +234,7 @@ def build(ctx):
             (
                 str(entry["user_id"]),
                 until_text(entry.get("until"), now=now) if entry.get("until") is not None else "lifetime",
-                "active" if book.is_premium(entry["user_id"], now=now) else "expired",
+                "active" if entry.get("until") is None or entry["until"] > now else "expired",
             )
             for entry in entries
         )

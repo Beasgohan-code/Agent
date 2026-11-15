@@ -87,7 +87,7 @@ def test_the_default_build_ships_nine_plugins_plus_the_shell(tmp_path):
     # Optional modules left out by the deployment register nothing.
     assert {"renamer", "premium", "utilities"} <= set(not_selected(bot.settings.plugins))
     assert "encode" in set(bot.registry.active_commands())
-    assert {"fsave", "leech", "ban", "plugins"} <= set(bot.registry.active_commands())
+    assert {"get", "leech", "ban", "plugins"} <= set(bot.registry.active_commands())
 
 
 def test_the_shell_survives_even_when_plugins_names_nothing_else(tmp_path):
@@ -117,13 +117,13 @@ def test_an_unknown_slug_costs_one_plugin_not_the_bot():
 
 
 def test_star_selects_everything_compiled():
-    assert len(select(("*",))) == 19
+    assert len(select(("*",))) == 20
 
 
 # --- the panel ------------------------------------------------------------
 
 
-def test_the_panel_has_one_styled_button_per_plugin(tmp_path):
+def test_the_panel_has_one_management_suite_and_optional_buttons(tmp_path):
     bot = make_bot(tmp_path)
     _, commands = ops.build(bot.modules)
     message = FakeMessage("/plugins")
@@ -133,10 +133,10 @@ def test_the_panel_has_one_styled_button_per_plugin(tmp_path):
     assert "<pre>" in message.replies[0]          # editable classic grid
     slugs = [m.slug for m in bot.registry.manifests()]
     data = [b.callback_data for b in buttons(message.markup)]
-    assert data == [f"plugin:{slug}" for slug in slugs]
+    assert data == ["plugin:group"] + [f"plugin:{slug}" for slug in slugs if slug not in {*GROUP_CORE, "ops", "core"}]
     for button in buttons(message.markup):
         assert button.style is ButtonStyle.SUCCESS
-        if button.callback_data == "plugin:ops":
+        if button.callback_data == "plugin:group":
             assert button.disabled is True        # the control plane is locked
 
 
@@ -190,3 +190,19 @@ def test_the_panel_still_works_through_the_text_command(tmp_path):
 
     assert bot.registry.is_enabled("filestore") is False
     assert "now disabled" in message.replies[0]
+
+
+def test_repeated_runtime_on_does_not_emit_duplicate_plugin_events(tmp_path):
+    async def scenario():
+        bot = make_bot(tmp_path)
+        handler = bot.registry.handler_for('plugin')
+        await handler(None,FakeMessage('/plugin leech off'))
+        bot.events.clear()
+        await handler(None,FakeMessage('/plugin leech on'))
+        assert bot.events.count('plugin') == 1
+        request = FakeMessage('/plugin leech on')
+        await handler(None,request)
+        assert bot.events.count('plugin') == 1
+        assert '/plugin leech approve' in request.replies[-1]
+        assert '/plugins' in request.replies[-1]
+    asyncio.run(scenario())

@@ -14,6 +14,8 @@ from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
 
 from . import __version__
 from .config import Settings
+from .platform.commands import command_filter
+from .modules.moderation.command_cleaning import wrap as wrap_command_cleaning
 from .handlers import CallbackHandlers, CommandHandlers
 from .keepalive import KeepAlive
 from .health import HealthMonitor
@@ -181,9 +183,9 @@ class AgentBot:
         )
 
         self._handlers = [
-            MessageHandler(commands.start, filters.command(["start", "restart_bot"]) & filters.private),
-            MessageHandler(commands.help, filters.command(["help", "h"]) & filters.private),
-            MessageHandler(commands.ping, filters.command("ping") & filters.private),
+            MessageHandler(commands.start, command_filter(["start", "restart_bot"]) & filters.private),
+            MessageHandler(commands.help, command_filter(["help", "h"]) & filters.private),
+            MessageHandler(commands.ping, command_filter("ping") & filters.private),
             CallbackQueryHandler(callbacks.on_callback),
             ErrorHandler(self._on_error),
         ]
@@ -212,6 +214,7 @@ class AgentBot:
         self._wire_archive(client)
         self.modules.logbook = self.logbook
         self.modules.client = client
+        client.agent_context = self.modules
 
         from .platform.execution import PluginGate, REGISTERING
         from .platform.plugin_access import PluginAccess
@@ -268,7 +271,8 @@ class AgentBot:
                 continue
             chat_filter = _scope_filter(scopes.get(command, "private"))
             callback = self.plugin_gate.wrap(owners.get(command, "unknown"), callback)
-            handler = MessageHandler(callback, filters.command(command) & chat_filter)
+            callback = wrap_command_cleaning(self.modules, callback)
+            handler = MessageHandler(callback, command_filter(command) & chat_filter)
             self._handlers.append(handler)
             self.runtime.track(owners.get(command, "unknown"), handler, 0)
 
@@ -468,7 +472,7 @@ class AgentBot:
 
         heartbeat_task = self.lease.start_heartbeat(stop_event)
         self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
-        logger.info("Starting Agent (token=%s)", self.settings.masked_token)
+        logger.info("Starting Meiko (token=%s)", self.settings.masked_token)
         try:
             await client.start()
         except Exception:
@@ -615,6 +619,12 @@ class AgentBot:
                 await jobs.shutdown()
             except Exception:
                 logger.exception("Job shutdown failed; continuing Telegram disconnect.")
+        storage = getattr(self.modules, "storage", None)
+        if storage is not None and hasattr(storage, "shutdown"):
+            try:
+                await storage.shutdown()
+            except Exception:
+                logger.exception("Archive shutdown failed; continuing Telegram disconnect.")
         # Emit while connected, then drain only this bot's delivery tasks.
         # A bounded log-channel failure must never prevent Telegram shutdown.
         try:
@@ -649,7 +659,7 @@ class AgentBot:
         except Exception:
             logger.exception("Error while stopping the client.")
         else:
-            logger.info("Disconnected. Agent stopped.")
+            logger.info("Disconnected. Meiko stopped.")
 
 
 def _install_signal_handlers(stop_event: asyncio.Event) -> None:

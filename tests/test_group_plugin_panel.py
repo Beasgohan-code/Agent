@@ -85,3 +85,47 @@ def test_private_only_plugin_not_offered_for_group_activation(monkeypatch):
         markup = sender.await_args.kwargs['reply_markup']
         assert all('gplug:on' not in b.callback_data for row in markup.inline_keyboard for b in row)
     asyncio.run(scenario())
+
+
+def test_unapproved_inactive_tools_do_not_clutter_panel(monkeypatch):
+    async def scenario():
+        sender = AsyncMock()
+        monkeypatch.setattr('agent.modules.group.plugin_panel.reply', sender)
+        ctx, service, show = setup()
+        service.status.return_value = [{'slug': 'music', 'approved': False, 'active': False}]
+        await show(None, SimpleNamespace())
+        body = str(sender.await_args.args[1])
+        assert 'Group Management' in body
+        assert 'No optional plugins approved yet' in body
+        keyboard = sender.await_args.kwargs['reply_markup']
+        assert not any('music' in (b.callback_data or '') for row in keyboard.inline_keyboard for b in row)
+    asyncio.run(scenario())
+
+
+def test_empty_approval_panel_explains_runtime_vs_approval_with_next_steps(monkeypatch):
+    async def scenario():
+        sender = AsyncMock()
+        monkeypatch.setattr('agent.modules.group.plugin_panel.reply', sender)
+        ctx, service, show = setup()
+        service.status.return_value = [{'slug':'music','approved':False,'active':False}]
+        await show(None,SimpleNamespace())
+        body = str(sender.await_args.args[1])
+        assert 'Runtime on ≠ Owner approval ≠ group activation' in body
+        assert '/plugin music approve' in body
+        assert 'Activate' in body
+        assert not any('gplug:on' in (b.callback_data or '') for row in sender.await_args.kwargs['reply_markup'].inline_keyboard for b in row)
+    asyncio.run(scenario())
+
+
+def test_active_plugin_does_not_claim_usable_when_runtime_off(monkeypatch):
+    async def scenario():
+        sender = AsyncMock()
+        monkeypatch.setattr('agent.modules.group.plugin_panel.reply', sender)
+        ctx, service, show = setup()
+        service.status.return_value = [{'slug':'music','approved':True,'active':True}]
+        ctx.runtime.state = lambda: [{'slug':'music','enabled':False,'commands':['play'],'scope':'group'}]
+        await show(None,SimpleNamespace())
+        body = str(sender.await_args.args[1])
+        assert 'runtime unavailable' in body.lower()
+        assert '2 / 3 slots available' in body
+    asyncio.run(scenario())

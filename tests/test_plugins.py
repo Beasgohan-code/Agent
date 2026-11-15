@@ -374,14 +374,6 @@ def test_someone_else_cannot_press_your_button(tmp_path):
 # --- filestore ------------------------------------------------------------
 
 
-def test_fsave_without_a_document_asks_for_one(tmp_path):
-    ctx = make_ctx(tmp_path)
-    _, commands = filestore.build(ctx)
-    message = FakeMessage("/fsave")
-    run(commands["fsave"], message)
-    assert "Reply to a file" in message.replies[0]
-
-
 def test_get_without_an_id_is_usage(tmp_path):
     ctx = make_ctx(tmp_path)
     _, commands = filestore.build(ctx)

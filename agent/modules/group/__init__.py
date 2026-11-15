@@ -29,6 +29,11 @@ from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from pyrogram.types import ChatPermissions
 
 from ...platform.manifest import PluginManifest
+from ...platform.admin_settings import denied
+from ...platform.blocklists import operate as read_blocklist
+from ...platform.service_cleaning import operate as read_cleaning
+from .topics import COMMANDS as TOPIC_COMMANDS, build as build_topics
+from .admin import COMMANDS as ADMIN_COMMANDS, build as build_admin
 from ...ui.tables import Table, kv_table, panel
 from ..moderation import (
     DENIED,
@@ -49,7 +54,7 @@ MANIFEST = PluginManifest(
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
         "settings", "rules", "setrules", "pin", "unpin",
-        "admins", "warnlimit", "resetwarns", "lockdown",
+        "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS,
     ),
     permissions=(
         "chats.read", "chats.restrict", "chats.pin", "messages.read", "messages.send",
@@ -85,21 +90,21 @@ def _on_off(flag: object) -> str:
     return "on" if flag else "off"
 
 
-def _plugin_keyboard():
-    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup([[InlineKeyboardButton("Optional plugins ›", callback_data="gplug:page:0")]])
-
-
 def build(ctx):
     """Wire the group-management commands to the shared chat store."""
 
     from .plugin_panel import build as build_plugin_panel
     ctx.group_plugin_panel = build_plugin_panel(ctx)
+    from ...platform import group_rules as rule_service
+    from ...platform.group_trust import trusted_members
+    from ...platform.group_filters import operate as read_filters
+    from .controls import register, keyboard as management_keyboard
+    register(ctx)
 
     async def _guard(client, message, need: str | None = None) -> bool:
-        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
+        if await is_moderator(client, message, need=need, ctx=ctx):
             return True
-        await reply(message, DENIED)
+        await denied(ctx, message, DENIED)
         return False
 
     async def _protected(client, message, target_id: int) -> bool:
@@ -114,12 +119,22 @@ def build(ctx):
         if not await _guard(client, message, need="can_change_info"):
             return
         chat_id = message.chat.id
-        policy = ctx.chats.antispam(chat_id)
         limit, action = warn_policy(ctx.chats, chat_id)
-        greeting = ctx.chats.greeting(chat_id, "welcome")
-        goodbye = ctx.chats.greeting(chat_id, "goodbye")
-        rules = (ctx.chats.get(chat_id, "rules", "") or "").strip()
-        trusted = ctx.chats.trusted_count(chat_id)
+        from ..welcome import read_greeting
+        try:
+            from ...platform.antispam import read_policy
+            policy = await read_policy(ctx, chat_id)
+            greeting = await read_greeting(ctx, chat_id, "welcome")
+            goodbye = await read_greeting(ctx, chat_id, "goodbye")
+            rules = (await rule_service.read_rules(ctx, chat_id))["body"].strip()
+            current_filters = await read_filters(ctx, chat_id)
+            trusted = len(await trusted_members(ctx, chat_id))
+            blocklist = await read_blocklist(ctx, chat_id)
+            cleaning = await read_cleaning(ctx, chat_id)
+        except Exception as error:
+            logger.warning("Group settings state unavailable (%s)", type(error).__name__)
+            await reply(message, "Group settings could not be loaded. Please try again shortly; no changes were made.")
+            return
         # The log channel is switched at runtime by /setlog, so read the live
         # logbook rather than the value the process started with.
         logbook = getattr(ctx, "logbook", None)
@@ -135,25 +150,28 @@ def build(ctx):
         ) else "off"
         table = kv_table(
             [
+                ("Group", str(chat_id)),
                 ("Anti-spam", f"{policy_state} / {policy.get('action', 'warn')}"),
                 ("Flood", f"{policy.get('flood_messages')} per {policy.get('flood_window_seconds')}s"),
                 ("Links", "blocked" if policy.get("links_enabled") else "allowed"),
                 ("Invites", "blocked" if policy.get("invites_enabled") else "allowed"),
                 ("Keywords", str(len(policy.get("blocked_keywords") or []))),
+                ("Blocklist", f"{len(blocklist['entries'])} / {blocklist['mode']}"),
+                ("Service cleaning", ", ".join(cleaning) or "off"),
                 ("Warn limit", f"{limit} -> {action}" if limit else "off"),
                 ("Welcome", _on_off(greeting.get("enabled"))),
                 ("Goodbye", _on_off(goodbye.get("enabled"))),
-                ("Filters", str(len(ctx.chats.filters(chat_id)))),
+                ("Filters", str(len(current_filters))),
                 ("Rules", f"{len(rules)} chars" if rules else "not set"),
-                ("Trusted", str(trusted)),
+                ("Approved", str(trusted)),
                 ("Log channel", str(log_channel or "not set")),
             ]
         )
         await reply(message, 
             panel(
-                "Group settings",
+                "Group Management",
                 icon=ctx.theme.emoji("gear"),
-                subtitle=f"Chat <code>{chat_id}</code> — live values, nothing cached.",
+                subtitle="Protection, greetings and group tools in one place.",
                 table=table,
                 note=(
                     "Change them with <code>/antispam</code>, <code>/warnlimit</code>, "
@@ -162,15 +180,19 @@ def build(ctx):
                 ),
                 footer="Administrators with the change-info right only.",
             ),
-            reply_markup=_plugin_keyboard() if ctx.group_plugin_panel else None,
+            reply_markup=management_keyboard(ctx) if getattr(ctx, "actions", None) is not None else None,
         )
 
     # -- /rules and /setrules ---------------------------------------------
 
     async def rules(client, message):
         chat_id = message.chat.id
-        text = (ctx.chats.get(chat_id, "rules", "") or "").strip()
-        title = getattr(message.chat, "title", None) or "This group"
+        try:
+            text = (await rule_service.read_rules(ctx, chat_id))["body"].strip()
+        except rule_service.RulesError as error:
+            await reply(message, str(error))
+            return
+        title = html.escape(getattr(message.chat, "title", None) or "This group")
         if not text:
             await reply(message, 
                 panel(
@@ -181,15 +203,13 @@ def build(ctx):
                 )
             )
             return
-        await reply(message, 
-            panel(
-                "Rules",
-                icon=ctx.theme.emoji("shield"),
-                subtitle=f"<b>{title}</b>",
-                lines=[f"<blockquote>{_escaped_block(text)}</blockquote>"],
-                footer="Set by an administrator of this group.",
-            )
-        )
+        parts = list(rule_service.message_chunks(text))
+        for index, part in enumerate(parts):
+            await reply(message, panel(
+                "Rules", icon=ctx.theme.emoji("shield"), subtitle=f"<b>{title}</b>",
+                lines=[f"<blockquote>{_escaped_block(part)}</blockquote>"],
+                footer=f"Part {index+1} of {len(parts)}" if len(parts) > 1 else "Set by an administrator of this group.",
+            ))
 
     async def setrules(client, message):
         if not await _guard(client, message, need="can_change_info"):
@@ -207,8 +227,11 @@ def build(ctx):
             )
             return
         if body.lower() == "clear":
-            ctx.chats.put(chat_id, "rules", "")
-            ctx.chats.log(chat_id, "rules:clear", actor_id=message.from_user.id)
+            try:
+                await rule_service.save_rules(ctx, chat_id, "", actor=message.from_user.id)
+            except rule_service.RulesError as error:
+                await reply(message, str(error))
+                return
             await reply(message, "Group rules cleared.")
             return
         if len(body) > MAX_RULES:
@@ -216,10 +239,11 @@ def build(ctx):
                 f"Those rules are too long: {len(body)} characters, the limit is {MAX_RULES}."
             )
             return
-        ctx.chats.put(chat_id, "rules", body)
-        ctx.chats.log(
-            chat_id, "rules:set", actor_id=message.from_user.id, reason=f"{len(body)} chars"
-        )
+        try:
+            await rule_service.save_rules(ctx, chat_id, body, actor=message.from_user.id)
+        except rule_service.RulesError as error:
+            await reply(message, str(error))
+            return
         await reply(message, 
             f"Group rules saved ({len(body)} characters). Members can read them with <code>/rules</code>."
         )
@@ -284,7 +308,7 @@ def build(ctx):
                 message.chat.id, filter=ChatMembersFilter.ADMINISTRATORS
             ):
                 user = getattr(member, "user", None)
-                if user is None:
+                if user is None or getattr(getattr(member, "privileges", None), "is_anonymous", False):
                     continue
                 if len(rows) >= MAX_ADMIN_ROWS:
                     extra += 1
@@ -479,6 +503,8 @@ def build(ctx):
         await reply(message, panel("Lockdown", icon=ctx.theme.emoji("lock"), lines=[body]))
 
     return MANIFEST, {
+        **build_admin(ctx),
+        **build_topics(ctx),
         "settings": settings,
         "rules": rules,
         "setrules": setrules,
