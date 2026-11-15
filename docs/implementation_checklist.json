@@ -1111,6 +1111,24 @@
         "Not full Videl1 feature parity; plugin service integrations still tracked separately",
         "Approval/revocation still uses existing transactional text commands; no deployment or merge"
       ]
+    },
+    {
+      "id": "clone-premium-test-guidance-and-panel-errors",
+      "status": "completed",
+      "implemented": [
+        "Nonpremium /clone explains sender ID and exact Owner one-day premium grant, bot-local entitlement and missing module/runtime diagnosis",
+        "/mybots state-read/render failure gets sanitized clone-specific unavailable response without changing clones or blaming Premium; #Errors logged"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL suite 1576 passed, no skips, 16.17 seconds",
+        "Regression tests cover exact grant guidance and safe storage-failure response",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Live reported /mybots cause unknown without deployment logs; no production access or deployment performed",
+        "Premium is not in DEFAULT_PLUGINS; operator must include premium in explicit deployment selection and enable it before using its commands",
+        "No subscription granted in production; existing Owner-only grant authority preserved"
+      ]
     }
   ],
   "production_changes": false,

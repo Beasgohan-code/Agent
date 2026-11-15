@@ -264,7 +264,12 @@ def build(ctx):
             await reply(message, "Use /clone privately. Never send bot tokens or session strings in groups; revoke any token you already posted publicly.")
             return
         if not await entitled(user.id):
-            await reply(message, "Cloning requires bot premium, including for Owner and sudo users.")
+            await reply(message, panel('Premium required', icon=ctx.theme.emoji('bot'),
+                lines=['Cloning requires bot premium, including for Owner and sudo users.',
+                       f'Your Telegram user ID: <code>{user.id}</code>.',
+                       f'The configured bot Owner can grant one test day: <code>/addpremium {user.id} 1</code>.',
+                       'Then check /premium and retry /clone. Premium belongs to this bot; another bot’s subscription does not transfer.'],
+                note='If /premium or /addpremium gives no reply, check that premium is included in deployment PLUGINS and enabled with /plugin premium on. Adding a missing module requires an authorized restart; the runtime switch cannot install it.'))
             return
         parts = (getattr(message, "text", "") or "").split()
         if len(parts) < 2:
@@ -384,8 +389,16 @@ def build(ctx):
         if getattr(getattr(message, "chat", None), "id", None) != user.id:
             await reply(message, "Open /mybots privately to manage your bots and storage destinations.")
             return
-        await store.aall()
-        text, keyboard = _panel(user.id)
+        try:
+            await store.aall()
+            text, keyboard = _panel(user.id)
+        except Exception:
+            logger.warning('#Errors Clone panel state could not be loaded')
+            await reply(message, panel('Clone controller unavailable',
+                lines=['Your saved clone state could not be read safely. No clone was created, started or deleted.',
+                       'Bot Owner: check /errors and PostgreSQL availability, then retry /mybots.'],
+                note='Premium is required to create/start clones, not to view your saved bots. This error is separate from your subscription.'))
+            return
         await reply(message, text, reply_markup=keyboard)
 
     # -- /delclone ---------------------------------------------------------

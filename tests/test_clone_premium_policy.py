@@ -79,3 +79,24 @@ def test_supervisor_stops_expired_clone_without_deleting_record(tmp_path, user_i
         assert record is not None and record.disabled
 
     asyncio.run(scenario())
+
+
+def test_rejection_explains_exact_self_test_grant_and_missing_module(tmp_path):
+    ctx, _, commands = build(tmp_path, premium=FakePremium())
+    message = FakeMessage('/clone', uid=OWNER)
+    run(commands['clone'], ctx, message)
+    assert f'/addpremium {OWNER} 1' in message.replies[0]
+    assert 'PLUGINS' in message.replies[0]
+    assert '/plugin premium on' in message.replies[0]
+    assert not ctx.clones.current()
+
+
+def test_mybots_storage_failure_is_not_reported_as_premium_rejection(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    ctx, _, commands = build(tmp_path, premium=FakePremium())
+    monkeypatch.setattr(__import__('agent.modules.clone.store', fromlist=['CloneStore']).CloneStore, 'aall', AsyncMock(side_effect=RuntimeError('sensitive database URL')))
+    message = FakeMessage('/mybots', uid=OWNER)
+    run(commands['mybots'], ctx, message)
+    assert 'Clone controller unavailable' in message.replies[0]
+    assert 'separate from your subscription' in message.replies[0]
+    assert 'sensitive database URL' not in message.replies[0]
