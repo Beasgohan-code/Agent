@@ -236,6 +236,7 @@ class CloneManager:
                 await self._release_worker(bot)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
+                await self._record_event(clone.bot_id, 'startup_failed', type(exc).__name__)
                 raise CloneError(reason) from None
             state = self.state(clone.bot_id)
             state.username = username
@@ -255,6 +256,7 @@ class CloneManager:
                 self._lease_monitors[clone.bot_id] = asyncio.create_task(
                     self._watch_lease(clone.bot_id, stop_event), name=f"clone-lease-{clone.bot_id}"
                 )
+            await self._record_event(clone.bot_id, 'started')
             logger.info("clone %s is running as @%s", clone.bot_id, username or "?")
             return username
 
@@ -327,6 +329,15 @@ class CloneManager:
         self._pending_recovery.clear()
         for bot_id in tuple(self._running):
             await self.stop(bot_id)
+
+    async def _record_event(self, bot_id, event, category=''):
+        if self._store._db is None:
+            return
+        from ...platform.clone_recovery import CloneRecovery
+        try:
+            await asyncio.wait_for(CloneRecovery(self._store._db).record(bot_id, event, category), timeout=5)
+        except Exception:
+            logger.warning('#Errors Clone diagnostic write unconfirmed (%s)', event)
 
     async def _restart_permission(self, bot_id, maximum):
         if self._store._db is not None:
@@ -418,6 +429,7 @@ class CloneManager:
                 continue
             state = self.state(bot_id)
             logger.warning("clone %s dropped its connection", bot_id)
+            await self._record_event(bot_id, 'runtime_disconnected')
             if state.state is State.RUNNING:
                 state.move(State.DEGRADED, error="connection lost")
                 self._states.set(bot_id, state)

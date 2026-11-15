@@ -1563,6 +1563,27 @@
         "Legacy/local plaintext and controlled migration/key rotation review remain separate; no production record rewrite performed",
         "No production deployment, schema migration or PR merge"
       ]
+    },
+    {
+      "id": "durable-classified-clone-diagnostics",
+      "status": "completed",
+      "implemented": [
+        "Clone manager records successful starts, startup failure exception categories and observed runtime disconnects in separate bot/tenant-scoped PostgreSQL diagnostic history",
+        "Awaits writes under advisory transaction lock, retains newest 50 events and timestamps using database clock",
+        "Diagnostic records separate from restart admission budget; only enum event names/class categories, no raw exception/token/session text",
+        "Manager limits diagnostic write wait to five seconds and logs unconfirmed diagnostics without changing retry authorization or preventing cleanup"
+      ],
+      "validation": [
+        "Real PostgreSQL regression checks event retention cap, classified ordering, allowed field set, rejected credential-like category and independence from restart admission",
+        "Full disposable PostgreSQL suite 1627 passed, no skips, 18.02 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Operator UI/history retrieval remains pending; this is backend diagnostic persistence, not complete recovery dashboard",
+        "Startup failure diagnostics cover worker initialization exception boundary, not every earlier authority denial/cancellation; no full audit log completeness claim",
+        "Legacy encryption, archive recovery and wider audit remain separate pending tasks; no feature expansion",
+        "No production deployment, migration, record rewrite or PR merge"
+      ]
     }
   ],
   "production_changes": false,
