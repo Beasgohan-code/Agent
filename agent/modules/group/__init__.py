@@ -90,6 +90,7 @@ def build(ctx):
 
     from .plugin_panel import build as build_plugin_panel
     ctx.group_plugin_panel = build_plugin_panel(ctx)
+    from ...platform import group_rules as rule_service
     from .controls import register, keyboard as management_keyboard
     register(ctx)
 
@@ -118,11 +119,11 @@ def build(ctx):
             policy = await read_policy(ctx, chat_id)
             greeting = await read_greeting(ctx, chat_id, "welcome")
             goodbye = await read_greeting(ctx, chat_id, "goodbye")
+            rules = (await rule_service.read_rules(ctx, chat_id))["body"].strip()
         except Exception as error:
-            logger.warning("Group greeting state unavailable (%s)", type(error).__name__)
+            logger.warning("Group settings state unavailable (%s)", type(error).__name__)
             await reply(message, "Group settings could not be loaded. Please try again shortly; no changes were made.")
             return
-        rules = (ctx.chats.get(chat_id, "rules", "") or "").strip()
         trusted = ctx.chats.trusted_count(chat_id)
         # The log channel is switched at runtime by /setlog, so read the live
         # logbook rather than the value the process started with.
@@ -174,8 +175,12 @@ def build(ctx):
 
     async def rules(client, message):
         chat_id = message.chat.id
-        text = (ctx.chats.get(chat_id, "rules", "") or "").strip()
-        title = getattr(message.chat, "title", None) or "This group"
+        try:
+            text = (await rule_service.read_rules(ctx, chat_id))["body"].strip()
+        except rule_service.RulesError as error:
+            await reply(message, str(error))
+            return
+        title = html.escape(getattr(message.chat, "title", None) or "This group")
         if not text:
             await reply(message, 
                 panel(
@@ -186,15 +191,13 @@ def build(ctx):
                 )
             )
             return
-        await reply(message, 
-            panel(
-                "Rules",
-                icon=ctx.theme.emoji("shield"),
-                subtitle=f"<b>{title}</b>",
-                lines=[f"<blockquote>{_escaped_block(text)}</blockquote>"],
-                footer="Set by an administrator of this group.",
-            )
-        )
+        parts = list(rule_service.message_chunks(text))
+        for index, part in enumerate(parts):
+            await reply(message, panel(
+                "Rules", icon=ctx.theme.emoji("shield"), subtitle=f"<b>{title}</b>",
+                lines=[f"<blockquote>{_escaped_block(part)}</blockquote>"],
+                footer=f"Part {index+1} of {len(parts)}" if len(parts) > 1 else "Set by an administrator of this group.",
+            ))
 
     async def setrules(client, message):
         if not await _guard(client, message, need="can_change_info"):
@@ -212,8 +215,11 @@ def build(ctx):
             )
             return
         if body.lower() == "clear":
-            ctx.chats.put(chat_id, "rules", "")
-            ctx.chats.log(chat_id, "rules:clear", actor_id=message.from_user.id)
+            try:
+                await rule_service.save_rules(ctx, chat_id, "", actor=message.from_user.id)
+            except rule_service.RulesError as error:
+                await reply(message, str(error))
+                return
             await reply(message, "Group rules cleared.")
             return
         if len(body) > MAX_RULES:
@@ -221,10 +227,11 @@ def build(ctx):
                 f"Those rules are too long: {len(body)} characters, the limit is {MAX_RULES}."
             )
             return
-        ctx.chats.put(chat_id, "rules", body)
-        ctx.chats.log(
-            chat_id, "rules:set", actor_id=message.from_user.id, reason=f"{len(body)} chars"
-        )
+        try:
+            await rule_service.save_rules(ctx, chat_id, body, actor=message.from_user.id)
+        except rule_service.RulesError as error:
+            await reply(message, str(error))
+            return
         await reply(message, 
             f"Group rules saved ({len(body)} characters). Members can read them with <code>/rules</code>."
         )

@@ -25,6 +25,7 @@ from pyrogram.errors import RPCError, FloodWait
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
+from ...platform.group_rules import rules_history, RulesError
 from ...platform.antispam import read_policy, change_policy, policy_history, PolicyError
 from ...platform.chats import SPAM_ACTIONS
 from ...platform.manifest import PluginManifest
@@ -701,7 +702,8 @@ def build(ctx):
             return
         try:
             committed = await policy_history(ctx, message.chat.id)
-        except PolicyError:
+            committed += await rules_history(ctx, message.chat.id)
+        except (PolicyError, RulesError):
             await reply(message, "Moderation history could not be loaded. Please try again shortly.")
             return
         history = sorted([*ctx.chats.history(message.chat.id, limit=10), *committed], key=lambda row: row.get("at", 0), reverse=True)[:10]

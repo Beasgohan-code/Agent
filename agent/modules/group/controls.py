@@ -12,6 +12,7 @@ from pyrogram.types import (
 
 from ...ui.tables import panel, kv_table
 from ...platform.antispam import read_policy, change_policy
+from ...platform.group_rules import read_rules
 from ...utils.rich import edit
 from ..moderation import is_moderator
 from .. import welcome
@@ -28,7 +29,7 @@ def keyboard(ctx):
         ],
         [
             Button("Protection controls", callback_data="gmanage:protection:show"),
-            Button("Rules & tools guide", callback_data="help:group-management"),
+            Button("Group rules", callback_data="gmanage:rules:show"),
         ],
     ]
     if getattr(ctx, "group_plugin_panel", None) is not None:
@@ -80,6 +81,7 @@ def register(ctx):
                 or parts[0]
                 not in (
                     "home",
+                    "rules",
                     "welcome",
                     "goodbye",
                     "protection",
@@ -95,7 +97,44 @@ def register(ctx):
                 )
                 return
             kind, action = parts
-            if protection:
+            if kind == "rules":
+                if action != "show":
+                    await query.answer(
+                        "Use /setrules to change rules.", show_alert=True
+                    )
+                    return
+                state = await read_rules(ctx, chat.id)
+                body = state["body"]
+                preview = body[:1000]
+                text = panel(
+                    "Group rules",
+                    table=kv_table(
+                        [
+                            ("Status", "Published" if body else "Not configured"),
+                            ("Revision", str(state["version"])),
+                        ]
+                    ),
+                    lines=[
+                        "<blockquote>"
+                        + html.escape(preview)
+                        + ("…" if len(body) > 1000 else "")
+                        + "</blockquote>"
+                        if body
+                        else "Add your group’s rules to help members get started."
+                    ],
+                    note="Publish with /setrules &lt;text&gt; or reply to a message with /setrules. Members can read all rules with /rules. /setrules clear removes the published text while retaining PostgreSQL revision history.",
+                )
+                buttons = Keyboard(
+                    [
+                        [
+                            Button("Refresh", callback_data=f"{PREFIX}:rules:show"),
+                            Button(
+                                "Group Management", callback_data=f"{PREFIX}:home:show"
+                            ),
+                        ]
+                    ]
+                )
+            elif protection:
                 if kind == "protection" and action != "show":
                     await query.answer(
                         "Choose a specific protection switch.", show_alert=True
@@ -154,6 +193,7 @@ def register(ctx):
                     await welcome.read_greeting(ctx, chat.id, k)
                     for k in ("welcome", "goodbye")
                 ]
+                current_rules = await read_rules(ctx, chat.id)
                 text = panel(
                     "Group Management",
                     table=kv_table(
@@ -163,7 +203,7 @@ def register(ctx):
                             (
                                 "Rules",
                                 "Configured"
-                                if ctx.chats.get(chat.id, "rules", "")
+                                if current_rules["body"]
                                 else "Not configured",
                             ),
                         ]
