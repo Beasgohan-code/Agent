@@ -1213,6 +1213,28 @@
         "PostgreSQL runtime settings remain legacy queued writes, not distributed transactional state",
         "No live Telegram/provider validation, deployment, migrations or PR merge; not an all-bugs-fixed claim"
       ]
+    },
+    {
+      "id": "typetube-subprocess-environment-isolation",
+      "status": "completed",
+      "implemented": [
+        "Continued real Music/Leech shared TypeTube source adapter: helper environment now explicit PATH and LANG only, excludes inherited bot/session/database/provider/proxy variables and Node preload options",
+        "Helper runs from bridge directory; no private TAP keys inherited",
+        "Malformed URL/port input raises safe LinkError and credential-bearing YouTube URLs refused",
+        "Process spawn failures sanitized through existing resolver error boundary; cleanup tolerates ProcessLookupError exit race",
+        "Corrected Premium plan/pitch claims to acknowledge Premium-only clone creation/starts for all roles"
+      ],
+      "validation": [
+        "45 focused TypeTube/Music/Premium tests passed",
+        "Full disposable PostgreSQL suite 1597 passed, no skips, 17.25 seconds",
+        "Four new regression cases cover malformed/credential URL inputs, minimal subprocess environment and sanitized spawn failure",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Environment isolation is not OS sandboxing: helper still runs under bot OS user; no claim of filesystem isolation",
+        "No live TypeTube provider/Telegram upload/voice verification or deployment",
+        "Pending broader workflows remain separately tracked; no all-bugs-fixed or full upstream parity claim"
+      ]
     }
   ],
   "production_changes": false,

@@ -176,7 +176,7 @@ def build(ctx):
             panel(
                 "Plans",
                 icon=ctx.theme.emoji("star"),
-                subtitle="Premium raises three numbers. It hides no features.",
+                subtitle="Higher file and daily allowances · Premium-only clone creation and starts.",
                 table=Table(headers=("Allowance", "Free → Premium"), rows=tuple(rows())),
                 note=pitch(),
                 footer="Owners grant premium with <code>/addpremium &lt;id&gt; [days]</code>.",

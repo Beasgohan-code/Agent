@@ -60,3 +60,29 @@ def test_youtube_audio_reaches_existing_job_delivery_and_cleanup(tmp_path, monke
         assert paths and not paths[0].exists() and not paths[0].parent.exists()
         assert 'private' not in job.label and 'private' not in '\n'.join(msg.replies)
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('url', ['https://youtube.com:bad/watch?v=dQw4w9WgXcQ', 'https://user:pass@youtube.com/watch?v=dQw4w9WgXcQ', 'https://[broken/watch?v=x'])
+def test_malformed_or_credential_bearing_video_urls_fail_safely(url):
+    with pytest.raises(LeechError):
+        typetube.youtube_url(url)
+
+
+def test_helper_environment_does_not_inherit_bot_or_node_secrets(monkeypatch):
+    async def scenario():
+        monkeypatch.setattr(typetube, 'available', lambda: True)
+        for key in ('BOT_TOKEN', 'DATABASE_URL', 'SESSION_STRING', 'AI_API_KEY', 'NODE_OPTIONS', 'HTTPS_PROXY', 'TYPETUBE_API_KEY'):
+            monkeypatch.setenv(key, 'sensitive-value')
+        process = NS(returncode=0, communicate=AsyncMock(return_value=(b'{"url":"https://rr1.googlevideo.com/audio","title":"Song","mime":"audio/mp4"}', None)))
+        spawn = AsyncMock(return_value=process)
+        monkeypatch.setattr(typetube.asyncio, 'create_subprocess_exec', spawn)
+        monkeypatch.setattr(typetube, 'check_target', AsyncMock())
+        await typetube.resolve_audio('https://youtu.be/dQw4w9WgXcQ')
+        environment = spawn.await_args.kwargs['env']
+        assert set(environment) == {'PATH', 'LANG'}
+        assert 'sensitive-value' not in str(environment)
+        spawn.side_effect = OSError('sensitive spawn detail')
+        with pytest.raises(LeechError, match='TypeTube could not resolve') as error:
+            await typetube.resolve_audio('https://youtu.be/dQw4w9WgXcQ')
+        assert 'sensitive' not in str(error.value)
+    asyncio.run(scenario())

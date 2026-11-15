@@ -5,6 +5,7 @@ No private API key or parent credentials are passed to the helper.
 """
 import asyncio
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -17,11 +18,15 @@ TIMEOUT = 25
 
 
 def youtube_url(url):
-    parts = urlsplit(url)
-    host = (parts.hostname or '').lower()
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or '').lower()
+        port = parts.port
+    except (ValueError, TypeError, AttributeError):
+        raise LinkError('Use a valid HTTPS video link.') from None
     if host not in ('youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'):
         return None
-    if parts.port not in (None, 443) or parts.scheme != 'https':
+    if port not in (None, 443) or parts.scheme != 'https' or parts.username is not None or parts.password is not None:
         raise LinkError('Use a standard HTTPS YouTube video link.')
     if host == 'youtu.be':
         video = parts.path.strip('/')
@@ -45,9 +50,13 @@ async def resolve_audio(url):
         raise LinkError('TypeTube accepts YouTube video links only.')
     if not available():
         raise LinkError('TypeTube is not installed. The deployment needs Node.js 18+ and npm ci in tools/typetube.')
-    process = await asyncio.create_subprocess_exec(shutil.which('node'), str(BRIDGE),
-        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+    process = None
     try:
+        # Deliberate allowlist: no BOT_TOKEN, DATABASE_URL, session strings,
+        # NODE_OPTIONS injection, provider keys or proxy credentials inherited.
+        process = await asyncio.create_subprocess_exec(shutil.which('node'), str(BRIDGE),
+            env={'PATH': os.defpath, 'LANG': 'C.UTF-8'}, cwd=str(BRIDGE.parent),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         stdout, _ = await asyncio.wait_for(process.communicate(json.dumps({'url': canonical}).encode()), timeout=TIMEOUT)
         if process.returncode or len(stdout) > 16384:
             raise ValueError('resolver failed')
@@ -70,6 +79,9 @@ async def resolve_audio(url):
     except Exception:
         raise LinkError('TypeTube could not resolve this audio. The service may be unavailable, rate-limited or region-restricted.') from None
     finally:
-        if process.returncode is None:
-            process.kill()
+        if process is not None and process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass  # Process exited between inspection and kill.
             await process.wait()
