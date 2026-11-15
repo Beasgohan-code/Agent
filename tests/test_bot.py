@@ -89,10 +89,10 @@ def test_build_creates_client_and_registers_handlers():
     assert isinstance(client, Client)
     # Music registers nothing without SESSION_STRING. Count command handlers,
     # callback/error routing and isolated background watchers separately.
-    assert bot.handler_count == 138
+    assert bot.handler_count == 147
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 129
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 138
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -124,7 +124,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 129
+    assert len(messages) == 138
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -140,7 +140,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     }
     assert group == {
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
+        "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "filter", "filters", "stopfilter",
         "setwelcome", "welcome", "goodbye",
         "settings", "rules", "setrules", "pin", "unpin",

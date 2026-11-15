@@ -149,6 +149,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Moderation",
         (
             "warn", "warnings", "unwarn", "mute", "unmute", "kick", "ban", "unban",
+            "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme",
             "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
         ),
     ),

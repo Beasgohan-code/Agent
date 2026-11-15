@@ -66,7 +66,7 @@ def build(ctx):
                 rows = []
                 for member in members:
                     user = getattr(member, "user", None)
-                    if user is not None:
+                    if user is not None and not getattr(getattr(member, "privileges", None), "is_anonymous", False):
                         rows.append(
                             (
                                 str(user.id),

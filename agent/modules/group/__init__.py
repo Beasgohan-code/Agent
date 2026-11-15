@@ -301,7 +301,7 @@ def build(ctx):
                 message.chat.id, filter=ChatMembersFilter.ADMINISTRATORS
             ):
                 user = getattr(member, "user", None)
-                if user is None:
+                if user is None or getattr(getattr(member, "privileges", None), "is_anonymous", False):
                     continue
                 if len(rows) >= MAX_ADMIN_ROWS:
                     extra += 1

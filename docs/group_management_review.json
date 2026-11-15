@@ -1,0 +1,577 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-11-14",
+  "source_index": "https://missrose.org/sitemap.xml",
+  "scope": "All /docs/ URLs in the retrieved sitemap, including all returned chunks. External links, screenshots, marketing pages and interactive generator behavior are not validated.",
+  "method": "Read public documentation and inspect local handlers/services/tests. Original implementation only; command registration is NOT behavioral parity. No live Telegram tests, production migration or deployment.",
+  "all_features_implemented": false,
+  "features": [
+    {
+      "feature": "overview",
+      "sources": [
+        "https://missrose.org/docs/",
+        "https://missrose.org/docs/getting-started/",
+        "https://missrose.org/docs/basics/",
+        "https://missrose.org/docs/basics/command-usage/",
+        "https://missrose.org/docs/anti-spam/",
+        "https://missrose.org/docs/advanced/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "reference_only",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "Navigation, setup and conventions reviewed. Settings syntax is not uniform across existing modules; no full parity claim."
+    },
+    {
+      "feature": "admin",
+      "sources": [
+        "https://missrose.org/docs/moderation/admins/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/group/admin.py",
+        "agent/modules/moderation/__init__.py"
+      ],
+      "tests": [
+        "tests/test_admin_commands.py",
+        "tests/test_restriction_variants.py"
+      ],
+      "implemented_commands": [
+        "promote",
+        "demote",
+        "adminlist",
+        "admincache",
+        "anonadmin",
+        "adminerror"
+      ],
+      "differences_and_remaining": "Live authorization is intentional, not permission caching. Anonymous verification buttons are absent; personal-identity routes stay protected. Public lists now omit anonymous admins. Adminerror does not cover every independent plugin."
+    },
+    {
+      "feature": "approvals",
+      "sources": [
+        "https://missrose.org/docs/moderation/approvals/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/platform/group_trust.py",
+        "agent/modules/moderation/__init__.py"
+      ],
+      "tests": [
+        "tests/test_approval_commands.py",
+        "tests/test_trust_authority.py"
+      ],
+      "implemented_commands": [
+        "approve",
+        "unapprove",
+        "approval",
+        "approved"
+      ],
+      "differences_and_remaining": "Atomic idempotent PostgreSQL approvals. Username/reason support and owner-confirmed bulk removal still need work. Exemptions cover existing automatic protections, not unimplemented ones."
+    },
+    {
+      "feature": "restrictions",
+      "sources": [
+        "https://missrose.org/docs/moderation/restrictions/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "implemented_with_differences",
+      "code": [
+        "agent/modules/moderation/restrictions.py",
+        "agent/platform/restriction_cases.py"
+      ],
+      "tests": [
+        "tests/test_restriction_variants.py",
+        "tests/test_moderation.py"
+      ],
+      "implemented_commands": [
+        "ban",
+        "mute",
+        "kick",
+        "unban",
+        "unmute",
+        "tban",
+        "tmute",
+        "dban",
+        "dmute",
+        "dkick",
+        "sban",
+        "smute",
+        "skick",
+        "kickme"
+      ],
+      "differences_and_remaining": "Additional variants use durable intent/outcome records and command replay protection in configured PostgreSQL mode. Existing /mute remains temporary by default for compatibility; new /dmute and untimed /smute are permanent. Timed manual actions require at least 60 seconds to avoid very short Telegram durations becoming permanent. Existing base commands retain their current target parser and audit path. No live Telegram verification or automatic recovery of pending cases."
+    },
+    {
+      "feature": "antiflood",
+      "sources": [
+        "https://missrose.org/docs/anti-spam/antiflood/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/moderation/antiflood.py",
+        "agent/platform/antispam.py"
+      ],
+      "tests": [
+        "tests/test_antiflood.py",
+        "tests/test_antispam_authority.py"
+      ],
+      "implemented_commands": [
+        "flood",
+        "setflood",
+        "setfloodtimer",
+        "floodmode",
+        "clearflood"
+      ],
+      "differences_and_remaining": "Process-local bounded counters, at-count trigger, 30-second minimum window and cleanup on/off differ from reference defaults. Distributed counters and /setfloodmode alias are pending; no silent automatic actions."
+    },
+    {
+      "feature": "federations",
+      "sources": [
+        "https://missrose.org/docs/federations/",
+        "https://missrose.org/docs/federations/creating/",
+        "https://missrose.org/docs/federations/fedbans/",
+        "https://missrose.org/docs/federations/fedinfo/",
+        "https://missrose.org/docs/federations/joining/",
+        "https://missrose.org/docs/federations/managing/",
+        "https://missrose.org/docs/federations/user-commands/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/platform/federations.py",
+        "agent/platform/federation_roles.py",
+        "agent/modules/federations/__init__.py",
+        "agent/modules/federations/roles.py"
+      ],
+      "tests": [
+        "tests/test_federations.py",
+        "tests/test_federation_roles.py"
+      ],
+      "implemented_commands": [
+        "newfed",
+        "renamefed",
+        "delfed",
+        "fedpromote",
+        "feddemote",
+        "feddemoteme",
+        "fedtransfer",
+        "myfeds",
+        "fedinfo",
+        "fedadmins",
+        "joinfed",
+        "leavefed",
+        "chatfed"
+      ],
+      "differences_and_remaining": "Metadata, membership and private role consent only. NO cross-chat ban enforcement yet. Pending: fban/unfban/fedstat, subscriptions, import/export, logs, delivery/recovery, owner notifications and quietfed. Existing info handlers require explicit ID; creation is not private-only. Ownership transfer needs consent and deletion needs explicit confirmation."
+    },
+    {
+      "feature": "blocklists",
+      "sources": [
+        "https://missrose.org/docs/anti-spam/blocklists/",
+        "https://missrose.org/docs/anti-spam/blocklists/advanced/",
+        "https://missrose.org/docs/anti-spam/blocklists/modes/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [
+        "agent/platform/antispam.py"
+      ],
+      "tests": [
+        "tests/test_antispam_authority.py"
+      ],
+      "implemented_commands": [],
+      "differences_and_remaining": "Legacy blocked-keyword substring protection is not the documented blocklist feature. Pending wildcard/word normalization, filenames, emoji packs, forward/inline/prefix/exact/name targeting, per-trigger reasons/modes and owner-only bulk clearing."
+    },
+    {
+      "feature": "locks",
+      "sources": [
+        "https://missrose.org/docs/anti-spam/locks/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [
+        "agent/modules/group/__init__.py"
+      ],
+      "tests": [
+        "tests/test_group.py"
+      ],
+      "implemented_commands": [],
+      "differences_and_remaining": "Existing lockdown and link/invite switches are not typed content locks. Lock types, precedence, per-type actions and allowlists remain absent."
+    },
+    {
+      "feature": "antiraid",
+      "sources": [
+        "https://missrose.org/docs/anti-spam/antiraid/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No raid-state authority, timed join bans or automatic join-rate detection."
+    },
+    {
+      "feature": "captcha",
+      "sources": [
+        "https://missrose.org/docs/anti-spam/captchas/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/security/verify.py"
+      ],
+      "tests": [],
+      "implemented_commands": [
+        "verify"
+      ],
+      "differences_and_remaining": "Existing verification is not proof of documented captcha mode coverage. Review button/text/math/text2, join-request portals, durable challenge expiry, rules consent and restart recovery before claiming parity."
+    },
+    {
+      "feature": "notes",
+      "sources": [
+        "https://missrose.org/docs/notes/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [
+        "agent/modules/moderation/__init__.py"
+      ],
+      "tests": [
+        "tests/test_moderation.py"
+      ],
+      "implemented_commands": [],
+      "differences_and_remaining": "Existing moderator /note is member metadata, not named notes. Named notes, attachments, private/admin-only retrieval, hashtag triggers and recurring schedules remain absent. /clear collides with existing Music command ownership; do not silently replace it."
+    },
+    {
+      "feature": "filters",
+      "sources": [
+        "https://missrose.org/docs/filters/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/platform/group_filters.py",
+        "agent/modules/filters/__init__.py"
+      ],
+      "tests": [
+        "tests/test_filter_authority.py",
+        "tests/test_filter_studio.py"
+      ],
+      "implemented_commands": [
+        "filter",
+        "filters",
+        "stopfilter"
+      ],
+      "differences_and_remaining": "Atomic shared SQL state, plain-text replies, substring first-stored matching. Pending quoted/bulk triggers, media, prefix/exact patterns and fillings. /stop belongs to Music; retain /stopfilter rather than silently shadow it."
+    },
+    {
+      "feature": "connections",
+      "sources": [
+        "https://missrose.org/docs/connections/",
+        "https://missrose.org/docs/basics/connections/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No private-to-group authorization bridge. Every connected read/write will need fresh membership/admin checks and isolated response routing; banned/left users must lose access."
+    },
+    {
+      "feature": "warnings",
+      "sources": [
+        "https://missrose.org/docs/moderation/warnings/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/moderation/__init__.py",
+        "agent/modules/group/__init__.py",
+        "agent/platform/chats.py"
+      ],
+      "tests": [
+        "tests/test_moderation.py",
+        "tests/test_group.py"
+      ],
+      "implemented_commands": [
+        "warn",
+        "warnings",
+        "warns",
+        "unwarn",
+        "warnlimit",
+        "resetwarns"
+      ],
+      "differences_and_remaining": "Legacy warning state and thresholds still need canonical awaited relational persistence. Defaults differ intentionally (mute escalation). Missing timed modes, expiry, per-warning removal button and several documented command names."
+    },
+    {
+      "feature": "pins",
+      "sources": [
+        "https://missrose.org/docs/moderation/pins/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/group/__init__.py"
+      ],
+      "tests": [
+        "tests/test_group.py"
+      ],
+      "implemented_commands": [
+        "pin",
+        "unpin"
+      ],
+      "differences_and_remaining": "Current pins retained. Permapin, unpinall alias, linked-channel anti-pin and cleanup options remain absent."
+    },
+    {
+      "feature": "purges",
+      "sources": [
+        "https://missrose.org/docs/moderation/purges/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/moderation/__init__.py"
+      ],
+      "tests": [
+        "tests/test_moderation.py"
+      ],
+      "implemented_commands": [
+        "purge"
+      ],
+      "differences_and_remaining": "Existing bounded purge behavior retained; does not establish reference reply-range semantics. Missing /del, /spurge, /purgefrom and /purgeto."
+    },
+    {
+      "feature": "reports",
+      "sources": [
+        "https://missrose.org/docs/moderation/reports/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/reports/__init__.py"
+      ],
+      "tests": [
+        "tests/test_report_studio.py"
+      ],
+      "implemented_commands": [
+        "report",
+        "reports"
+      ],
+      "differences_and_remaining": "Current report review workflow retained. Reference reports on/off, hidden admin tags, @admin watcher and staff-report rules need comparison; report storage is legacy document-backed."
+    },
+    {
+      "feature": "group_logs",
+      "sources": [
+        "https://missrose.org/docs/moderation/log-channels/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/ops/__init__.py"
+      ],
+      "tests": [
+        "tests/test_logbook_pg.py"
+      ],
+      "implemented_commands": [
+        "setlog",
+        "log"
+      ],
+      "differences_and_remaining": "Current /setlog and /log are deployment Owner diagnostics/log settings, NOT per-group reference category logs. Preserve identifiers and Owner isolation; use a deliberate routing design before adding group log controls."
+    },
+    {
+      "feature": "disabling",
+      "sources": [
+        "https://missrose.org/docs/moderation/disabling/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "Plugin activation gates are not per-chat user-command disable rules. Disabled/delete/admin override policies remain absent."
+    },
+    {
+      "feature": "rules",
+      "sources": [
+        "https://missrose.org/docs/basics/rules/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/platform/group_rules.py",
+        "agent/modules/group/__init__.py"
+      ],
+      "tests": [
+        "tests/test_group_rules_authority.py"
+      ],
+      "implemented_commands": [
+        "rules",
+        "setrules"
+      ],
+      "differences_and_remaining": "Shared SQL authority and immutable revisions. Missing private delivery/deeplink membership authorization and rule-button configuration; /setrules clear already removes published text."
+    },
+    {
+      "feature": "greetings",
+      "sources": [
+        "https://missrose.org/docs/greetings/",
+        "https://missrose.org/docs/greetings/advanced/",
+        "https://missrose.org/docs/greetings/goodbyes/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/welcome/__init__.py",
+        "agent/platform/greetings.py"
+      ],
+      "tests": [
+        "tests/test_greetings_pg.py",
+        "tests/test_greeting_safety.py"
+      ],
+      "implemented_commands": [
+        "welcome",
+        "setwelcome",
+        "goodbye"
+      ],
+      "differences_and_remaining": "Shared SQL greetings and controls exist. Media, richer fillings, setgoodbye/reset aliases, noformat preview and cleanup schedules need implementation/review; no equivalence claim."
+    },
+    {
+      "feature": "formatting",
+      "sources": [
+        "https://missrose.org/docs/formatting/",
+        "https://missrose.org/docs/formatting/button-generator/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/ui/tables.py",
+        "agent/utils/rich.py"
+      ],
+      "tests": [
+        "tests/test_rich.py"
+      ],
+      "implemented_commands": [],
+      "differences_and_remaining": "Native Rich Message UI remains preferred. Reference message-template parser, safe buttonurl grammar, note menus, random variants and fillings are not implemented by UI table support."
+    },
+    {
+      "feature": "cleaning",
+      "sources": [
+        "https://missrose.org/docs/cleaning/clean-command/",
+        "https://missrose.org/docs/cleaning/clean-message/",
+        "https://missrose.org/docs/cleaning/clean-service/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No general category-aware command/service cleanup or durable delayed bot-message cleanup scheduling. Explicit restriction cleanup is not this feature."
+    },
+    {
+      "feature": "exports",
+      "sources": [
+        "https://missrose.org/docs/exports/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No general group import/export/reset. Requires bounded versioned parsers, creator-only import/reset confirmation and atomic authority-specific updates; never import credentials or ownership."
+    },
+    {
+      "feature": "topics",
+      "sources": [
+        "https://missrose.org/docs/topics/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No topic-management commands or action-topic routing. Requires current manage-topics rights and destructive-delete confirmation."
+    },
+    {
+      "feature": "languages",
+      "sources": [
+        "https://missrose.org/docs/basics/languages/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No complete translation catalog or per-group language selector. Do not advertise languages based only on Unicode support."
+    },
+    {
+      "feature": "privacy",
+      "sources": [
+        "https://missrose.org/docs/privacy/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No private user-data inventory/export/erasure controls. Requires retention/legal and cross-store ownership review; do not delete moderation evidence indiscriminately."
+    },
+    {
+      "feature": "info",
+      "sources": [
+        "https://missrose.org/docs/basics/info/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "partial",
+      "code": [
+        "agent/modules/utilities/__init__.py"
+      ],
+      "tests": [
+        "tests/test_utility_batch.py"
+      ],
+      "implemented_commands": [
+        "id",
+        "info"
+      ],
+      "differences_and_remaining": "Existing identity/member profile commands retained; connections and federation ban-status enrichment are absent."
+    },
+    {
+      "feature": "silent_automation",
+      "sources": [
+        "https://missrose.org/docs/advanced/silent-actions/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "Manual silent restriction variants are separate. Automated silent actions require per-chat owner consent, authorized log delivery and safe fallback when logs are unavailable."
+    },
+    {
+      "feature": "bot_to_bot",
+      "sources": [
+        "https://missrose.org/docs/advanced/bot-to-bot/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No reviewed bot-to-bot command approval workflow. Do not introduce bot-triggered admin mutation bypasses or LLM-controlled shell execution."
+    },
+    {
+      "feature": "echo",
+      "sources": [
+        "https://missrose.org/docs/echo/"
+      ],
+      "source_text_reviewed": true,
+      "assessment": "not_implemented",
+      "code": [],
+      "tests": [],
+      "implemented_commands": [],
+      "differences_and_remaining": "No echo/say/broadcast equivalent added. Owner-only scoped broadcast would need explicit targeting, throttling, cancellation and audit; never reuse parent credentials for clones."
+    }
+  ]
+}

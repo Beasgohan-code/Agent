@@ -25,8 +25,10 @@ from pyrogram.errors import RPCError, FloodWait
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
+from .restrictions import COMMANDS as RESTRICTION_COMMANDS, build as build_restrictions
 from .antiflood import COMMANDS as FLOOD_COMMANDS, build as build_antiflood, watch as watch_antiflood
 from ...platform.group_rules import rules_history, RulesError
+from ...platform.restriction_cases import history as restriction_history, CaseError
 from ...platform.admin_settings import options as admin_options, denied, AdminStateError
 from ...platform.group_trust import trusted_members, trust_history, TrustError
 from ...platform.antispam import read_policy, change_policy, policy_history, PolicyError
@@ -44,7 +46,7 @@ MANIFEST = PluginManifest(
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *FLOOD_COMMANDS,
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *FLOOD_COMMANDS, *RESTRICTION_COMMANDS,
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -204,11 +206,15 @@ class PartialKickError(RuntimeError):
     """Ban was confirmed, but the unban request was not confirmed."""
 
 
-async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source="manual"):
+async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source="manual", confirm=False):
     """Use one recovery path for every kick; never retry the ban blindly."""
-    await client.ban_chat_member(chat_id, target_id)
+    banned = await client.ban_chat_member(chat_id, target_id)
+    if confirm and banned is not True:
+        raise RuntimeError("Kick ban was not confirmed.")
     try:
-        await client.unban_chat_member(chat_id, target_id)
+        unbanned = await client.unban_chat_member(chat_id, target_id)
+        if confirm and unbanned is not True:
+            raise RuntimeError("Kick unban was not confirmed.")
     except Exception as exc:
         ctx.chats.log(
             chat_id, "kick:incomplete", actor_id=actor_id, target_id=target_id,
@@ -766,7 +772,8 @@ def build(ctx):
             committed = await policy_history(ctx, message.chat.id)
             committed += await rules_history(ctx, message.chat.id)
             committed += await trust_history(ctx, message.chat.id)
-        except (PolicyError, RulesError, TrustError):
+            committed += await restriction_history(ctx, message.chat.id)
+        except (PolicyError, RulesError, TrustError, CaseError):
             await reply(message, "Moderation history could not be loaded. Please try again shortly.")
             return
         history = sorted([*ctx.chats.history(message.chat.id, limit=10), *committed], key=lambda row: row.get("at", 0), reverse=True)[:10]
@@ -820,6 +827,7 @@ def build(ctx):
 
     return MANIFEST, {
         **build_antiflood(ctx),
+        **build_restrictions(ctx),
         "warn": warn,
         "warnings": warnings,
         "warns": warnings,
