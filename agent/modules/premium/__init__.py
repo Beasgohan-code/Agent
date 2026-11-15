@@ -39,12 +39,15 @@ MAX_DAYS = 3650
 def _parse_user(message, token: str | None) -> int | None:
     """A user id from the argument, or from the message being replied to."""
     if token:
-        cleaned = token.lstrip("-")
-        if cleaned.isdigit():
-            return int(token)
+        if token.isascii() and token.isdecimal() and len(token) <= 19:
+            value = int(token)
+            if 0 < value <= 9223372036854775807:
+                return value
+        return None
     replied = getattr(message, "reply_to_message", None)
     user = getattr(replied, "from_user", None) if replied is not None else None
-    return int(user.id) if user is not None and getattr(user, "id", None) else None
+    value = getattr(user, 'id', None)
+    return value if type(value) is int and 0 < value <= 9223372036854775807 else None
 
 
 def build(ctx):
@@ -149,8 +152,12 @@ def build(ctx):
             )
             return
         days = DEFAULT_DAYS
-        if len(parts) > 2 and parts[2].isdigit():
-            days = max(0, min(MAX_DAYS, int(parts[2])))
+        if len(parts) > 3 or (len(parts) > 2 and (
+                not parts[2].isascii() or not parts[2].isdecimal() or len(parts[2]) > 4 or int(parts[2]) > MAX_DAYS)):
+            await reply(message, f'Days must be a whole number from 0 to {MAX_DAYS}; 0 means lifetime. No Premium was changed.')
+            return
+        if len(parts) > 2:
+            days = int(parts[2])
         try:
             until = await book.agrant(target, days, by=message.from_user.id)
         except EntitlementError as exc:

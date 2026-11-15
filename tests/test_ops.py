@@ -341,3 +341,21 @@ def test_runtime_on_off_is_idempotent_and_does_not_duplicate_handlers(tmp_path):
     added = len(client.added)
     assert runtime.enable('demo') is False
     assert len(client.added) == added
+
+
+@pytest.mark.parametrize('action', ['enable', 'disable'])
+def test_runtime_save_failure_keeps_registry_and_handlers_unchanged(tmp_path, monkeypatch, action):
+    registry, runtime, client, _ = make_runtime(tmp_path)
+    if action == 'enable':
+        runtime.disable('demo')
+    previous = set(runtime._disabled)
+    enabled = registry.is_enabled('demo')
+    added, removed = list(client.added), list(client.removed)
+    def fail():
+        raise RuntimeError('storage unavailable')
+    monkeypatch.setattr(runtime, '_save', fail)
+    with pytest.raises(RuntimeError, match='storage unavailable'):
+        getattr(runtime, action)('demo')
+    assert registry.is_enabled('demo') == enabled
+    assert runtime._disabled == previous
+    assert client.added == added and client.removed == removed

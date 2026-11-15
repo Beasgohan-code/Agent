@@ -100,6 +100,22 @@ class PluginRuntime:
     def is_protected(self, slug: str) -> bool:
         return slug in self.protected
 
+    def _set_disabled(self, slug: str, disabled: bool) -> None:
+        """Do not change live handlers if settings cannot even be queued/saved.
+
+        PostgreSQL save is a legacy queued write, not a durable confirmation.
+        """
+        previous = set(self._disabled)
+        if disabled:
+            self._disabled.add(slug)
+        else:
+            self._disabled.discard(slug)
+        try:
+            self._save()
+        except Exception:
+            self._disabled = previous
+            raise
+
     def disable(self, slug: str) -> bool:
         """Detach every handler of *slug*. False when it is protected/unknown."""
         if self.is_protected(slug):
@@ -108,6 +124,7 @@ class PluginRuntime:
             return False
         if slug not in self._handlers and not self.registry.is_enabled(slug):
             return False
+        self._set_disabled(slug, True)
         if self._client is not None:
             for handler, group in self._handlers.get(slug, []):
                 try:
@@ -115,8 +132,6 @@ class PluginRuntime:
                 except Exception:  # noqa: BLE001 - already gone
                     logger.debug("handler for %s was not registered", slug)
         self.registry.disable(slug)
-        self._disabled.add(slug)
-        self._save()
         self._notify_change()
         return True
 
@@ -126,12 +141,11 @@ class PluginRuntime:
             return False
         if self.registry.is_enabled(slug) and slug not in self._disabled:
             return False
+        self._set_disabled(slug, False)
         if self._client is not None:
             for handler, group in self._handlers[slug]:
                 self._client.add_handler(handler, group)
         self.registry.enable(slug)
-        self._disabled.discard(slug)
-        self._save()
         self._notify_change()
         return True
 

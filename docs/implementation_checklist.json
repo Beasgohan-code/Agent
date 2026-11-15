@@ -1151,6 +1151,27 @@
         "Failed-build or unselected modules still require deployment configuration/restart; switches cannot install them",
         "Not complete audit or behavioral parity of every Videl1 plugin; optional provider and service integrations remain separately tracked"
       ]
+    },
+    {
+      "id": "runtime-save-failure-and-premium-validation",
+      "status": "completed",
+      "implemented": [
+        "Runtime enable/disable attempts settings save before changing handler attachments or registry; synchronous save failures restore prior disabled-set memory",
+        "Premium add rejects malformed/negative/non-ASCII/out-of-range day counts and extra arguments instead of silently granting default/capped duration",
+        "Premium user parsing rejects invalid explicit IDs without falling back to replied user; accepts only positive signed-bigint-range user IDs; reply IDs validated too"
+      ],
+      "validation": [
+        "50 focused Premium/runtime tests passed",
+        "10 new parametrized regressions cover enable/disable save failures and invalid Premium arguments",
+        "Full disposable PostgreSQL suite: 1588 passed, no skips, 16.49 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Not an all-bugs-fixed claim; production logs and live Telegram/provider verification still needed",
+        "Runtime PostgreSQL save still queues a legacy write, not confirmed durable commit",
+        "Partial Telegram handler attachment/removal failures and cross-process runtime changes still need reconciliation; this change only guards synchronous settings-save failure",
+        "No deployment, Premium grants, migrations or PR merge performed"
+      ]
     }
   ],
   "production_changes": false,

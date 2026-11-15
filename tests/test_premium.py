@@ -278,3 +278,13 @@ def test_lifetime_is_the_zero_day_spelling(tmp_path):
     run(commands["addpremium"], message)
 
     assert ctx.premium.until(USER) == 0.0
+
+
+@pytest.mark.parametrize('args', ['99 -1', '99 nope', '99 3651', '99 1 extra', '-99 1', '0 1', '99 ²', '9999999999999999999999999999 1'])
+def test_invalid_grant_arguments_never_silently_grant_default_or_lifetime(tmp_path, args):
+    ctx = make_ctx(tmp_path)
+    _, commands = premium_module.build(ctx)
+    message = FakeMessage('/addpremium ' + args, uid=OWNER)
+    run(commands['addpremium'], message)
+    assert not ctx.premium.is_premium(USER)
+    assert 'Premium granted' not in str(message.replies)
