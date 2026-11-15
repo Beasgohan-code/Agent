@@ -144,6 +144,9 @@ class ChatStore:
 
     def toggle_trust(self, chat_id: int, user_id: int) -> bool:
         """Flip the trusted flag and return its new value."""
+        if self._db is not None:
+            from .group_trust import TrustError
+            raise TrustError("Awaited PostgreSQL trust update required.")
         member = self._member(chat_id, user_id)
         member["trusted"] = not member.get("trusted", False)
         self._save()

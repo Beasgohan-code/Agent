@@ -26,6 +26,7 @@ from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
 from ...platform.group_rules import rules_history, RulesError
+from ...platform.group_trust import trusted_members, trust_history, TrustError
 from ...platform.antispam import read_policy, change_policy, policy_history, PolicyError
 from ...platform.chats import SPAM_ACTIONS
 from ...platform.manifest import PluginManifest
@@ -339,7 +340,7 @@ def watch(ctx):
                 for key in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled", "keywords_enabled")
             ):
                 return
-            if ctx.chats.is_trusted(chat.id, user.id):
+            if user.id in await trusted_members(ctx, chat.id):
                 return
             in_window, repeats = recent.note(
                 chat.id,
@@ -432,7 +433,11 @@ def build(ctx):
         target_id, mention = target
         rows = ctx.chats.warnings_of(message.chat.id, target_id)
         note = ctx.chats.note_of(message.chat.id, target_id)
-        trusted = ctx.chats.is_trusted(message.chat.id, target_id)
+        try:
+            trusted = target_id in await trusted_members(ctx, message.chat.id)
+        except TrustError as error:
+            await reply(message, str(error))
+            return
         limit, action = warn_policy(ctx.chats, message.chat.id)
         rows_out = tuple(
             (
@@ -634,18 +639,19 @@ def build(ctx):
         await reply(message, f"<b>Note saved</b>\nMember: {mention}")
 
     async def trust(client, message):
-        if not await _guard(client, message, need="can_manage_chat"):
+        if not await is_moderator(client, message, need="can_manage_chat"):
+            await reply(message, DENIED)
             return
         target = parse_target(message)
         if target is None:
             await reply(message, "Reply to a member to trust them.")
             return
         target_id, mention = target
-        trusted = ctx.chats.toggle_trust(message.chat.id, target_id)
-        ctx.chats.log(
-            message.chat.id, "trust" if trusted else "untrust",
-            actor_id=message.from_user.id, target_id=target_id,
-        )
+        try:
+            trusted = target_id in await trusted_members(ctx, message.chat.id, toggle=target_id, actor=message.from_user.id)
+        except TrustError as error:
+            await reply(message, str(error))
+            return
         await reply(message, 
             f"<b>{'Member trusted' if trusted else 'Trust removed'}</b>\nMember: {mention}"
         )
@@ -703,7 +709,8 @@ def build(ctx):
         try:
             committed = await policy_history(ctx, message.chat.id)
             committed += await rules_history(ctx, message.chat.id)
-        except (PolicyError, RulesError):
+            committed += await trust_history(ctx, message.chat.id)
+        except (PolicyError, RulesError, TrustError):
             await reply(message, "Moderation history could not be loaded. Please try again shortly.")
             return
         history = sorted([*ctx.chats.history(message.chat.id, limit=10), *committed], key=lambda row: row.get("at", 0), reverse=True)[:10]
