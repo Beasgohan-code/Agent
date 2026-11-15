@@ -125,3 +125,16 @@ def test_confirmation_detects_concurrent_draft_changes_during_validation(tmp_pat
         assert not wizard.store.all()
         assert not ctx.clones.running()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('bad', [None, 7, {'encoder': True}])
+def test_malformed_draft_selection_has_no_mutation(tmp_path, bad):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        previous = state.selected_plugins
+        with pytest.raises(SelectionError):
+            wizard.select_plugins(state, bad)
+        assert state.selected_plugins == previous
+        assert not wizard.store.all()
+    asyncio.run(scenario())

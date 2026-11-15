@@ -191,3 +191,51 @@ def test_worker_supervisor_observes_changes_from_another_controller(
                 await db.close()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+def test_invalid_selection_start_preserves_canonical_records_and_other_tenants(tmp_path):
+    from unittest.mock import Mock
+    from agent.modules.clone.manager import CloneError
+    from test_clone import build, TOKEN_A, MEMBER
+
+    async def scenario():
+        scope = 'clone-selection-reject:' + uuid.uuid4().hex
+        dbs = [Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=s, required=True)
+               for s in (scope, scope + ':other')]
+        manager = None
+        try:
+            for db in dbs:
+                assert await db.connect()
+                await db.load()
+            stores = [CloneStore(tmp_path / str(i), db=db, box=SecretBox(KEY))
+                      for i, db in enumerate(dbs)]
+            for i, store in enumerate(stores):
+                await store.aadd(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A,
+                                      selected_plugins=('encoder', 'ops') if i == 0 else ('encoder',)),
+                                 owner_limit=3, total_limit=5)
+            async def document(db):
+                async with db._pool.acquire() as conn:
+                    return await conn.fetchval('SELECT value FROM agent_documents WHERE name=$1',
+                                               db.name_for('clones'))
+            before = [await document(db) for db in dbs]
+            ctx, _, _ = build(tmp_path / 'controller')
+            manager = ctx.clones
+            manager._store = stores[0]
+            factory = Mock(side_effect=AssertionError('validation must precede worker construction'))
+            manager._factory = factory
+            with pytest.raises(CloneError, match='clone incompatible'):
+                await manager.start(stores[0].get(111111111))
+            factory.assert_not_called()
+            assert [await document(db) for db in dbs] == before
+            assert not manager.running()
+            assert 'clone incompatible' in manager.state(111111111).last_error
+        finally:
+            if manager:
+                await manager.stop_all()
+            for db in dbs:
+                if db.connected:
+                    async with db._pool.acquire() as conn:
+                        await conn.execute('DELETE FROM agent_documents WHERE name LIKE $1', db.scope + ':%')
+                    await db.close()
+    asyncio.run(scenario())

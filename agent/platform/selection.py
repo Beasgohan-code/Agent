@@ -22,8 +22,8 @@ class SelectionError(ValueError):
         return {'code': self.code, 'plugin': self.plugin, 'fields': list(self.fields)}
 
 
-def _slugs(values):
-    if isinstance(values, str):
+def normalize_slugs(values):
+    if isinstance(values, (str, bytes, Mapping)):
         raise SelectionError('invalid_selection')
     try:
         result = set()
@@ -40,6 +40,12 @@ def catalogue(manifests):
     """Validate all declarations, even those outside the requested selection."""
     from .manifest import PluginManifest
     result = {}
+    if isinstance(manifests, (str, bytes, Mapping)):
+        raise SelectionError('invalid_catalogue')
+    try:
+        manifests = iter(manifests)
+    except TypeError:
+        raise SelectionError('invalid_catalogue') from None
     for item in manifests:
         if not isinstance(item, PluginManifest):
             raise SelectionError('invalid_manifest')
@@ -102,7 +108,7 @@ def _ordered(items, requested):
 def resolve_selection(selected, *, manifests, for_clone=False, for_group=False,
                       mandatory=(), credentials=None, capabilities=(), premium=False):
     items = catalogue(manifests)
-    ordered = _ordered(items, _slugs(selected) + _slugs(mandatory))
+    ordered = _ordered(items, normalize_slugs(selected) + normalize_slugs(mandatory))
     credentials = credentials if isinstance(credentials, Mapping) else {}
     if isinstance(capabilities, str):
         raise SelectionError('invalid_capabilities')

@@ -2422,6 +2422,38 @@
         "Per-clone applied revisions/profile rollback, durable cleanup replay, process isolation and dashboard redesign remain separate work",
         "No external plugin execution, deployment, production environment/database changes, destructive migration or PR merge"
       ]
+    },
+    {
+      "id": "phase2-malformed-selection-boundaries-and-postgres-rejection-regression",
+      "status": "completed",
+      "starting_commit": "f1b9f05a133747cf4ebeafb196c453cb87b7c69b",
+      "implemented": [
+        "Shared pure normalize_slugs rejects mappings, bytes, scalars and None rather than accepting mapping keys as plugin requests",
+        "Malformed catalogue containers produce structured invalid_catalogue instead of leaking TypeError or misclassifying the container as one invalid manifest",
+        "Clone structural planner reuses same normalizer before any draft mutation; canonical valid iterable semantics unchanged"
+      ],
+      "sources": [
+        "agent/platform/selection.py:normalize_slugs, catalogue",
+        "agent/modules/clone/catalog.py:plan_selection",
+        "tests/test_selection_resolver.py:test_malformed_request_shapes_raise_structured_errors,test_malformed_catalogue_shapes_raise_structured_errors",
+        "tests/test_clone_selection_foundation.py:test_malformed_draft_selection_has_no_mutation",
+        "tests/test_atomic_clones.py:test_invalid_selection_start_preserves_canonical_records_and_other_tenants"
+      ],
+      "validation": {
+        "red_command": ".venv/bin/python -m pytest -o addopts= -q tests/test_selection_resolver.py tests/test_clone_selection_foundation.py --tb=short",
+        "red_result": "7 failed, 22 passed in 0.55s before implementation",
+        "green_result": "29 passed in 0.38s after implementation; subsequent helper rename and SQL regression covered by final full run",
+        "full_command": "AGENT_TEST_DATABASE_URL=<disposable pgserver URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); pass s.get_uri() to subprocess; finally s.cleanup()",
+        "full_result": "1684 passed, no skips, 18.05s",
+        "static_command": ".venv/bin/python -m compileall -q agent tests tools start.py && .venv/bin/python -m pyflakes agent tests tools && git diff --check",
+        "static_result": "passed",
+        "sql_evidence": "Invalid stored selection rejected before worker factory; canonical clone JSONB in both primary and unrelated tenant unchanged. Safe failure diagnostics may still be recorded separately as designed."
+      },
+      "remaining": [
+        "No profile transitions/rollback, cleanup replay, new commands or dashboard changes",
+        "No deployment, production database/environment changes or PR merge"
+      ]
     }
   ],
   "production_changes": false,

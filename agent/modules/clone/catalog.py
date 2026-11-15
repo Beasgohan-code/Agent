@@ -45,10 +45,10 @@ def plan_selection(requested):
     from dataclasses import replace
     from ...modules import MODULES
     from ...platform.policy import GROUP_CORE
-    from ...platform.selection import resolve_selection
+    from ...platform.selection import resolve_selection, normalize_slugs
     manifests = [replace(m.MANIFEST, required_credentials=(), required_capabilities=(),
                          premium_required=False) for m in MODULES]
-    requested = tuple(requested) if not isinstance(requested, str) else requested
+    requested = normalize_slugs(requested)
     resolved = resolve_selection(requested, manifests=manifests, for_clone=True,
                                  mandatory=GROUP_CORE)
     explicit = {s.strip().lower() for s in requested}

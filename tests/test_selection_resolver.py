@@ -101,3 +101,17 @@ def test_dependency_conflicting_with_mandatory_core_is_rejected():
     with pytest.raises(selection.SelectionError) as error:
         selection.resolve_selection(('a',), manifests=catalogue, for_clone=True, mandatory=('moderation',))
     assert error.value.code == 'plugin_conflict'
+
+
+@pytest.mark.parametrize('bad', [None, 7, {'a': True}, b'a'])
+def test_malformed_request_shapes_raise_structured_errors(bad):
+    with pytest.raises(selection.SelectionError) as error:
+        selection.resolve_selection(bad, manifests=[plugin('a')])
+    assert error.value.code == 'invalid_selection'
+
+
+@pytest.mark.parametrize('bad', [None, 7, {'a': 'not-a-manifest'}])
+def test_malformed_catalogue_shapes_raise_structured_errors(bad):
+    with pytest.raises(selection.SelectionError) as error:
+        selection.resolve_selection(('a',), manifests=bad)
+    assert error.value.code == 'invalid_catalogue'
