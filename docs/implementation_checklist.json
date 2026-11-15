@@ -1385,6 +1385,27 @@
         "Cancellation inside driver pool construction before return remains driver-managed",
         "Exact user-reported outage cause requires hosting startup log; no deployment, production connection or merge performed"
       ]
+    },
+    {
+      "id": "document-writer-cancellation-and-write-order",
+      "status": "completed",
+      "implemented": [
+        "Background writer and explicit document flush now share serialized queue draining, preventing older in-flight writes from finishing after newer explicit flushes",
+        "Cancelled flush requeues unconfirmed batch using setdefault so newer pending values win",
+        "Database.close first cancels/drains writer, then flushes recovered pending batch before pool close",
+        "Document flush logs only exception class, avoiding raw backend secret disclosure"
+      ],
+      "validation": [
+        "21 focused database tests passed",
+        "New deterministic regressions cancel in-flight writer during close, verify recovered unrelated data and newer same-key value, and verify concurrent flush commit order",
+        "Full disposable PostgreSQL suite 1613 passed, no skips, 16.00 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Legacy document writes still best-effort queued, not cross-process revisions; ambiguous transaction acknowledgement can be retried",
+        "Final flush failure retains pending in memory but does not guarantee durability after process exit",
+        "No live deployment/startup logs received; reported outage cause still unknown; no production schema migration or merge performed"
+      ]
     }
   ],
   "production_changes": false,

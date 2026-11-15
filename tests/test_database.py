@@ -321,3 +321,55 @@ def test_failed_schema_initialization_disposes_pool_and_redacts_errors(monkeypat
         assert driver.create_pool.await_count == 2
         assert db.connected and db._pool is pool
     asyncio.run(scenario())
+
+
+def test_shutdown_retries_cancelled_inflight_batch_without_overwriting_newer_values(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    async def scenario():
+        db = Database('postgresql://user@host/db')
+        db.connected = True
+        db._pool = SimpleNamespace(close=AsyncMock())
+        entered = asyncio.Event()
+        attempts = []
+        async def write(batch):
+            attempts.append(dict(batch))
+            if len(attempts) == 1:
+                entered.set()
+                await asyncio.Event().wait()
+        monkeypatch.setattr(db, '_write_batch', write)
+        db.save('runtime', {'version': 1})
+        db.save('other', {'keep': True})
+        await entered.wait()
+        db.save('runtime', {'version': 2})
+        await db.close()
+        assert attempts == [{'runtime': {'version': 1}, 'other': {'keep': True}},
+                            {'runtime': {'version': 2}, 'other': {'keep': True}}]
+        assert not db._pending
+        assert not db.connected and db._pool is None
+    asyncio.run(scenario())
+
+
+def test_concurrent_flushes_commit_in_queue_order(monkeypatch):
+    async def scenario():
+        db = Database('postgresql://user@host/db')
+        db.connected = True
+        entered, release = asyncio.Event(), asyncio.Event()
+        writes = []
+        async def write(batch):
+            writes.append(dict(batch))
+            if len(writes) == 1:
+                entered.set()
+                await release.wait()
+        monkeypatch.setattr(db, '_write_batch', write)
+        db._pending['settings'] = 1
+        first = asyncio.create_task(db.flush())
+        await entered.wait()
+        db._pending['settings'] = 2
+        second = asyncio.create_task(db.flush())
+        await asyncio.sleep(0)
+        assert writes == [{'settings': 1}]
+        release.set()
+        assert await first == 1 and await second == 1
+        assert writes == [{'settings': 1}, {'settings': 2}]
+    asyncio.run(scenario())

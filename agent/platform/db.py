@@ -167,6 +167,7 @@ class Database:
         self._writer: asyncio.Task | None = None
         self._warned = False
         self._flush_interval = flush_interval
+        self._write_lock = asyncio.Lock()
 
     # -- scoping -----------------------------------------------------------
     def name_for(self, name: str) -> str:
@@ -277,13 +278,14 @@ class Database:
         return len(self._docs)
 
     async def close(self) -> None:
-        await self.flush()
         if self._writer is not None and not self._writer.done():
             self._writer.cancel()
             try:
                 await self._writer
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
+        # Cancellation requeues unconfirmed writes before this final flush.
+        await self.flush()
         if self._pool is not None:
             await self._pool.close()
             self._pool = None
@@ -313,17 +315,7 @@ class Database:
 
     async def _drain(self) -> None:
         while self._pending:
-            batch = dict(self._pending)
-            self._pending.clear()
-            try:
-                await self._write_batch(batch)
-            except Exception as exc:  # noqa: BLE001 - durability is best effort
-                if not self._warned:
-                    logger.warning("Could not persist documents: %s", exc)
-                    self._warned = True
-                # Put them back so a later flush retries, without looping hot.
-                for key, value in batch.items():
-                    self._pending.setdefault(key, value)
+            if not await self.flush():
                 await asyncio.sleep(1.0)
                 return
             await asyncio.sleep(self._flush_interval)
@@ -339,19 +331,24 @@ class Database:
                     )
 
     async def flush(self) -> int:
-        """Write everything queued right now. Returns how many documents went."""
-        if not self.connected or not self._pending:
-            return 0
-        batch = dict(self._pending)
-        self._pending.clear()
-        try:
-            await self._write_batch(batch)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Final flush failed: %s", exc)
-            for key, value in batch.items():
-                self._pending.setdefault(key, value)
-            return 0
-        return len(batch)
+        """Serialize queue draining; cancellation preserves unconfirmed writes."""
+        async with self._write_lock:
+            if not self.connected or not self._pending:
+                return 0
+            batch = dict(self._pending)
+            self._pending.clear()
+            try:
+                await self._write_batch(batch)
+            except asyncio.CancelledError:
+                for key, value in batch.items():
+                    self._pending.setdefault(key, value)
+                raise
+            except Exception as error:
+                logger.warning('Document flush failed (%s); queued for retry.', type(error).__name__)
+                for key, value in batch.items():
+                    self._pending.setdefault(key, value)
+                return 0
+            return len(batch)
 
     # -- the lease ---------------------------------------------------------
     async def take_lease(self, name: str, holder: str, ttl: float) -> str:
