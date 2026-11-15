@@ -25,6 +25,7 @@ from pyrogram.errors import RPCError, FloodWait
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
+from ...platform.antispam import read_policy, change_policy, policy_history, PolicyError
 from ...platform.chats import SPAM_ACTIONS
 from ...platform.manifest import PluginManifest
 from ...ui.tables import Table, kv_table, panel
@@ -331,7 +332,7 @@ def watch(ctx):
                 return
             if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
                 return
-            policy = ctx.chats.antispam(chat.id) if ctx.chats else {}
+            policy = await read_policy(ctx, chat.id) if ctx.chats else {}
             if not any(
                 policy.get(key)
                 for key in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled", "keywords_enabled")
@@ -653,45 +654,20 @@ def build(ctx):
         if chat is None or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
             await reply(message, "Anti-spam settings are per group.")
             return
-        if not await _guard(client, message, need="can_manage_chat"):
+        if not await is_moderator(client, message, need="can_manage_chat"):
+            await reply(message, DENIED)
             return
-        policy = ctx.chats.antispam(chat.id)
         args = _args(message)[1:]
-        if args:
-            key = args[0].lower()
-            value = args[1].lower() if len(args) > 1 else None
-            if key == "off":
-                for flag in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled"):
-                    policy[flag] = False
-            elif key == "on":
-                for flag in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled"):
-                    policy[flag] = True
-            elif key == "limit" and value and value.isdigit():
-                policy["flood_messages"] = max(2, int(value))
-            elif key == "action" and value in SPAM_ACTIONS:
-                policy["action"] = value
-            elif key == "links" and value in ("on", "off"):
-                policy["links_enabled"] = value == "on"
-            elif key == "invites" and value in ("on", "off"):
-                policy["invites_enabled"] = value == "on"
-            elif key == "mute" and value and value.isdigit():
-                policy["mute_seconds"] = max(30, int(value))
-            elif key.startswith("keyword") and value:
-                policy["keywords_enabled"] = True
-                policy["blocked_keywords"] = [*policy.get("blocked_keywords", []), value]
-            elif key == "keyword-clear":
-                policy["keywords_enabled"] = False
-                policy["blocked_keywords"] = []
+        try:
+            if args:
+                policy = await change_policy(ctx, chat.id, args[0].lower(),
+                    " ".join(args[1:]).lower() if len(args) > 1 else None,
+                    actor=message.from_user.id)
             else:
-                await reply(message, 
-                    "Usage: /antispam on|off|limit 7|action mute|links off|invites off"
-                    "|mute 300|keyword word|keyword-clear"
-                )
-                return
-            policy = ctx.chats.save_antispam(chat.id, policy)
-            ctx.chats.log(
-                chat.id, "antispam", actor_id=message.from_user.id, reason=" ".join(args)
-            )
+                policy = await read_policy(ctx, chat.id)
+        except PolicyError as error:
+            await reply(message, str(error))
+            return
         keywords = policy.get("blocked_keywords") or []
         table = kv_table(
             [
@@ -723,7 +699,12 @@ def build(ctx):
     async def modlog(client, message):
         if not await _guard(client, message):
             return
-        history = ctx.chats.history(message.chat.id, limit=10)
+        try:
+            committed = await policy_history(ctx, message.chat.id)
+        except PolicyError:
+            await reply(message, "Moderation history could not be loaded. Please try again shortly.")
+            return
+        history = sorted([*ctx.chats.history(message.chat.id, limit=10), *committed], key=lambda row: row.get("at", 0), reverse=True)[:10]
         if not history:
             await reply(message, 
                 panel(
@@ -754,7 +735,7 @@ def build(ctx):
                 icon=ctx.theme.emoji("stats"),
                 subtitle="Newest first.",
                 table=table,
-                footer="Per group, capped at 200 entries, times in UTC.",
+                footer="Recent actions for this group · times in UTC. Protection changes are read from committed audit history.",
             )
         )
 

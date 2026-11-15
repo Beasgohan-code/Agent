@@ -174,3 +174,34 @@ def test_controls_use_confirmed_sql_and_preserve_canonical_text(tmp_path, monkey
             await db.close()
 
     asyncio.run(scenario())
+
+
+def test_protection_callback_uses_manage_chat_permission(tmp_path, monkeypatch):
+    async def scenario():
+        ctx = context(tmp_path)
+        group.build(ctx)
+        writer = AsyncMock()
+        monkeypatch.setattr("agent.modules.group.controls.change_policy", writer)
+        press = query("gmanage:links:off")
+        await ctx.actions.dispatch(
+            fixtures.FakeClient(rights={"can_manage_chat": False}), press
+        )
+        writer.assert_not_awaited()
+        assert press.answer.await_args.kwargs["show_alert"]
+
+    asyncio.run(scenario())
+
+
+def test_protection_switch_changes_only_requested_flag(tmp_path, monkeypatch):
+    async def scenario():
+        ctx = context(tmp_path)
+        group.build(ctx)
+        editor = AsyncMock()
+        monkeypatch.setattr("agent.modules.group.controls.edit", editor)
+        press = query("gmanage:links:off")
+        await ctx.actions.dispatch(fixtures.FakeClient(), press)
+        assert ctx.chats.antispam(fixtures.CHAT)["links_enabled"] is False
+        assert ctx.chats.antispam(fixtures.CHAT)["invites_enabled"] is True
+        assert "Group protection" in str(editor.await_args.args[1])
+
+    asyncio.run(scenario())

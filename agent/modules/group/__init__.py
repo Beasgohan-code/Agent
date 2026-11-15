@@ -111,10 +111,11 @@ def build(ctx):
         if not await _guard(client, message, need="can_change_info"):
             return
         chat_id = message.chat.id
-        policy = ctx.chats.antispam(chat_id)
         limit, action = warn_policy(ctx.chats, chat_id)
         from ..welcome import read_greeting
         try:
+            from ...platform.antispam import read_policy
+            policy = await read_policy(ctx, chat_id)
             greeting = await read_greeting(ctx, chat_id, "welcome")
             goodbye = await read_greeting(ctx, chat_id, "goodbye")
         except Exception as error:

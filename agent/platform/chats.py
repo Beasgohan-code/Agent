@@ -160,6 +160,9 @@ class ChatStore:
         return {**DEFAULT_ANTISPAM, **stored}
 
     def save_antispam(self, chat_id: int, policy: dict) -> dict:
+        if self._db is not None:
+            from .antispam import PolicyError
+            raise PolicyError("Awaited PostgreSQL protection update required.")
         self._chat(chat_id)["settings"]["antispam"] = policy
         self._save()
         return self.antispam(chat_id)

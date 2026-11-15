@@ -11,6 +11,7 @@ from pyrogram.types import (
 )
 
 from ...ui.tables import panel, kv_table
+from ...platform.antispam import read_policy, change_policy
 from ...utils.rich import edit
 from ..moderation import is_moderator
 from .. import welcome
@@ -26,7 +27,7 @@ def keyboard(ctx):
             Button("Goodbye messages", callback_data="gmanage:goodbye:show"),
         ],
         [
-            Button("Protection guide", callback_data="help:moderation"),
+            Button("Protection controls", callback_data="gmanage:protection:show"),
             Button("Rules & tools guide", callback_data="help:group-management"),
         ],
     ]
@@ -59,17 +60,34 @@ def register(ctx):
                 )
                 return
             request = SimpleNamespace(chat=chat, from_user=user)
+            parts = rest.split(":")
+            protection = bool(
+                parts
+                and parts[0]
+                in ("protection", "links", "invites", "flood", "duplicates")
+            )
+            need = "can_manage_chat" if protection else "can_change_info"
             # Deployment ownership never substitutes for Telegram group rights.
-            if not await is_moderator(client, request, need="can_change_info"):
+            if not await is_moderator(client, request, need=need):
                 await query.answer(
-                    "Group-admin permission to change group info is required.",
+                    "The required group-admin permission is missing.",
                     show_alert=True,
                 )
                 return
             parts = rest.split(":")
             if (
                 len(parts) != 2
-                or parts[0] not in ("home", "welcome", "goodbye")
+                or parts[0]
+                not in (
+                    "home",
+                    "welcome",
+                    "goodbye",
+                    "protection",
+                    "links",
+                    "invites",
+                    "flood",
+                    "duplicates",
+                )
                 or parts[1] not in ("show", "on", "off")
             ):
                 await query.answer(
@@ -77,7 +95,58 @@ def register(ctx):
                 )
                 return
             kind, action = parts
-            if kind == "home":
+            if protection:
+                if kind == "protection" and action != "show":
+                    await query.answer(
+                        "Choose a specific protection switch.", show_alert=True
+                    )
+                    return
+                if action != "show":
+                    policy = await change_policy(ctx, chat.id, kind, action, actor=uid)
+                else:
+                    policy = await read_policy(ctx, chat.id)
+                fields = [
+                    ("links", "Link filtering", "links_enabled"),
+                    ("invites", "Invite filtering", "invites_enabled"),
+                    ("flood", "Flood protection", "flood_enabled"),
+                    ("duplicates", "Duplicate protection", "duplicate_enabled"),
+                ]
+                text = panel(
+                    "Group protection",
+                    table=kv_table(
+                        [
+                            (label, "On" if policy[key] else "Off")
+                            for _, label, key in fields
+                        ]
+                        + [
+                            ("Action", policy["action"]),
+                            ("Blocked phrases", str(len(policy["blocked_keywords"]))),
+                        ]
+                    ),
+                    note="Switches apply only to this group. Staff and trusted members remain exempt. Use /antispam for thresholds, actions and blocked phrases.",
+                )
+                buttons = Keyboard(
+                    [
+                        [
+                            Button(
+                                f"{label} · {'Turn off' if policy[key] else 'Turn on'}",
+                                callback_data=f"{PREFIX}:{name}:{'off' if policy[key] else 'on'}",
+                            )
+                        ]
+                        for name, label, key in fields
+                    ]
+                    + [
+                        [
+                            Button(
+                                "Refresh", callback_data=f"{PREFIX}:protection:show"
+                            ),
+                            Button(
+                                "Group Management", callback_data=f"{PREFIX}:home:show"
+                            ),
+                        ]
+                    ]
+                )
+            elif kind == "home":
                 if action != "show":
                     await query.answer("Invalid overview action.", show_alert=True)
                     return
