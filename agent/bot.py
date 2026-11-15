@@ -616,6 +616,10 @@ class AgentBot:
 
     async def _start_optional_services(self):
         """Bound optional integrations; neither may block the main bot forever."""
+        storage = getattr(self.modules, 'storage', None)
+        recover = getattr(storage, 'start_archive_recovery', None)
+        if recover is not None:
+            recover()
         # Start the voice engine after the bot is up: a failure there must not
         # take the command surface down with it.
         if self.voice is not None:

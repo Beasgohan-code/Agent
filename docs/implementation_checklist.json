@@ -1606,6 +1606,30 @@
         "Durable archive recovery, plugin cleanup/authority audit and diagnostics retrieval remain pending",
         "No deployment, production data rewrite, schema migration or PR merge"
       ]
+    },
+    {
+      "id": "managed-local-archive-recovery",
+      "status": "completed",
+      "implemented": [
+        "Main and clone controller start managed archive recovery after Telegram connects",
+        "Single recovery task retries local-only index records in batches of 20 every 60 seconds, sharing existing per-file lock and two-upload semaphore",
+        "Round-robin cursor prevents permanently failing early files starving later files; no duplicate recovery loop",
+        "Shutdown cancels recovery and upload tasks; missing bytes are skipped, never marked archived",
+        "Upload path refuses symlinks and resolved paths outside vault files directory; failures log no raw upload exception"
+      ],
+      "validation": [
+        "Regressions simulate store reload/interrupted upload recovery, transient failure retry, missing bytes, duplicate start and shutdown drain",
+        "Batch-size-one regression confirms later uploads progress despite earlier permanent failure",
+        "Symlink regression confirms no uploader call",
+        "Full disposable PostgreSQL suite 1631 passed, no skips, 19.25 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Recovery depends on surviving local bytes; cannot recreate lost ephemeral-disk files without completed remote copy",
+        "Remote file_id index save still uses legacy queued persistence; transactional durable archive acknowledgement/state machine and quota reservations pending",
+        "Path checks mitigate ordinary unsafe paths/symlinks, not adversarial same-user filesystem TOCTOU replacement",
+        "No live archive upload, production deployment, migrations or PR merge"
+      ]
     }
   ],
   "production_changes": false,

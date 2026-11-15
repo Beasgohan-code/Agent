@@ -93,3 +93,74 @@ def test_distinct_archive_uploads_have_bounded_concurrency(tmp_path):
         assert await asyncio.gather(*(store.archive(saved) for saved in files)) == ['cached'] * 5
         assert maximum == 2
     asyncio.run(scenario())
+
+
+def test_recovery_reloads_local_only_records_retries_and_skips_missing_bytes(tmp_path, monkeypatch):
+    async def scenario():
+        monkeypatch.setattr(storage, 'ARCHIVE_RECOVERY_INTERVAL', 0.01)
+        original = storage.Storage(tmp_path)
+        saved = original.save_bytes(1, 'recover', b'data')
+        missing = original.save_bytes(1, 'missing', b'lost')
+        original.path_for(missing).unlink()
+        restored = storage.Storage(tmp_path)
+        attempts = []
+        complete = asyncio.Event()
+        async def upload(path, name):
+            attempts.append(name)
+            if len(attempts) == 1:
+                raise ConnectionError('token=private_upload_error')
+            complete.set()
+            return 'cached-recovered'
+        restored.attach_archive(upload)
+        restored.start_archive_recovery()
+        task = restored._archive_recovery
+        restored.start_archive_recovery()
+        assert restored._archive_recovery is task
+        await asyncio.wait_for(complete.wait(), timeout=1)
+        await restored.shutdown()
+        assert attempts == ['recover', 'recover']
+        assert restored._index[saved.id].telegram_file_id == 'cached-recovered'
+        assert restored._index[missing.id].telegram_file_id == ''
+        assert task.done() and restored._archive_recovery is None
+        assert not restored._archive_tasks
+        again = storage.Storage(tmp_path)
+        assert again._index[saved.id].telegram_file_id == 'cached-recovered'
+    asyncio.run(scenario())
+
+
+def test_recovery_batches_do_not_starve_later_files_behind_failed_uploads(tmp_path, monkeypatch):
+    async def scenario():
+        monkeypatch.setattr(storage, 'ARCHIVE_RECOVERY_INTERVAL', 0.01)
+        monkeypatch.setattr(storage, 'ARCHIVE_RECOVERY_BATCH', 1)
+        store = storage.Storage(tmp_path)
+        first = store.save_bytes(1, 'failing', b'a')
+        second = store.save_bytes(1, 'working', b'b')
+        complete = asyncio.Event()
+        async def upload(path, name):
+            if name == 'failing':
+                raise ConnectionError('private backend failure')
+            complete.set()
+            return 'cached'
+        store.attach_archive(upload)
+        store.start_archive_recovery()
+        await asyncio.wait_for(complete.wait(), timeout=1)
+        await store.shutdown()
+        assert first.telegram_file_id == ''
+        assert second.telegram_file_id == 'cached'
+    asyncio.run(scenario())
+
+
+def test_archive_refuses_local_symlink_without_calling_uploader(tmp_path):
+    async def scenario():
+        store = storage.Storage(tmp_path / 'vault')
+        saved = store.save_bytes(1, 'file', b'data')
+        path = store.path_for(saved)
+        path.unlink()
+        secret = tmp_path / 'private'
+        secret.write_text('private')
+        path.symlink_to(secret)
+        uploader = AsyncMock(return_value='should-not-upload')
+        store.attach_archive(uploader)
+        assert await store.archive(saved) == ''
+        uploader.assert_not_awaited()
+    asyncio.run(scenario())

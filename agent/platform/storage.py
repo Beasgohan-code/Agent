@@ -32,6 +32,8 @@ from .db import load_document, save_document
 logger = logging.getLogger(__name__)
 
 ARCHIVE_TIMEOUT = 120.0
+ARCHIVE_RECOVERY_INTERVAL = 60.0
+ARCHIVE_RECOVERY_BATCH = 20
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -95,6 +97,8 @@ class Storage:
         #: ``async (path, name) -> telegram file_id``, set once a client exists.
         self._archive = archive
         self._archive_tasks = {}
+        self._archive_recovery = None
+        self._archive_recovery_cursor = 0
         self._archive_locks = WeakValueDictionary()
         self._archive_slots = asyncio.Semaphore(2)
         self._archive_closed = False
@@ -153,14 +157,15 @@ class Storage:
         if self._archive is None or stored.telegram_file_id:
             return stored.telegram_file_id
         path = self.path_for(stored)
-        if not path.exists():
+        if (not path.is_file() or path.is_symlink()
+                or path.resolve().parent != self.files_dir.resolve()):
             return ""
         try:
             async with asyncio.timeout(ARCHIVE_TIMEOUT):
                 async with self._archive_slots:
                     file_id = await self._archive(path, stored.name)
         except Exception:  # noqa: BLE001 - a failed archive must not lose the file
-            logger.warning("could not archive %s", stored.name, exc_info=True)
+            logger.warning('Archive upload unconfirmed; local bytes retained')
             return ""
         if self._index.get(stored.id) is not stored:
             # An archive upload finishing after deletion must not resurrect it.
@@ -199,9 +204,52 @@ class Storage:
                     logger.error("Archive persistence failed (%s)", type(error).__name__)
         task.add_done_callback(completed)
 
+    def start_archive_recovery(self):
+        """Retry interrupted/local-only uploads after Telegram is connected."""
+        if self._archive_closed or self._archive is None:
+            return
+        if self._archive_recovery is not None and not self._archive_recovery.done():
+            return
+        self._archive_recovery = asyncio.get_running_loop().create_task(
+            self._recover_archives(), name='archive-recovery')
+
+    async def _recover_archives(self):
+        while not self._archive_closed:
+            try:
+                selected = []
+                records = list(self._index.values())
+                start = self._archive_recovery_cursor % max(1, len(records))
+                for offset in range(len(records)):
+                    self._archive_recovery_cursor = start + offset + 1
+                    stored = records[(start + offset) % len(records)]
+                    if stored.telegram_file_id or stored.id in self._archive_tasks:
+                        continue
+                    path = self.path_for(stored)
+                    if (not path.is_file() or path.is_symlink()
+                            or path.resolve().parent != self.files_dir.resolve()):
+                        continue  # An index entry cannot reconstruct lost bytes.
+                    self.schedule_archive(stored)
+                    task = self._archive_tasks.get(stored.id)
+                    if task is not None:
+                        selected.append(task)
+                    if len(selected) >= ARCHIVE_RECOVERY_BATCH:
+                        break
+                if selected:
+                    await asyncio.gather(*selected, return_exceptions=True)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.warning('#Errors Archive recovery pass failed (%s)', type(error).__name__)
+            await asyncio.sleep(ARCHIVE_RECOVERY_INTERVAL)
+
     async def shutdown(self):
         """Stop scheduled uploads before their Telegram client disconnects."""
         self._archive_closed = True
+        recovery = self._archive_recovery
+        if recovery is not None:
+            recovery.cancel()
+            await asyncio.gather(recovery, return_exceptions=True)
+            self._archive_recovery = None
         tasks = list(self._archive_tasks.values())
         for task in tasks:
             task.cancel()

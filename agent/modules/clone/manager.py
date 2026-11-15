@@ -219,6 +219,10 @@ class CloneManager:
                     if getattr(me, "id", None) != clone.bot_id:
                         raise CloneError("Telegram identity does not match the recorded clone.")
                     username = getattr(me, "username", "") or ""
+                storage = getattr(getattr(bot, 'modules', None), 'storage', None)
+                recover = getattr(storage, 'start_archive_recovery', None)
+                if recover is not None:
+                    recover()
                 voice = getattr(bot, "voice", None)
                 if voice is not None:
                     await voice.start()
