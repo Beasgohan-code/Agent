@@ -117,7 +117,7 @@ def test_an_unknown_slug_costs_one_plugin_not_the_bot():
 
 
 def test_star_selects_everything_compiled():
-    assert len(select(("*",))) == 19
+    assert len(select(("*",))) == 20
 
 
 # --- the panel ------------------------------------------------------------
