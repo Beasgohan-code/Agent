@@ -57,7 +57,11 @@ class CallbackHandlers:
 
         active = set(self._active_commands()) if self._active_commands is not None else None
         screen = builder(user, self._theme, active=active)
-        if not await self._sender.edit(callback_query, screen):
+        outcome = await self._sender.edit(callback_query, screen)
+        if outcome is None:
+            await self._answer(callback_query, "Update not confirmed. Please try again shortly.")
+            return
+        if outcome is False:
             chat_id = getattr(getattr(message, "chat", None), "id", None)
             try:
                 await self._sender.send(chat_id, screen)

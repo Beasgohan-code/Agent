@@ -80,6 +80,14 @@ def _photo_rejected(exc: Exception) -> bool:
     ))
 
 
+def _uneditable(exc):
+    reason = f"{type(exc).__name__} {exc}".upper().replace("_", "")
+    return any(code in reason for code in (
+        "MESSAGEIDINVALID", "MESSAGEEDITTIMEEXPIRED", "MESSAGEAUTHORREQUIRED",
+        "MESSAGECANTBEEDITED", "MESSAGECANNOTBEEDITED",
+    ))
+
+
 class ScreenSender:
     """Sends and edits screens, degrading gracefully at every step."""
 
@@ -172,8 +180,11 @@ class ScreenSender:
             logger.warning("Start image was rejected (%s); sending text instead.", type(exc).__name__)
             return await self.send(chat_id, screen)
 
-    async def edit(self, callback_query, screen: Screen) -> bool:
+    async def edit(self, callback_query, screen: Screen) -> bool | None:
         """Edit the message a callback query points at.
+
+        True means confirmed; False means explicitly uneditable (safe to replace).
+        None means unconfirmed or forbidden: callers must not resend the card.
 
         Rich first: the Bot API edits a rich message through
         ``edit_message_text(rich_message=…)``, so a table stays a table across a
@@ -196,7 +207,7 @@ class ScreenSender:
             except Exception as exc:  # noqa: BLE001 - a refused edit is not fatal
                 if not rich_utils._refused(exc):
                     logger.warning("Screen edit failed (%s); no automatic retry.", type(exc).__name__)
-                    return False
+                    return False if _uneditable(exc) else None
         text = rich_utils._classic_form(screen, screen.rich_text)
         try:
             await callback_query.edit_message_text(
@@ -210,8 +221,8 @@ class ScreenSender:
             return True
         except Exception as exc:
             if "<tg-emoji" not in text or not _emoji_rejected(exc):
-                logger.exception("Could not edit the message for a callback query.")
-                return False
+                logger.warning("Screen edit not confirmed (%s).", type(exc).__name__)
+                return False if _uneditable(exc) else None
             logger.warning("Custom emoji rejected on edit (%s); retrying.", exc)
             self._theme.disable_custom_emoji()
             try:
@@ -222,9 +233,9 @@ class ScreenSender:
                     link_preview_options=_no_preview(),
                 )
                 return True
-            except Exception:
-                logger.exception("Edit failed after removing custom emoji.")
-                return False
+            except Exception as exc:
+                logger.warning("Screen edit retry not confirmed (%s).", type(exc).__name__)
+                return False if _uneditable(exc) else None
 
     async def _post(self, chat_id, text: str, keyboard):
         return await self._client.send_message(

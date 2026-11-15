@@ -256,7 +256,10 @@ def _help_keyboard(active: set[str] | None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+HELP_PAGE_SIZE = 8
+
+
+def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | None = None, page: int = 0) -> Screen:
     """One section of the reference, with a sentence per command."""
     from ..platform.menu import DESCRIPTIONS
 
@@ -268,6 +271,9 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
             icon, commands = section_icon, section_commands
             break
     visible = [name for name in help_visible(commands, active) if name in DESCRIPTIONS]
+    pages = max(1, (len(visible) + HELP_PAGE_SIZE - 1) // HELP_PAGE_SIZE)
+    page = min(max(0, page), pages - 1)
+    selected = visible[page * HELP_PAGE_SIZE:(page + 1) * HELP_PAGE_SIZE]
     blocks = [
         rich_heading(f"{theme.emoji(icon)} {title}", 2),
         rich_note(
@@ -291,7 +297,7 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
             headers=("Command", "What it does"),
             rows=tuple(
                 (markup(f"<code>/{rich_esc(name)}</code>"), rich_esc(DESCRIPTIONS[name]))
-                for name in visible
+                for name in selected
             ),
             aligns=("left", "left"),
             max_column=44,
@@ -303,15 +309,24 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            "Choose another category below, or return to your workspace."
+            f"Page {page + 1} of {pages} · Choose another category or return to your workspace."
         )
     )
-    return Screen("\n".join(blocks), _section_keyboard())
+    return Screen("\n".join(blocks), _section_keyboard(title, page, pages))
 
 
-def _section_keyboard() -> InlineKeyboardMarkup:
+def _section_keyboard(title=None, page=0, pages=1) -> InlineKeyboardMarkup:
+    navigation = []
+    if title and pages > 1:
+        buttons = []
+        slug = section_slug(title)
+        if page > 0:
+            buttons.append(Button("‹ Previous", callback_data=f"help:{slug}:{page - 1}"))
+        if page + 1 < pages:
+            buttons.append(Button("Next ›", callback_data=f"help:{slug}:{page + 1}", style=ButtonStyle.PRIMARY))
+        navigation.append(buttons)
     return InlineKeyboardMarkup(
-        [
+        navigation + [
             [
                 Button(
                     "\u2b05\ufe0f All sections",
@@ -324,9 +339,9 @@ def _section_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def _section_builder(title: str):
+def _section_builder(title: str, page: int = 0):
     def build(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
-        return help_section_screen(title, user, theme, active=active)
+        return help_section_screen(title, user, theme, active=active, page=page)
 
     return build
 
@@ -481,6 +496,8 @@ ALL_SECTIONS = "all"
 SCREENS[f"help:{ALL_SECTIONS}"] = help_screen
 for _icon, _title, _commands in HELP_SECTIONS:
     SCREENS[f"help:{section_slug(_title)}"] = _section_builder(_title)
+    for _page in range(max(1, (len(_commands) + HELP_PAGE_SIZE - 1) // HELP_PAGE_SIZE)):
+        SCREENS[f"help:{section_slug(_title)}:{_page}"] = _section_builder(_title, _page)
 
 
 def ping_screen(monitor, theme: Theme) -> Screen:

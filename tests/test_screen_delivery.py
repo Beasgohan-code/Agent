@@ -44,7 +44,7 @@ def test_no_retries_for_transient_or_permission_errors(operation, error):
         c.send_message.assert_not_awaited()
     else:
         query = SimpleNamespace(_client=c, edit_message_text=AsyncMock(side_effect=error))
-        assert asyncio.run(sender.edit(query, screen)) is False
+        assert asyncio.run(sender.edit(query, screen)) is None
         assert query.edit_message_text.await_count == 1
     assert tables.rich_enabled()
 

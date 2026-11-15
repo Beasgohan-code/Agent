@@ -245,9 +245,9 @@ def test_unknown_callback_warns_the_user_and_does_not_edit():
     assert query.edits == []
 
 
-def test_callback_falls_back_to_a_new_message_when_edit_fails():
+def test_callback_replaces_only_explicitly_uneditable_messages():
     handlers, client = make_callback_handlers()
-    query = FakeQuery(CB_HELP, edit_error=RuntimeError("message is too old"))
+    query = FakeQuery(CB_HELP, edit_error=RuntimeError("MESSAGE_EDIT_TIME_EXPIRED"))
 
     asyncio.run(handlers.on_callback(None, query))
 
