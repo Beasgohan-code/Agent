@@ -133,29 +133,34 @@ def test_the_panel_has_one_management_suite_and_optional_buttons(tmp_path):
     assert "<pre>" in message.replies[0]          # editable classic grid
     slugs = [m.slug for m in bot.registry.manifests()]
     data = [b.callback_data for b in buttons(message.markup)]
-    assert data == ["plugin:group"] + [f"plugin:{slug}" for slug in slugs if slug not in {*GROUP_CORE, "ops", "core"}]
+    assert data == ["plugin:info:group"] + [f"plugin:info:{slug}" for slug in slugs if slug not in {*GROUP_CORE, "ops", "core"}]
     for button in buttons(message.markup):
         assert button.style is ButtonStyle.SUCCESS
-        if button.callback_data == "plugin:group":
+        if button.callback_data == "plugin:info:group":
             assert button.disabled is True        # the control plane is locked
 
 
-def test_pressing_a_button_switches_the_plugin_and_redraws(tmp_path):
+def test_browsing_plugin_is_readonly_and_disable_requires_confirmation(tmp_path):
     bot = make_bot(tmp_path)
     ops.build(bot.modules)
-    query = FakeQuery("plugin:filestore")
-
+    query = FakeQuery('plugin:filestore')
     asyncio.run(bot.actions.dispatch(None, query))
-
-    assert bot.registry.is_enabled("filestore") is False
-    assert "fsave" not in set(bot.registry.active_commands())
-    assert "off" in query.edits[0][0]
-    assert "filestore is off" in query.answers[0][0]
-    # The redraw keeps working buttons, including the one just pressed.
-    assert any(b.callback_data == "plugin:filestore" for b in buttons(query.edits[0][1]))
-
-    asyncio.run(bot.actions.dispatch(None, FakeQuery("plugin:filestore")))
-    assert bot.registry.is_enabled("filestore") is True
+    assert bot.registry.is_enabled('filestore')
+    assert 'Plugin workspace' in str(query.edits[0][0])
+    assert any(b.callback_data == 'plugin:ask:filestore' for b in buttons(query.edits[0][1]))
+    ask = FakeQuery('plugin:ask:filestore')
+    asyncio.run(bot.actions.dispatch(None, ask))
+    assert bot.registry.is_enabled('filestore')
+    assert 'every chat' in str(ask.edits[0][0])
+    assert any(b.callback_data == 'plugin:off:filestore' for b in buttons(ask.edits[0][1]))
+    off = FakeQuery('plugin:off:filestore')
+    asyncio.run(bot.actions.dispatch(None, off))
+    assert not bot.registry.is_enabled('filestore')
+    assert 'filestore is off' in off.answers[0][0]
+    # Explicit on is idempotent, never an inversion from stale state.
+    asyncio.run(bot.actions.dispatch(None, FakeQuery('plugin:on:filestore')))
+    asyncio.run(bot.actions.dispatch(None, FakeQuery('plugin:on:filestore')))
+    assert bot.registry.is_enabled('filestore')
 
 
 def test_the_locked_plugin_cannot_be_pressed_off(tmp_path):
@@ -205,4 +210,28 @@ def test_repeated_runtime_on_does_not_emit_duplicate_plugin_events(tmp_path):
         assert bot.events.count('plugin') == 1
         assert '/plugin leech approve' in request.replies[-1]
         assert '/plugins' in request.replies[-1]
+    asyncio.run(scenario())
+
+
+def test_workspace_refresh_unchanged_home_and_nonowner_controls(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    from pyrogram.errors import MessageNotModified
+    async def scenario():
+        bot = make_bot(tmp_path)
+        ops.build(bot.modules)
+        editor = AsyncMock(side_effect=MessageNotModified())
+        monkeypatch.setattr(ops.rich_ui, 'edit', editor)
+        refresh = FakeQuery('plugin:info:filestore')
+        await bot.actions.dispatch(None, refresh)
+        assert refresh.answers == [(None, False)]
+        home = FakeQuery('plugin:home')
+        await bot.actions.dispatch(None, home)
+        assert home.answers == [(None, False)]
+        for control in ('info:filestore', 'off:filestore', 'on:filestore', 'ask:filestore', 'home'):
+            editor.reset_mock()
+            denied = FakeQuery('plugin:' + control, uid=999)
+            await bot.actions.dispatch(None, denied)
+            editor.assert_not_awaited()
+            assert denied.answers[0][1]
+        assert bot.registry.is_enabled('filestore')
     asyncio.run(scenario())

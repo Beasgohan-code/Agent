@@ -1089,6 +1089,28 @@
         "No live Telegram rendering/provider connectivity verified; private Owner runtime panel unchanged",
         "Remaining plugin feature integrations still tracked separately; no deployment or PR merge"
       ]
+    },
+    {
+      "id": "owner-runtime-plugin-workspaces",
+      "status": "completed",
+      "implemented": [
+        "Owner /plugins keeps native rich Plugin runtime screen and now opens feature workspaces instead of toggling on browse",
+        "Per-plugin workspace displays actual runtime state, scope, registered commands, manifest description and setup guidance without secrets or fabricated connectivity",
+        "Disabling through new UI requires confirmation that handlers detach across all chats; describes approval/slots/jobs separately",
+        "Explicit on/off callbacks replace toggle inversion so stale on requests cannot switch an enabled plugin off",
+        "Legacy bare-slug callbacks safely browse details; Owner-only authorization precedes all reads/controls; protected plugins remain locked",
+        "Refresh/back navigation tolerates Telegram MessageNotModified without false failure"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL: 1574 passed, no skips, 16.44 seconds",
+        "Regression coverage includes readonly browsing, confirmation, actual disable/enable, repeated on, unchanged refresh/home and rejection of every nonowner control",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "No live Telegram visual/provider validation",
+        "Not full Videl1 feature parity; plugin service integrations still tracked separately",
+        "Approval/revocation still uses existing transactional text commands; no deployment or merge"
+      ]
     }
   ],
   "production_changes": false,

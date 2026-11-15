@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 import time
 from pathlib import Path
 
+from pyrogram.errors import MessageNotModified
 from pyrogram.enums import ButtonStyle, ChatMemberStatus, ChatType
 from pyrogram.handlers import ChatMemberUpdatedHandler
 from pyrogram.types import InlineKeyboardButton as Button
@@ -316,7 +317,7 @@ def build(ctx):
             row_buttons.append(
                 Button(
                     text=f"{'🔒' if locked else ('✅' if entry['enabled'] else '⛔')} {entry.get('name') or entry['slug']}",
-                    callback_data=f"{PLUGIN_PREFIX}:{entry['slug']}",
+                    callback_data=f"{PLUGIN_PREFIX}:info:{entry['slug']}",
                     style=(ButtonStyle.SUCCESS if entry["enabled"] else ButtonStyle.DEFAULT),
                     disabled=locked,
                 )
@@ -328,6 +329,36 @@ def build(ctx):
             buttons.append(row_buttons)
         return body, Keyboard(buttons)
 
+    def _plugin_workspace(entry):
+        slug = entry['slug']
+        commands = entry['commands']
+        body = panel(entry.get('name') or slug, icon=ctx.theme.emoji('gear'),
+            subtitle='Plugin workspace · this bot runtime',
+            table=kv_table([
+                ('Runtime', _state_text(entry)),
+                ('Scope', str(entry.get('scope', 'unknown'))),
+                ('Registered commands', str(len(commands))),
+                ('Control', 'protected' if entry['protected'] else 'Owner managed'),
+            ]),
+            lines=[html.escape(str(entry.get('description') or 'No description supplied.')),
+                   'Commands: ' + (' · '.join('/' + html.escape(cmd) for cmd in commands[:16]) or 'none registered'),
+                   f'Group setup: <code>/plugin {html.escape(slug)} approve</code>, then a group admin activates it in that group’s /plugins.'],
+            note='Runtime on does not grant group approval or prove provider connectivity. Turning it off detaches handlers; it does not revoke approval or free group slots.',
+            footer='Refresh is read-only. Use /help for command usage; credentials are never displayed here.')
+        buttons = []
+        if not entry['protected']:
+            buttons.append([Button('Disable runtime…' if entry['enabled'] else 'Enable runtime',
+                callback_data=f'{PLUGIN_PREFIX}:ask:{slug}' if entry['enabled'] else f'{PLUGIN_PREFIX}:on:{slug}')])
+        buttons += [[Button('Refresh', callback_data=f'{PLUGIN_PREFIX}:info:{slug}')],
+                    [Button('‹ Plugin runtime', callback_data=f'{PLUGIN_PREFIX}:home')]]
+        return body, Keyboard(buttons)
+
+    async def _edit_plugin(query, body, keyboard):
+        try:
+            await rich_ui.edit(query, body, reply_markup=keyboard)
+        except MessageNotModified:
+            pass
+
     async def on_plugin_press(client, query, rest: str) -> None:
         """A button pressed on the runtime panel."""
         owner_id = ctx.settings.owner_id
@@ -335,34 +366,52 @@ def build(ctx):
         if owner_id is None or presser is None or int(presser) != int(owner_id):
             await query.answer("Only the owner can switch plugins.", show_alert=True)
             return
-        slug = (rest or "").strip().lower()
-        state = {row["slug"]: row for row in runtime.state()}
+        parts = (rest or '').strip().lower().split(':')
+        if parts == ['home']:
+            body, keyboard = _plugin_panel()
+            await _edit_plugin(query, body, keyboard)
+            await query.answer()
+            return
+        # Old saved bare-slug buttons now browse safely instead of toggling.
+        action, slug = ('info', parts[0]) if len(parts) == 1 else (parts if len(parts) == 2 else ('invalid', ''))
+        state = {row['slug']: row for row in runtime.state()}
         entry = state.get(slug)
-        if entry is None:
-            await query.answer("No such plugin.", show_alert=True)
+        if entry is None or action not in ('info', 'ask', 'on', 'off'):
+            await query.answer('No such plugin or control.', show_alert=True)
+            return
+        if action == 'info' and not entry['protected']:
+            body, keyboard = _plugin_workspace(entry)
+            await _edit_plugin(query, body, keyboard)
+            await query.answer()
             return
         if entry["protected"]:
             await query.answer(f"{slug} is locked: the bot needs its own controls.", show_alert=True)
             return
-        if entry["enabled"]:
-            try:
-                changed = runtime.disable(slug)
-                message = f"{slug} is off — its handlers are detached."
-            except ValueError as exc:
-                await query.answer(str(exc), show_alert=True)
-                return
-        else:
-            changed = runtime.enable(slug)
-            message = f"{slug} runtime is on. Next: /plugin {slug} approve, then group-admin activation in /plugins."
+        if action == 'ask':
+            await _edit_plugin(query, panel('Disable runtime?', lines=[
+                f'Detach <b>{html.escape(slug)}</b> handlers for this bot? Its commands stop responding in every chat.',
+                'This does not revoke Owner approval or release group slots. Running external jobs are not guaranteed to stop.'],
+                note='Use the group plugin panel to disable only one group.'), Keyboard([
+                    [Button('Confirm disable runtime', callback_data=f'{PLUGIN_PREFIX}:off:{slug}')],
+                    [Button('Cancel', callback_data=f'{PLUGIN_PREFIX}:info:{slug}')]]))
+            await query.answer()
+            return
+        try:
+            changed = runtime.disable(slug) if action == 'off' else runtime.enable(slug)
+        except ValueError as exc:
+            await query.answer(str(exc), show_alert=True)
+            return
+        message = (f'{slug} is off — its handlers are detached.' if action == 'off' else
+                   f'{slug} runtime is on. Next: /plugin {slug} approve, then group-admin activation in /plugins.')
         if not changed:
             await query.answer("No runtime change was made. Refresh the panel; check plugin configuration if unavailable.", show_alert=True)
             return
         if events is not None:
-            events.emit("plugin", slug=slug, action="off" if entry["enabled"] else "on", by=presser)
+            events.emit("plugin", slug=slug, action=action, by=presser)
         logger.info("plugin %s toggled by %s from the panel", slug, presser)
-        text, keyboard = _plugin_panel()
+        text, keyboard = _plugin_workspace({row["slug"]: row for row in runtime.state()}[slug])
         try:
-            await rich_ui.edit(query, text, reply_markup=keyboard)
+            await _edit_plugin(query, text, keyboard)
         except Exception:  # noqa: BLE001 - an old message is not a failed toggle
             chat_id = getattr(getattr(query.message, "chat", None), "id", None)
             if chat_id is not None:
