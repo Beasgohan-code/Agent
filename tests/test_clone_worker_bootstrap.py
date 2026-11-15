@@ -597,5 +597,20 @@ def test_successful_reconnects_do_not_reset_rolling_restart_budget(tmp_path):
         assert len(ctx.clones._restart_history[record.bot_id]) == 2
         assert record.bot_id not in ctx.clones._pending_recovery
         now[0] += 3601
-        assert ctx.clones._restart_permission(record.bot_id, 2) == 'ready'
+        assert await ctx.clones._restart_permission(record.bot_id, 2) == 'ready'
+    asyncio.run(scenario())
+
+
+def test_boot_restore_obeys_restart_budget_instead_of_bypassing_circuit(tmp_path):
+    from unittest.mock import AsyncMock
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        record = ctx.clones._store.add(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A))
+        ctx.clones._restart_permission = AsyncMock(return_value='exhausted')
+        assert await ctx.clones.restore() == ()
+        assert not ctx.clones.running()
+        ctx.clones._restart_permission.assert_awaited_once_with(record.bot_id, 5)
+        ctx.clones._restart_permission.return_value = 'waiting'
+        assert await ctx.clones.restore() == ()
+        assert ctx.clones._pending_recovery == {record.bot_id: 0}
     asyncio.run(scenario())

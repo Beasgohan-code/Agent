@@ -328,7 +328,14 @@ class CloneManager:
         for bot_id in tuple(self._running):
             await self.stop(bot_id)
 
-    def _restart_permission(self, bot_id, maximum):
+    async def _restart_permission(self, bot_id, maximum):
+        if self._store._db is not None:
+            from ...platform.clone_recovery import CloneRecovery
+            try:
+                return await CloneRecovery(self._store._db).reserve(bot_id, maximum)
+            except Exception:
+                logger.warning('#Errors Clone restart budget could not be confirmed; retry deferred')
+                return 'waiting'
         now = self._clock()
         history = self._restart_history.setdefault(bot_id, [])
         history[:] = [stamp for stamp in history if now - stamp < 3600]
@@ -363,7 +370,7 @@ class CloneManager:
             if record is None or record.disabled or attempts >= max_attempts:
                 self._pending_recovery.pop(bot_id, None)
                 continue
-            permission = self._restart_permission(bot_id, max_attempts)
+            permission = await self._restart_permission(bot_id, max_attempts)
             if permission == 'exhausted':
                 self._pending_recovery.pop(bot_id, None)
                 continue
@@ -425,7 +432,7 @@ class CloneManager:
                     self.state(bot_id).attempts,
                 )
                 continue
-            permission = self._restart_permission(bot_id, max_attempts)
+            permission = await self._restart_permission(bot_id, max_attempts)
             if permission == 'exhausted':
                 continue
             if permission == 'waiting':
@@ -457,6 +464,11 @@ class CloneManager:
         started: list[int] = []
         for clone in await self._store.aall():
             if clone.disabled or self.is_running(clone.bot_id):
+                continue
+            permission = await self._restart_permission(clone.bot_id, 5)
+            if permission != 'ready':
+                if permission == 'waiting':
+                    self._pending_recovery[clone.bot_id] = 0
                 continue
             try:
                 await self.start(clone, automatic=True)

@@ -1540,6 +1540,29 @@
         "No exhaustive line-by-line audit claim; encryption legacy/local paths, archive recovery, plugin cleanup/capabilities and migration framework remain pending",
         "No deployment, production data rewrite, schema migration or PR merge"
       ]
+    },
+    {
+      "id": "durable-clone-restart-admission",
+      "status": "completed",
+      "implemented": [
+        "Automatic retry admission uses awaited tenant/bot-specific PostgreSQL history in existing agent_documents; no table/schema migration",
+        "Advisory transaction lock and SELECT FOR UPDATE serialize reservation across controllers; database clock supplies rolling-window time; success does not erase reservation history",
+        "Main clone boot restore also consults budget so restarting controller cannot bypass circuit; waiting recovery queues without starting, exhausted recovery remains stopped",
+        "Missing/corrupt restart authority defers retries rather than authorizing them; rejects non-finite stored history values",
+        "Local standalone compatibility retains monotonic in-memory budget; production database budget survives manager recreation"
+      ],
+      "validation": [
+        "Real PostgreSQL concurrency regression: one immediate reservation across three contenders, new service instances share cooldown/cap, tenant and bot isolation",
+        "Boot restore regression checks exhausted circuit and waiting recovery queue",
+        "Full disposable PostgreSQL suite 1626 passed, no skips, 19.88 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Durable history records automatic admission timestamps, not full classified startup/runtime error diagnostics; operational UI and separate failure history pending",
+        "Manual premium-authorized start is explicit operator action and not an automatic retry; other ownership/lease checks unchanged",
+        "Legacy/local plaintext and controlled migration/key rotation review remain separate; no production record rewrite performed",
+        "No production deployment, schema migration or PR merge"
+      ]
     }
   ],
   "production_changes": false,
