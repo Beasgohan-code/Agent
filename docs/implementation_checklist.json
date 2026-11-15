@@ -2454,6 +2454,81 @@
         "No profile transitions/rollback, cleanup replay, new commands or dashboard changes",
         "No deployment, production database/environment changes or PR merge"
       ]
+    },
+    {
+      "id": "phase3-preimplementation-revision-boundary-audit",
+      "status": "audit_complete_first_storage_slice_pending",
+      "actual_start": "fe797fac41232b6d90aa78e17863df44c0ad55ca",
+      "requested_base": "f1b9f05a133747cf4ebeafb196c453cb87b7c69b",
+      "source_map": {
+        "canonical_writes": "agent/modules/clone/store.py:216-327 (_atomic/aadd/aupdate/aremove); tenant advisory and row locks; encrypted JSONB canonical registry",
+        "configuration_writer": "agent/modules/clone/__init__.py:464-507 (_profile_press); profile/selected plugins/AI/music credentials committed before restart; no revision CAS",
+        "other_writers": "agent/modules/clone/__init__.py:357,590,596; manager.py:436; username and disabled lifecycle updates are not plugin configuration changes",
+        "create": "agent/modules/clone/setup.py:415-479; selection/identity/credentials checks and entitlement recheck before aadd; compensated removal on startup failure",
+        "start_stop_recovery": "agent/modules/clone/manager.py:166-341,375-509; locked local running map, PostgreSQL worker lease, restart stop/start, periodic canonical refresh; no applied revision fencing",
+        "in_memory_queues": "manager.py:_pending_recovery/_restart_history/_lease_monitors/_states; platform/execution.py:_seen/_running; platform/jobs.py in-process tasks. Durable CloneRecovery restart admission is separate",
+        "cleanup": "agent/platform/plugin_access.py:135-204 marks resource cleanup_pending in transaction, callback after commit; execution.py:45-60,130-145 retries known in-memory cleanup only",
+        "premium": "agent/platform/entitlements.py:26-118 separate premium-authority advisory transaction; platform/premium.py:163-199; manager.py:180 check before start,416-436 periodic revocation enforcement. No serializable entitlement+configuration commit today",
+        "schema": "agent/platform/db.py:71-89,209-239 agent_documents and leases/additive startup schemas; no configuration revision relation today",
+        "diagnostics": "agent/platform/clone_recovery.py:36-64 bounded safe events but no config revision identity; manager _record_event uses separate best-effort transaction"
+      },
+      "guidance": "No SKILL.md/AGENTS.md guidance assets found under /home/user depth 4. Use red/green tests, explicit repository API, atomic CAS and no worker application claim from storage writes.",
+      "plan": [
+        "First implement durable encrypted revision repository with CAS and fencing; no runtime/UI writer rewiring until configuration service and worker acknowledgement are ready",
+        "Then validate/propose via service with entitlement coordination and reconcile actual workers; only confirmed initialization may acknowledge",
+        "Then durable cleanup claims/backoff/replay and revision-aware diagnostics; full phase remains incomplete until integrated tests prove all criteria"
+      ],
+      "restrictions": [
+        "No new commands/dashboard changes",
+        "No production data/schema/env operations or deployment",
+        "No destructive migration or PR merge"
+      ]
+    },
+    {
+      "id": "phase3-encrypted-configuration-revision-repository",
+      "status": "storage_slice_completed_phase3_in_progress",
+      "starting_commit": "fe797fac41232b6d90aa78e17863df44c0ad55ca",
+      "sources": [
+        "agent/modules/clone/revisions.py:CloneConfigurationRevisions, initial, METADATA",
+        "tests/test_clone_configuration_revisions.py:test_revision_cas_encrypted_snapshots_and_restart",
+        "tests/test_clone_configuration_revisions.py:test_revision_duplicate_invalid_request_and_tenant_isolation"
+      ],
+      "implemented": [
+        "Internal PostgreSQL repository for desired/applied/pending/last-failed revisions, configuration status, database timestamps and safe last-error code",
+        "Tenant/bot scoped clone_configuration:<bot_id> JSONB envelope in existing agent_documents; advisory transaction lock plus row lock serializes CAS even for absent first row",
+        "Optimistic expected_revision plus request-id idempotence; same id with different configuration rejected; trusted pre-worker validator required and canonicalizes selected plugins",
+        "Whole configuration snapshots encrypted with existing SecretBox; disabled key/database refuses operations; no plaintext credential fallback",
+        "New proposals remain pending and preserve applied snapshot; explicit internal confirm_applied fence rejects older desired revision and is idempotent for current acknowledgement; failure retains pending revision and prior applied snapshot",
+        "Applied snapshot and one previous-applied snapshot retained for subsequent rollback integration; no rollback/service/worker behavior claimed yet"
+      ],
+      "schema_and_compatibility": "No new SQL DDL or destructive migration. Existing clone registry and live writers are untouched. Absent revision envelope reads as untracked revision zero, not falsely applied; no automatic legacy rewrite. Repository is staged for later service integration, not wired into public mutations.",
+      "validation": {
+        "red_command": ".venv/bin/python -m pytest -o addopts= -q tests/test_clone_configuration_revisions.py --tb=short",
+        "red_result": "Collection failed exit 2 before implementation because revisions module absent",
+        "focused_command": "AGENT_TEST_DATABASE_URL=<disposable URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider tests/test_clone_configuration_revisions.py --tb=short",
+        "focused_result": "2 passed in 0.29s; later added old-failure and idempotent acknowledgement assertions covered by full run",
+        "full_command": "AGENT_TEST_DATABASE_URL=<disposable URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); subprocess env AGENT_TEST_DATABASE_URL=s.get_uri(); finally s.cleanup()",
+        "full_result": "1686 passed, no skips, 17.98s",
+        "static_command": ".venv/bin/python -m compileall -q agent tests tools start.py && .venv/bin/python -m pyflakes agent tests tools && git diff --check",
+        "static_result": "passed",
+        "evidence": [
+          "Simultaneous same-revision proposals have one winner; stale request/acknowledgement/failure fenced",
+          "Reopened repository retains pending and failed state with correct timestamps and prior applied snapshot",
+          "Invalid selection leaves stored revision unchanged; duplicate request is idempotent; unrelated tenant untracked",
+          "Stored JSONB excludes plaintext token; no worker factory/client/lease started by repository"
+        ]
+      },
+      "remaining": [
+        "Phase 3 NOT COMPLETE: new repository not yet wired to canonical clone configuration writers or worker manager",
+        "Need configuration service and authoritative Premium coordination before public use; repository is internal storage, not an authorization boundary",
+        "Need worker lease/identity verification before caller invokes confirm_applied; current tests simulate acknowledgements, not live workers",
+        "Need durable reconciliation claims, pending scan/recovery, application/failure acknowledgement integration and rollback API",
+        "Need durable cleanup queue/consumer/backoff/dead-letter and revision-aware retained diagnostic events",
+        "Existing profile change still uses legacy update-then-restart until service integration; no new transactional profile guarantee",
+        "No perfect atomic Premium revocation claim; existing startup checks and periodic supervisor policy remain unchanged",
+        "No production data/environment/schema operation, deployment, new commands/dashboard changes or PR merge"
+      ]
     }
   ],
   "production_changes": false,
