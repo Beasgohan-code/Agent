@@ -368,13 +368,17 @@ FileStore, Leech and AI Agent. Moderation is mandatory and slot-free; optional
 features still require global Owner approval and group-admin activation, with
 at most three active per group. Dependency availability is shown honestly.
 
-AI Agent provides explicit `/ask <question>` text completions when both
-`AI_API_KEY` and `AI_MODEL` are configured. It sends that question to OpenAI,
-not group history. It has no tools, moderation authority or autonomous actions.
+AI Agent provides `/ask <question>` and default-off auto-chat when both
+`AI_API_KEY` and `AI_MODEL` are configured. Use `/autochat on|off|status` in
+your private chat to enable or stop ordinary text replies. In groups, an admin
+can enable auto-chat after Owner approval and group activation; only mentions
+of the bot or replies to its messages trigger an answer. It sends only the
+triggering text to OpenAI, not replied-to text or group history. Enabling it
+permits automatic provider requests for qualifying messages; charges may apply. It has no tools, moderation authority or autonomous actions.
 Obvious token/key patterns are rejected, but this is not a comprehensive secret
 scanner: never include private information. Responses are untrusted AI output.
 Requests have bounded size, concurrency, timeout and a per-user cooldown.
-No key means no `/ask` handler. Parent AI credentials never pass into clones.
+No key/model means no `/ask`, `/autochat`, or auto-chat watcher. Parent AI credentials never pass into clones.
 AI Agent clones instead require their own private guided key/model setup; keys
 are encrypted at rest and cleared from cancelled or expired drafts. Changing a
 clone to a legacy profile removes its stored AI credentials.

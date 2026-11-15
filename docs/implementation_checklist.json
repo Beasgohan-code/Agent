@@ -1678,6 +1678,25 @@
         "No live paid provider or Telegram verification performed; configured provider may charge for opt-in triggering messages",
         "Existing UI preview regeneration and wider security/reliability audit remain pending; no deployment or PR merge"
       ]
+    },
+    {
+      "id": "refresh-existing-ui-preview-and-ai-usage-docs",
+      "status": "completed",
+      "implemented": [
+        "Updated existing README to describe default-off private/group-directed auto-chat, administrator control, provider charges and unavailable configuration",
+        "Replaced stale UI_PREVIEW examples with reproducible current screen-builder output from an explicitly small offline fixture; no fabricated live registry count",
+        "Added offline renderer and regression ensuring existing preview remains synchronized; native runtime message rendering unchanged"
+      ],
+      "validation": [
+        "89 focused UI/menu/AI tests passed",
+        "compileall, Pyflakes and diff checks passed",
+        "No network, provider, Telegram or production storage calls made by preview tool"
+      ],
+      "remaining": [
+        "No full-suite rerun for this documentation/tool-only follow-up; preceding runtime commit full PostgreSQL suite had 1641 passes",
+        "Wider reliability audit, measured latency and production verification remain pending",
+        "No deployment, migration or PR merge"
+      ]
     }
   ],
   "production_changes": false,
