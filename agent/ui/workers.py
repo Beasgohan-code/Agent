@@ -56,6 +56,10 @@ def selected(theme):
     requested = getattr(theme, 'worker_plugins', None)
     if requested is None:
         return None
+    if tuple(requested) == ('*',):
+        from ..modules import MODULES
+        compatible = {module.MANIFEST.slug for module in MODULES if module.MANIFEST.clone_compatible}
+        return tuple(slug for slug in PROFILES if slug in compatible and slug not in GROUP_CORE)
     return tuple(dict.fromkeys(slug for slug in requested if slug in PROFILES and slug not in GROUP_CORE))
 
 
@@ -95,11 +99,12 @@ def overview(user, theme, *, active=None, help_mode=False):
     visible = [slug for slug in (*primary, 'moderation') if allowed(theme, slug) and commands(slug, active)]
     visible = list(dict.fromkeys(visible))
     rows = []
-    for slug in visible:
+    for slug in dict.fromkeys((*primary, 'moderation')):
         name, accent, _ = PROFILES[slug]
         available = commands(slug, active)
         preferred = [command for command in QUICK_START[slug] if command in available]
-        examples = ' · '.join('/' + command for command in (preferred or available[:3]))
+        examples = (' · '.join('/' + command for command in (preferred or available[:3]))
+                    if available else 'Unknown' if active is None else 'Not registered')
         rows.append((markup(f'{theme.emoji(accent)} {rich_esc(name)}'), examples))
     lines = [f'{theme.emoji("wave")} Welcome, <b>{rich_esc(display_name(user) or "there")}</b>.']
     if len(primary) == 1:
@@ -107,13 +112,15 @@ def overview(user, theme, *, active=None, help_mode=False):
     else:
         lines.append('Choose a workspace below. Each tool has its own getting-started guide and command list.')
     if not visible:
-        lines.append('No tools are currently available. Ask this bot’s owner to check its configuration.')
+        lines.append('Command registration is unknown. Open Availability and refresh.' if active is None else
+                     'No tools are currently registered. Ask this bot’s owner to check its configuration.')
     body = panel(title, icon=theme.emoji(icon), subtitle='Explore your tools' if help_mode else 'Quick start', table=Table(headers=('Tools', 'Try'), rows=tuple(rows)),
                  lines=lines, note='Choose a tool below for instructions.' if not help_mode else 'Group actions require administrator permissions. Optional tools require owner approval and group activation.',
                  footer='/help command · More detail for any available command')
     keys = [[button(theme, slug)] for slug in visible]
     if visible and not help_mode:
         keys.insert(0, [theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{visible[0]}', style=ButtonStyle.PRIMARY)])
+    keys.append([theme.button('Availability', icon='stats', callback_data='worker:availability')])
     keys.append([theme.button('How to use', icon='question', callback_data=CB_HELP, style=ButtonStyle.PRIMARY), theme.button('About', icon='info', callback_data='worker:about')])
     return Screen(body, Keyboard(keys))
 
@@ -149,6 +156,8 @@ def plugin_screen(user, theme, slug, *, active=None, page=0):
 
 
 def callback(data, user, theme, *, active=None):
+    if data == 'worker:availability':
+        return availability_screen(user, theme, active=active) if selected(theme) is not None else None
     command = re.fullmatch(r'worker:cmd:([a-z][a-z0-9_]{0,31})', data)
     if command:
         return command_screen(user, theme, command[1], active=active)
@@ -279,3 +288,23 @@ def guide_screen(user, theme, slug, *, active=None):
     keys.append([theme.button('Browse commands', icon='search', callback_data=f'worker:{slug}:0', style=ButtonStyle.PRIMARY)])
     keys.append(navigation(theme))
     return Screen(body, Keyboard(keys))
+
+
+def availability_screen(user, theme, *, active=None):
+    """Read-only registration facts, never credentials, group grants or live health."""
+    from .screens import Screen
+    configured = selected(theme)
+    if configured is None:
+        return None
+    rows = []
+    for slug in dict.fromkeys((*(configured or ('moderation',)), 'moderation')):
+        name, icon, _ = PROFILES[slug]
+        count = len(commands(slug, active))
+        status = 'Unknown' if active is None else 'Commands registered' if count else 'Not registered'
+        rows.append((markup(f'{theme.emoji(icon)} {name}'), status, str(count) if active is not None else 'Unknown'))
+    body = panel('Tool availability', icon=theme.emoji('stats'), subtitle='Selected tools · current command registration',
+                 table=Table(headers=('Tool', 'State', 'Commands'), rows=tuple(rows)),
+                 lines=['Not registered can mean disabled runtime, missing setup, or a module that could not load. This screen does not diagnose the cause.'],
+                 note='Registration does not prove provider connectivity, Telegram permissions, Owner approval or group activation. Ask the bot’s owner to inspect configuration privately.',
+                 footer='Refresh reads the current command registry. No credentials or internal errors are shown.')
+    return Screen(body, Keyboard([[theme.button('Refresh availability', icon='stats', callback_data='worker:availability', style=ButtonStyle.PRIMARY)], navigation(theme)]))
