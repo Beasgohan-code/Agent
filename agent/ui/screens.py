@@ -88,7 +88,7 @@ def workspace_rows(active):
     return rows
 
 
-def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+def welcome_screen(user, theme: Theme, *, active: set[str] | None = None, bot_username: str | None = None) -> Screen:
     """Compact welcome card for native rich heroes and classic photo captions.
 
     Tool suggestions come from the live registry. Avoid unverifiable online or
@@ -127,9 +127,9 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
         + "\n<b>Try your next action</b>\n"
         + rich_list(quick or ["Open Help below to explore this workspace."])
         + "\n" + rich_hr()
-        + rich_footer("Prefixes: / ! . ? · Registration is not group activation. Optional plugins need Owner approval and group-admin activation.")
+        + rich_footer("Prefixes: / ! . # $ % &amp; ? · Registration is not group activation. Optional plugins need Owner approval and group-admin activation.")
     )
-    return Screen(text, keyboards.home_keyboard(active=active))
+    return Screen(text, keyboards.start_keyboard(bot_username))
 
 
 #: Command reference sections. Names come from the live registry, descriptions
@@ -144,7 +144,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "bolt",
         "Essentials",
         ("start", "help", "menu", "about", "status", "alive", "uptime", "ping", "cancel", "jobs", "owner",
-         "id", "info", "time", "repo"),
+         "id", "info", "time", "repo", "gu", "tiktok", "x", "yt", "ig"),
     ),
     (
         "gear",
@@ -161,7 +161,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "box",
         "Vault & downloads",
         (
-            "get", "batch", "check", "custom_batch", "leech", "mirror", "set_caption", "see_caption", "del_caption", "set_thumb", "view_thumb", "see_thumb", "del_thumb", "delete_thumb", ),
+            "get", "batch", "custom_batch", "leech", "mirror", "set_caption", "see_caption", "del_caption", "set_thumb", "view_thumb", "see_thumb", "del_thumb", "delete_thumb", ),
     ),
     (
         "music",
@@ -177,7 +177,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (
             "warn", "warnings", "unwarn", "mute", "unmute", "kick", "ban", "unban",
             "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme",
-            "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
+            "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
         ),
     ),
     (
@@ -210,7 +210,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "bot",
         "Operations (owner)",
         (
-            "restart", "watchdog", "plugins", "plugin", "events", "errors", "db",
+            "restart", "bstats", "mychats", "massban", "broadcast", "watchdog", "plugins", "plugin", "events", "errors", "db",
             "setlog", "log", "sudo", "addsudo", "delsudo", "sudolist", "sudoperms",
         ),
     ),
@@ -258,7 +258,7 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
         rich_note(
             "<b>What would you like to do?</b>\n"
             "Choose a category to explore its tools and how to use them.\n"
-            "<b>All commands accept / ! . ?</b> — for example, "
+            "<b>All commands accept / ! . # $ % &amp; ?</b> — for example, "
             "<code>!help</code>, <code>.play</code>, <code>?settings</code>. "
             "Permissions and plugin availability still apply."
         ),
@@ -345,7 +345,7 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"Page {page + 1} of {pages} · All commands accept / ! . ? · Choose another category or return to your workspace."
+            f"Page {page + 1} of {pages} · All commands accept / ! . # $ % &amp; ? · Choose another category or return to your workspace."
         )
     )
     return Screen("\n".join(blocks), _section_keyboard(title, page, pages))
@@ -435,7 +435,7 @@ def help_lookup_screen(
     """
     from ..platform.menu import DESCRIPTIONS
 
-    query = (argument or "").strip().lstrip("/!.?").lower()[:64]
+    query = (argument or "").strip().lstrip("/!.#$%&?").lower()[:64]
     if theme.worker_plugins is not None:
         from .workers import lookup
         return lookup(argument, user, theme, active=active)

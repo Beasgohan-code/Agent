@@ -19,7 +19,7 @@ def build_playlists(ctx, queues):
         if not await is_moderator(client, message, owner_id=ctx.settings.owner_id):
             await reply(message, 'Only group administrators can save or load music playlists.')
             return
-        name = message.text.split()[0].split('@')[0].lstrip('/!.?').lower()
+        name = message.text.split()[0].split('@')[0].lstrip('/!.#$%&?').lower()
         args = message.text.split()[1:]
         chat_id, owner_id = message.chat.id, message.from_user.id
         try:

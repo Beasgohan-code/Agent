@@ -35,14 +35,14 @@ class Theme:
         value = self._custom_emoji.get(name)
         return str(value) if value else None
 
-    def button(self, text: str, *, icon: str, callback_data=None, copy_text=None, style=None, disabled=False):
+    def button(self, text: str, *, icon: str, callback_data=None, copy_text=None, url=None, style=None, disabled=False):
         """A native custom-emoji button with a readable Unicode fallback label."""
         from pyrogram.enums import ButtonStyle
         from pyrogram.types import InlineKeyboardButton
         glyph = EMOJI_FALLBACKS.get(icon, '')
         icon_id = self.emoji_id(icon)
         return InlineKeyboardButton(
-            text=text if icon_id else f'{glyph} {text}'.strip(), callback_data=callback_data, copy_text=copy_text,
+            text=text if icon_id else f'{glyph} {text}'.strip(), callback_data=callback_data, copy_text=copy_text, url=url,
             icon_custom_emoji_id=icon_id, disabled=disabled,
             style=ButtonStyle.DEFAULT if style is None else style,
         )

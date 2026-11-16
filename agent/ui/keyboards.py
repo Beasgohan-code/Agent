@@ -20,7 +20,21 @@ CB_HOME = "menu:home"
 CB_HELP = "menu:help"
 CB_INFO = "menu:info"
 
-SOURCE_URL = "https://github.com/Beasgohan-code/Agent"
+
+
+def start_keyboard(bot_username=None) -> Keyboard:
+    """Main-bot contact navigation; never used by worker overview screens."""
+    import re
+    rows = []
+    if isinstance(bot_username, str) and re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot_username):
+        rows.append([Button('➕ Add me', url=f'https://t.me/{bot_username}?startgroup=true', style=ButtonStyle.SUCCESS)])
+    rows.extend([
+        [Button('💡 Help', callback_data=CB_HELP, style=ButtonStyle.PRIMARY),
+         Button('💬 Support', url='https://t.me/ouchro', style=ButtonStyle.PRIMARY)],
+        [Button('📢 Updates', url='https://t.me/ouchro', style=ButtonStyle.SUCCESS),
+         Button('👑 Owner', url='https://t.me/Godgohan')],
+    ])
+    return Keyboard(rows)
 
 
 def home_keyboard(*, active=None) -> Keyboard:
@@ -43,14 +57,12 @@ def home_keyboard(*, active=None) -> Keyboard:
         tools.append(Button("🎞 Media studio", callback_data="help:encoding-files"))
     if tools:
         rows.append(tools)
-    rows.append([Button("↗ Project source", url=SOURCE_URL)])
     return Keyboard(rows)
 
 
 def help_keyboard() -> Keyboard:
     return Keyboard(
         [
-            [Button("\U0001f517 Source code", url=SOURCE_URL)],
             [Button("\u21a9\ufe0f Back to menu", callback_data=CB_HOME, style=ButtonStyle.PRIMARY)],
         ]
     )

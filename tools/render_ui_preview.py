@@ -13,7 +13,7 @@ from agent.ui.theme import Theme
 from agent.utils.sender import to_safe_html
 
 # Deliberately small: this is not a claim about a deployed registry's count.
-COMMANDS = {'start', 'help', 'ping', 'plugins', 'ask', 'autochat', 'check', 'get', 'custom_batch'}
+COMMANDS = {'start', 'help', 'ping', 'plugins', 'ask', 'autochat', 'gu', 'get', 'custom_batch'}
 
 
 def render_preview():
@@ -40,7 +40,7 @@ def render_preview():
                   '- The Telegram menu is capped at 100 commands. Overflow prioritizes cross-feature entry points; Help retains the active catalogue. Registration does not prove group approval or health.',
                   '- `/start`, `/help`, and `/ping` are private-only. Group plugin controls retain Owner approval, admin activation and the three-optional-plugin limit; moderation is slot-free.',
                   '- AI requires a configured key and model. `/ask` sends an explicit question. `/autochat on|off|status` controls default-off private text replies or group mention/reply triggers. Group configuration requires an administrator. Only the triggering text is sent to the external provider, without chat history; charges may apply.',
-                  '- FileStore uses `/check`, `/get`, and `/custom_batch`. Retired vault commands `/fsave`, `/files`, and `/del` are not restored.',
+                  '- FileStore clones use `/genlink`, `/batch`, and `/custom_batch`; the controller retains `/get`. Retired `/check` and vault commands `/fsave`, `/files`, and `/del` are not restored.',
                   '- Provider, music, FileStore transfer and control-panel actions are not exercised by this preview. Verify them separately; no online, latency or deployment claim is implied.'])
     return '\n'.join(line.rstrip() for line in '\n\n'.join(parts).splitlines()) + '\n'
 

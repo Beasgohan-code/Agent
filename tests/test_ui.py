@@ -50,9 +50,11 @@ def test_welcome_screen_greets_the_user_and_shows_the_menu():
     assert "Ada Lovelace" in screen.rich_text
     assert "Meiko" in screen.rich_text
     assert "Try" in screen.rich_text                 # three commands to start from
-    # The menu buttons plus the source link; the callbacks are the first two.
-    assert callbacks(screen.keyboard)[:2] == [CB_HELP, CB_INFO]
-    assert None in callbacks(screen.keyboard)        # the url button has no callback
+    # Menu navigation remains available without source promotion.
+    assert [c for c in callbacks(screen.keyboard) if c] == [CB_HELP]
+    urls = [b.url for row in screen.keyboard.inline_keyboard for b in row if b.url]
+    assert urls == ["https://t.me/ouchro", "https://t.me/ouchro", "https://t.me/Godgohan"]
+    assert not any("github.com" in url for url in urls)
 
 
 def test_the_start_screen_fits_a_caption():

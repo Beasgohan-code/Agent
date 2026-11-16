@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import html
+import logging
+from pyrogram.enums import ChatType, ButtonStyle
+from pyrogram.types import InlineKeyboardMarkup
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pyrogram.enums import ButtonStyle
-from pyrogram.types import InlineKeyboardButton as Button
-from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
 from ...platform.manifest import PluginManifest
-from ...ui.keyboards import SOURCE_URL
+from ...ui.keyboards import nav_keyboard
 from ...ui.tables import kv_table, panel
 from ..moderation import is_moderator
-from ...utils.rich import reply
+from ...utils.rich import reply, edit
 
 MANIFEST = PluginManifest(
     group_compatible=True,
@@ -23,7 +23,7 @@ MANIFEST = PluginManifest(
     name="Utilities",
     version="1.0.0",
     description="Chat/member identifiers, member details and the current time.",
-    commands=("id", "info", "time", "repo"),
+    commands=("id", "info", "time", "repo", "gu", "tiktok", "x", "yt", "ig"),
     permissions=("messages.read",),
     scope="all",
 )
@@ -149,34 +149,57 @@ def build(ctx):
             note='Current timezone rules apply, including daylight-saving changes. No timezone preference is stored.',
             footer='/time Asia/Kolkata · /time UTC'))
 
+    async def gu(client, message):
+        parts = (getattr(message, 'text', '') or '').split()
+        user = getattr(message, 'from_user', None)
+        chat = getattr(message, 'chat', None)
+        if user is None or getattr(message, 'sender_chat', None) is not None:
+            await reply(message, 'Use your personal Telegram identity for this demo.')
+            return
+        if len(parts) > 2 or (len(parts) == 2 and parts[1].lower() != 'fail'):
+            await reply(message, 'Usage: <code>/gu [fail]</code> — visual demo only; no AI request is sent.')
+            return
+        if getattr(chat, 'type', None) in (ChatType.GROUP, ChatType.SUPERGROUP):
+            if not await is_moderator(client, message):
+                await reply(message, 'Only current group admins can run this card demo here.')
+                return
+        elif getattr(chat, 'type', None) != ChatType.PRIVATE or chat.id != user.id:
+            await reply(message, 'Run this demo in private chat or a group where you are an admin.')
+            return
+        failed = len(parts) == 2
+        sent = await reply(message, panel('Live card demo', icon=ctx.theme.emoji('sparkles'),
+            lines=['Preparing this demonstration card…'],
+            note='Visual demonstration only. No AI request, hidden reasoning or background job.'),
+            reply_markup=nav_keyboard())
+        if sent is None:
+            return  # No confirmed message to edit; never manufacture completion.
+        keys = InlineKeyboardMarkup([[ctx.theme.button('Help', icon='help', callback_data='menu:help', style=ButtonStyle.PRIMARY),
+                                     ctx.theme.button('Main menu', icon='bot', callback_data='menu:home')]])
+        try:
+            await edit(sent, panel('Simulated failure' if failed else 'Demo completed',
+                icon=ctx.theme.emoji('warn' if failed else 'check'),
+                lines=['This is an intentional failure-state preview. Nothing failed outside this demo.' if failed
+                       else 'This same message has been updated from preparing to completed.'],
+                note='Demo only. No AI/provider request or background task was performed. Run /gu or /gu fail to preview again.'),
+                reply_markup=keys)
+        except Exception as error:
+            logging.getLogger(__name__).warning('#Errors Card demo edit unconfirmed (%s)', type(error).__name__)
+            await reply(message, 'Demo update unconfirmed. No automatic retry; no background task was started.')
+
     async def repo(_client, message):
-        """Where the source lives — one button, no wall of links."""
+        """Keep the legacy command reachable without publishing source links."""
         if not await no_args(message, 'repo'):
             return
         await reply(
             message,
             panel(
-                "Source",
-                icon=ctx.theme.emoji("link"),
-                table=kv_table(
-                    [
-                        ("Code", SOURCE_URL),
-                        ("Running", f"v{_version()}"),
-                    ]
-                ),
-                footer="Issues and pull requests go to the repository above.",
+                "Bot information",
+                icon=ctx.theme.emoji("info"),
+                table=kv_table([("Running", f"v{_version()}")]),
+                note="Source links are not published in this bot. Use /help for available commands.",
             ),
-            reply_markup=Keyboard(
-                [
-                    [
-                        Button(
-                            "\U0001f517 Open the repository",
-                            url=SOURCE_URL,
-                            style=ButtonStyle.PRIMARY,
-                        )
-                    ]
-                ]
-            ),
+            reply_markup=nav_keyboard(),
         )
 
-    return MANIFEST, {"id": show_id, "info": show_info, "time": show_time, "repo": repo}
+    from .social import build as social_cards
+    return MANIFEST, {**social_cards(ctx), "id": show_id, "info": show_info, "time": show_time, "repo": repo, "gu": gu}

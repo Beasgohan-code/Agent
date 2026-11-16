@@ -41,6 +41,8 @@ async def begin(ctx, chat, message, actor, target, action, seconds, reason):
     if (
         action
         not in (
+            "dwarn",
+            "swarn",
             "tban",
             "tmute",
             "dban",

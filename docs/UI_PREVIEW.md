@@ -4,7 +4,7 @@ Offline render of the real screen builders with a deliberately small command fix
 
 Regenerate from the repository root with `.venv/bin/python -m tools.render_ui_preview`. The tool makes no network or storage calls. Native rich messages remain the primary UI; the text below is produced from the existing classic fallback renderer.
 
-Fixture commands: `/ask`, `/autochat`, `/check`, `/custom_batch`, `/get`, `/help`, `/ping`, `/plugins`, `/start`.
+Fixture commands: `/ask`, `/autochat`, `/custom_batch`, `/get`, `/gu`, `/help`, `/ping`, `/plugins`, `/start`.
 
 ## /start
 
@@ -25,7 +25,7 @@ Moderation  Not registered
 Post maker  Not registered
 Music  Not registered
 Linkshare  Not registered
-FileStore  3 registered
+FileStore  2 registered
 Leech  Not registered
 AI Agent  2 registered
 
@@ -34,13 +34,12 @@ Try your next action
 • /plugins — Open plugin controls for this chat
 
 ─────
-Prefixes: / ! . ? · Registration is not group activation. Optional plugins need Owner approval and group-admin activation.
+Prefixes: / ! . # $ % & ? · Registration is not group activation. Optional plugins need Owner approval and group-admin activation.
 ```
 
 Buttons (row order):
-- ✦ Explore commands · ◉ My profile
-- 🗂 Vault & downloads
-- ↗ Project source
+- 💡 Help · 💬 Support
+- 📢 Updates · 👑 Owner
 
 ## /help
 
@@ -49,12 +48,12 @@ Buttons (row order):
 
 What would you like to do?
 Choose a category to explore its tools and how to use them.
-All commands accept / ! . ? — for example, !help, .play, ?settings. Permissions and plugin availability still apply.
+All commands accept / ! . # $ % & ? — for example, !help, .play, ?settings. Permissions and plugin availability still apply.
 
 Section  Commands
 ✨ AI Agent  2
-⚡ Essentials  3
-📦 Vault & downloads  3
+⚡ Essentials  4
+📦 Vault & downloads  2
 🤖 Operations (owner)  1
 
 ─────
@@ -95,6 +94,6 @@ Buttons (row order):
 
 - AI requires a configured key and model. `/ask` sends an explicit question. `/autochat on|off|status` controls default-off private text replies or group mention/reply triggers. Group configuration requires an administrator. Only the triggering text is sent to the external provider, without chat history; charges may apply.
 
-- FileStore uses `/check`, `/get`, and `/custom_batch`. Retired vault commands `/fsave`, `/files`, and `/del` are not restored.
+- FileStore clones use `/genlink`, `/batch`, and `/custom_batch`; the controller retains `/get`. Retired `/check` and vault commands `/fsave`, `/files`, and `/del` are not restored.
 
 - Provider, music, FileStore transfer and control-panel actions are not exercised by this preview. Verify them separately; no online, latency or deployment claim is implied.

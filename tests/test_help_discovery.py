@@ -37,8 +37,8 @@ def test_home_shortcuts_are_live_and_have_real_routes():
         for b in row
         if b.callback_data
     ]
-    assert "help:music-voice-chat" in routes
-    assert "help:encoding-files" in routes
+    assert routes == ["menu:help"]
+    assert {b.url for row in screen.keyboard.inline_keyboard for b in row if b.url} == {"https://t.me/ouchro", "https://t.me/Godgohan"}
     assert all(route in SCREENS for route in routes)
     hidden = welcome_screen(None, Theme(), active={"help"})
     assert not any(

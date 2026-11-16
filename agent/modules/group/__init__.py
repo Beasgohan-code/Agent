@@ -55,7 +55,7 @@ MANIFEST = PluginManifest(
     version="1.0.0",
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
-        "settings", "rules", "setrules", "pin", "unpin",
+        "settings", "rules", "setrules", "resetrules", "pin", "unpin",
         "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS,
     ),
     permissions=(
@@ -212,6 +212,19 @@ def build(ctx):
                 lines=[f"<blockquote>{_escaped_block(part)}</blockquote>"],
                 footer=f"Part {index+1} of {len(parts)}" if len(parts) > 1 else "Set by an administrator of this group.",
             ))
+
+    async def resetrules(client, message):
+        if not await _guard(client, message, need="can_change_info"):
+            return
+        if len((getattr(message, 'text', '') or '').split()) != 1:
+            await reply(message, 'Usage: <code>/resetrules</code> — clear rules in this group only.')
+            return
+        try:
+            await rule_service.save_rules(ctx, message.chat.id, '', actor=message.from_user.id)
+        except rule_service.RulesError as error:
+            await reply(message, str(error))
+            return
+        await reply(message, 'Group rules cleared. Revision history retained.')
 
     async def setrules(client, message):
         if not await _guard(client, message, need="can_change_info"):
@@ -510,6 +523,7 @@ def build(ctx):
         "settings": settings,
         "rules": rules,
         "setrules": setrules,
+        "resetrules": resetrules,
         "pin": pin,
         "unpin": unpin,
         "admins": admins,

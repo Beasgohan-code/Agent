@@ -16,7 +16,7 @@ def build_controls(ctx, queues, history, volumes, advance, replay_current=None):
     engine = ctx.voice
 
     async def control(client, message):
-        name = message.text.split()[0].split('@')[0].lstrip('/!.?').lower()
+        name = message.text.split()[0].split('@')[0].lstrip('/!.#$%&?').lower()
         args = message.text.split()[1:]
         chat_id = message.chat.id
         if name == 'history':

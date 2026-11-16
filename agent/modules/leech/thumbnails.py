@@ -18,7 +18,7 @@ def build(ctx):
         if chats is None or (db is not None and not db.connected):
             await reply(message, 'Thumbnail storage is unavailable. No change confirmed.')
             return
-        command = message.text.split()[0].split('@')[0].lstrip('/!.?').lower()
+        command = message.text.split()[0].split('@')[0].lstrip('/!.#$%&?').lower()
         uid = message.from_user.id
         current = chats.get(uid, THUMB_KEY)
         if command in ('view_thumb', 'see_thumb'):

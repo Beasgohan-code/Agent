@@ -45,6 +45,8 @@ PREMIUM: dict[str, tuple[str, str]] = {
 
 #: Glyphs with no vetted id stay unicode: better plain than broken.
 PLAIN: dict[str, str] = {
+    "download": "📥",
+    "copy": "📋",
     "wave": "\U0001f44b",
     "rocket": "\U0001f680",
     "help": "\U0001f4a1",

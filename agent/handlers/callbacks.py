@@ -62,7 +62,12 @@ class CallbackHandlers:
             logger.debug("Callback has no message to edit; ignoring.")
             return
 
-        screen = worker_screen if worker_screen is not None else builder(user, self._theme, active=active)
+        from ..ui.screens import welcome_screen
+        options = {}
+        if builder is welcome_screen and self._theme.worker_plugins is None:
+            from ..ui.bot_identity import bot_username
+            options['bot_username'] = await bot_username(client)
+        screen = worker_screen if worker_screen is not None else builder(user, self._theme, active=active, **options)
         outcome = await self._sender.edit(callback_query, screen)
         if outcome is None:
             await self._answer(callback_query, "Update not confirmed. Please try again shortly.")

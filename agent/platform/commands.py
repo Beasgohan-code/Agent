@@ -7,9 +7,9 @@ are recognized by the same runtime filters, including bot-username targeting.
 import re
 from pyrogram import filters
 
-COMMAND_PREFIXES = ("/", "!", ".", "?")
+COMMAND_PREFIXES = ("/", "!", ".", "#", "$", "%", "&", "?")
 _COMMAND = re.compile(
-    r"^[/!.?]([a-z][a-z0-9_]*)(?:@[a-z0-9_]+)?(?:\s|$)", re.I | re.ASCII
+    r"^[/!.#$%&?]([a-z][a-z0-9_]*)(?:@[a-z0-9_]+)?(?:\s|$)", re.I | re.ASCII
 )
 
 

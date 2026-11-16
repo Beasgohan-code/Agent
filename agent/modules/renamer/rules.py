@@ -25,7 +25,7 @@ def build_rules(ctx):
             await reply(message, 'Per-chat storage is unavailable. No media rules changed.')
             return
         parts = (getattr(message, 'text', '') or '').split()
-        name, args = parts[0].split('@')[0].lstrip('/!.?').lower(), parts[1:]
+        name, args = parts[0].split('@')[0].lstrip('/!.#$%&?').lower(), parts[1:]
         try:
             if not args or len(args) > MAX_RULES or any(len(arg) > MAX_WORD for arg in args):
                 raise ValueError(f'Use /{name} with 1–{MAX_RULES} words, at most {MAX_WORD} characters each.')

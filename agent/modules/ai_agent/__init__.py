@@ -369,7 +369,7 @@ def build(ctx):
                 or getattr(message, 'sender_chat', None) is not None
                 or getattr(message, 'service', None) or getattr(message, 'via_bot', None)
                 or any(getattr(message, field, None) for field in ('forward_origin', 'forward_date', 'forward_from', 'forward_from_chat', 'forward_sender_name'))
-                or not isinstance(text, str) or not text.strip() or text.lstrip().startswith(('/', '!', '.', '?'))):
+                or not isinstance(text, str) or not text.strip() or text.lstrip().startswith(('/', '!', '.', '#', '$', '%', '&', '?'))):
             return
         db, chats = getattr(ctx, 'db', None), getattr(ctx, 'chats', None)
         if chats is None or (db is not None and not db.connected) or chats.get(chat_id, 'ai_autochat', False) is not True:

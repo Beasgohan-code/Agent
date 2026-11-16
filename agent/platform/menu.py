@@ -216,7 +216,7 @@ DESCRIPTIONS: dict[str, str] = {
     "id": "Show chat and user ids",
     "info": "Details about a member",
     "time": "Current time here and in UTC",
-    "repo": "Where this bot's source lives",
+    "repo": "Bot version and information",
     # encoder
     "encode": "Encode a replied video",
     "compress": "Make a replied video smaller (fast preset)",
@@ -251,6 +251,20 @@ DESCRIPTIONS: dict[str, str] = {
     "del_caption": "Remove your private upload caption",
     # ops (owner)
     "restart": "Restart the process (owner)",
+    "tiktok": "TikTok profile-link card; no live account lookup",
+    "x": "X profile-link card; no live account lookup",
+    "yt": "YouTube handle-link card; no live account lookup",
+    "ig": "Instagram profile-link card; no live account lookup",
+    "dwarn": "Warn and delete the replied message (admin)",
+    "swarn": "Warn without public success confirmation (admin)",
+    "rmwarn": "Clear latest active warning; retain history (admin)",
+    "resetwarn": "Clear a member’s active warnings; retain history (admin)",
+    "resetrules": "Clear this group’s rules; retain revisions (admin)",
+    "gu": "Live card demo; /gu fail previews failure (group admin)",
+    "broadcast": "Forward a reply to up to 50 known users/chats (owner, private)",
+    "massban": "Ban up to 10 IDs in this group (owner, current rights)",
+    "mychats": "Known chats with current admin membership (owner, private)",
+    "bstats": "Database, instance lock and uptime (owner, private)",
     "sudo": "Manage scoped capabilities (owner)",
     "addsudo": "Grant an expiring capability (owner)",
     "delsudo": "Revoke a scoped capability (owner)",
@@ -272,6 +286,7 @@ DESCRIPTIONS: dict[str, str] = {
 #: Commands that only make sense inside a group.
 GROUP_ONLY = frozenset(
     {
+        "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules",
         "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "settings", "rules", "setrules", "pin", "unpin",

@@ -217,7 +217,7 @@ def build(ctx):
             await reply(message, 'You need Delete messages administrator permission to manage locks.')
             return
         parts = (getattr(message, 'text', None) or '').lower().split()
-        command, args = parts[0].split('@')[0].lstrip('/!.?'), parts[1:]
+        command, args = parts[0].split('@')[0].lstrip('/!.#$%&?'), parts[1:]
         try:
             async with mutex(ctx, chat.id):
                 current = read(ctx, chat.id)

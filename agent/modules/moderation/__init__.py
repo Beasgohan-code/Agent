@@ -31,6 +31,8 @@ from .command_cleaning import build as build_command_cleaning
 from .cleaning import build as build_cleaning, clean as clean_service
 from .blocklists import COMMANDS as BLOCKLIST_COMMANDS, build as build_blocklists, enforce as enforce_blocklist
 from ...platform.blocklists import history as blocklist_history, BlocklistError
+from .warning_variants import COMMANDS as WARNING_VARIANT_COMMANDS, build as build_warning_variants
+from .warning_controls import COMMANDS as WARNING_CONTROL_COMMANDS, build as build_warning_controls
 from .restrictions import COMMANDS as RESTRICTION_COMMANDS, build as build_restrictions
 from .antiflood import COMMANDS as FLOOD_COMMANDS, build as build_antiflood, watch as watch_antiflood
 from ...platform.group_rules import rules_history, RulesError
@@ -56,7 +58,7 @@ MANIFEST = PluginManifest(
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *LOCK_COMMANDS, *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *BLOCKLIST_COMMANDS, "cleanservice", "cleancommand", "keepcommand",
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *LOCK_COMMANDS, *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *WARNING_CONTROL_COMMANDS, *WARNING_VARIANT_COMMANDS, *BLOCKLIST_COMMANDS, "cleanservice", "cleancommand", "keepcommand",
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -238,7 +240,7 @@ async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source=
         ) from exc
 
 
-async def escalate_warning(client, ctx, message, target_id: int, action: str) -> str:
+async def escalate_warning(client, ctx, message, target_id: int, action: str, *, confirm=False) -> str:
     """Apply the group's warn action. Returns a line for the report.
 
         A failure is reported, never swallowed: if the bot lacks the right to mute,
@@ -250,7 +252,7 @@ async def escalate_warning(client, ctx, message, target_id: int, action: str) ->
         return "Escalation not attempted: target is protected or membership could not be verified."
     try:
         if action == "mute":
-            await client.restrict_chat_member(
+            acknowledged = await client.restrict_chat_member(
                 chat_id,
                 target_id,
                 MUTE_PERMISSIONS,
@@ -258,16 +260,19 @@ async def escalate_warning(client, ctx, message, target_id: int, action: str) ->
             )
             outcome = f"muted for {duration_label(DEFAULT_MUTE_SECONDS)}"
         elif action == "kick":
-            await kick_member(client, ctx, chat_id, target_id, source="warnlimit")
+            await kick_member(client, ctx, chat_id, target_id, source="warnlimit", confirm=confirm)
+            acknowledged = True
             outcome = "kicked"
         else:
-            await client.ban_chat_member(chat_id, target_id)
+            acknowledged = await client.ban_chat_member(chat_id, target_id)
             outcome = "banned"
     except PartialKickError as exc:
         return str(exc)
     except Exception as exc:  # noqa: BLE001 - the moderator needs the real reason
         logger.warning("Warning escalation failed (%s).", type(exc).__name__)
         return f"Escalation failed: {type(exc).__name__}. Check my rights."
+    if confirm and acknowledged is not True:
+        return "Escalation unconfirmed: Telegram did not acknowledge the restriction. Check current membership."
     ctx.chats.log(
         chat_id, f"warnlimit:{action}", actor_id=None, target_id=target_id,
         reason="warning threshold reached",
@@ -844,6 +849,8 @@ def build(ctx):
         **build_locks(ctx),
         **build_antiflood(ctx),
         **build_restrictions(ctx),
+        **build_warning_controls(ctx),
+        **build_warning_variants(ctx),
         **build_blocklists(ctx),
         **build_cleaning(ctx),
         **build_command_cleaning(ctx),

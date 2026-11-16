@@ -44,6 +44,10 @@ MANIFEST = PluginManifest(
     description="Restart, watchdog sweeps, plugin on/off and the event log.",
     commands=(
         "restart",
+        "bstats",
+        "mychats",
+        "massban",
+        "broadcast",
         "sudo",
         "addsudo", "delsudo", "sudolist", "sudoperms",
         "watchdog",
@@ -460,6 +464,109 @@ def build(ctx):
         )
         return rows
 
+    bulk_lock = asyncio.Lock()
+    bulk_seen = set()
+
+    async def massban(client, message):
+        # Serialize admissions in this runtime and reject duplicate update IDs.
+        # This is not durable exactly-once delivery across process restarts.
+        if not _is_owner(message):
+            await reply(message, OWNER_ONLY)
+            return
+        key = (getattr(getattr(message, 'chat', None), 'id', None), getattr(message, 'id', None))
+        if bulk_lock.locked() or (key[1] is not None and key in bulk_seen):
+            await reply(message, 'A bulk action is active or this request was already admitted. No new bans attempted.')
+            return
+        async with bulk_lock:
+            if key[1] is not None:
+                if len(bulk_seen) >= 1000:
+                    await reply(message, 'Bulk admission window full. No new bans attempted; use individual moderation commands.')
+                    return
+                bulk_seen.add(key)
+            from .massban import massban as execute
+            await execute(ctx, client, message)
+
+    async def broadcast(client, message):
+        from .broadcast import broadcast as execute
+        await execute(ctx, client, message)
+
+    async def mychats(client, message):
+        if not _is_owner(message):
+            await reply(message, OWNER_ONLY)
+            return
+        owner = ctx.settings.owner_id
+        if getattr(getattr(message, 'chat', None), 'id', None) != owner:
+            await reply(message, 'Open a private chat with this bot to list known chats.')
+            return
+        parts = _args(message)
+        if len(parts) > 2 or (len(parts) == 2 and (not parts[1].isascii() or not parts[1].isdigit()
+                or len(parts[1]) > 6 or int(parts[1]) < 1)):
+            await reply(message, 'Usage: <code>/mychats [page]</code> — positive page number.')
+            return
+        page = int(parts[1]) if len(parts) == 2 else 1
+        store = getattr(ctx, 'chats', None)
+        if store is None:
+            await reply(message, 'Known-chat index unavailable.')
+            return
+        ids, total = store.known_group_page(page)
+        pages = max(1, (total + 9) // 10)
+        if page > pages:
+            await reply(message, f'No such page. Available pages: 1–{pages}.')
+            return
+        rows, unconfirmed = [], 0
+        for cid in ids:
+            if ctx.settings.owner_id != owner:
+                await reply(message, 'Owner configuration changed. Start again; no chat list shown.')
+                return
+            try:
+                member = await asyncio.wait_for(client.get_chat_member(cid, owner), timeout=3)
+                if member.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR):
+                    continue
+                chat = await asyncio.wait_for(client.get_chat(cid), timeout=3)
+                if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
+                    continue
+                rows.append((str(getattr(chat, 'title', None) or 'Untitled')[:80], str(cid)))
+            except Exception as error:
+                unconfirmed += 1
+                logger.warning('#Errors Known-chat check unconfirmed (%s)', type(error).__name__)
+        if ctx.settings.owner_id != owner:
+            await reply(message, 'Owner configuration changed. Start again; no chat list shown.')
+            return
+        await reply(message, panel('Your known admin chats', icon=ctx.theme.emoji('shield'),
+            table=Table(headers=('Chat', 'ID'), rows=tuple(rows)) if rows else None,
+            lines=[] if rows else ['No current admin memberships confirmed on this page.'],
+            note=f'Page {page}/{pages} · Checked {len(ids)} known chats · {unconfirmed} unconfirmed. '
+                 'Only this bot’s cached chat index is searched, not every chat you administer. '
+                 'Pages cover known chats, including non-admin and unavailable entries. Use /mychats followed by a page number.',
+            ), reply_markup=nav_keyboard())
+
+    async def bstats(_client, message):
+        if not _is_owner(message):
+            await reply(message, OWNER_ONLY)
+            return
+        if getattr(getattr(message, 'chat', None), 'id', None) != ctx.settings.owner_id:
+            await reply(message, 'Open a private chat with this bot to view Owner diagnostics.')
+            return
+        if len(_args(message)) != 1:
+            await reply(message, 'Usage: <code>/bstats</code>')
+            return
+        database = getattr(ctx, 'db', None)
+        lease = getattr(ctx, 'lease', None)
+        monitor = getattr(ctx, 'monitor', None)
+        jobs = getattr(ctx, 'jobs', None)
+        rows = [
+            ('Database', 'PostgreSQL connected' if database is not None and database.connected else 'Unavailable'),
+            ('Queued writes', str(len(getattr(database, '_pending', {}) or {}))),
+            ('Instance lock', ('held' if lease.held else 'not held') if lease is not None else 'Unavailable'),
+            ('Lock backend', str(lease.backend) if lease is not None else 'Unavailable'),
+            ('Lock degraded', ('yes' if lease.degraded else 'no') if lease is not None else 'Unavailable'),
+            ('Uptime', format_uptime(monitor.snapshot().uptime_seconds) if monitor is not None else 'Unavailable'),
+            ('Active jobs', str(len(jobs.active())) if jobs is not None else 'Unavailable'),
+        ]
+        await reply(message, panel('Bot statistics', icon=ctx.theme.emoji('stats'), table=kv_table(rows),
+                    note='Local runtime snapshot; connection state is not a fresh database health probe. Instance lock is this process lease, not a count of database locks.'),
+                    reply_markup=nav_keyboard())
+
     async def db(_client, message):
         """Owner diagnostics; delegates see only a bounded, sanitized status."""
         if not _is_owner(message):
@@ -745,6 +852,10 @@ def build(ctx):
     handlers = {
         **sudo_commands(capabilities, _owner_gate),
         "restart": restart,
+        "bstats": bstats,
+        "mychats": mychats,
+        "massban": massban,
+        "broadcast": broadcast,
         "watchdog": watchdog,
         "plugins": plugins,
         "db": db,

@@ -2,6 +2,10 @@
 
 import re
 import logging
+from urllib.parse import urlencode
+from pyrogram.types import InlineKeyboardMarkup as Keyboard
+from pyrogram.enums import ButtonStyle
+from ...ui.theme import Theme
 from pyrogram.enums import ChatType, ChatMemberStatus
 from ...utils.rich import reply
 from ...ui.tables import panel, kv_table
@@ -125,6 +129,7 @@ def build(ctx):
             )
             return
         channel = getattr(ctx.settings, "storage_channel", None)
+        owner = ctx.settings.owner_id
         try:
             _, hours, max_uses = link_options(args)
             ids, explicit = message_selection(message, channel)
@@ -168,6 +173,8 @@ def build(ctx):
             username = getattr(me, "username", None)
             if not username or not re.fullmatch(r"[A-Za-z0-9_]+", username):
                 raise ValueError("This bot has no usable username for a start link.")
+            if ctx.settings.owner_id != owner or ctx.settings.storage_channel != channel:
+                raise ValueError('Archive ownership or channel changed. No link created; start again.')
             token = await create(
                 ctx,
                 message.from_user.id,
@@ -188,10 +195,12 @@ def build(ctx):
                 "Archive link creation could not be confirmed. No automatic retry attempted.",
             )
             return
+        link = f"https://t.me/{username}?start=archive_{token}"
+        theme = getattr(ctx, 'theme', None) or Theme(custom_emoji={})
         await reply(
             message,
             panel(
-                "FileStore archive link",
+                "🔗 Your file link is ready",
                 table=kv_table(
                     [
                         ("Messages", str(len(ids))),
@@ -205,12 +214,17 @@ def build(ctx):
                     ]
                 ),
                 lines=[
-                    f"<code>https://t.me/{username}?start=archive_{token}</code>",
+                    f"<code>{link}</code>",
                     "Revoke this link:",
                     f"<code>/custom_batch revoke {token}</code>",
                 ],
                 note="Anyone with this bearer link can request copies in private chat until expiry. Each admitted delivery request consumes one use, including interrupted deliveries. No file downloads or parent-bot credentials are used. Protected content will not be bypassed. Revoke with /custom_batch revoke token (the part after archive_). Revocation stops new copies; an already in-flight Telegram request may still complete.",
             ),
+            reply_markup=Keyboard([
+                [theme.button('Open file' if len(ids) == 1 else 'Open files', icon='download', url=link, style=ButtonStyle.SUCCESS),
+                 theme.button('Share link', icon='link', url='https://t.me/share/url?' + urlencode({'url': link}), style=ButtonStyle.PRIMARY)],
+                [theme.button('Copy link', icon='copy', copy_text=link)],
+            ]),
         )
 
     async def redeem(client, message, token):

@@ -35,7 +35,7 @@ MANIFEST = PluginManifest(
     name="Filestore",
     version="1.0.0",
     description="Archive-channel range links and private redemption; legacy owned-file retrieval retained.",
-    commands=("get", "batch", "check", "custom_batch"),
+    commands=("get", "batch", "custom_batch"),
     permissions=("messages.read", "messages.send", "storage.read", "storage.write"),
     scope="all",
 )
@@ -208,47 +208,6 @@ def build(ctx):
             ),
         )
 
-    # -- /check ------------------------------------------------------------
-
-    async def check(_client, message):
-        """Everything this vault knows about one id."""
-        parts = _args(message)
-        if len(parts) != 2:
-            await reply(message, "Usage: <code>/check &lt;id&gt;</code>")
-            return
-        stored = storage.get(parts[1].strip())
-        if stored is None or stored.owner_id != message.from_user.id:
-            await reply(message, "That id is not in your vault.")
-            return
-        path = storage.path_for(stored)
-        links = [
-            record
-            for record in await ctx.links.aowned(message.from_user.id)
-            if record.file_id == stored.id and not record.revoked
-        ]
-        await reply(
-            message,
-            panel(
-                "Vault entry",
-                icon=ctx.theme.emoji("info"),
-                table=kv_table(
-                    [
-                        ("Id", stored.id),
-                        ("Name", stored.name),
-                        ("Size", human_bytes(stored.size)),
-                        ("On disk", "yes" if path.exists() else "missing"),
-                        ("Links", str(len(links))),
-                        ("Telegram reference", "recorded" if stored.telegram_file_id else "not recorded"),
-                    ]
-                ),
-                note="A recorded Telegram reference may allow retrieval after local bytes disappear; it is not a live availability check.",
-                footer="/get id · /share id · /links",
-            ),
-        )
-
-    # -- /storestats and /storequota ---------------------------------------
-
-
     def identified(handler):
         async def wrapped(client, message):
             user_id = getattr(getattr(message, "from_user", None), "id", None)
@@ -263,7 +222,6 @@ def build(ctx):
 
         "get": get,
         "batch": batch,
-        "check": check,
 
     }
     # A specialized FileStore clone owns this command only when Linkshare is
@@ -271,6 +229,7 @@ def build(ctx):
     selected = tuple(getattr(ctx.settings, 'plugins', ()) or ())
     specialized = ((getattr(ctx.settings, 'db_scope', '') or '').startswith('clone:')
                    and 'filestore' in selected and 'linkshare' not in selected and '*' not in selected)
+    conversation.direct_uploads = specialized
     manifest = MANIFEST
     if specialized:
         async def genlink(client, message):
@@ -278,6 +237,9 @@ def build(ctx):
                 await reply(message, 'Send /genlink without arguments, then send or forward one message to this bot. Use /batch for a range.')
                 return
             await conversation.start(client, message, 'genlink')
+            original = getattr(message, 'reply_to_message', None)
+            if original is not None:
+                await conversation.receive(client, original)
         async def selected_batch(client, message):
             if len(_args(message)) == 1 and not getattr(message, 'reply_to_message', None):
                 await conversation.start(client, message, 'custom_selection')
@@ -294,4 +256,16 @@ def build(ctx):
 def extra_handlers(ctx):
     from pyrogram import filters
     from pyrogram.handlers import MessageHandler
-    return [MessageHandler(ctx._filestore_conversation.receive, filters.private)]
+    conversation = ctx._filestore_conversation
+
+    async def receive(client, message):
+        # Direct files are a FileStore-only clone front door, not a controller
+        # upload interceptor. Active batch conversations retain their semantics.
+        if (getattr(conversation, 'direct_uploads', False)
+                and conversation.state is None
+                and getattr(getattr(message, 'from_user', None), 'id', None) == ctx.settings.owner_id
+                and media_in(message) is not None):
+            await conversation.start(client, message, 'genlink')
+        await conversation.receive(client, message)
+
+    return [MessageHandler(receive, filters.private)]

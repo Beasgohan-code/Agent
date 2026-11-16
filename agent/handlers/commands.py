@@ -22,7 +22,7 @@ def start_payload(text: str) -> str:
     parts = (text or "").strip().split(maxsplit=1)
     if not parts:
         return ""
-    command = parts[0].lstrip("/!.?").split("@", 1)[0].lower()
+    command = parts[0].lstrip("/!.#$%&?").split("@", 1)[0].lower()
     if command not in ("start", "restart_bot"):
         return ""
     return parts[1].strip() if len(parts) > 1 else ""
@@ -65,8 +65,10 @@ class CommandHandlers:
             await self._deeplinks.dispatch(client, message, payload)
             return
         active = set(self._active_commands()) if self._active_commands is not None else None
+        from ..ui.bot_identity import bot_username
+        username = await bot_username(client) if self._theme.worker_plugins is None else None
         await self._greet(
-            client, message, welcome_screen(message.from_user, self._theme, active=active)
+            client, message, welcome_screen(message.from_user, self._theme, active=active, bot_username=username)
         )
 
     async def _greet(self, client, message, screen) -> None:

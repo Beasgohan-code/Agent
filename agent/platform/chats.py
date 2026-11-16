@@ -362,6 +362,16 @@ class ChatStore:
         del entries[: max(0, len(entries) - self._max_log)]
         self._save()
 
+    def known_group_page(self, page: int, *, size: int = 10):
+        """Scoped cached chat index, not Telegram-wide discovery or admin proof."""
+        if type(page) is not int or page < 1 or not 1 <= size <= 10:
+            raise ValueError('Invalid chat page')
+        ids = sorted({int(key) for key in self._chats
+                      if isinstance(key, str) and key.startswith('-')
+                      and key[1:].isascii() and key[1:].isdigit()
+                      and len(key) <= 20 and -(2**63) < int(key) < 0}, reverse=True)
+        return ids[(page - 1) * size:page * size], len(ids)
+
     def history(self, chat_id: int, *, limit: int = 10) -> list[dict]:
         entries = self._chat(chat_id)["log"]
         return list(reversed(entries))[: max(0, limit)]

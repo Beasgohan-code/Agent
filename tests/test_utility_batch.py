@@ -73,7 +73,7 @@ def test_moderation_metadata_hidden_from_non_moderators(ctx):
     asyncio.run(scenario())
 
 
-def test_repository_card_has_plain_url_cell_and_action(ctx):
+def test_legacy_repo_command_does_not_publish_repository_links(ctx):
     async def scenario():
         request = FakeMessage('/repo')
         request._client = SimpleNamespace(send_rich_message=AsyncMock())
@@ -81,5 +81,16 @@ def test_repository_card_has_plain_url_cell_and_action(ctx):
         call = request._client.send_rich_message.await_args.kwargs
         body = call['rich_text'].html
         assert '<table' in body and '&lt;code&gt;' not in body
-        assert call['reply_markup'].inline_keyboard[0][0].url.startswith('https://github.com/')
+        assert 'github.com' not in body
+        assert 'Source links are not published' in body
+        assert all(not button.url for row in call['reply_markup'].inline_keyboard for button in row)
     asyncio.run(scenario())
+
+
+def test_public_navigation_has_no_source_links():
+    from agent.ui.keyboards import home_keyboard, help_keyboard, nav_keyboard, info_keyboard
+    for keyboard in (home_keyboard(), help_keyboard(), nav_keyboard(), info_keyboard(99)):
+        for row in keyboard.inline_keyboard:
+            for button in row:
+                assert not button.url
+                assert 'source' not in button.text.lower()

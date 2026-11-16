@@ -6,6 +6,7 @@ import time
 from types import SimpleNamespace
 
 from ...utils.rich import reply
+from ...platform.commands import command_name
 from .channel_links import archive_reference, private
 
 
@@ -55,14 +56,14 @@ class ArchiveConversation:
             if state is None:
                 return
             text = (getattr(message, "text", None) or "").strip()
-            command = text.split("@")[0].lower()
-            if command == "/cancel":
+            command = command_name(text)
+            if command == "cancel":
                 self.state = None
                 await reply(
                     message, "Archive link creation cancelled. No link created. Existing archive copies are retained."
                 )
                 return
-            if text.startswith("/") and command != "/done":
+            if command is not None and command != "done":
                 return
             if (
                 self.clock() >= state["expires"]
@@ -75,7 +76,7 @@ class ArchiveConversation:
                     "Archive session expired or configuration changed. Start again; no link created.",
                 )
                 return
-            if command == "/done":
+            if command == "done":
                 if state["mode"] not in ("custom_batch", "custom_selection") or not state["ids"]:
                     await reply(
                         message,

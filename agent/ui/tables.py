@@ -341,7 +341,7 @@ def panel(
         icon = panel_icon(title)
     if footer is None:
         from .identity import controller_label
-        footer = controller_label("Meiko · /help · Prefixes / ! . ?", "/help · Prefixes / ! . ?")
+        footer = controller_label("Meiko · /help · Prefixes / ! . # $ % &amp; ?", "/help · Prefixes / ! . # $ % &amp; ?")
     heading = f"{icon} {title}".strip()
     if rich_enabled():
         return Panel(

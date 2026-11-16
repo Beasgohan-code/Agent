@@ -26,7 +26,7 @@ def test_removed_vault_commands_are_not_registered_and_data_is_preserved(tmp_pat
 
 
 @pytest.mark.parametrize('command', ['/batch 0', '/batch 51', '/batch 1 extra', '/batch ' + '9'*5000,
-                                     '/get id extra', '/check id extra'])
+                                     '/get id extra'])
 def test_invalid_args_refused_before_io(tmp_path, command):
     async def scenario():
         ctx = make_ctx(tmp_path)
@@ -50,20 +50,10 @@ def test_anonymous_vault_commands_refused(tmp_path):
     asyncio.run(scenario())
 
 
-def test_vault_check_native_panel_preserves_record(tmp_path):
-    async def scenario():
-        ctx = make_ctx(tmp_path)
-        stored = save(ctx, tmp_path, OWNER, 'entry.txt')
-        stored.telegram_file_id = 'SECRET_TELEGRAM_REF'
-        _, commands = filestore.build(ctx)
-        for name in ['check']:
-            request = FakeMessage(f'/{name} {stored.id}')
-            request._client = SimpleNamespace(send_rich_message=AsyncMock())
-            await commands[name](None, request)
-            body = request._client.send_rich_message.await_args.kwargs['rich_text'].html
-            assert '<table' in body and '<tg-emoji' in body
-            assert 'SECRET_TELEGRAM_REF' not in body
-            if name == 'check':
-                assert 'recorded' in body and 'not a live availability check' in body
-        assert ctx.storage.get(stored.id) is not None
-    asyncio.run(scenario())
+def test_retired_check_preserves_record(tmp_path):
+    ctx = make_ctx(tmp_path)
+    stored = save(ctx, tmp_path, OWNER, 'entry.txt')
+    manifest, commands = filestore.build(ctx)
+    assert 'check' not in commands and 'check' not in manifest.commands
+    assert ctx.storage.get(stored.id) is not None
+    assert ctx.storage.path_for(stored).is_file()

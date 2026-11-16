@@ -9,7 +9,7 @@ from agent.platform.commands import command_filter, command_name
 def test_prefixes_mentions_quotes_and_noncommands():
     async def scenario():
         client = NS(me=NS(username="MeikoBot"))
-        for prefix in "/!.?":
+        for prefix in "/!.#$%&?":
             message = NS(text=prefix + 'BaN@meikobot 22 "a reason"', caption=None)
             assert await command_filter("ban")(client, message)
             assert message.command == ["ban", "22", "a reason"]
@@ -44,7 +44,7 @@ def test_every_registered_command_uses_the_shared_prefixes():
         and hasattr(handler.filters.base, "commands")
     ]
     assert len(commands) > 100
-    assert all(f.prefixes == set("/!.?") for f in commands)
+    assert all(f.prefixes == set("/!.#$%&?") for f in commands)
 
 
 def test_auto_reply_filter_skips_alias_commands(tmp_path):
@@ -56,7 +56,7 @@ def test_auto_reply_filter_skips_alias_commands(tmp_path):
         ctx = fixtures.ctx.__wrapped__(tmp_path)
         reader = AsyncMock()
         with patch("agent.modules.filters.operate", reader):
-            for prefix in "/!.?":
+            for prefix in "/!.#$%&?":
                 await watch(ctx)(None, NS(text=prefix + "ban 22"))
         reader.assert_not_awaited()
 
@@ -70,7 +70,7 @@ def test_ban_aliases_keep_live_moderator_checks(tmp_path):
     async def scenario():
         ctx = fixtures.ctx.__wrapped__(tmp_path)
         _, handlers = moderation.build(ctx)
-        for prefix in "/!.?":
+        for prefix in "/!.#$%&?":
             for caller, allowed in ((fixtures.MEMBER, False), (fixtures.ADMIN, True)):
                 client = fixtures.FakeClient(caller=caller)
                 client.me = NS(username="MeikoBot")
@@ -87,7 +87,7 @@ def test_clone_wizard_cancel_aliases_discard_drafts(tmp_path):
     from test_clone import build, FakeMessage, MEMBER
 
     async def scenario():
-        for i, prefix in enumerate("/!.?"):
+        for i, prefix in enumerate("/!.#$%&?"):
             ctx, _, _ = build(tmp_path / str(i))
             wizard = ctx.clone_setup
             await wizard.begin(FakeMessage("/clone"))
@@ -109,7 +109,7 @@ def test_all_registered_commands_parse_all_prefixes_and_mentions():
         for handler in bot._handlers:
             flt = getattr(getattr(handler, "filters", None), "base", None)
             for command in getattr(flt, "commands", ()):
-                for prefix in "/!.?":
+                for prefix in "/!.#$%&?":
                     for suffix in ("", "@MeikoBot"):
                         message = NS(
                             text=prefix + command + suffix + " argument", caption=None
@@ -125,7 +125,7 @@ def test_start_payload_and_help_accept_non_slash_commands():
     from agent.ui.screens import help_lookup_screen, help_screen
     from agent.ui.theme import Theme
 
-    for prefix in "/!.?":
+    for prefix in "/!.#$%&?":
         assert start_payload(prefix + "start@MeikoBot link_abc") == "link_abc"
         screen = help_lookup_screen(prefix + "play", None, Theme())
         assert "/play" in screen.rich_text and "Not found" not in screen.rich_text
@@ -139,7 +139,7 @@ def test_music_and_media_rule_aliases_execute_correct_operations(tmp_path, monke
 
     async def scenario():
         ctx, _, handlers = wire(tmp_path / "music", monkeypatch)
-        for prefix in "/!.?":
+        for prefix in "/!.#$%&?":
             request = await invoke(handlers, prefix + "loop one")
             assert "Repeat mode: one" in request.reply.await_args.args[0]
             request = await invoke(handlers, prefix + "playnext track", uid=STRANGER)
@@ -148,7 +148,7 @@ def test_music_and_media_rule_aliases_execute_correct_operations(tmp_path, monke
     asyncio.run(scenario())
     ctx = make_ctx(tmp_path / "media")
     handlers = renamer.build(ctx)[1]
-    for prefix in "/!.?":
+    for prefix in "/!.#$%&?":
         call(handlers, prefix + "set_del_word junk")
         assert ctx.chats.get(77, DELETE_KEY) == ["junk"]
         call(handlers, prefix + "rem_del_word junk")
@@ -158,7 +158,7 @@ def test_music_and_media_rule_aliases_execute_correct_operations(tmp_path, monke
 def test_sudo_aliases_route_to_the_same_authority():
     from test_sudo_commands import test_command_routes_to_authoritative_service
 
-    for prefix in "/!.?":
+    for prefix in "/!.#$%&?":
         for text, method in (
             ("sudo list", "listing"),
             ("sudoperms 22", "listing"),
@@ -181,9 +181,9 @@ def test_playlist_aliases_list_instead_of_loading(tmp_path, monkeypatch):
         handlers = playlists.build_playlists(ctx, QueueBook())
         listing = AsyncMock(return_value=[])
         monkeypatch.setattr(playlists.MusicPlaylists, "list", listing)
-        for prefix in "/!.?":
+        for prefix in "/!.#$%&?":
             request = await invoke(handlers, prefix + "playlists")
             assert "Your saved playlists" in request.reply.await_args.args[0]
-        assert listing.await_count == 4
+        assert listing.await_count == 8
 
     asyncio.run(scenario())

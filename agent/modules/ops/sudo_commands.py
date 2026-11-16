@@ -21,7 +21,7 @@ def build(service, owner_gate):
             await reply(message, "Manage sudo permissions privately with this bot.")
             return
         parts = (getattr(message, "text", "") or "").split()
-        command = parts[0].split("@")[0].lstrip("/!.?").lower()
+        command = parts[0].split("@")[0].lstrip("/!.#$%&?").lower()
         args = parts[1:]
         # Preserve the existing command without recreating unrestricted sudo.
         if command == "sudo":

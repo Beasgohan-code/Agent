@@ -26,7 +26,7 @@ PROFILES = {
 
 # Prefer useful first actions over manifest ordering (which may start with aliases).
 QUICK_START = {
-    'filestore': ('genlink', 'batch', 'check'),
+    'filestore': ('genlink', 'batch', 'custom_batch'),
     'encoder': ('encode', 'compress', 'mediainfo'),
     'moderation': ('settings', 'setwelcome', 'warn'),
     'postmaker': ('post',),
@@ -219,7 +219,7 @@ def about_screen(user, theme, *, active=None):
 
 def lookup(argument, user, theme, *, active=None):
     """Resolve only this bot's tools; never fall through to controller categories."""
-    query = (argument or '').strip().lstrip('/!.?').lower()[:64]
+    query = (argument or '').strip().lstrip('/!.#$%&?').lower()[:64]
     slug = next((key for key, (name, _, _) in PROFILES.items() if query in (key, name.lower())), None)
     if slug:
         screen = plugin_screen(user, theme, slug, active=active)
