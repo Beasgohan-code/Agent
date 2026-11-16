@@ -62,11 +62,14 @@ class CloneConfigurationWriter:
                 ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value,updated_at=now()''', name, json.dumps(value), timeout=5)
         return configuration, result
 
-    async def write(self, bot_id, *, actor_id, expected_revision, request_id, changes):
+    async def write(self, bot_id, *, actor_id, expected_revision, request_id, changes, owner_only=False, expected_generation=None):
         if (type(expected_revision) is not int or expected_revision < 0 or type(actor_id) is not int
                 or not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_]{1,64}', request_id)
                 or not isinstance(changes, dict) or not changes or set(changes) - CONFIG_FIELDS):
             raise ConfigurationWriteError('Invalid configuration request')
+        if type(owner_only) is not bool or (expected_generation is not None and
+                (type(expected_generation) is not int or expected_generation <= 0)):
+            raise ConfigurationWriteError('Invalid configuration guard')
         store = self.store
         try:
             self.repository._available()
@@ -84,6 +87,10 @@ class CloneConfigurationWriter:
                     items = store._decode(raw)
                     if len(items) != len(raw) or bot_id not in items or actor_id not in (items[bot_id].owner_id, self.controller_owner_id):
                         raise ConfigurationWriteError('Clone configuration access refused')
+                    if owner_only and actor_id != items[bot_id].owner_id:
+                        raise ConfigurationWriteError('Only the saved clone owner may change this configuration')
+                    if expected_generation is not None and items[bot_id].lifecycle_generation != expected_generation:
+                        raise ConfigurationWriteError('Lifecycle changed; refresh configuration before saving')
                     configuration, result = await self._persist(conn, replace(items[bot_id], **changes),
                         expected_revision=expected_revision, request_id=request_id, identity=identity)
                     if configuration is not None:

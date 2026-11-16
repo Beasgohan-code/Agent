@@ -94,7 +94,12 @@ class CloneControlCentre:
                     ('Pending revision', str(metadata['pending_revision']) if metadata and metadata['pending_revision'] is not None else 'None observed'),
                     ('Last applied', self.date(metadata['last_applied_at']) if metadata else 'Unavailable')]
             keys = [[self.ctx.theme.button('Existing profile editor', icon='gear', callback_data=f'clone:{clone.bot_id}:profile')]]
-            note = 'Read-only saved configuration. The existing profile editor uses the canonical revision writer. Generic field editing/reset and command toggles are not implemented in this dashboard.'
+            if metadata and metadata['desired_revision'] > 0:
+                resets = [self.ctx.theme.button(label, icon='gear', callback_data=f'cc:{clone.bot_id}:reset:{field}:{metadata["desired_revision"]}:{clone.lifecycle_generation}')
+                          for field, label in (('log_channel', 'Clear log channel'), ('storage_channel', 'Clear archive channel')) if getattr(clone, field) is not None]
+                if resets:
+                    keys.append(resets)
+            note = 'Channel resets preview before saving a pending revision; existing copies are retained. Apply using dashboard Reconcile when ready. Arbitrary channel entry, credential editing and command toggles are unavailable here.'
         elif view == 'diagnostics':
             rows = [('Local lifecycle', self.manager.state(clone.bot_id).label),
                     ('Startup attempts', str(self.manager.state(clone.bot_id).attempts)),
@@ -140,12 +145,61 @@ class CloneControlCentre:
                      subtitle=f'Bot {clone.bot_id}', table=kv_table(rows) if view not in ('commands', 'plugins') else Table(headers=('Item', 'Details'), rows=tuple(rows)),
                      lines=[operation] if operation else [], note=note, footer='Owner-private · existing in-process workers · no OS sandbox'), InlineKeyboardMarkup(keys)
 
+    async def reset_channel(self, query, uid, match):
+        """Narrow, non-secret editor; never reconfigure workers inside a save."""
+        from .configuration import ConfigurationWriteError
+        from .revisions import RevisionConflict
+        try:
+            bot_id, stage, field, revision, generation = int(match[1]), match[2], match[3], int(match[4]), int(match[5])
+            await self.store.aall()
+            clone = self.store.get(bot_id)
+            if (self.store._db is None or clone is None or clone.owner_id != uid or revision <= 0 or
+                    (clone.configuration_revision, clone.lifecycle_generation) != (revision, generation)):
+                raise ConfigurationWriteError('Configuration access refused or stale. Refresh My Bots.')
+            if stage == 'reset':
+                if getattr(clone, field) is None:
+                    raise ConfigurationWriteError('This channel is already unset. Refresh configuration.')
+                label = 'Archive channel' if field == 'storage_channel' else 'Log channel'
+                body = panel('Preview channel reset', icon=self.ctx.theme.emoji('warn'),
+                    table=kv_table([('Field', label), ('Current', str(getattr(clone, field))),
+                                    ('Proposed', 'Not configured'), ('Expected revision', str(revision))]),
+                    note='No change saved. Clearing the archive channel removes the saved durable-copy destination; clearing the log channel removes the saved log destination. Existing copies are not deleted. Save creates pending configuration; workers must reconcile separately.')
+                keys = InlineKeyboardMarkup([
+                    [self.ctx.theme.button('Save reset', icon='gear', style=ButtonStyle.DANGER,
+                        callback_data=f'cc:{bot_id}:save:{field}:{revision}:{generation}')],
+                    [self.button(clone, 'Cancel', 'configuration', 'back')]])
+            else:
+                await query.answer('Validating configuration…')
+                request_id = hashlib.sha256(f'{uid}:{query.data}'.encode()).hexdigest()
+                result = await self.manager.configuration.write(bot_id, actor_id=uid, expected_revision=revision,
+                    request_id=request_id, changes={field: None}, owner_only=True, expected_generation=generation)
+                await self.store.aall()
+                current = self.store.get(bot_id)
+                if current is None or current.owner_id != uid:
+                    raise ConfigurationWriteError('Configuration saved but clone changed. Refresh My Bots.')
+                body, keys = await self.render(current, 'configuration',
+                    operation=f'Saved desired revision {result["desired_revision"]}. Worker application is pending; review and use Reconcile from the dashboard when ready.')
+            try:
+                await rich.edit(query, body, reply_markup=keys)
+            except MessageNotModified:
+                pass
+            if stage == 'reset':
+                await query.answer()
+        except Exception as exc:
+            logger.warning('#Errors Clone configuration reset unconfirmed (%s)', type(exc).__name__)
+            notice = str(exc) if isinstance(exc, (ConfigurationWriteError, RevisionConflict)) else 'Result unconfirmed. Refresh configuration before retrying.'
+            await query.answer(notice, show_alert=True)
+
     async def press(self, client, query, rest):
         user = getattr(query, 'from_user', None)
         uid = getattr(user, 'id', None)
         origin = getattr(query, 'message', None)
         if type(uid) is not int or uid <= 0 or getattr(getattr(origin, 'chat', None), 'id', None) != uid:
             await query.answer('Open /mybots privately as yourself.', show_alert=True)
+            return
+        reset_match = re.fullmatch(r'([0-9]{6,12}):(reset|save):(log_channel|storage_channel):([0-9]{1,12}):([0-9]{1,12})', rest)
+        if reset_match:
+            await self.reset_channel(query, uid, reset_match)
             return
         action_match = re.fullmatch(r'([0-9]{6,12}):(ask|run):(start|stop|restart|reconcile|delete):([0-9]{1,12}):([0-9]{1,12})', rest)
         match = re.fullmatch(r'([0-9]{6,12}):(home|configuration|diagnostics|commands|plugins)(?::([0-9]{1,4}))?', rest)
