@@ -251,8 +251,8 @@ class InstanceLease:
                 pass
             try:
                 renewed = await self.beat_once()
-            except Exception:  # a dead heartbeat must not leave Telegram serving
-                logger.exception("Lease renewal failed; stopping rather than serving unprotected.")
+            except Exception as error:  # a dead heartbeat must not leave Telegram serving
+                logger.error("#Errors Lease renewal failed (%s); stopping rather than serving unprotected.", type(error).__name__)
                 self.held = False
                 self.degraded = True
                 stop_event.set()

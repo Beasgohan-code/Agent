@@ -2715,6 +2715,16 @@
         "Updated legacy UI expectations for the requested box-free fallback; preserve rich rejection/keyboard/ambiguous-transport behavior"
       ],
       "validation": "Four UI and three diagnostic cases red before fixes. Focused 194 passed (1.03s); full dirty 1840 passed (21.26s); exact staged-source export 1753 passed (23.45s), no skips, disposable PostgreSQL. Compileall/Pyflakes/diff checks passed. Verified installed richgram 0.2.0 source metadata; Telegram transport mocked, no live visual/deployment/config changes. Wider SEC-02 remains open."
+    },
+    {
+      "id": "sec02-job-and-lease-diagnostic-redaction",
+      "status": "completed",
+      "changes": [
+        "JobQueue retains stable runner_failed code instead of raw exceptions; no traceback or runner-provided identifiers in queue failure log",
+        "PostgreSQL lease take/release and InstanceLease heartbeat failures log operation/type-only #Errors diagnostics",
+        "Four red regressions cover raw/unprintable job errors, actual PostgreSQL failure/rollback/isolation/replacement-pool reads and heartbeat stop behavior"
+      ],
+      "validation": "Focused 50 passed (0.66s); dirty full 1844 passed (20.59s); exact staged-source export 1757 passed (22.62s), no skips; actual disposable PostgreSQL failure triggers and pools. Compileall/Pyflakes/diff checks passed. Wider SEC-02, other runner fields and job restart durability remain outside scope. No live provider/deployment/config changes."
     }
   ],
   "production_changes": false,

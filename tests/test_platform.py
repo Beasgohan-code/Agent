@@ -104,7 +104,8 @@ def test_job_failure_is_recorded_not_raised():
     job = asyncio.run(scenario())
 
     assert job.state is JobState.FAILED
-    assert "boom" in job.error
+    assert job.error == "runner_failed"
+    assert "boom" not in job.error
 
 
 def test_job_cancel_only_for_owner():

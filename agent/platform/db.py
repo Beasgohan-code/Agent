@@ -378,7 +378,7 @@ class Database:
                     return "held" if other else "unavailable"
                 current = await connection.fetchrow(READ_LEASE, self.lease_key(name))
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Lease query failed: %s", exc)
+            logger.warning("#Errors Lease query failed (%s).", type(exc).__name__)
             return "unavailable"
         if current is None or current["holder"] != holder:
             return "held"
@@ -393,7 +393,7 @@ class Database:
                     RELEASE_LEASE, self.lease_key(name), holder
                 )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not release the lease: %s", exc)
+            logger.warning("#Errors Lease release failed (%s).", type(exc).__name__)
             return False
         return result.endswith(" 1")
 

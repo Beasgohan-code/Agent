@@ -33,6 +33,7 @@ class Job:
     state: JobState = JobState.QUEUED
     progress: float = 0.0
     detail: str = ""
+    #: Stable failure code only; provider exception bodies are not job history.
     error: str | None = None
     #: Whatever the runner returned — a produced file's path, usually.
     result: Any = None
@@ -133,9 +134,9 @@ class JobQueue:
                 raise
             except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
                 job.state = JobState.FAILED
-                job.error = f"{type(exc).__name__}: {exc}"
+                job.error = "runner_failed"
                 job.finished_at = time.time()
-                logger.exception("Job %s (%s) failed", job.id, job.module)
+                logger.warning("#Errors Job runner failed (%s).", type(exc).__name__)
             else:
                 if job.state is JobState.CANCELLED:
                     job.result = None
