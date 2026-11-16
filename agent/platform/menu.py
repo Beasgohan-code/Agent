@@ -251,6 +251,8 @@ DESCRIPTIONS: dict[str, str] = {
     "del_caption": "Remove your private upload caption",
     # ops (owner)
     "restart": "Restart the process (owner)",
+    "myinfo": "Your public Telegram identity card",
+    "userinfo": "Public user card by reply, username or ID",
     "tiktok": "TikTok profile-link card; no live account lookup",
     "x": "X profile-link card; no live account lookup",
     "yt": "YouTube handle-link card; no live account lookup",

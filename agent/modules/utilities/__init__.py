@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import html
 import logging
+import asyncio
+import re
 from pyrogram.enums import ChatType, ButtonStyle
 from pyrogram.types import InlineKeyboardMarkup
 from datetime import datetime, timezone
@@ -23,7 +25,7 @@ MANIFEST = PluginManifest(
     name="Utilities",
     version="1.0.0",
     description="Chat/member identifiers, member details and the current time.",
-    commands=("id", "info", "time", "repo", "gu", "tiktok", "x", "yt", "ig"),
+    commands=("id", "info", "myinfo", "userinfo", "time", "repo", "gu", "tiktok", "x", "yt", "ig"),
     permissions=("messages.read",),
     scope="all",
 )
@@ -74,15 +76,13 @@ def build(ctx):
             note='Identifiers are visible in this chat. A sender-chat identity is not proof of the human administrator behind it.',
             footer='/info · /time · /help'))
 
-    async def show_info(client, message):
-        if not await no_args(message, 'info'):
-            return
+    async def render_profile(client, message, *, target=None):
         replied = getattr(message, 'reply_to_message', None)
-        if replied is not None and getattr(replied, 'from_user', None) is None:
+        if target is None and replied is not None and getattr(replied, 'from_user', None) is None:
             await reply(message, panel('User identity unavailable', icon=ctx.theme.emoji('lock'),
                 lines=['The replied message has no visible user identity. Use /id for sender-chat identifiers; the hidden human cannot be inferred.']))
             return
-        target = _replied(message) or getattr(message, "from_user", None)
+        target = target or _replied(message) or getattr(message, "from_user", None)
         if target is None:
             await reply(message, "Reply to a member, or run this in a chat where I can see you.")
             return
@@ -128,6 +128,44 @@ def build(ctx):
         await reply(message, panel('Member profile', icon=ctx.theme.emoji('user'),
             lines=lines[1:], note='Public Telegram identity only. Moderation details are added only for authorized moderators; replies are still visible to this chat.',
             footer='/id · /help info'))
+
+    async def show_info(client, message):
+        parts = (getattr(message, 'text', '') or '').split()
+        if len(parts) > 2:
+            await reply(message, 'Usage: <code>/info [@username|positive ID]</code>, or reply to a member.')
+            return
+        target = None
+        if len(parts) == 2:
+            value = parts[1]
+            if re.fullmatch(r'[1-9][0-9]{0,18}', value) and int(value) < 2**63:
+                value = int(value)
+            elif not re.fullmatch(r'@[A-Za-z0-9_]{1,32}', value):
+                await reply(message, 'Usage: <code>/info [@username|positive ID]</code>, or reply to a member.')
+                return
+            try:
+                target = await asyncio.wait_for(client.get_users(value), timeout=5)
+                if type(getattr(target, 'id', None)) is not int or target.id <= 0:
+                    raise RuntimeError('No personal user identity')
+            except Exception as error:
+                logging.getLogger(__name__).warning('#Errors User lookup unavailable (%s)', type(error).__name__)
+                await reply(message, 'User lookup unavailable. Check the username or ID; no private profile details were inferred.')
+                return
+        await render_profile(client, message, target=target)
+
+    async def myinfo(client, message):
+        if not await no_args(message, 'myinfo'):
+            return
+        target = getattr(message, 'from_user', None)
+        if target is None or getattr(message, 'sender_chat', None) is not None:
+            await reply(message, 'Your personal user identity is unavailable. Use /id for sender-chat details.')
+            return
+        await render_profile(client, message, target=target)
+
+    async def userinfo(client, message):
+        if len((getattr(message, 'text', '') or '').split()) == 1 and _replied(message) is None:
+            await reply(message, 'Usage: <code>/userinfo @username</code> or positive ID, or reply to a member.')
+            return
+        await show_info(client, message)
 
     async def show_time(_client, message):
         args = (getattr(message, 'text', '') or '').split()[1:]
@@ -202,4 +240,4 @@ def build(ctx):
         )
 
     from .social import build as social_cards
-    return MANIFEST, {**social_cards(ctx), "id": show_id, "info": show_info, "time": show_time, "repo": repo, "gu": gu}
+    return MANIFEST, {**social_cards(ctx), "id": show_id, "info": show_info, "myinfo": myinfo, "userinfo": userinfo, "time": show_time, "repo": repo, "gu": gu}
