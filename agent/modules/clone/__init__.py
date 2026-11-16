@@ -427,6 +427,16 @@ def build(ctx):
         if not _may_manage(user.id, target):
             await reply(message, "That clone belongs to somebody else.")
             return
+        if store._db is not None:
+            if type(user.id) is not int or target.owner_id != user.id or getattr(getattr(message, 'chat', None), 'id', None) != user.id:
+                await reply(message, 'Open /mybots privately as the saved clone owner.')
+                return
+            if target.configuration_revision <= 0:
+                await reply(message, 'Revision-tracked configuration is required. Open the dashboard to inspect this legacy record; no deletion was performed.')
+                return
+            text, keyboard = control_centre.confirmation(target, 'delete', target.configuration_revision, target.lifecycle_generation)
+            await reply(message, text, reply_markup=keyboard)
+            return
         await manager.stop(target.bot_id)
         await store.aremove(target.bot_id)
         if events is not None:
@@ -579,6 +589,16 @@ def build(ctx):
             return
         if not _may_manage(presser, target):
             await query.answer("Only its owner can control this clone.", show_alert=True)
+            return
+        if store._db is not None and action in ('start', 'stop', 'restart', 'delete', 'delete_confirm'):
+            if len(parts) != 2:
+                await query.answer('That lifecycle button is stale. Refresh My Bots.', show_alert=True)
+                return
+            # Saved unversioned buttons may browse a fresh confirmation, never
+            # synthesize a current assignment and execute it in the same press.
+            requested = 'delete' if action == 'delete_confirm' else action
+            await control_centre.press(client, query,
+                f'{bot_id}:ask:{requested}:{target.configuration_revision}:{target.lifecycle_generation}')
             return
         if action == "details":
             if getattr(getattr(query.message, "chat", None), "id", None) != presser:

@@ -35,6 +35,20 @@ class CloneControlCentre:
         return [self.button(clone, 'Dashboard', 'home', 'bot'),
                 self.ctx.theme.button('My Bots', icon='back', callback_data='clone:refresh')]
 
+    def confirmation(self, clone, action, revision, generation):
+        body = panel(f'Confirm {action}', icon=self.ctx.theme.emoji('warn'),
+            lines=[f'Apply {action} to bot {clone.bot_id}?',
+                   ('Delete removes the managed record and requests local teardown. Delivered files/messages, revision history and retained worker data are not erased.' if action == 'delete' else
+                    'Stop saves durable stop intent; remote controllers must observe it. Start, restart and reconcile can replace the worker and interrupt work.'),
+                   f'Configuration revision {revision} · lifecycle generation {generation}.'],
+            note='No changes have been made. Confirmation rechecks owner, revision, generation and start eligibility.')
+        keyboard = InlineKeyboardMarkup([
+            [self.ctx.theme.button(f'Confirm {action}', icon='ban' if action in ('stop', 'restart', 'delete') else 'bolt',
+                style=ButtonStyle.DANGER if action in ('stop', 'restart', 'delete') else ButtonStyle.PRIMARY,
+                callback_data=f'cc:{clone.bot_id}:run:{action}:{revision}:{generation}')],
+            [self.button(clone, 'Cancel', 'home', 'back')]])
+        return body, keyboard
+
     async def render(self, clone, view, page=0, *, operation=None):
         observation = self.manager.observe_worker(clone.bot_id)
         plugins = observation['plugins']
@@ -64,6 +78,8 @@ class CloneControlCentre:
                     actions.append(self.ctx.theme.button(label, icon=icon,
                         callback_data=f'cc:{clone.bot_id}:ask:{action}:{metadata["desired_revision"]}:{clone.lifecycle_generation}'))
                 keys.extend([actions[:2], actions[2:]])
+                keys.append([self.ctx.theme.button('Delete clone', icon='ban', style=ButtonStyle.DANGER,
+                    callback_data=f'cc:{clone.bot_id}:ask:delete:{metadata["desired_revision"]}:{clone.lifecycle_generation}')])
             if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{4,31}', clone.username or ''):
                 keys.append([InlineKeyboardButton('Open Bot', url=f'https://t.me/{clone.username}',
                              icon_custom_emoji_id=self.ctx.theme.emoji_id('link'), style=ButtonStyle.PRIMARY)])
@@ -131,7 +147,7 @@ class CloneControlCentre:
         if type(uid) is not int or uid <= 0 or getattr(getattr(origin, 'chat', None), 'id', None) != uid:
             await query.answer('Open /mybots privately as yourself.', show_alert=True)
             return
-        action_match = re.fullmatch(r'([0-9]{6,12}):(ask|run):(start|stop|restart|reconcile):([0-9]{1,12}):([0-9]{1,12})', rest)
+        action_match = re.fullmatch(r'([0-9]{6,12}):(ask|run):(start|stop|restart|reconcile|delete):([0-9]{1,12}):([0-9]{1,12})', rest)
         match = re.fullmatch(r'([0-9]{6,12}):(home|configuration|diagnostics|commands|plugins)(?::([0-9]{1,4}))?', rest)
         if not action_match and (not match or ((match[2] in ('commands', 'plugins')) != (match[3] is not None))):
             await query.answer('That dashboard control is stale.', show_alert=True)
@@ -149,16 +165,7 @@ class CloneControlCentre:
                 if self.store._db is None or revision <= 0 or (clone.configuration_revision, clone.lifecycle_generation) != (revision, generation):
                     raise ControlConflict('Lifecycle control is unavailable or stale. Refresh the dashboard.')
                 if stage == 'ask':
-                    body = panel(f'Confirm {action}', icon=self.ctx.theme.emoji('warn'),
-                        lines=[f'Apply {action} to bot {clone.bot_id}?',
-                               'Stop saves durable stop intent; remote controllers must observe it. Start, restart and reconcile can replace the worker and interrupt work.',
-                               f'Configuration revision {revision} · lifecycle generation {generation}.'],
-                        note='No changes have been made. Confirmation rechecks owner, revision, generation and start eligibility.')
-                    keyboard = InlineKeyboardMarkup([
-                        [self.ctx.theme.button(f'Confirm {action}', icon='ban' if action in ('stop', 'restart') else 'bolt',
-                            style=ButtonStyle.DANGER if action in ('stop', 'restart') else ButtonStyle.PRIMARY,
-                            callback_data=f'cc:{clone.bot_id}:run:{action}:{revision}:{generation}')],
-                        [self.button(clone, 'Cancel', 'home', 'back')]])
+                    body, keyboard = self.confirmation(clone, action, revision, generation)
                 else:
                     await query.answer('Validating lifecycle request…')
                     request_id = hashlib.sha256(f'{uid}:{rest}'.encode()).hexdigest()
@@ -166,9 +173,14 @@ class CloneControlCentre:
                         expected_revision=revision, expected_generation=generation, request_id=request_id)
                     await self.store.aall()
                     current = self.store.get(clone.bot_id)
-                    if current is None or current.owner_id != uid:
+                    if action == 'delete':
+                        body = panel('Clone removed', icon=self.ctx.theme.emoji('info'), lines=[result],
+                            note='This removes the managed record, not messages/files already delivered or all retained worker data.')
+                        keyboard = InlineKeyboardMarkup([[self.ctx.theme.button('My Bots', icon='back', callback_data='clone:refresh')]])
+                    elif current is None or current.owner_id != uid:
                         raise ControlConflict('Clone changed during the operation. Refresh My Bots.')
-                    body, keyboard = await self.render(current, 'home', operation=result)
+                    else:
+                        body, keyboard = await self.render(current, 'home', operation=result)
             else:
                 body, keyboard = await self.render(clone, match[2], int(match[3] or 0))
             try:

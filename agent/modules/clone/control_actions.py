@@ -21,7 +21,7 @@ class CloneControlActions:
         if (type(bot_id) is not int or bot_id <= 0 or type(actor_id) is not int or actor_id <= 0
                 or type(expected_revision) is not int or expected_revision <= 0
                 or type(expected_generation) is not int or expected_generation < 0
-                or action not in ('start', 'stop', 'restart', 'reconcile')
+                or action not in ('start', 'stop', 'restart', 'reconcile', 'delete')
                 or not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_]{1,64}', request_id)):
             raise ControlConflict('Invalid lifecycle request.')
         store, db = self.store, self.store._db
@@ -53,8 +53,11 @@ class CloneControlActions:
                             or state['desired_revision'] != expected_revision):
                         raise ControlConflict('Clone configuration or lifecycle changed. Refresh before retrying.')
                     generation = await store._next_generation(conn, bot_id, clone.lifecycle_generation)
-                    assignment = replace(clone, disabled=(action == 'stop'), lifecycle_generation=generation)
-                    items[bot_id] = assignment
+                    assignment = replace(clone, disabled=(action in ('stop', 'delete')), lifecycle_generation=generation)
+                    if action == 'delete':
+                        items.pop(bot_id)
+                    else:
+                        items[bot_id] = assignment
                     await conn.execute('UPDATE agent_documents SET value=$2::jsonb,updated_at=now() WHERE name=$1',
                         key, json.dumps([store._payload(c, store._box) for c in items.values()]), timeout=5)
                     receipt = dict(status='admitted', action=action, actor_id=actor_id, bot_id=bot_id, request_id=request_id,

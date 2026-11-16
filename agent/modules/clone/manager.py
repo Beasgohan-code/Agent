@@ -230,8 +230,10 @@ class CloneManager:
             assignment = await CloneControlActions(self._store).admit(bot_id, action,
                 actor_id=actor_id, expected_revision=expected_revision,
                 expected_generation=expected_generation, request_id=request_id)
-            if action == 'stop':
+            if action in ('stop', 'delete'):
                 await self._stop_worker(bot_id)
+                if action == 'delete':
+                    return 'Managed record removed; local teardown requested. Remote controllers must reconcile the deletion.'
                 return 'Stop intent saved; local teardown requested. Refresh diagnostics; remote controllers must reconcile.'
             await self._reconcile_start(assignment, strict_assignment=True)
             return 'Worker identity and revision acknowledgement confirmed in this controller.'
