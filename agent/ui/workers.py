@@ -35,6 +35,19 @@ QUICK_START = {
     'renamer': ('rename', 'autorename', 'testrename'),
     'utilities': ('id', 'info', 'time'),
 }
+# Read-only onboarding: copying a command never executes a privileged action.
+WORKFLOWS = {
+    'filestore': ('Open a file link issued by this bot in private chat.', 'Complete any verification shown before delivery.', 'Use the available file commands below for usage and access checks.'),
+    'encoder': ('Send a supported video or document.', 'Reply to that media with an encoding command; open /help encode for options.', 'Watch the job result. Use /cancel to stop your own active job.'),
+    'moderation': ('Add this bot to your group with only the administrator rights you need.', 'Open /settings in the group to choose rules, greetings and protection.', 'Review your settings before using moderation actions on members.'),
+    'postmaker': ('Prepare the text or media you want to publish.', 'Open /help post for the supported composition format.', 'Check the content and destination before publishing. Permissions still apply.'),
+    'linkshare': ('Choose a file you own, or reply to supported media.', 'Open /help genlink to choose expiry and use limits.', 'Share the issued link privately. Revocation cannot erase copies already delivered.'),
+    'leech': ('Choose a supported public file URL; do not include secrets.', 'Send /leech followed by the URL, or reply to one URL with /leech.', 'Receive the file here. Use /cancel to stop your own active transfer.'),
+    'music': ('Ask the Owner to configure this bot’s own assistant.', 'An admin must activate the approved Music plugin for the group.', 'Use only supported downloaded local media. Remote URL, YouTube and search playback remain disabled.'),
+    'ai_agent': ('Write a question without credentials or private secrets.', 'Send /ask followed by your question. Only that message goes to the configured provider.', 'Verify important answers. Auto-chat is opt-in; the assistant cannot perform Telegram actions.'),
+    'renamer': ('Send supported media to this bot.', 'Reply with the rename command; open /help rename for its syntax.', 'Check the resulting filename. Manage caption and thumbnail preferences with the installed tools.'),
+    'utilities': ('Choose the detail you need from the commands below.', 'Copy a command and send it in this chat.', 'Use /help command to check usage. Private and administrator-only actions stay restricted.'),
+}
 PAGE_SIZE = 8
 
 
@@ -88,13 +101,18 @@ def overview(user, theme, *, active=None, help_mode=False):
         examples = ' · '.join('/' + command for command in (preferred or available[:3]))
         rows.append((markup(f'{theme.emoji(accent)} {rich_esc(name)}'), examples))
     lines = [f'{theme.emoji("wave")} Welcome, <b>{rich_esc(display_name(user) or "there")}</b>.']
-    lines.extend(PROFILES[slug][2] for slug in primary)
+    if len(primary) == 1:
+        lines.append(PROFILES[primary[0]][2])
+    else:
+        lines.append('Choose a workspace below. Each tool has its own getting-started guide and command list.')
     if not visible:
         lines.append('No tools are currently available. Ask this bot’s owner to check its configuration.')
     body = panel(title, icon=theme.emoji(icon), subtitle='Explore your tools' if help_mode else 'Quick start', table=Table(headers=('Tools', 'Try'), rows=tuple(rows)),
                  lines=lines, note='Choose a tool below for instructions.' if not help_mode else 'Group actions require administrator permissions. Optional tools require owner approval and group activation.',
                  footer='/help command · More detail for any available command')
     keys = [[button(theme, slug)] for slug in visible]
+    if visible and not help_mode:
+        keys.insert(0, [theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{visible[0]}', style=ButtonStyle.PRIMARY)])
     keys.append([theme.button('How to use', icon='question', callback_data=CB_HELP, style=ButtonStyle.PRIMARY), theme.button('About', icon='info', callback_data='worker:about')])
     return Screen(body, Keyboard(keys))
 
@@ -122,11 +140,14 @@ def plugin_screen(user, theme, slug, *, active=None, page=0):
         paging.append(theme.button('Previous', icon='back', callback_data=f'worker:{slug}:{page - 1}'))
     if page + 1 < pages:
         paging.append(theme.button('Next', icon='arrow', callback_data=f'worker:{slug}:{page + 1}', style=ButtonStyle.PRIMARY))
-    keys = ([paging] if paging else []) + [navigation(theme)]
+    keys = ([paging] if paging else []) + [[theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{slug}', style=ButtonStyle.PRIMARY)]] + [navigation(theme)]
     return Screen(body, Keyboard(keys))
 
 
 def callback(data, user, theme, *, active=None):
+    guide = re.fullmatch(r'worker:guide:([a-z_]{1,32})', data)
+    if guide:
+        return guide_screen(user, theme, guide[1], active=active)
     if data == 'worker:about':
         return about_screen(user, theme, active=active) if theme.worker_plugins is not None else None
     match = re.fullmatch(r'worker:([a-z_]{1,32}):([0-9]{1,3})', data)
@@ -179,3 +200,27 @@ def profile_screen(user, theme, *, active=None):
                  note='These details come from your Telegram profile, not a paid plan.',
                  footer='Personal settings and access are managed by this bot.')
     return Screen(body, Keyboard([navigation(theme)]))
+
+
+def guide_screen(user, theme, slug, *, active=None):
+    """A live-selected, read-only workflow with safe copy-command shortcuts."""
+    from .screens import Screen
+    if slug not in PROFILES or not allowed(theme, slug):
+        return None
+    available = commands(slug, active)
+    if not available:
+        return None
+    title, icon, _ = PROFILES[slug]
+    steps = WORKFLOWS[slug]
+    rows = tuple((markup(f'{theme.emoji(number)} Step {index}'), text)
+                 for index, (number, text) in enumerate(zip(('one', 'two', 'three'), steps), 1))
+    shortcuts = [command for command in QUICK_START[slug] if command in available]
+    body = panel(f'{title} · Get started', icon=theme.emoji(icon), subtitle='A simple path from start to result',
+                 table=Table(headers=('Step', 'What to do'), rows=rows),
+                 note='Copy buttons only put a command on your clipboard. Send it yourself when ready; access checks still apply.',
+                 footer='Need exact syntax? Send /help followed by a command name.')
+    buttons = [theme.button(f'Copy /{command}', icon='pin', copy_text=f'/{command}') for command in shortcuts]
+    keys = [buttons[index:index + 2] for index in range(0, len(buttons), 2)]
+    keys.append([theme.button('Browse commands', icon='search', callback_data=f'worker:{slug}:0', style=ButtonStyle.PRIMARY)])
+    keys.append(navigation(theme))
+    return Screen(body, Keyboard(keys))
