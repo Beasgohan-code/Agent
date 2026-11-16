@@ -11,7 +11,7 @@ import re
 import time
 
 from pyrogram.errors import MessageNotModified
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
 from pyrogram.enums import ButtonStyle
 
 from ...ui.tables import Table, kv_table, panel, markup
@@ -50,7 +50,7 @@ class CloneControlCentre:
             [self.button(clone, 'Cancel', 'home', 'back')]])
         return body, keyboard
 
-    async def render(self, clone, view, page=0, *, operation=None):
+    async def render(self, clone, view, page=0, *, operation=None, command=None):
         observation = self.manager.observe_worker(clone.bot_id)
         plugins = observation['plugins']
         metadata = await self.manager.configuration.read(clone.bot_id) if self.store._db is not None else None
@@ -109,8 +109,25 @@ class CloneControlCentre:
                     ('Last activity', observation['activity']),
                     ('Configuration status', metadata['configuration_status'] if metadata else 'Unavailable'),
                     ('Failed revision', str(metadata['last_failed_revision']) if metadata and metadata['last_failed_revision'] else 'None observed'),
-                    ('Logs / recent event feed', 'Unavailable in this dashboard')]
+                    ('Worker logs', 'Unavailable · raw errors hidden'),
+                    ('Lifecycle admission history', 'Available via Recent activity; not worker completion')]
             note = 'If configuration is pending or failed, review setup with the existing profile editor and lifecycle controls. Missing local observation is not proof of a remote failure. Raw errors and credentials are deliberately hidden.'
+        elif view == 'command':
+            from .control_actions import ControlConflict
+            from ...platform.menu import DESCRIPTIONS
+            plugin = next((p for p in plugins or () if p['enabled'] and command in p['commands']), None)
+            if plugin is None:
+                raise ControlConflict('Command is not available in this clone’s current local registry. Refresh Commands.')
+            rows = [('Command', '/' + command), ('Description', DESCRIPTIONS.get(command, 'No usage description declared.')),
+                    ('Plugin', plugin['name']), ('Scope', plugin['scope']),
+                    ('Permissions', ', '.join(plugin['permissions']) or 'None declared'),
+                    ('Dependencies', ', '.join(plugin['dependencies']) or 'None declared'),
+                    ('Required credential names', ', '.join(plugin['credentials']) or 'None declared'),
+                    ('Required capabilities', ', '.join(plugin['capabilities']) or 'None declared')]
+            keys = [[InlineKeyboardButton('Copy /' + command, copy_text=CopyTextButton(text='/' + command),
+                       icon_custom_emoji_id=self.ctx.theme.emoji_id('info'))],
+                    [self.button(clone, 'Back to Commands', 'commands:0', 'back')]]
+            note = 'Copy provides the bare command, not guessed arguments. Send it to this clone in the declared scope for current usage. Registry presence does not prove provider readiness, group approval or execution permission. No individual command toggles are supported.'
         elif view == 'activity':
             from .activity import read_activity
             events, has_next = await read_activity(self.store, clone.bot_id, clone.owner_id, page)
@@ -147,6 +164,10 @@ class CloneControlCentre:
                 else:
                     from ...platform.menu import DESCRIPTIONS
                     rows = [(markup(f'<code>/{command}</code>'), DESCRIPTIONS.get(command, 'Send this command for current usage.') + '\nPlugin: ' + p['name'] + '\nScope: ' + p['scope'] + '\nPermissions: ' + (', '.join(p['permissions']) or 'None declared')) for p, command in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]]
+                if view == 'commands':
+                    command_buttons = [self.button(clone, '/' + cmd, f'command:{cmd}', 'info')
+                        for _, cmd in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE] if re.fullmatch(r'[a-z0-9_]{1,32}', cmd)]
+                    keys.extend(command_buttons[i:i+2] for i in range(0, len(command_buttons), 2))
                 paging = []
                 if page:
                     paging.append(self.button(clone, 'Previous', f'{view}:{page-1}', 'back'))
@@ -292,14 +313,15 @@ class CloneControlCentre:
         if reset_match:
             await self.reset_channel(query, uid, reset_match)
             return
+        command_match = re.fullmatch(r'([0-9]{6,12}):command:([a-z0-9_]{1,32})', rest)
         action_match = re.fullmatch(r'([0-9]{6,12}):(ask|run):(start|stop|restart|reconcile|delete):([0-9]{1,12}):([0-9]{1,12})', rest)
         match = re.fullmatch(r'([0-9]{6,12}):(home|configuration|diagnostics|commands|plugins|activity)(?::([0-9]{1,4}))?', rest)
-        if not action_match and (not match or ((match[2] in ('commands', 'plugins', 'activity')) != (match[3] is not None))):
+        if not command_match and not action_match and (not match or ((match[2] in ('commands', 'plugins', 'activity')) != (match[3] is not None))):
             await query.answer('That dashboard control is stale.', show_alert=True)
             return
         try:
             await self.store.aall()  # Canonical reload before ownership check, including after deletion/transfer.
-            clone = self.store.get(int(action_match[1] if action_match else match[1]))
+            clone = self.store.get(int(command_match[1] if command_match else action_match[1] if action_match else match[1]))
             if clone is None or clone.owner_id != uid:
                 await query.answer('This clone is unavailable to you. Refresh My Bots.', show_alert=True)
                 return
@@ -326,6 +348,8 @@ class CloneControlCentre:
                         raise ControlConflict('Clone changed during the operation. Refresh My Bots.')
                     else:
                         body, keyboard = await self.render(current, 'home', operation=result)
+            elif command_match:
+                body, keyboard = await self.render(clone, 'command', command=command_match[2])
             else:
                 body, keyboard = await self.render(clone, match[2], int(match[3] or 0))
             try:
