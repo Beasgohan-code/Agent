@@ -2643,6 +2643,35 @@
         "No production data,deployment or PR merge",
         "Uncommitted local files preserved byte-for-byte; only remote/local committed history and conflict resolutions enter merge"
       ]
+    },
+    {
+      "id": "meiko-full-discovery-and-diagnostic-hardening",
+      "status": "discovery-complete-targeted-hardening-verified",
+      "starting_commit": "333c74486cf45336d5e8eda112dc9c165d3dd3aa",
+      "summary": "Repository-wide static inventory and critical runtime-path audit; docs/CODEBASE_AUDIT.md records dependency/flow maps, actual feature inventory, reproduced bugs and prioritized gates. Sanitize callback entry/answer/fallback logging and watchdog public-health exception metadata. No claim of whole-codebase security certification or feature completion.",
+      "files": [
+        "docs/CODEBASE_AUDIT.md",
+        "agent/handlers/callbacks.py",
+        "agent/watchdog.py",
+        "tests/test_audit_diagnostic_redaction.py"
+      ],
+      "evidence": {
+        "discovery": "308 Python files before new test:142 application,156 tests,9 tools,start.py;20 plugin packages,209 manifest command names (not feature count);52 startup SQL statements,44 tables in inspected dirty tree",
+        "red": "5 diagnostic tests failed before implementation; initial3 then expanded5 all reproduced intended leaks with synthetic values",
+        "focused": "45 passed in0.42s; diagnostic/health/action-router/deep-link unit+mocked Telegram coverage",
+        "full_dirty_pg": "1796 passed,no skips,in22.14s; actual disposable PostgreSQL configured",
+        "full_clean_export_pg": "1709 passed,no skips,in24.25s; tracked-source export plus exact new code/test slice, no dirty source dependencies; not fresh dependency installation",
+        "probes_pg": "Confirmed disable-during-apply applied_revision1 while disabled=True; delete/recreate blocked by retained revision/creation state;2 independent warning writers persisted1 warning",
+        "static": "AST inventory,compileall,Pyflakes,working/staged diff checks; isolated-export compile/lint also run"
+      },
+      "limitations": [
+        "No live Telegram,AI provider,native group-call,deployment or production database calls",
+        "Ruff/Black/Docker unavailable; no formatting configuration or CI workflow found; no Docker build or fresh dependency install",
+        "pip check reports deliberate Richgram/Kurigram no-deps packaging exception; not represented as passing",
+        "Unrelated dirty Music,Premium,UI/dependency changes left untouched and uncommitted",
+        "Open P0 findings are documented, not fixed by this slice; next gate lifecycle acknowledgement fencing",
+        "No external plugin execution boundary changes,production configuration changes,cleanup replay or PR merge"
+      ]
     }
   ],
   "production_changes": false,

@@ -1,0 +1,153 @@
+# Meiko — verified codebase discovery and hardening audit
+
+## Baseline, scope and confidence
+
+- Phase: repository-wide discovery + diagnostic disclosure hardening.
+- Starting commit: `333c74486cf45336d5e8eda112dc9c165d3dd3aa` on `arena/3b91f811-agent`; remote matched at discovery.
+- Scope includes the actual dirty working tree, not just committed files. Existing local changes to Premium, Music, UI, dependencies and other features remain outside this phase's commit.
+- Discovery read/parsed all **142 application Python files**, **156 existing test Python files**, **9 Python tools**, and `start.py` (308 Python files before this phase's new test). Imports, definitions, handler registrations, SQL/task/write boundaries were indexed across that set. All plugin manifests were inspected. Configuration, Docker/Render files, documentation, licenses, patch manifests, patch text and the TypeTube Node bridge were inventoried/read.
+- Manual execution-path review covered transport/build/run/shutdown, command/callback/deep-link dispatch, plugin selection/gates, clone setup/store/writer/reconciler/manager, authorization, document persistence, relational stores, health, networking, jobs, storage and the feature families below. This is **broad discovery and targeted behavioral verification**, not an exhaustive proof of every handler, dependency, SQL interleaving or upstream feature.
+- Evidence labels: **R** = reproduced locally; **S** = source-confirmed path/gap, not an exploitation claim; **U** = live behavior unverified. Old documentation and historical test totals are not current evidence.
+- No production services, credentials, Telegram accounts or connected-app data were used. Disposable PostgreSQL only. No PR merge or deployment.
+
+## Verified architecture and dependency map
+
+```text
+start.py -> Settings/from_env + logging + data path -> AgentBot
+ AgentBot.run -> Database.connect/load + settings hydration
+              -> build -> Wzgram Client/handlers + ModuleContext
+              -> InstanceLease/heartbeat -> Telegram handshake
+              -> optional voice/clone restore + menu sync + watchdog
+ Telegram updates -> command scope filters / callbacks / deep links / watchers
+                  -> PluginGate + handler-specific authorization
+                  -> application services -> scoped PostgreSQL / external API
+                  -> RichMessage/native table or classic HTML fallback
+ shutdown -> stop owned tasks/services -> disconnect -> release lease -> close DB
+
+ModuleContext -> chats, storage, links, jobs, runtime, premium, logbook,
+                 plugin access/gate, clone manager, transport routers
+Plugin catalogue -> manifests + pure selection resolver -> built-in registration
+Clone control plane -> encrypted registry + revision writer -> reconciler
+                    -> per-clone AgentBot + client + lease + resource cleanup
+```
+
+- Telegram transport is **Wzgram through the `pyrogram` namespace**, with Richgram installed without dependencies to avoid replacing Wzgram with Kurigram. Aiogram is not the application's implemented transport. Do not add a second framework without an explicit integration design.
+- Native rich messages/tables are used where available, with fallback handling in `utils/rich.py`, `utils/sender.py`, `ui/tables.py`. Rendering support is not a guarantee that every Telegram client accepts it.
+- The 20 built-in plugin packages are selected from `modules/ALL_MODULES`; shell and seven group-core plugins are mandatory. Discovery is an explicit catalogue, not arbitrary filesystem execution.
+- Manifests expose dependencies/conflicts, credentials/capabilities, compatibility, scopes, Premium/resource metadata and configuration schemas. The pure resolver validates selection graphs; the registry checks actual command-handler maps. Schema metadata is not proof that every configuration is validated at runtime.
+- External installer staging/hash review is retained, but `installer.load()` explicitly refuses third-party execution. Review is **not** a sandbox. Clone workers are **in-process clients**, not isolated OS processes.
+
+## Actual feature inventory and runtime flows
+
+There are **209 manifest command names**, including aliases, plus built-ins handled outside the registry. This is **not 209 independent features**, nor a claim of the requested 200+ behavior target. Registration remains conditional on dependencies, runtime state and capability.
+
+All command flows share transport scope filtering and PluginGate for optional modules; protected core uses its own authorization. Callbacks enter `CallbackHandlers -> ActionRouter`; `/start` payloads enter `DeepLinkRouter`. Known registration prefixes include clone/setup, group/plugin controls, verification, federation roles, leech, linkshare, music and Premium. Message watchers cover moderation/antiflood, greetings, filters, verification membership, guided clone/FileStore input and opt-in AI text.
+
+| Area / package | Actual action -> authority/service -> persistence/API -> response | Important limits |
+|---|---|---|
+| `ops`, `core` | diagnostics/runtime/plugin controls -> Owner or delegated capability checks -> runtime, incidents, logbook, Telegram command menu -> status/panels | Global runtime switches still queue document persistence; events are not universally durable. |
+| `group` (+ admin, controls, topics, plugin panel) | rules/settings, pins/admin/topic actions -> live group permissions -> group_rules/admin_settings/action_topics/PluginAccess or Telegram -> confirmation | Settings mix relational authority with legacy chat-document fields. |
+| `moderation` (+ restrictions, locks, blocklists, cleaning, antiflood) | target parsing -> caller/bot/target checks -> restriction intents, blocklist/policy tables or legacy warnings -> Telegram restrict/ban/delete -> outcome/history | Manual variants have intent/outcome records; base warnings/history are still cached document writes. Flood counters are local memory. |
+| `filters` | moderator adds/removes trigger -> group_filters transaction/revision -> text watcher match -> Telegram response | Not a durable scheduled automation engine. |
+| `welcome` | admin text/toggle -> Greetings -> membership watcher -> formatted welcome/goodbye | Membership delivery is not a durable outbox. |
+| `security` | verification setup -> joined-member restriction + nonce/origin-bound callback -> Telegram unrestrict / timeout removal | Pending challenges/timers are memory-resident; restart recovery is incomplete. |
+| `reports` | reply `/report`, `/appeal` -> chat report sequence; moderator reads/closes -> ChatStore -> panels | Report creation/sequence/closure are not cross-instance transactional. |
+| `federations` (+ roles) | create/join/admin/transfer workflows -> federation membership/role authority -> tenant-scoped tables/history -> confirmations | Do not infer a full federated-ban/analytics platform from administration commands. |
+| `clone` (12 Python files) | private draft -> encryption/Premium/capacity + Bot API getMe/channel checks -> canonical encrypted registry/revision -> reconciler -> AgentBot/lease -> panel | See P0 lifecycle defects below. Direct profile changes save pending revisions; supervisor/start/restart/restore use reconciliation. |
+| `filestore` | private conversation/channel range -> channel permissions -> archive_links/deliveries/items -> Telegram copy -> delivery result | Channel-message archive exists; local vault metadata/archive recovery is a different subsystem. No exactly-once remote delivery or general deletion outbox. |
+| `linkshare` | owner selects stored handle -> awaited LinkStore transaction -> subscription check -> durable redemption identity admission -> stored-file delivery | At-most-once admission is not exactly-once delivery; ambiguous sends can consume a use. Receipt retention is unbounded until record removal. |
+| `leech` (+ options/home/captions/thumbnails/TypeTube) | URL/file request -> authorization/quota/job admission -> bounded public-address HTTP transfer or allowlisted Node resolver -> Telegram/local storage | Jobs are in memory; not a durable download scheduler. Temporary outputs require cleanup on every exit. |
+| `encoder` (+ options) | replied media/options -> job/quota validation -> ffmpeg/ffprobe subprocess -> validate output -> upload/cleanup | No arbitrary shell arguments accepted as a feature; native tool packaging still needs an actual Docker build. |
+| `music` (+ controls/playlists/queue/cards/seeking/sources) | group request/admin control -> plugin/group/assistant readiness -> source resolution, per-chat queue/locks, voice engine -> call acknowledgement -> queue/card update | Saved playlists use PostgreSQL. Queue/playback are not durable. Search/session additions in the dirty tree are not all committed. Native fetch boundary differs from Leech. |
+| `postmaker` | group admin edits template/posts -> PostTemplates -> render/escape -> Telegram message | Not a complete scheduled publishing service. |
+| `ai_agent` | `/ask` or explicitly opted-in/directed text -> plugin/config/group checks -> provider SSE -> draft/final answer | Text is sent to external provider; no hidden-reasoning disclosure or autonomous tools. No live provider test in this phase. |
+| `renamer` (+ rules) | file/name/options -> ownership/limits -> media operation + caption/thumb/rule settings -> Telegram upload | Some rules/settings retain queued document persistence. |
+| `premium` (+ limits) | Owner grant/revoke; user plan/status -> entitlement authority -> tenant SQL -> result/limits | Meiko Premium != Telegram Premium. Working tree has explicit configured-Owner auto-Premium/Clone Pro behavior not present consistently in committed baseline; no policy change made here. Sudo alone is not Premium. |
+| `utilities` | IDs/info/time/version/repository-related command surface -> scope/permissions -> Telegram metadata -> response | Product naming/source-promotion review remains separate from removing required attribution. |
+
+## Clone and worker consistency
+
+Verified source path: guided setup/legacy creation -> `store.aadd` -> writer `_persist` in the registry transaction; profile callbacks -> `configuration.write(expected_revision, request_id)`; manager `start`, `restart`, `restore`, supervisor -> `CloneReconciler.run` -> exact encrypted snapshot -> `_start_assigned` -> lease/identity/startup -> conditional acknowledgement.
+
+- Registry then revision advisory-lock order; desired registry/snapshot/pending revision/receipt commit together. Duplicate write IDs replay their original result, not the latest revision.
+- Attempt claim and worker lease use PostgreSQL ownership checks; acknowledgement CAS rejects changed desired/pending revision. Registry-owner comparison runs in that transaction. Application I/O is outside SQL transactions.
+- Worker identity is checked after client startup and before voice/menu publication; **plugin build/handler registration already happened** in `bot.build()`. Thus “identity before plugin initialization” is not yet guaranteed.
+- Failed or stale application stops the unconfirmed worker and preserves the previous applied snapshot. That does not mean the previous worker continues serving; recovery can reapply after interruption.
+- Claims expire after 60 seconds without renewal. Startup longer than this fails closed; exactly-once external effects are not guaranteed.
+- Initial revision-zero legacy records cannot start through the revision reconciler. A migration/adoption path must not fake an applied acknowledgement.
+
+## Database and concurrency map
+
+`Database.SCHEMA` currently composes **52 statements / 44 tables** in the inspected working tree. These are additive startup DDL statements, not a versioned migration runner. Schema definitions live in `platform/db.py` and service modules, not ORM models or a migration directory.
+
+| Persistence family | Authority and concurrency |
+|---|---|
+| `agent_documents`, `agent_lease` | Bot-scoped document keys and token/attempt/assistant leases. Generic documents still use local cache + whole-row write-behind; special clone/link services use awaited locked transactions. |
+| Premium tenants/entitlements; sudo grants/audit | Tenant keys, one-time legacy entitlement import, awaited grant/check/revoke; sudo is capability delegation, not Owner/group-admin identity. |
+| Plugin catalog/group_plugins/config/history/resources | Global Owner approval distinct from group activation; group advisory locking + approval-row locks; max three optional slots; cleanup-pending resource records. |
+| Rules, trust, filters, antispam, admin settings, command/service cleaning, action topics | Tenant/group keys, dedicated state/revision/history tables; exact lock/validation rules differ by service. |
+| Blocklists/revisions/actions; restriction cases | Tenant/group action intents and outcomes; unique update identities in selected paths. Telegram and SQL are not one atomic transaction. |
+| Federations/admins/chats/history/invitations | Tenant-scoped federation relationships and ownership workflows. |
+| Archive links/deliveries/items | Durable token/use admission and per-message outcomes, not a general-purpose outbox. |
+| Greetings, post templates, music playlists, log settings, incidents | Dedicated awaited state/metadata tables; incidents retain categories/fingerprints rather than raw exception arguments. |
+| ChatStore/users/storage/runtime/media rules | Legacy cached documents still exist. Local compatibility APIs are not evidence of durable multi-instance correctness. |
+
+Tenant predicates and parameterized SQL were traced in the authority services; tests cover several real isolation/race boundaries. This is not a claim that all queries have been formally verified. `_clean_scope` normalizes strings; token-derived production scopes are preferable to accepting arbitrary caller scope strings. SQL tenancy is application-enforced, not a separate database role/RLS security boundary per clone.
+
+Pool maximum is four connections **per Database instance**; clones create additional pools. Capacity planning must account for roughly `4 * (1 + running clones)` possible connections, plus other applications. Many services specify acquire/query timeouts, but not every acquire/transaction does. Lease acquisition uses application wall time while reconciliation expiry checks use PostgreSQL time: clock-skew behavior needs tests.
+
+## Findings and priority
+
+| ID | Priority / evidence | Finding, actual impact and next boundary |
+|---|---|---|
+| SEC-01 | P0 / **R, fixed this phase** | Callback entry logging copied opaque payloads; unknown callbacks and answer failures could also log payloads/exception bodies. Watchdog copied raw provider exceptions into logs and public health `last_error`. Five synthetic-value regressions failed before category-only/generic logging was implemented. Dispatch, failure counts and notices remain intact. |
+| CLONE-01 | P0 / **R, open** | `reconcile._registry_owner` checks existence/owner, not disabled state or a lifecycle generation. Disposable PostgreSQL experiment disabled the clone inside application; acknowledgement still returned `applied_revision=1` with registry `disabled=True`. Supervisor eventually checks disable, but that is not an acknowledgement fence. Next: atomic lifecycle-generation/eligibility checks, including stop/disable during startup and owner/credential changes. |
+| CLONE-02 | P0 correctness / **R, open** | Delete then recreate the same bot fails despite free capacity: `aremove` leaves the revision and fixed `creation` receipt; `_persist` replays the old creation result or conflicts with expected zero. Failed initial setup also removes only the registry entry. Next: lifecycle/generation-aware creation and retry, preserving monotonic revisions/old receipts and rejecting stale workers. Do not blindly delete receipts or reset counters. |
+| DATA-01 | P0 integrity / **R, open** | Two independent ChatStore/Database snapshots each added a warning and flushed; only **1 of 2** warnings persisted. `chats._save -> save_document -> Database.save -> whole-row UPSERT` has no cross-process CAS. Warnings, report numbering/closure, notes and shared storage/runtime documents need an operation-by-operation migration, not a generic blind flush. |
+| NET-01 | P0 security review / **S, open; exploitation U** | Arbitrary Music media URLs receive DNS preflight then are handed to native `MediaStream`; native redirect/DNS resolution is not pinned to `PublicResolver`. Leech's connector is pinned and validates every redirect, so its tests do not prove native streaming safety. Next: reproduce with a local controlled redirect/rebinding fixture; design bounded mediated fetching or a restricted source policy before adding Music breadth. |
+| SEC-02 | P0 security review / **S, open** | Remaining exception-body/traceback paths include `Database.take_lease/release_lease`, `JobQueue._run` and several service/transport logs. Job errors are retained for UI inspection. No central secret-safe logging policy is enforced. SEC-01 is a narrow fix, not universal redaction. Add sentinel tests at each producer/sink; do not log raw updates. |
+| LIFE-01 | P1 / **S, open** | Main `_run` starts `plugin_gate.watch`; clone `_start_assigned` does not run that lifecycle. New clone invocations check approval, but cross-instance revocation of already-running optional work lacks the same periodic cancellation path. Clone supervision checks connection flags, not a full health probe. Unify owned-service startup/shutdown without calling the main polling lifecycle twice. |
+| DATA-02 | P1 / **S, open** | `Database.close()` makes one final flush attempt then closes; a failed flush remains only in memory. Process-local jobs/events/drafts cannot be treated as durable. Retry/backoff is not an outbox or restart-safe delivery. |
+| CLEAN-01 | P1 / **S, open** | Plugin resource cleanup markers exist; PluginGate only reconciles locally seen scopes. No general durable cleanup/dead-letter/replay worker was found. Storage/clone deletion does not provide a transactional, durable remote-resource cleanup ledger. Never claim local deletion means remote cleanup completed. |
+| HEALTH-01 | P1 / **S, open** | `/health/ready` derives from Telegram HealthMonitor only; no current database probe, required-plugin status or worker readiness aggregate. `/health` exposes operational details without authentication; minimize public fields. Liveness is intentionally independent. |
+| RESOURCE-01 | P1 / **S, open** | JobQueue limits running jobs with a semaphore but does not bound admitted pending tasks. Verification timers, flood/queue/draft state are memory-resident. Add admission bounds, per-user/group limits and restart semantics before scaling. |
+| PLUGIN-01 | P1 / **S, open** | Runtime enable/disable queues document persistence and compensates synchronous handler calls; it is not a durable cross-process dispatcher acknowledgement. Modules are eagerly imported before optional-build failure handling. Callback/watcher cleanup hooks are not a universal unload protocol. |
+| POLICY-01 | P0 decision gate / **S, open** | Explicit Owner-Premium behavior differs between dirty code and committed baseline and historical docs. New requirements prohibit silent exceptions. Make the intended policy explicit and reconcile all entry points/tests in a separately authorized phase; do not silently stage the existing local Premium changes. |
+| DOC-01 | P2 / **S, open** | Config/Render/env comments still describe optional PostgreSQL/plaintext/feature availability in places where current runtime refuses fallback or writes. Historical audits contain superseded pending/completed statements. This document supersedes totals as evidence, not all product documentation. |
+
+The PostgreSQL experiments were isolated probes, not committed regression coverage for the open defects. They did not contact Telegram or production. Their required regression cases are gates for the next phases; they are not added as permanently failing tests to the working suite.
+
+## Missing integrations and completion boundaries
+
+- **P0 before feature expansion:** lifecycle-generation fences; recreation/initial-setup retry; relational warnings/reports; native media network boundary; remaining secret-bearing diagnostic paths; explicit Owner policy.
+- **P1 reliability:** durable cleanup intent/outcome/retry/dead-letter service; bounded worker/plugin startup parity; authoritative readiness; transactional runtime switches; Premium revocation convergence; durable moderation/verification recovery. Apply idempotency at the operation boundary and document ambiguous Telegram outcomes rather than replaying destructive actions blindly.
+- **P2 group-management target:** count real behaviors, not aliases. Full scheduled messages/reminders, join-request/raid workflows, queryable case/appeal lifecycle, activity analytics/export, backup/restore and safe setup diagnostics are not established as complete. Extend the existing moderation/group/reports services instead of adding competing command frameworks.
+- **P3 optional plugins:** complete source-by-source FileStore/Leech/Encoder/Music/Post Maker/AI/Renamer/Utilities mapping only after P0. Existing functionality is substantial but not upstream parity. Queue restoration, channel player modes, autoplay/effects and publishing schedules must not be advertised from an inventory alone.
+- **P4 operations:** migration versioning/compatibility checks, resource budgets, reproducible dependency/build/CI gates and operator runbooks. No webapp/dashboard phase until backend authority is reliable.
+- No proven-safe deletion list of “unused modules” was established. Legacy helpers and installer review APIs are not automatically dead because dynamic routes call them indirectly. Keep them until call-graph and compatibility tests justify removal. No `TODO.md` was found to remove.
+
+## Reference and packaging review
+
+- Read-only GitHub discovery of `Beasgohan-code/Videl1`, default-branch commit `6a00a55f6ad013c85e14c39a9b06922c1bb6f08c`: recursive tree (527 file entries) and `VidelBot/core/plugin_manager.py`. It contains multiple bot/plugin subtrees and its own persistence/execution design; it is not an interchangeable module dependency. No code copied, imported or executed. No whole-repository behavioral audit or license grant inferred; GitHub repository metadata did not supply a license identifier. Preserve per-component licenses/credits and existing patch manifests.
+- `patches/filestore` contains review-only upstream patches with before/after hashes; they are not the runtime `agent.modules.filestore` implementation. Patch validators execute extracted reviewed reference snippets in test scaffolding; this is not secure execution of third-party Python. Reference checkouts are excluded from Docker.
+- Docker uses a Node build stage, Python 3.11, native ffmpeg and unprivileged uid 10001; entry point is long polling. Render describes an auto-deploying worker, with optional HTTP-health example. **Pushing can trigger the host's configured automation**; this phase makes no deployment/API call and changes no deployment configuration.
+- No `.github/workflows`, Ruff/Black configuration or installed Ruff/Black/Docker executables were found. `requirements-dev.txt` declares pytest but not all tools used by this sandbox's tests. No Python dependency lockfile. TypeTube has an npm lockfile.
+- `pip check` reports Richgram's missing Kurigram dependency. This is consistent with the documented intentional `--no-deps` Wzgram ownership workaround, not a reason to install the conflicting fork. It remains a packaging exception, not a clean dependency-resolution result.
+
+## Current verification and limitations
+
+| Check | Actual evidence for this phase |
+|---|---|
+| TDD | Five diagnostic regressions failed before implementation; then passed. Tests use synthetic private strings, never real secrets. |
+| Focused | **45 passed in 0.42s**: new diagnostic tests, health, action-router and deep-link boundaries. Telegram operations are mocked. |
+| Full dirty working tree | **1,796 passed, no skips, 22.14s**, with `AGENT_TEST_DATABASE_URL` set to disposable PostgreSQL. Includes preexisting uncommitted tests/features. |
+| Clean tracked-source export plus this phase's exact code/test slice | **1,709 passed, no skips, 24.25s**, same disposable PostgreSQL approach; no dirty-tree source dependencies copied. This is an isolated export, not a fresh dependency installation or a separate Git checkout. |
+| PostgreSQL experiments | Recreated delete/recreate failure, disabled-during-apply acknowledgement, and lost warning update using real pools/transactions. No mocks claimed as SQL integration. |
+| Static | All application/test/tool Python ASTs parsed. Compileall, Pyflakes and working-tree diff checks passed; staged diff checked before commit. |
+| Unavailable / not run | Ruff, Black/format check, Docker build: tooling/config absent. No live Telegram/provider/native group-call/deployment test, fresh dependency installation, load test, full upgrade-matrix migration test or vulnerability-database scan. |
+
+Commands: `.venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short` with a `pgserver` disposable server URI; `.venv/bin/python -m compileall -q agent tests tools start.py`; `.venv/bin/python -m pyflakes agent tests tools`; `git diff --check` and staged equivalent. PostgreSQL schema was applied by the actual `Database.connect()` paths on disposable databases.
+
+## Next implementation gate
+
+On “next”, re-read Git status and this audit. Start with **CLONE-01**: a failing real-PostgreSQL disable/stop-during-application race, then a lifecycle-generation fence shared by start/restart/recovery/acknowledgement. Include deletion, recreation and stale generation tests so the fix does not reset revision authority. If that cannot fit safely, keep CLONE-02 as the immediately following phase; do not move to optional feature expansion. Each phase must rerun focused and full suites, update this audit/checklist, selectively commit and push only this branch without merging any PR.

@@ -31,7 +31,7 @@ class CallbackHandlers:
         user = callback_query.from_user
         if self._monitor is not None:
             self._monitor.record_activity("callback")
-        logger.info("Callback %r from user %s", data, getattr(user, "id", None))
+        logger.info("Callback received from user %s", getattr(user, "id", None))
 
         if self._router is not None and self._router.handles(data):
             # Module handlers own their callback acknowledgement.
@@ -41,7 +41,7 @@ class CallbackHandlers:
 
         builder = SCREENS.get(data)
         if builder is None:
-            logger.warning("Unknown callback data %r", data)
+            logger.warning("Unknown callback control")
             await self._answer(callback_query, STALE_OPTION, show_alert=True)
             return
 
@@ -50,7 +50,7 @@ class CallbackHandlers:
 
         message = callback_query.message
         if message is None:
-            logger.debug("Callback %r has no message to edit; ignoring.", data)
+            logger.debug("Callback has no message to edit; ignoring.")
             return
 
         active = set(self._active_commands()) if self._active_commands is not None else None
@@ -63,12 +63,12 @@ class CallbackHandlers:
             chat_id = getattr(getattr(message, "chat", None), "id", None)
             try:
                 await self._sender.send(chat_id, screen)
-            except Exception:
-                logger.exception("Could not re-send screen %r to chat %s", data, chat_id)
+            except Exception as error:
+                logger.warning("Could not re-send callback screen (%s)", type(error).__name__)
 
     @staticmethod
     async def _answer(callback_query, text: str | None = None, show_alert: bool = False) -> None:
         try:
             await callback_query.answer(text, show_alert=show_alert)
-        except Exception:
-            logger.debug("Could not answer callback query.", exc_info=True)
+        except Exception as error:
+            logger.debug("Could not answer callback query (%s)", type(error).__name__)
