@@ -71,7 +71,7 @@ class CloneControlCentre:
                     ('Per-worker CPU / RAM', 'Unavailable · workers share this process')]
             keys = [[self.button(clone, 'Commands', 'commands:0', 'search'), self.button(clone, 'Plugins', 'plugins:0', 'gear')],
                     [self.button(clone, 'Configuration', 'configuration', 'gear'), self.button(clone, 'Diagnostics', 'diagnostics', 'stats')],
-                    [self.button(clone, 'Refresh', 'home', 'stats')]]
+                    [self.button(clone, 'Refresh', 'home', 'stats'), self.button(clone, 'Recent activity', 'activity:0', 'info')]]
             if metadata and metadata['desired_revision'] > 0:
                 actions = []
                 for action, label, icon in (('start', 'Start', 'bolt'), ('stop', 'Stop', 'ban'),
@@ -111,6 +111,23 @@ class CloneControlCentre:
                     ('Failed revision', str(metadata['last_failed_revision']) if metadata and metadata['last_failed_revision'] else 'None observed'),
                     ('Logs / recent event feed', 'Unavailable in this dashboard')]
             note = 'If configuration is pending or failed, review setup with the existing profile editor and lifecycle controls. Missing local observation is not proof of a remote failure. Raw errors and credentials are deliberately hidden.'
+        elif view == 'activity':
+            from .activity import read_activity
+            events, has_next = await read_activity(self.store, clone.bot_id, clone.owner_id, page)
+            rows = [(self.date(event['at']), event['action'].title() + ' · admitted (not completion)' +
+                     f"\nRevision {event['revision']} · generation {event['generation']}")
+                    if event else ('Unavailable receipt', 'Unsupported or malformed entry · raw data hidden') for event in events]
+            if not rows:
+                rows = [('No lifecycle admissions', 'No retained dashboard lifecycle requests found for this bot ID.')]
+            paging = []
+            if page:
+                paging.append(self.button(clone, 'Previous', f'activity:{page-1}', 'back'))
+            if has_next:
+                paging.append(self.button(clone, 'Next', f'activity:{page+1}', 'arrow'))
+            if paging:
+                keys.append(paging)
+            keys.append([self.button(clone, 'Refresh activity', 'activity:0', 'stats')])
+            note = 'Lifecycle admission history only, not completion or worker logs. History is retained across deletion/recreation of this bot ID. Internal recovery and configuration writes are not included. Newest receipt first; no actor IDs, request IDs, credentials or raw errors displayed.'
         elif view in ('commands', 'plugins'):
             if plugins is None:
                 rows = [('Registry', 'Unavailable · no inspectable local worker')]
@@ -276,8 +293,8 @@ class CloneControlCentre:
             await self.reset_channel(query, uid, reset_match)
             return
         action_match = re.fullmatch(r'([0-9]{6,12}):(ask|run):(start|stop|restart|reconcile|delete):([0-9]{1,12}):([0-9]{1,12})', rest)
-        match = re.fullmatch(r'([0-9]{6,12}):(home|configuration|diagnostics|commands|plugins)(?::([0-9]{1,4}))?', rest)
-        if not action_match and (not match or ((match[2] in ('commands', 'plugins')) != (match[3] is not None))):
+        match = re.fullmatch(r'([0-9]{6,12}):(home|configuration|diagnostics|commands|plugins|activity)(?::([0-9]{1,4}))?', rest)
+        if not action_match and (not match or ((match[2] in ('commands', 'plugins', 'activity')) != (match[3] is not None))):
             await query.answer('That dashboard control is stale.', show_alert=True)
             return
         try:
