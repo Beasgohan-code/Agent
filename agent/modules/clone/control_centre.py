@@ -50,7 +50,9 @@ class CloneControlCentre:
             [self.button(clone, 'Cancel', 'home', 'back')]])
         return body, keyboard
 
-    async def render(self, clone, view, page=0, *, operation=None, command=None):
+    async def render(self, clone, view, page=0, *, operation=None, command=None, command_scope='all'):
+        if command_scope not in ('all', 'private', 'group'):
+            raise ValueError('Invalid command scope')
         observation = self.manager.observe_worker(clone.bot_id)
         plugins = observation['plugins']
         metadata = await self.manager.configuration.read(clone.bot_id) if self.store._db is not None else None
@@ -151,6 +153,8 @@ class CloneControlCentre:
                 note = 'No command list is inferred from a saved profile. Start through the existing controls, then refresh after successful reconciliation.'
             else:
                 items = [p for p in plugins] if view == 'plugins' else [(p, command) for p in plugins if p['enabled'] for command in p['commands']]
+                if view == 'commands' and command_scope != 'all':
+                    items = [(p, cmd) for p, cmd in items if p['scope'] in (command_scope, 'all')]
                 pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
                 if not 0 <= page < pages:
                     raise ValueError('Stale page')
@@ -165,17 +169,21 @@ class CloneControlCentre:
                     from ...platform.menu import DESCRIPTIONS
                     rows = [(markup(f'<code>/{command}</code>'), DESCRIPTIONS.get(command, 'Send this command for current usage.') + '\nPlugin: ' + p['name'] + '\nScope: ' + p['scope'] + '\nPermissions: ' + (', '.join(p['permissions']) or 'None declared')) for p, command in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]]
                 if view == 'commands':
+                    keys.extend([[self.button(clone, label, f'cmds:{value}:0', 'search') for value, label in pair]
+                        for pair in ((('all', 'All scopes'), ('private', 'Private')), (('group', 'Groups'),))])
                     command_buttons = [self.button(clone, '/' + cmd, f'command:{cmd}', 'info')
                         for _, cmd in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE] if re.fullmatch(r'[a-z0-9_]{1,32}', cmd)]
                     keys.extend(command_buttons[i:i+2] for i in range(0, len(command_buttons), 2))
                 paging = []
                 if page:
-                    paging.append(self.button(clone, 'Previous', f'{view}:{page-1}', 'back'))
+                    paging.append(self.button(clone, 'Previous', f'cmds:{command_scope}:{page-1}' if view == 'commands' else f'{view}:{page-1}', 'back'))
                 if page + 1 < pages:
-                    paging.append(self.button(clone, 'Next', f'{view}:{page+1}', 'arrow'))
+                    paging.append(self.button(clone, 'Next', f'cmds:{command_scope}:{page+1}' if view == 'commands' else f'{view}:{page+1}', 'arrow'))
                 if paging:
                     keys.append(paging)
                 rows.append(('Page', f'{page+1} / {pages} · {len(items)} entries'))
+                if view == 'commands':
+                    rows.append(('Declared scope filter', command_scope.title()))
                 note = 'Snapshot of this clone’s actual local registry. Disabled plugin commands are excluded from Commands. Individual command toggles are not supported here; plugin runtime and group approval are separate.'
         else:
             raise ValueError('Stale view')
@@ -313,15 +321,16 @@ class CloneControlCentre:
         if reset_match:
             await self.reset_channel(query, uid, reset_match)
             return
+        scope_match = re.fullmatch(r'([0-9]{6,12}):cmds:(all|private|group):([0-9]{1,4})', rest)
         command_match = re.fullmatch(r'([0-9]{6,12}):command:([a-z0-9_]{1,32})', rest)
         action_match = re.fullmatch(r'([0-9]{6,12}):(ask|run):(start|stop|restart|reconcile|delete):([0-9]{1,12}):([0-9]{1,12})', rest)
         match = re.fullmatch(r'([0-9]{6,12}):(home|configuration|diagnostics|commands|plugins|activity)(?::([0-9]{1,4}))?', rest)
-        if not command_match and not action_match and (not match or ((match[2] in ('commands', 'plugins', 'activity')) != (match[3] is not None))):
+        if not scope_match and not command_match and not action_match and (not match or ((match[2] in ('commands', 'plugins', 'activity')) != (match[3] is not None))):
             await query.answer('That dashboard control is stale.', show_alert=True)
             return
         try:
             await self.store.aall()  # Canonical reload before ownership check, including after deletion/transfer.
-            clone = self.store.get(int(command_match[1] if command_match else action_match[1] if action_match else match[1]))
+            clone = self.store.get(int(scope_match[1] if scope_match else command_match[1] if command_match else action_match[1] if action_match else match[1]))
             if clone is None or clone.owner_id != uid:
                 await query.answer('This clone is unavailable to you. Refresh My Bots.', show_alert=True)
                 return
@@ -348,6 +357,8 @@ class CloneControlCentre:
                         raise ControlConflict('Clone changed during the operation. Refresh My Bots.')
                     else:
                         body, keyboard = await self.render(current, 'home', operation=result)
+            elif scope_match:
+                body, keyboard = await self.render(clone, 'commands', int(scope_match[3]), command_scope=scope_match[2])
             elif command_match:
                 body, keyboard = await self.render(clone, 'command', command=command_match[2])
             else:
