@@ -144,6 +144,9 @@ class ChatStore:
 
     def toggle_trust(self, chat_id: int, user_id: int) -> bool:
         """Flip the trusted flag and return its new value."""
+        if self._db is not None:
+            from .group_trust import TrustError
+            raise TrustError("Awaited PostgreSQL trust update required.")
         member = self._member(chat_id, user_id)
         member["trusted"] = not member.get("trusted", False)
         self._save()
@@ -160,6 +163,9 @@ class ChatStore:
         return {**DEFAULT_ANTISPAM, **stored}
 
     def save_antispam(self, chat_id: int, policy: dict) -> dict:
+        if self._db is not None:
+            from .antispam import PolicyError
+            raise PolicyError("Awaited PostgreSQL protection update required.")
         self._chat(chat_id)["settings"]["antispam"] = policy
         self._save()
         return self.antispam(chat_id)
@@ -173,6 +179,9 @@ class ChatStore:
         return dict(self._chat(chat_id)["settings"].get("filters") or {})
 
     def set_filter(self, chat_id: int, name: str, reply: str, *, by: int) -> None:
+        if self._db is not None:
+            from .group_filters import FilterError
+            raise FilterError("Awaited PostgreSQL filter update required.")
         settings = self._chat(chat_id)["settings"]
         filters = settings.setdefault("filters", {})
         filters[name.strip().lower()[:64]] = reply[:2000]
@@ -180,10 +189,14 @@ class ChatStore:
         self._save()
 
     def remove_filter(self, chat_id: int, name: str) -> bool:
+        if self._db is not None:
+            from .group_filters import FilterError
+            raise FilterError("Awaited PostgreSQL filter update required.")
         settings = self._chat(chat_id)["settings"]
         filters = settings.setdefault("filters", {})
         removed = filters.pop(name.strip().lower()[:64], None) is not None
         if removed:
+            settings.get('filter_authors', {}).pop(name.strip().lower()[:64], None)
             self._save()
         return removed
 
@@ -261,7 +274,7 @@ class ChatStore:
     def reports(self, chat_id: int, *, state: str = "open", limit: int = 20) -> list[dict]:
         entries = self._chat(chat_id)["settings"].get("reports") or []
         matching = [entry for entry in entries if entry.get("state") == state]
-        return matching[-max(0, limit) :]
+        return matching[-limit:] if limit > 0 else []
 
     def close_report(self, chat_id: int, report_id: int, *, by: int | None = None) -> bool:
         entries = self._chat(chat_id)["settings"].get("reports") or []

@@ -1,0 +1,1264 @@
+{
+  "reviewed_on": "2026-11-14",
+  "scope": "29 previously supplied repository references plus seven explicit feature-source entries, deduplicated by repository URL.",
+  "all_features_implemented": false,
+  "runtime_code_imported": false,
+  "source_execution_performed": false,
+  "policy": "Preserve legal notices, callback/command identities, isolated storage and eight plugin identities. No unlicensed wholesale copying, reference installers, eval/shell endpoints, shared tokens or sessions. Root metadata does not authorize reuse.",
+  "repositories": [
+    {
+      "name": "AnimeDL",
+      "url": "https://github.com/Beasgohan-code/AnimeDL",
+      "reference_revision": "26dcbae753e9e9fd8b6c34ce76f866b856bd0b7f",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": "GPL-3.0",
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "26dcbae753e9e9fd8b6c34ce76f866b856bd0b7f",
+        "root_entries": [
+          ".dockerignore",
+          ".env.example",
+          ".gitignore",
+          "Aptfile",
+          "Dockerfile",
+          "LICENSE",
+          "LICENSES",
+          "NOTICE.md",
+          "Procfile",
+          "README.md",
+          "Script.py",
+          "anime_sources",
+          "binary",
+          "cantarella",
+          "config.py",
+          "docker-compose.yml",
+          "docker",
+          "leechbot",
+          "main.py",
+          "mangarepo",
+          "proxies.txt",
+          "public",
+          "reliability.py",
+          "requirements.txt",
+          "run.sh",
+          "runtime.txt",
+          "scripts",
+          "shared.py",
+          "tests",
+          "thumb.jpg",
+          "uikit.py",
+          "vendor"
+        ],
+        "license_candidates": [
+          "LICENSE",
+          "LICENSES",
+          "NOTICE.md"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "GOHAN",
+      "url": "https://github.com/Beasgohan-code/GOHAN",
+      "reference_revision": "02f6fe835a5abe4e89367901308a75f3b39635b3",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "02f6fe835a5abe4e89367901308a75f3b39635b3",
+        "root_entries": [
+          "README.md"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Hanre",
+      "url": "https://github.com/Beasgohan-code/Hanre",
+      "reference_revision": "e5d02d47a1dfd2c653b2be4258fd135b2a53dd5c",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "e5d02d47a1dfd2c653b2be4258fd135b2a53dd5c",
+        "root_entries": [
+          "README.md"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "JARVIS-Mark-XXXIX-Android",
+      "url": "https://github.com/Beasgohan-code/JARVIS-Mark-XXXIX-Android",
+      "reference_revision": "152da62c14b0f2361928d28d70bed1ca41fc4081",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "152da62c14b0f2361928d28d70bed1ca41fc4081",
+        "root_entries": [
+          ".github",
+          ".gitignore",
+          "DEPLOY.md",
+          "GITHUB_PUSH.md",
+          "README.md",
+          "app",
+          "build.gradle.kts",
+          "gradle.properties",
+          "gradle",
+          "gradlew",
+          "gradlew.bat",
+          "local.properties.example",
+          "settings.gradle.kts"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Kairo",
+      "url": "https://github.com/Beasgohan-code/Kairo",
+      "reference_revision": "abe43d27e115883b7a0f47e19b4e909575dbb32d",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": "MIT",
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "abe43d27e115883b7a0f47e19b4e909575dbb32d",
+        "root_entries": [
+          ".github",
+          ".gitignore",
+          "CHANGELOG.md",
+          "CONTRIBUTING.md",
+          "LICENSE",
+          "README.md",
+          "SECURITY.md",
+          "app",
+          "build.gradle",
+          "docs",
+          "gradle.properties",
+          "settings.gradle"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Manhua-Bot",
+      "url": "https://github.com/Beasgohan-code/Manhua-Bot",
+      "reference_revision": "19cf63f4899688a784a7dfcb0509328a2edf3c54",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": "MIT",
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "19cf63f4899688a784a7dfcb0509328a2edf3c54",
+        "root_entries": [
+          ".dockerignore",
+          ".env.example",
+          ".gitignore",
+          "Dockerfile",
+          "LICENSE",
+          "Procfile",
+          "README.md",
+          "SECURITY.md",
+          "app.json",
+          "bot.py",
+          "config.py",
+          "database",
+          "docker-compose.yml",
+          "plugins",
+          "requirements.txt",
+          "runtime.txt",
+          "services",
+          "sources",
+          "start.sh",
+          "tools",
+          "utils"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "MediaVaultBot",
+      "url": "https://github.com/Beasgohan-code/MediaVaultBot",
+      "reference_revision": "f4bd5a1fdf30aa26380be56315e78ed6de1adf2f",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "f4bd5a1fdf30aa26380be56315e78ed6de1adf2f",
+        "root_entries": [
+          ".dockerignore",
+          ".env.example",
+          ".gitignore",
+          "Dockerfile",
+          "Procfile",
+          "README.md",
+          "__main__.py",
+          "config.py",
+          "core",
+          "docker-compose.yml",
+          "railway.json",
+          "railway.toml",
+          "render.yaml",
+          "requirements.txt",
+          "run.sh",
+          "telegram",
+          "tests"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Meikoagent",
+      "url": "https://github.com/Beasgohan-code/Meikoagent",
+      "reference_revision": "c3abae707e57cff545f88af9b497ba5f46b50f48",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "c3abae707e57cff545f88af9b497ba5f46b50f48",
+        "root_entries": [
+          "README.md"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Obra-ai",
+      "url": "https://github.com/Beasgohan-code/Obra-ai",
+      "reference_revision": "d7ff491c8052755d648514a9047497f08d62c1b1",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "d7ff491c8052755d648514a9047497f08d62c1b1",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "Api.md",
+          "BOT_API.md",
+          "Dockerfile",
+          "FEATURES.md",
+          "README.md",
+          "UPTIME.md",
+          "bot",
+          "config",
+          "deploy.md",
+          "docker-compose.yml",
+          "handlers",
+          "requirements.txt",
+          "run.sh",
+          "services",
+          "web"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Py-dlp",
+      "url": "https://github.com/Beasgohan-code/Py-dlp",
+      "reference_revision": "935aaf53b6eeb11cfe45f335a09e11858f4e35bc",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": "MIT",
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "935aaf53b6eeb11cfe45f335a09e11858f4e35bc",
+        "root_entries": [
+          ".github",
+          ".gitignore",
+          "LICENSE",
+          "README.md",
+          "build.sh",
+          "bundle.py",
+          "devscripts",
+          "docker",
+          "download.sh",
+          "generate.sh",
+          "install-termux.sh",
+          "install.sh",
+          "makeimage.sh",
+          "package.sh",
+          "patches",
+          "pydlp",
+          "pyproject.toml",
+          "requirements-dev.txt",
+          "requirements.txt",
+          "scripts.d",
+          "setup.py",
+          "tests",
+          "tools",
+          "util",
+          "workflows"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Son-Goku-FileStoreBot",
+      "url": "https://github.com/Beasgohan-code/Son-Goku-FileStoreBot",
+      "reference_revision": "b37acc781377d3ab9d803c2a882fbd375ef4e8eb",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "b37acc781377d3ab9d803c2a882fbd375ef4e8eb",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          ".secret_key",
+          "Dockerfile",
+          "MainBot.session",
+          "Procfile",
+          "README.md",
+          "assets",
+          "backend",
+          "config.py",
+          "database",
+          "heroku.yml",
+          "main.py",
+          "main_bot",
+          "pyarmor_runtime_000000",
+          "render.yaml",
+          "requirements.txt",
+          "run.py",
+          "runtime.txt",
+          "utils",
+          "worker_bot"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Summon-bot",
+      "url": "https://github.com/Beasgohan-code/Summon-bot",
+      "reference_revision": "504fe3635df2024e3f7ee901db91ab1e676b054a",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "504fe3635df2024e3f7ee901db91ab1e676b054a",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          ".python-version",
+          "ARCHITECTURE_REVIEW.md",
+          "ERROR_AUDIT.md",
+          "Poppins-Bold.ttf",
+          "Poppins-Bold.ttf.1",
+          "Poppins-Medium.ttf",
+          "Poppins-Regular.ttf",
+          "README.md",
+          "__pycache__",
+          "auto_spawn.py",
+          "bootstrap_postgres.py",
+          "bot.log",
+          "bot.session",
+          "catch_all.py",
+          "check_schema.py",
+          "commands_admin.py",
+          "commands_auction.py",
+          "commands_hstats.py",
+          "commands_owner.py",
+          "commands_user.py",
+          "commands_user.py.bak",
+          "config.py",
+          "database.py",
+          "font.py",
+          "get_emojis.py",
+          "hstats.py",
+          "inline_search.py",
+          "main.py",
+          "media_urls.py",
+          "migrate_character_media_to_urls.py",
+          "migrate_sqlite_to_postgres.py",
+          "plugins",
+          "profile.py.bak",
+          "requirements.txt",
+          "runtime.txt",
+          "smoke_test.py",
+          "storage.py",
+          "summon-bot.service.example",
+          "summon.db",
+          "supervisor.py",
+          "test_bootstrap_postgres.py",
+          "test_storage_savepoints.py"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Telegram-Hosting-Bot",
+      "url": "https://github.com/Beasgohan-code/Telegram-Hosting-Bot",
+      "reference_revision": "6c57be5434ee51880271d22aff521b42757e5dc6",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": "MIT",
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "6c57be5434ee51880271d22aff521b42757e5dc6",
+        "root_entries": [
+          "LICENSE",
+          "README.md",
+          "bot.py",
+          "config.py",
+          "modules",
+          "projects",
+          "requirements.txt",
+          "sample.env",
+          "shim.py",
+          "utils"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "VYRON",
+      "url": "https://github.com/Beasgohan-code/VYRON",
+      "reference_revision": "8dc6f6ec1d9e33a1b46b2730b1f294aededa80f1",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": "MIT",
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "8dc6f6ec1d9e33a1b46b2730b1f294aededa80f1",
+        "root_entries": [
+          ".dockerignore",
+          ".env.example",
+          ".gitignore",
+          "CHANGELOG.md",
+          "Dockerfile",
+          "LICENSE",
+          "Procfile",
+          "README.md",
+          "TROUBLESHOOTING.md",
+          "UI-UPGRADE-NOTES.md",
+          "assets",
+          "docker-compose.yml",
+          "docs",
+          "emoji.example.json",
+          "frontend",
+          "main.py",
+          "render.yaml",
+          "requirements.txt",
+          "ruff.toml",
+          "runtime.txt",
+          "tests",
+          "vyron",
+          "webapp"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Videl",
+      "url": "https://github.com/Beasgohan-code/Videl",
+      "reference_revision": "5e573c4f02a17f0ce7527d6fdc15ba99ee551a33",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": "MIT",
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "5e573c4f02a17f0ce7527d6fdc15ba99ee551a33",
+        "root_entries": [
+          "Dockerfile",
+          "LICENSE",
+          "Procfile",
+          "README.md",
+          "app.json",
+          "config.py",
+          "cookies.txt",
+          "koyeb.yaml",
+          "main.py",
+          "proxies.txt",
+          "railway.json",
+          "render.web.yaml",
+          "render.yaml",
+          "requirements.txt",
+          "sample.env",
+          "start",
+          "videl"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Videl-Api",
+      "url": "https://github.com/Beasgohan-code/Videl-Api",
+      "reference_revision": "a28eb9dd1b4d07787e8208adb354588dc9fcd42e",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "a28eb9dd1b4d07787e8208adb354588dc9fcd42e",
+        "root_entries": [
+          "README.md"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Videl0",
+      "url": "https://github.com/Beasgohan-code/Videl0",
+      "reference_revision": "6430b1e5e60e0776a7ab519e05cb98c2ca1a2ebf",
+      "intake": [
+        "historical_29_repository_index",
+        "explicit_feature_source"
+      ],
+      "github_license_identifier": null,
+      "license_review": "No root license found; nested terms need review before code reuse.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "feature": "Music",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "6430b1e5e60e0776a7ab519e05cb98c2ca1a2ebf",
+        "root_entries": [
+          ".dockerignore",
+          ".env.example",
+          ".github",
+          ".gitignore",
+          "Dockerfile",
+          "FEATURES.md",
+          "README.md",
+          "config.py",
+          "docker-compose.yml",
+          "docs",
+          "koyeb.yaml",
+          "main.py",
+          "render.yaml",
+          "requirements-dev.txt",
+          "requirements.txt",
+          "sample.env",
+          "scripts",
+          "start",
+          "tests",
+          "todo.md",
+          "tools",
+          "vendor",
+          "videl",
+          "webapp"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Videl1",
+      "url": "https://github.com/Beasgohan-code/Videl1",
+      "reference_revision": "ac16395e5c4054e8db74f0684a99a0ca7104fdd1",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "ac16395e5c4054e8db74f0684a99a0ca7104fdd1",
+        "root_entries": [
+          ".dockerignore",
+          ".python-version",
+          "Dockerfile",
+          "Procfile",
+          "README.md",
+          "VidelBot",
+          "__init__.py",
+          "__main__.py",
+          "app.json",
+          "config.py",
+          "custom_filter.py",
+          "data.py",
+          "docker-compose.yml",
+          "helper",
+          "heroku.yml",
+          "info",
+          "keep_alive.py",
+          "modules",
+          "railway.toml",
+          "render.yaml",
+          "requirements.txt"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Waifu",
+      "url": "https://github.com/Beasgohan-code/Waifu",
+      "reference_revision": "8f99a4b6aabbd3ac564c2ff0a7ca9b78ef9a65b2",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "8f99a4b6aabbd3ac564c2ff0a7ca9b78ef9a65b2",
+        "root_entries": [
+          ".dockerignore",
+          ".env.example",
+          ".github",
+          ".gitignore",
+          "Dockerfile",
+          "README.md",
+          "docs",
+          "pyproject.toml",
+          "summon",
+          "tests",
+          "todo.md",
+          "uv.lock",
+          "web"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "bot-host",
+      "url": "https://github.com/Beasgohan-code/bot-host",
+      "reference_revision": "cbfb04f116e32320ae148633fa7ee2738a6f4007",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "cbfb04f116e32320ae148633fa7ee2738a6f4007",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "Dockerfile",
+          "README.md",
+          "backend",
+          "bot",
+          "dashboard",
+          "docker-compose.yml",
+          "package-lock.json",
+          "package.json",
+          "projects",
+          "render.yaml",
+          "scripts"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "file-store-bot",
+      "url": "https://github.com/Beasgohan-code/file-store-bot",
+      "reference_revision": "9d0e0eda245a10110125a56be0f27821eee0aef3",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "9d0e0eda245a10110125a56be0f27821eee0aef3",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "README.md",
+          "bot",
+          "config.py",
+          "requirements.txt",
+          "run.py"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "hosting-bot",
+      "url": "https://github.com/Beasgohan-code/hosting-bot",
+      "reference_revision": "6109a5387a3c74880acbe8c8908457bd5ddb69d2",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "6109a5387a3c74880acbe8c8908457bd5ddb69d2",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "Dockerfile",
+          "Dockerfile.bot",
+          "README.md",
+          "bot_plugins",
+          "client",
+          "index.html",
+          "package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+          "render.yaml",
+          "requirements.txt",
+          "server",
+          "tsconfig.json",
+          "ultimate_hosting_bot_fixed.py",
+          "vite.config.ts"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "lily-ai-telegram-bot",
+      "url": "https://github.com/Beasgohan-code/lily-ai-telegram-bot",
+      "reference_revision": "ac62cdd498e46792051e3e51841274f8f3ab0d78",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "ac62cdd498e46792051e3e51841274f8f3ab0d78",
+        "root_entries": [
+          ".env.example",
+          ".github",
+          ".gitignore",
+          "DEPLOYMENT.md",
+          "LILY_BOT_OPERATIONS_HUB_PLAN.md",
+          "LILY_FEATURE_ROADMAP.md",
+          "README.md",
+          "app.py",
+          "commands",
+          "lily",
+          "plugins",
+          "railway.json",
+          "render.yaml",
+          "requirements.txt",
+          "tests",
+          "vercel.json"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "manga-telegram-bot",
+      "url": "https://github.com/Beasgohan-code/manga-telegram-bot",
+      "reference_revision": "fd590114d08139555f5d600db47eab59b6c60ecb",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "fd590114d08139555f5d600db47eab59b6c60ecb",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "Dockerfile",
+          "README.md",
+          "bot.py",
+          "config.py",
+          "helpers",
+          "plugins",
+          "requirements.txt",
+          "scrapers",
+          "tests"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "meiko",
+      "url": "https://github.com/Beasgohan-code/meiko",
+      "reference_revision": "52f66dc25dd94f6add5ad54dd01b3efc9762790e",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": "MIT",
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "52f66dc25dd94f6add5ad54dd01b3efc9762790e",
+        "root_entries": [
+          ".github",
+          ".gitignore",
+          "DEPLOY.md",
+          "LICENSE",
+          "README.md",
+          "android",
+          "backend",
+          "cli",
+          "docker-compose.yml",
+          "mobile",
+          "render.yaml",
+          "telegram-bot",
+          "web"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "nebula-stream",
+      "url": "https://github.com/Beasgohan-code/nebula-stream",
+      "reference_revision": "da5bdaae3919abfbc56f80c6467887ac8544b511",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "da5bdaae3919abfbc56f80c6467887ac8544b511",
+        "root_entries": [
+          ".gitignore",
+          "README.md",
+          "client",
+          "package-lock.json",
+          "package.json",
+          "server"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "ultimate-bot",
+      "url": "https://github.com/Beasgohan-code/ultimate-bot",
+      "reference_revision": "d4b54b409fa51e233bf52db72c51c09c9ae51dc0",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "d4b54b409fa51e233bf52db72c51c09c9ae51dc0",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "README.md",
+          "bot.py",
+          "commands",
+          "config.py",
+          "handlers",
+          "requirements.txt",
+          "scripts",
+          "utils"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "ultimate-music-bot",
+      "url": "https://github.com/Beasgohan-code/ultimate-music-bot",
+      "reference_revision": "dbe557385dbc75c6866c185856a58401f02a2c18",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "dbe557385dbc75c6866c185856a58401f02a2c18",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "Dockerfile",
+          "README.md",
+          "assistant",
+          "bot",
+          "docker-compose.yml",
+          "env",
+          "imports.txt",
+          "main.py",
+          "render.yaml",
+          "requirements.txt",
+          "run.sh",
+          "runtime.txt",
+          "session_generator.py"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "ultimate-waifu-bot",
+      "url": "https://github.com/Beasgohan-code/ultimate-waifu-bot",
+      "reference_revision": "128c4f7e0abdfbfe5c026db9e9f0398de1dd9a40",
+      "intake": [
+        "historical_29_repository_index"
+      ],
+      "github_license_identifier": null,
+      "license_review": "Identifier is metadata only; full root and nested terms still require review.",
+      "integration_status": "reference_only_not_semantic_parity",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "128c4f7e0abdfbfe5c026db9e9f0398de1dd9a40",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "Dockerfile",
+          "Makefile",
+          "README.md",
+          "deploy.env.example",
+          "deploy",
+          "docker-compose.yml",
+          "docs",
+          "pyproject.toml",
+          "scripts",
+          "tests",
+          "waifu"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Playeon",
+      "url": "https://github.com/playeon/Playeon",
+      "reference_revision": "6ec6097bc7f5db19583618c226a5e4c410b90cee",
+      "intake": [
+        "explicit_feature_source"
+      ],
+      "github_license_identifier": null,
+      "integration_status": "reference_only_not_semantic_parity",
+      "feature": "Music",
+      "license_review": "Custom attribution/personal-use/non-commercial license. Do not copy into a monetized or rebranded service without permission and required notices.",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "6ec6097bc7f5db19583618c226a5e4c410b90cee",
+        "root_entries": [
+          ".env.example",
+          ".gitignore",
+          "LICENSE",
+          "README.md",
+          "deploy.sh",
+          "deploy",
+          "docker-compose.yml",
+          "ecosystem.config.cjs",
+          "package.json",
+          "playeon-bot",
+          "playeon-web"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "save-restricted-content-bot",
+      "url": "https://github.com/abhinai2244/save-restricted-content-bot",
+      "reference_revision": "bf2e45a1ef187060e053e59c0336cb0e6a4a022b",
+      "intake": [
+        "explicit_feature_source"
+      ],
+      "github_license_identifier": null,
+      "integration_status": "reference_only_not_semantic_parity",
+      "feature": "Saver",
+      "license_review": "Root MIT; preserve required notices if copying; nested dependencies still require review.",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "bf2e45a1ef187060e053e59c0336cb0e6a4a022b",
+        "root_entries": [
+          "Dockerfile",
+          "LICENSE",
+          "Procfile",
+          "README.md",
+          "bot.py",
+          "cantarella",
+          "config.py",
+          "database",
+          "keep_alive.py",
+          "logger.py",
+          "requirements.txt",
+          "runtime.txt"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "ENCODING-BOT",
+      "url": "https://github.com/abhinai2244/ENCODING-BOT",
+      "reference_revision": "84d4e256e2f2047c653691b5b59bfdea2a262fae",
+      "intake": [
+        "explicit_feature_source"
+      ],
+      "github_license_identifier": null,
+      "integration_status": "reference_only_not_semantic_parity",
+      "feature": "Encoder",
+      "license_review": "Root AGPL-3.0; review source-distribution/network obligations and nested terms before reuse.",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "84d4e256e2f2047c653691b5b59bfdea2a262fae",
+        "root_entries": [
+          ".github",
+          ".gitignore",
+          "CODE_OF_CONDUCT.md",
+          "Dockerfile",
+          "LICENSE",
+          "Procfile",
+          "README.md",
+          "SECURITY.md",
+          "VideoEncoder",
+          "extract",
+          "heroku.yml",
+          "render.yaml",
+          "requirements.txt",
+          "restart.py",
+          "run.sh",
+          "runtime.txt",
+          "update.py"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "Multi-FileStoreBot",
+      "url": "https://github.com/abhinai2244/Multi-FileStoreBot",
+      "reference_revision": "010172404c2121862deea99f0fe25766d130e392",
+      "intake": [
+        "explicit_feature_source"
+      ],
+      "github_license_identifier": null,
+      "integration_status": "reference_only_not_semantic_parity",
+      "feature": "FileStore",
+      "license_review": "No root license found; public availability is not blanket reuse permission.",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "010172404c2121862deea99f0fe25766d130e392",
+        "root_entries": [
+          ".gitignore",
+          ".secret_key",
+          "Dockerfile",
+          "Procfile",
+          "README.md",
+          "assets",
+          "backend",
+          "config.py",
+          "database",
+          "heroku.yml",
+          "main.py",
+          "main_bot",
+          "pyarmor_runtime_000000",
+          "render.yaml",
+          "requirements.txt",
+          "run.py",
+          "runtime.txt",
+          "utils",
+          "worker_bot"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "LINK-SHAREBOT",
+      "url": "https://github.com/abhinai2244/LINK-SHAREBOT",
+      "reference_revision": "265f2acbe720571e7c514cd32eea600292656fe2",
+      "intake": [
+        "explicit_feature_source"
+      ],
+      "github_license_identifier": null,
+      "integration_status": "reference_only_not_semantic_parity",
+      "feature": "Linkshare",
+      "license_review": "No root license found; public availability is not blanket reuse permission.",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "265f2acbe720571e7c514cd32eea600292656fe2",
+        "root_entries": [
+          "Dockerfile",
+          "Procfile",
+          "README.md",
+          "app.json",
+          "assets",
+          "bot.py",
+          "config.py",
+          "database",
+          "helper_func.py",
+          "main.py",
+          "plugins",
+          "requirements.txt",
+          "runtime.txt"
+        ],
+        "license_candidates": [],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    },
+    {
+      "name": "CBML",
+      "url": "https://github.com/abhinai2244/CBML",
+      "reference_revision": "4d13aa14a9d44af426f740db5905c3a22001ad38",
+      "intake": [
+        "explicit_feature_source"
+      ],
+      "github_license_identifier": null,
+      "integration_status": "reference_only_not_semantic_parity",
+      "feature": "Leech",
+      "license_review": "Root AGPL-3.0; review source-distribution/network obligations and nested terms before reuse.",
+      "root_tree_review": {
+        "status": "retrieved",
+        "tree_sha": "4d13aa14a9d44af426f740db5905c3a22001ad38",
+        "root_entries": [
+          ".dockerignore",
+          ".gitattributes",
+          ".gitignore",
+          ".slugignore",
+          "DEPLOY-VPS.txt",
+          "Dockerfile",
+          "HEROKU-CONFIG-AND-AVAILABILITY.txt",
+          "HEROKU-DEPLOY.txt",
+          "LICENSE",
+          "Procfile",
+          "README.md",
+          "a2c.conf",
+          "alive.py",
+          "app.json",
+          "app.py",
+          "bot",
+          "captain-definition",
+          "config.py",
+          "configs",
+          "cron_boot.py",
+          "deploy-heroku.sh",
+          "deploy.vps",
+          "docker-compose.yml",
+          "docs",
+          "gen_scripts",
+          "heroku.yml",
+          "myjd",
+          "one-click-deploy.sh",
+          "plugins",
+          "qBittorrent",
+          "render.yaml",
+          "requirements.txt",
+          "requirements_win.txt",
+          "sabnzbdapi",
+          "setpkgs.sh",
+          "start.sh",
+          "tunnel.Dockerfile",
+          "tunnel.sh",
+          "update.py",
+          "vercel",
+          "web"
+        ],
+        "license_candidates": [
+          "LICENSE"
+        ],
+        "limitation": "Root tree names only; not a full code, security or license audit."
+      }
+    }
+  ],
+  "remaining_work": [
+    "Per-feature behavior and security review at pinned revisions",
+    "Resolve licenses and nested third-party terms before code reuse",
+    "Map useful behavior to existing eight feature identities without duplicate plugins",
+    "Finish documented implementation gaps and integration tests",
+    "Complete non-panel message and keyboard UI review; do not claim every screen migrated"
+  ]
+}

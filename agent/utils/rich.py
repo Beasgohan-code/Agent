@@ -6,9 +6,9 @@ has it gets native tables; a deployment whose client library predates it — or
 whose Telegram build refuses the call — falls back to the HTML that has always
 worked, with tables drawn in ``<pre>``.
 
-The fallback is not per-message guesswork: the first refusal flips
-:func:`agent.ui.tables.set_rich` off for the whole process, so the UI stops
-producing ``<table>`` at all instead of degrading one message at a time.
+Explicit unsupported-feature errors disable rich rendering for the process.
+An invalid individual rich card falls back locally; transport, permission and
+rate-limit failures propagate without risking a duplicate send.
 
 Editing is covered too: the Bot API edits a rich message through
 ``edit_message_text(rich_text=…)``, so navigating `/menu` keeps the native table
@@ -48,7 +48,7 @@ def needs_rich(text: str) -> bool:
 
 def available(client) -> bool:
     """Can *client* deliver a rich message at all?"""
-    return hasattr(client, "send_rich_message")
+    return callable(getattr(client, "send_rich_message", None))
 
 
 async def send(client, chat_id, text: str, *, reply_markup=None, **kwargs):
@@ -56,6 +56,8 @@ async def send(client, chat_id, text: str, *, reply_markup=None, **kwargs):
     payload = str(text or "")
     if not payload:
         return None
+    if not tables.rich_enabled() and needs_rich(payload):
+        payload = _classic_form(text, payload)
     if tables.rich_enabled() and needs_rich(payload):
         if not available(client):
             _cannot(client)
@@ -68,8 +70,9 @@ async def send(client, chat_id, text: str, *, reply_markup=None, **kwargs):
                     reply_markup=reply_markup,
                     **kwargs,
                 )
-            except Exception as exc:  # noqa: BLE001 - downgrade, never lose it
-                _refused(exc)
+            except Exception as exc:  # noqa: BLE001 - classify explicit format rejections
+                if not _refused(exc):
+                    raise
                 payload = _classic_form(text, payload)
     return await client.send_message(
         chat_id=chat_id, text=payload, reply_markup=reply_markup, **kwargs
@@ -82,21 +85,24 @@ async def reply(message, text, **kwargs):
     if not payload:
         return None
     client = getattr(message, "_client", None)
+    if not tables.rich_enabled() and needs_rich(payload):
+        payload = _classic_form(text, payload)
     if tables.rich_enabled() and needs_rich(payload):
         if not available(client):
             _cannot(client)
             payload = _classic_form(text, payload)
         else:
             try:
+                rich_kwargs = dict(kwargs)
+                rich_kwargs.setdefault("reply_parameters", ReplyParameters(message_id=message.id))
                 return await client.send_rich_message(
                     chat_id=message.chat.id,
                     rich_text=InputRichMessage(html=payload),
-                    reply_markup=kwargs.pop("reply_markup", None),
-                    reply_parameters=ReplyParameters(message_id=message.id),
-                    **kwargs,
+                    **rich_kwargs,
                 )
-            except Exception as exc:  # noqa: BLE001 - downgrade, never lose it
-                _refused(exc)
+            except Exception as exc:  # noqa: BLE001 - classify explicit format rejections
+                if not _refused(exc):
+                    raise
                 payload = _classic_form(text, payload)
     return await message.reply(payload, **kwargs)
 
@@ -136,22 +142,37 @@ async def edit(target, text, *, reply_markup=None):
             return await editor(
                 rich_text=InputRichMessage(html=payload), reply_markup=reply_markup
             )
-        except Exception as exc:  # noqa: BLE001 - fall through to the grid
-            logger.warning("Telegram refused a rich edit (%s); using the grid.", exc)
+        except Exception as exc:  # noqa: BLE001 - classify before fallback
+            if not _refused(exc):
+                raise
     return await editor(
         text=_classic_form(text, payload), parse_mode="html", reply_markup=reply_markup
     )
 
 
-def _refused(exc: Exception) -> None:
-    """Telegram said no: stop producing tables for this process."""
-    logger.warning(
-        "Telegram refused a rich message (%s: %s); switching the UI to the "
-        "classic grid.",
-        type(exc).__name__,
-        exc,
-    )
-    tables.set_rich(False)
+def _refused(exc: Exception) -> bool:
+    """Downgrade only explicit rich-format rejections, not transport failures.
+
+    Retrying an ambiguous timeout as plain text could duplicate an already sent
+    message. Rate limits and permission errors also belong to the normal caller
+    error path, not a process-wide loss of native UI support.
+    """
+    reason = str(exc).upper()
+    unsupported = any(code in reason for code in (
+        "RICH_MESSAGE_UNSUPPORTED", "RICH_MESSAGES_UNSUPPORTED",
+        "RICH_TEXT_UNSUPPORTED",
+    ))
+    invalid = any(code in reason for code in (
+        "RICH_TEXT_INVALID", "RICH_MESSAGE_INVALID",
+    ))
+    if not (unsupported or invalid):
+        return False
+    logger.warning("Telegram rejected rich formatting (%s); using classic HTML.",
+                   type(exc).__name__)
+    # A malformed individual card must not downgrade every other plugin.
+    if unsupported:
+        tables.set_rich(False)
+    return True
 
 
 def _cannot(client) -> None:

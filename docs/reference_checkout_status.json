@@ -1,0 +1,62 @@
+{
+  "runtime_imported": false,
+  "checkouts": [
+    {
+      "path": "music/Videl0",
+      "status": "review_clone_prepared",
+      "pinned_materialized_revision": "6430b1e5e60e0776a7ab519e05cb98c2ca1a2ebf",
+      "text_files_materialized": 620,
+      "executed": false,
+      "limit": "Text-only pinned snapshot; credential-named files, dotfiles, binaries and symlinks excluded. Clone HEAD is not used as source revision."
+    },
+    {
+      "path": "music/Playeon",
+      "status": "review_clone_prepared",
+      "pinned_materialized_revision": "6ec6097bc7f5db19583618c226a5e4c410b90cee",
+      "text_files_materialized": 248,
+      "executed": false,
+      "limit": "Text-only pinned snapshot; credential-named files, dotfiles, binaries and symlinks excluded. Clone HEAD is not used as source revision."
+    },
+    {
+      "path": "saver",
+      "status": "review_clone_prepared",
+      "pinned_materialized_revision": "bf2e45a1ef187060e053e59c0336cb0e6a4a022b",
+      "text_files_materialized": 22,
+      "executed": false,
+      "limit": "Text-only pinned snapshot; credential-named files, dotfiles, binaries and symlinks excluded. Clone HEAD is not used as source revision."
+    },
+    {
+      "path": "Encoder",
+      "status": "review_clone_prepared",
+      "pinned_materialized_revision": "84d4e256e2f2047c653691b5b59bfdea2a262fae",
+      "text_files_materialized": 45,
+      "executed": false,
+      "limit": "Text-only pinned snapshot; credential-named files, dotfiles, binaries and symlinks excluded. Clone HEAD is not used as source revision."
+    },
+    {
+      "path": "Filestore",
+      "status": "review_clone_prepared",
+      "pinned_materialized_revision": "010172404c2121862deea99f0fe25766d130e392",
+      "text_files_materialized": 36,
+      "executed": false,
+      "limit": "Text-only pinned snapshot; credential-named files, dotfiles, binaries and symlinks excluded. Clone HEAD is not used as source revision."
+    },
+    {
+      "path": "Linkshare",
+      "status": "review_clone_prepared",
+      "pinned_materialized_revision": "265f2acbe720571e7c514cd32eea600292656fe2",
+      "text_files_materialized": 16,
+      "executed": false,
+      "limit": "Text-only pinned snapshot; credential-named files, dotfiles, binaries and symlinks excluded. Clone HEAD is not used as source revision."
+    },
+    {
+      "path": "leech",
+      "status": "review_clone_prepared",
+      "pinned_materialized_revision": "4d13aa14a9d44af426f740db5905c3a22001ad38",
+      "text_files_materialized": 238,
+      "executed": false,
+      "limit": "Text-only pinned snapshot; credential-named files, dotfiles, binaries and symlinks excluded. Clone HEAD is not used as source revision."
+    }
+  ],
+  "license_policy": "Review-only checkouts remain Git-ignored and Docker-excluded. Required upstream legal notices retained; code reuse requires license review."
+}

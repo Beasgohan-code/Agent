@@ -37,6 +37,8 @@ Filestore/
 Linkshare/
 leech/
 docs/
-tools/
+tools/*
+!tools/typetube/
+tools/typetube/node_modules/
 # Runtime indexes, downloaded media and encrypted credential documents.
 data/

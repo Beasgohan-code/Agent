@@ -10,6 +10,8 @@ Two deliberate rules, both to avoid fake behaviour:
 
 from __future__ import annotations
 
+from ...platform.commands import command_name
+
 import asyncio
 import html
 import logging
@@ -25,21 +27,36 @@ from pyrogram.errors import RPCError, FloodWait
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
+from .command_cleaning import build as build_command_cleaning
+from .cleaning import build as build_cleaning, clean as clean_service
+from .blocklists import COMMANDS as BLOCKLIST_COMMANDS, build as build_blocklists, enforce as enforce_blocklist
+from ...platform.blocklists import history as blocklist_history, BlocklistError
+from .restrictions import COMMANDS as RESTRICTION_COMMANDS, build as build_restrictions
+from .antiflood import COMMANDS as FLOOD_COMMANDS, build as build_antiflood, watch as watch_antiflood
+from ...platform.group_rules import rules_history, RulesError
+from ...platform.restriction_cases import history as restriction_history, CaseError
+from ...platform.admin_settings import options as admin_options, denied, AdminStateError
+from ...platform.group_trust import trusted_members, trust_history, TrustError
+from ...platform.antispam import read_policy, change_policy, policy_history, PolicyError
 from ...platform.chats import SPAM_ACTIONS
 from ...platform.manifest import PluginManifest
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
 
+from .locks import COMMANDS as LOCK_COMMANDS, build as build_locks, enforce as enforce_locks
+
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="moderation",
     name="Moderation",
     version="1.0.0",
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "trust", "antispam", "modlog",
+        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *LOCK_COMMANDS, *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *BLOCKLIST_COMMANDS, "cleanservice", "cleancommand", "keepcommand",
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -145,13 +162,26 @@ async def _member_of(client, chat_id: int, user_id: int):
         return None
 
 
-async def is_moderator(client, message, *, need: str | None = None, owner_id: int | None = None) -> bool:
+async def is_moderator(client, message, *, need: str | None = None, owner_id: int | None = None, ctx=None) -> bool:
     """True when the caller may act here.
 
         The bot owner always may; an administrator may when they hold the specific
         privilege the command needs (Telegram grants exactly these).
         
     """
+    sender = getattr(message, "sender_chat", None)
+    if sender is not None:
+        if getattr(message, "from_user", None) is None:
+            return False  # downstream audit/mutation paths require a sender identity
+        if getattr(sender, "id", None) != getattr(getattr(message, "chat", None), "id", None):
+            return False  # linked channels are not anonymous group administrators
+        context = ctx or getattr(client, "agent_context", None)
+        if context is None:
+            return False
+        try:
+            return bool((await admin_options(context, message.chat.id))["anonadmin"])
+        except AdminStateError:
+            return False
     user = getattr(message, "from_user", None)
     if user is None:
         return False
@@ -186,11 +216,15 @@ class PartialKickError(RuntimeError):
     """Ban was confirmed, but the unban request was not confirmed."""
 
 
-async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source="manual"):
+async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source="manual", confirm=False):
     """Use one recovery path for every kick; never retry the ban blindly."""
-    await client.ban_chat_member(chat_id, target_id)
+    banned = await client.ban_chat_member(chat_id, target_id)
+    if confirm and banned is not True:
+        raise RuntimeError("Kick ban was not confirmed.")
     try:
-        await client.unban_chat_member(chat_id, target_id)
+        unbanned = await client.unban_chat_member(chat_id, target_id)
+        if confirm and unbanned is not True:
+            raise RuntimeError("Kick unban was not confirmed.")
     except Exception as exc:
         ctx.chats.log(
             chat_id, "kick:incomplete", actor_id=actor_id, target_id=target_id,
@@ -326,18 +360,24 @@ def watch(ctx):
         try:
             chat = getattr(message, "chat", None)
             user = getattr(message, "from_user", None)
+            if await clean_service(ctx, client, message):
+                return
+            if await enforce_locks(ctx, client, message):
+                return
+            if await enforce_blocklist(ctx, client, message):
+                return
             text = (getattr(message, "text", "") or "").strip()
-            if chat is None or user is None or not text or text.startswith("/"):
+            if chat is None or user is None or not text or command_name(text) is not None:
                 return
             if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
                 return
-            policy = ctx.chats.antispam(chat.id) if ctx.chats else {}
+            policy = await read_policy(ctx, chat.id) if ctx.chats else {}
             if not any(
                 policy.get(key)
                 for key in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled", "keywords_enabled")
             ):
                 return
-            if ctx.chats.is_trusted(chat.id, user.id):
+            if user.id in await trusted_members(ctx, chat.id):
                 return
             in_window, repeats = recent.note(
                 chat.id,
@@ -375,7 +415,7 @@ def watch(ctx):
 
 def extra_handlers(ctx):
     """The anti-spam watcher, registered by the bot in its own handler group."""
-    return [MessageHandler(watch(ctx), tg_filters.group)]
+    return [MessageHandler(watch(ctx), tg_filters.group), MessageHandler(watch_antiflood(ctx), tg_filters.group)]
 
 
 # -- handlers ---------------------------------------------------------------
@@ -385,9 +425,9 @@ def build(ctx):
     """Wire the moderation commands to this repository's shared state."""
 
     async def _guard(client, message, need: str | None = None) -> bool:
-        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
+        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id, ctx=ctx):
             return True
-        await reply(message, DENIED)
+        await denied(ctx, message, DENIED)
         return False
 
     async def _protected(client, message, target_id: int) -> bool:
@@ -430,7 +470,11 @@ def build(ctx):
         target_id, mention = target
         rows = ctx.chats.warnings_of(message.chat.id, target_id)
         note = ctx.chats.note_of(message.chat.id, target_id)
-        trusted = ctx.chats.is_trusted(message.chat.id, target_id)
+        try:
+            trusted = target_id in await trusted_members(ctx, message.chat.id)
+        except TrustError as error:
+            await reply(message, str(error))
+            return
         limit, action = warn_policy(ctx.chats, message.chat.id)
         rows_out = tuple(
             (
@@ -451,7 +495,7 @@ def build(ctx):
         if note:
             lines.append(f"Note: {html.escape(note)}")
         if trusted:
-            lines.append("Trusted: yes")
+            lines.append("Approved: yes")
         table = Table(
             headers=("#", "Reason", "By", "When"),
             rows=rows_out,
@@ -631,67 +675,84 @@ def build(ctx):
         )
         await reply(message, f"<b>Note saved</b>\nMember: {mention}")
 
-    async def trust(client, message):
-        if not await _guard(client, message, need="can_manage_chat"):
+    async def approval_command(client, message, desired=None, listing=False):
+        chat = getattr(message, "chat", None)
+        user = getattr(message, "from_user", None)
+        if (getattr(chat, "type", None) not in (ChatType.GROUP, ChatType.SUPERGROUP)
+                or getattr(message, "sender_chat", None) is not None
+                or type(getattr(user, "id", None)) is not int or user.id <= 0):
+            await reply(message, "Use approval commands as yourself inside a group.")
             return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to trust them.")
+        if not await is_moderator(client, message, need="can_manage_chat"):
+            await denied(ctx, message, DENIED)
             return
-        target_id, mention = target
-        trusted = ctx.chats.toggle_trust(message.chat.id, target_id)
-        ctx.chats.log(
-            message.chat.id, "trust" if trusted else "untrust",
-            actor_id=message.from_user.id, target_id=target_id,
-        )
-        await reply(message, 
-            f"<b>{'Member trusted' if trusted else 'Trust removed'}</b>\nMember: {mention}"
-        )
+        args = _args(message)
+        try:
+            if listing:
+                if len(args) > 2 or (len(args) == 2 and (not args[1].isascii() or not args[1].isdecimal() or len(args[1]) > 8 or int(args[1]) < 1)):
+                    await reply(message, "Usage: <code>/approved [page]</code>")
+                    return
+                members = sorted(await trusted_members(ctx, chat.id))
+                page = int(args[1]) if len(args) == 2 else 1
+                pages = max(1, (len(members) + 19) // 20)
+                if page > pages:
+                    await reply(message, f"Choose an approvals page from 1 to {pages}.")
+                    return
+                await reply(message, panel("Approved members", table=Table(
+                    headers=("Member ID",), rows=tuple((str(uid),) for uid in members[(page-1)*20:page*20])),
+                    lines=[] if members else ["No approved members in this group."],
+                    footer=f"Page {page}/{pages} · /approved [page]",
+                    note="Approved members are exempt from automatic anti-spam actions, not manual moderation."))
+                return
+            if len(args) > 2:
+                await reply(message, "Reply to a member or provide one numeric member ID.")
+                return
+            target = parse_target(message)
+            if target is None:
+                await reply(message, "Reply to a member or provide their numeric ID.")
+                return
+            target_id, mention = target
+            if not 0 < target_id < 2**63:
+                await reply(message, "Provide a valid personal member ID.")
+                return
+            members = await trusted_members(ctx, chat.id, toggle=target_id if desired is not None else None,
+                                           actor=user.id, approved=desired)
+            state = "approved" if target_id in members else "not approved"
+            await reply(message, f"<b>Member {state}</b>\nMember: {mention}")
+        except TrustError as error:
+            await reply(message, str(error))
+
+    async def approve(client, message):
+        await approval_command(client, message, desired=True)
+
+    async def unapprove(client, message):
+        await approval_command(client, message, desired=False)
+
+    async def approval(client, message):
+        await approval_command(client, message)
+
+    async def approved(client, message):
+        await approval_command(client, message, listing=True)
 
     async def antispam(client, message):
         chat = getattr(message, "chat", None)
         if chat is None or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
             await reply(message, "Anti-spam settings are per group.")
             return
-        if not await _guard(client, message, need="can_manage_chat"):
+        if not await is_moderator(client, message, need="can_manage_chat"):
+            await denied(ctx, message, DENIED)
             return
-        policy = ctx.chats.antispam(chat.id)
         args = _args(message)[1:]
-        if args:
-            key = args[0].lower()
-            value = args[1].lower() if len(args) > 1 else None
-            if key == "off":
-                for flag in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled"):
-                    policy[flag] = False
-            elif key == "on":
-                for flag in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled"):
-                    policy[flag] = True
-            elif key == "limit" and value and value.isdigit():
-                policy["flood_messages"] = max(2, int(value))
-            elif key == "action" and value in SPAM_ACTIONS:
-                policy["action"] = value
-            elif key == "links" and value in ("on", "off"):
-                policy["links_enabled"] = value == "on"
-            elif key == "invites" and value in ("on", "off"):
-                policy["invites_enabled"] = value == "on"
-            elif key == "mute" and value and value.isdigit():
-                policy["mute_seconds"] = max(30, int(value))
-            elif key.startswith("keyword") and value:
-                policy["keywords_enabled"] = True
-                policy["blocked_keywords"] = [*policy.get("blocked_keywords", []), value]
-            elif key == "keyword-clear":
-                policy["keywords_enabled"] = False
-                policy["blocked_keywords"] = []
+        try:
+            if args:
+                policy = await change_policy(ctx, chat.id, args[0].lower(),
+                    " ".join(args[1:]).lower() if len(args) > 1 else None,
+                    actor=message.from_user.id)
             else:
-                await reply(message, 
-                    "Usage: /antispam on|off|limit 7|action mute|links off|invites off"
-                    "|mute 300|keyword word|keyword-clear"
-                )
-                return
-            policy = ctx.chats.save_antispam(chat.id, policy)
-            ctx.chats.log(
-                chat.id, "antispam", actor_id=message.from_user.id, reason=" ".join(args)
-            )
+                policy = await read_policy(ctx, chat.id)
+        except PolicyError as error:
+            await reply(message, str(error))
+            return
         keywords = policy.get("blocked_keywords") or []
         table = kv_table(
             [
@@ -716,14 +777,23 @@ def build(ctx):
                     "<code>links off</code> · <code>invites off</code> · <code>keyword word</code> · "
                     "<code>keyword-clear</code>"
                 ),
-                footer="Staff and trusted members are never auto-punished.",
+                footer="Staff and approved members are never auto-punished.",
             )
         )
 
     async def modlog(client, message):
         if not await _guard(client, message):
             return
-        history = ctx.chats.history(message.chat.id, limit=10)
+        try:
+            committed = await policy_history(ctx, message.chat.id)
+            committed += await rules_history(ctx, message.chat.id)
+            committed += await trust_history(ctx, message.chat.id)
+            committed += await restriction_history(ctx, message.chat.id)
+            committed += await blocklist_history(ctx, message.chat.id)
+        except (PolicyError, RulesError, TrustError, CaseError, BlocklistError):
+            await reply(message, "Moderation history could not be loaded. Please try again shortly.")
+            return
+        history = sorted([*ctx.chats.history(message.chat.id, limit=10), *committed], key=lambda row: row.get("at", 0), reverse=True)[:10]
         if not history:
             await reply(message, 
                 panel(
@@ -754,7 +824,7 @@ def build(ctx):
                 icon=ctx.theme.emoji("stats"),
                 subtitle="Newest first.",
                 table=table,
-                footer="Per group, capped at 200 entries, times in UTC.",
+                footer="Recent actions for this group · times in UTC. Protection changes are read from committed audit history.",
             )
         )
 
@@ -773,6 +843,12 @@ def build(ctx):
         return guarded
 
     return MANIFEST, {
+        **build_locks(ctx),
+        **build_antiflood(ctx),
+        **build_restrictions(ctx),
+        **build_blocklists(ctx),
+        **build_cleaning(ctx),
+        **build_command_cleaning(ctx),
         "warn": warn,
         "warnings": warnings,
         "warns": warnings,
@@ -784,7 +860,7 @@ def build(ctx):
         "unban": report_api_failure(unban),
         "purge": purge,
         "note": note,
-        "trust": trust,
+        "approve": approve, "unapprove": unapprove, "approval": approval, "approved": approved,
         "antispam": antispam,
         "modlog": modlog,
     }

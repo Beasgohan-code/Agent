@@ -126,22 +126,25 @@ full per-group feature-data migration and external process isolation remain open
 
 ## Clones
 
-Send **`/clone` in private** to open Clone studio. This requires bot premium,
-sudo access or the bot Owner. `TOKEN_KEY` must be configured before credentials
+Send **`/clone` in private** to open Clone studio. Creation and ordinary starts require **Meiko Premium**,
+including for Owner and sudo users; Telegram Premium is unrelated. `TOKEN_KEY` must be configured before credentials
 are requested. Guided setup supports **Encoder, Moderation, Post maker,
-Linkshare, FileStore, Leech, Music and AI Agent**, one plugin at a
-time:
+Linkshare, FileStore, Leech, Music and AI Agent** in compatible combinations:
 
 1. Send a token from @BotFather. Agent checks `getMe` and the bot id; format alone
    is not accepted as identity. Secret messages are deleted best-effort.
-2. Choose a reviewed template with a button. Mandatory group core stays available.
+2. Choose a reviewed template or suite preset. On the review screen, **Edit plugins**
+   lets you add or remove individual optional plugins before confirmation. Mandatory
+   Group Management stays included. Selections are normalized and revalidated;
+   unknown/incompatible plugins are rejected, never silently dropped.
 3. For AI Agent, privately supply your own OpenAI key and model id first.
    No paid validation request is made; compatibility is checked on first use.
    Then send a log channel id, or `skip`.
 4. For FileStore, send the archive channel id. Both the operator and clone must be
    channel administrators; the clone needs posting permission. Rights are checked
    again before creation.
-5. Confirm creation. The signed-in setup user becomes the clone's Owner, in its
+5. Confirm creation. Identity, channel permissions, selection, credential syntax,
+   Premium and capacity are checked again. The signed-in setup user becomes the clone's Owner, in its
    own bot tenant—not an Owner of this deployment. Telegram does not reveal a
    bot's human owner from its token, so Agent does not pretend to fetch one.
 
@@ -196,9 +199,9 @@ Clones are still clients in the parent process, not OS-process isolation.
 
 | Command | What it does |
 | --- | --- |
-| `/fsave` | Keep a replied file in your vault (20 MB cap — the Bot API's, not ours). |
 | `/batch [n]` | Save a run of consecutive files, starting at the replied one. |
-| `/files`, `/check <id>`, `/get <id>`, `/del <id>` | List, inspect, re-send and delete vault entries. |
+| `/check <id>`, `/get <id>` | Inspect or retrieve your own existing stored file. |
+| `/custom_batch first last` | Create a bounded archive-channel message-range link; use `ids` for selected messages. |
 | `/genlink [hours] [uses]` | Store the replied file and answer with a share link (deep link + copy button). |
 | `/share <id> [hours] [uses]` | The same, for a file already in your vault — no second copy. |
 | `/links`, `/revoke` | Every live link with the uses and hours it has left; revoke by token or button. |
@@ -368,13 +371,24 @@ FileStore, Leech and AI Agent. Moderation is mandatory and slot-free; optional
 features still require global Owner approval and group-admin activation, with
 at most three active per group. Dependency availability is shown honestly.
 
-AI Agent provides explicit `/ask <question>` text completions when both
-`AI_API_KEY` and `AI_MODEL` are configured. It sends that question to OpenAI,
-not group history. It has no tools, moderation authority or autonomous actions.
+AI Agent provides `/ask <question>` and default-off auto-chat when both
+`AI_API_KEY` and `AI_MODEL` are configured. Use `/autochat on|off|status` in
+your private chat to enable or stop ordinary text replies. In groups, an admin
+can enable auto-chat after Owner approval and group activation; only mentions
+of the bot or replies to its messages trigger an answer. It sends only the
+triggering text to OpenAI, not replied-to text or group history. Enabling it
+permits automatic provider requests for qualifying messages; charges may apply. It has no tools, moderation authority or autonomous actions.
 Obvious token/key patterns are rejected, but this is not a comprehensive secret
 scanner: never include private information. Responses are untrusted AI output.
 Requests have bounded size, concurrency, timeout and a per-user cooldown.
-No key means no `/ask` handler. Parent AI credentials never pass into clones.
+On draft-capable clients, AI replies show a Richgram thinking indicator and
+stream answer text into a throttled rich message draft, then send one final
+RichMessage through the existing rich/classic fallback. Older clients can use
+plain `send_message_draft`; rejected drafts fall back to a final-only response
+without retrying the provider. Drafts are ephemeral and may expire on cancellation.
+The thinking indicator is status only, never model reasoning. No stop button is
+advertised because generation-stop handling is not implemented.
+No key/model means no `/ask`, `/autochat`, or auto-chat watcher. Parent AI credentials never pass into clones.
 AI Agent clones instead require their own private guided key/model setup; keys
 are encrypted at rest and cleared from cancelled or expired drafts. Changing a
 clone to a legacy profile removes its stored AI credentials.

@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 import time
 from pathlib import Path
 
+from pyrogram.errors import MessageNotModified
 from pyrogram.enums import ButtonStyle, ChatMemberStatus, ChatType
 from pyrogram.handlers import ChatMemberUpdatedHandler
 from pyrogram.types import InlineKeyboardButton as Button
@@ -35,6 +36,8 @@ logger = logging.getLogger(__name__)
 PLUGIN_PREFIX = "plugin"
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=False,
     slug="ops",
     name="Operations",
     version="1.0.0",
@@ -42,6 +45,7 @@ MANIFEST = PluginManifest(
     commands=(
         "restart",
         "sudo",
+        "addsudo", "delsudo", "sudolist", "sudoperms",
         "watchdog",
         "plugins",
         "plugin",
@@ -49,7 +53,6 @@ MANIFEST = PluginManifest(
         "errors",
         "db",
         "setlog",
-        "unsetlog",
         "log",
     ),
     permissions=("process.control", "plugins.manage", "files.write"),
@@ -132,6 +135,9 @@ def build(ctx):
     from ...platform.roles import SudoStore
     if getattr(ctx, "sudo", None) is None:
         ctx.sudo = SudoStore(ctx.settings.data_dir, owner_id=ctx.settings.owner_id, db=getattr(ctx, "db", None))
+    from ...platform.sudo_access import SudoAccess
+    from .sudo_commands import build as sudo_commands
+    capabilities = SudoAccess(getattr(ctx, "db", None), owner_id=ctx.settings.owner_id)
     runtime = getattr(ctx, "runtime", None)
     events = getattr(ctx, "events", None)
     lease = getattr(ctx, "lease", None)
@@ -156,6 +162,11 @@ def build(ctx):
             await reply(message, OWNER_ONLY)
             return False
         return True
+
+    async def _delegated(message, capability):
+        uid = getattr(getattr(message, "from_user", None), "id", None)
+        chat_id = getattr(getattr(message, "chat", None), "id", 0)
+        return await capabilities.allowed(uid, capability, chat_id if type(chat_id) is int and chat_id < 0 else 0)
 
     # -- /restart ----------------------------------------------------------
 
@@ -187,14 +198,23 @@ def build(ctx):
     # -- /watchdog ---------------------------------------------------------
 
     async def watchdog(_client, message):
-        if not await _owner_gate(message):
-            return
         args = [a.lower() for a in _args(message)[1:]]
+        if not _is_owner(message):
+            if not args and await _delegated(message, "health.read"):
+                rows = [("State", "Health monitor unavailable")]
+                if ctx.monitor is not None:
+                    snapshot = ctx.monitor.snapshot()
+                    rows = [("State", snapshot.state), ("Process uptime", format_uptime(snapshot.uptime_seconds))]
+                await reply(message, panel("Runtime health", table=kv_table(rows),
+                    note="Read-only process status. Cleanup and restart remain Owner-only."))
+            else:
+                await _owner_gate(message)
+            return
         mode = args[0] if args else ""
 
         if mode in ("run", "clean"):
             removed, freed = sweep_temp_dirs()
-            expired = ctx.links.purge_expired() if ctx.links is not None else 0
+            expired = await ctx.links.apurge_expired() if ctx.links is not None else 0
             pruned = 0
             if mode == "clean" and ctx.storage is not None:
                 pruned = len(ctx.storage.prune(retention_days=7))
@@ -270,29 +290,27 @@ def build(ctx):
         real table, and a button press edits it as a rich message rather than
         dropping it back to a grid.
         """
-        state = runtime.state()
-        idle = [row for row in state if row["enabled"] and not row["commands"]]
-        rows = tuple(
-            (row["slug"], _state_text(row), str(len(row["commands"])))
-            for row in state
-        )
-        enabled = sum(1 for row in state if row["enabled"])
+        from ...platform.policy import GROUP_CORE
+        raw = runtime.state()
+        management = [row for row in raw if row["slug"] in GROUP_CORE]
+        state = [row for row in raw if row["slug"] not in {*GROUP_CORE, "ops", "core"}]
+        if management:
+            state.insert(0, {
+                "slug": "group", "name": "Group Management", "enabled": all(row["enabled"] for row in management),
+                "commands": list({cmd for row in management for cmd in row["commands"]}),
+                "protected": True,
+            })
+        rows = tuple((row.get("name") or row["slug"], _state_text(row)) for row in state)
         body = panel(
-            "Plugin runtime",
-            icon=ctx.theme.emoji("gear"),
-            subtitle=(
-                f"<b>{enabled}</b> of <b>{len(state)}</b> plugins enabled. "
-                "A disabled plugin registers nothing at all."
-            ),
-            table=Table(headers=("Plugin", "State", "Cmds"), rows=rows, aligns=("left", "left", "right")),
-            lines=(["Idle (enabled, no commands):"] + [f"<code>{row['slug']}</code> — {_idle_reason(row)}" for row in idle] if idle else []),
-            note=(
-                "Tap a plugin to switch it on or off, or use "
-                "<code>/plugin &lt;slug&gt; on|off</code>. <code>ops</code> and "
-                "<code>core</code> are locked: they are the controls and the front "
-                "door, so the bot cannot lose the way back in."
-            ),
-            footer="Counts come from the live registry, not a stored copy.",
+            "Plugin runtime", icon=ctx.theme.emoji("gear"),
+            subtitle="One Group Management suite · optional tools below",
+            table=Table(headers=("Plugin", "State"), rows=rows),
+            lines=["Group Management includes moderation, welcome messages, anti-spam, filters, reports and verification."] + [
+                f"{html.escape(row.get('name') or row['slug'])}: {html.escape(_idle_reason(row))}"
+                for row in state if row["enabled"] and not row["commands"]
+            ],
+            note="Group Management stays on and uses no optional slots. Group admins configure its individual rules through /settings.",
+            footer="Optional switches control this bot’s runtime. Group activation still requires approval and an available slot.",
         )
         buttons: list[list[Button]] = []
         row_buttons: list[Button] = []
@@ -300,8 +318,8 @@ def build(ctx):
             locked = entry["protected"]
             row_buttons.append(
                 Button(
-                    text=f"{'🔒' if locked else ('✅' if entry['enabled'] else '⛔')} {entry['slug']}",
-                    callback_data=f"{PLUGIN_PREFIX}:{entry['slug']}",
+                    text=f"{'🔒' if locked else ('✅' if entry['enabled'] else '⛔')} {entry.get('name') or entry['slug']}",
+                    callback_data=f"{PLUGIN_PREFIX}:info:{entry['slug']}",
                     style=(ButtonStyle.SUCCESS if entry["enabled"] else ButtonStyle.DEFAULT),
                     disabled=locked,
                 )
@@ -313,6 +331,37 @@ def build(ctx):
             buttons.append(row_buttons)
         return body, Keyboard(buttons)
 
+    def _plugin_workspace(entry):
+        slug = entry['slug']
+        commands = entry['commands']
+        body = panel(entry.get('name') or slug, icon=ctx.theme.emoji('gear'),
+            subtitle='Plugin workspace · this bot runtime',
+            table=kv_table([
+                ('Runtime', _state_text(entry)),
+                ('Scope', str(entry.get('scope', 'unknown'))),
+                ('Registered commands', str(len(commands))),
+                ('Executable handlers', str(entry.get('tracked_handlers', 0))),
+                ('Control', 'protected' if entry['protected'] else 'Owner managed'),
+            ]),
+            lines=[html.escape(str(entry.get('description') or 'No description supplied.')),
+                   'Commands: ' + (' · '.join('/' + html.escape(cmd) for cmd in commands[:16]) or 'none registered'),
+                   f'Group setup: <code>/plugin {html.escape(slug)} approve</code>, then a group admin activates it in that group’s /plugins.'],
+            note='Runtime on does not grant group approval or prove provider connectivity. Turning it off detaches handlers; it does not revoke approval or free group slots.',
+            footer='Refresh is read-only. Use /help for command usage; credentials are never displayed here.')
+        buttons = []
+        if not entry['protected'] and entry.get('tracked_handlers', 0):
+            buttons.append([Button('Disable runtime…' if entry['enabled'] else 'Enable runtime',
+                callback_data=f'{PLUGIN_PREFIX}:ask:{slug}' if entry['enabled'] else f'{PLUGIN_PREFIX}:on:{slug}')])
+        buttons += [[Button('Refresh', callback_data=f'{PLUGIN_PREFIX}:info:{slug}')],
+                    [Button('‹ Plugin runtime', callback_data=f'{PLUGIN_PREFIX}:home')]]
+        return body, Keyboard(buttons)
+
+    async def _edit_plugin(query, body, keyboard):
+        try:
+            await rich_ui.edit(query, body, reply_markup=keyboard)
+        except MessageNotModified:
+            pass
+
     async def on_plugin_press(client, query, rest: str) -> None:
         """A button pressed on the runtime panel."""
         owner_id = ctx.settings.owner_id
@@ -320,31 +369,64 @@ def build(ctx):
         if owner_id is None or presser is None or int(presser) != int(owner_id):
             await query.answer("Only the owner can switch plugins.", show_alert=True)
             return
-        slug = (rest or "").strip().lower()
-        state = {row["slug"]: row for row in runtime.state()}
+        parts = (rest or '').strip().lower().split(':')
+        if parts == ['home']:
+            body, keyboard = _plugin_panel()
+            await _edit_plugin(query, body, keyboard)
+            await query.answer()
+            return
+        # Old saved bare-slug buttons now browse safely instead of toggling.
+        action, slug = ('info', parts[0]) if len(parts) == 1 else (parts if len(parts) == 2 else ('invalid', ''))
+        state = {row['slug']: row for row in runtime.state()}
         entry = state.get(slug)
-        if entry is None:
-            await query.answer("No such plugin.", show_alert=True)
+        if entry is None or action not in ('info', 'ask', 'on', 'off'):
+            await query.answer('No such plugin or control.', show_alert=True)
+            return
+        if action == 'info' and not entry['protected']:
+            body, keyboard = _plugin_workspace(entry)
+            await _edit_plugin(query, body, keyboard)
+            await query.answer()
             return
         if entry["protected"]:
             await query.answer(f"{slug} is locked: the bot needs its own controls.", show_alert=True)
             return
-        if entry["enabled"]:
-            try:
-                runtime.disable(slug)
-                message = f"{slug} is off — its handlers are detached."
-            except ValueError as exc:
-                await query.answer(str(exc), show_alert=True)
-                return
-        else:
-            runtime.enable(slug)
-            message = f"{slug} is on."
-        if events is not None:
-            events.emit("plugin", slug=slug, action="off" if entry["enabled"] else "on", by=presser)
-        logger.info("plugin %s toggled by %s from the panel", slug, presser)
-        text, keyboard = _plugin_panel()
+        if action == 'ask':
+            await _edit_plugin(query, panel('Disable runtime?', lines=[
+                f'Detach <b>{html.escape(slug)}</b> handlers for this bot? Its commands stop responding in every chat.',
+                'This does not revoke Owner approval or release group slots. Running external jobs are not guaranteed to stop.'],
+                note='Use the group plugin panel to disable only one group.'), Keyboard([
+                    [Button('Confirm disable runtime', callback_data=f'{PLUGIN_PREFIX}:off:{slug}')],
+                    [Button('Cancel', callback_data=f'{PLUGIN_PREFIX}:info:{slug}')]]))
+            await query.answer()
+            return
         try:
-            await rich_ui.edit(query, text, reply_markup=keyboard)
+            changed = runtime.disable(slug) if action == 'off' else runtime.enable(slug)
+        except ValueError as exc:
+            await query.answer(str(exc), show_alert=True)
+            return
+        except RuntimeError:
+            await query.answer('Runtime change could not be confirmed. Check /errors and refresh before retrying; no success is claimed.', show_alert=True)
+            return
+        message = (f'{slug} is off — its handlers are detached.' if action == 'off' else
+                   f'{slug} runtime is on. Next: /plugin {slug} approve, then group-admin activation in /plugins.')
+        if not changed:
+            current = {row['slug']: row for row in runtime.state()}[slug]
+            body, keyboard = _plugin_workspace(current)
+            await _edit_plugin(query, body, keyboard)
+            if action == 'off' and not current['enabled']:
+                reason = f'{slug} is already off.'
+            elif not current.get('tracked_handlers'):
+                reason = f'{slug} cannot start: {_idle_reason(current)}. Configure this bot and restart with authorization.'
+            else:
+                reason = f'{slug} is already on. Group use still needs Owner approval and group-admin activation.'
+            await query.answer(reason[:195], show_alert=not bool(current.get('tracked_handlers')))
+            return
+        if events is not None:
+            events.emit("plugin", slug=slug, action=action, by=presser)
+        logger.info("plugin %s toggled by %s from the panel", slug, presser)
+        text, keyboard = _plugin_workspace({row["slug"]: row for row in runtime.state()}[slug])
+        try:
+            await _edit_plugin(query, text, keyboard)
         except Exception:  # noqa: BLE001 - an old message is not a failed toggle
             chat_id = getattr(getattr(query.message, "chat", None), "id", None)
             if chat_id is not None:
@@ -378,8 +460,15 @@ def build(ctx):
         return rows
 
     async def db(_client, message):
-        """The store, stated plainly: which one, where, and is it answering."""
-        if not await _owner_gate(message):
+        """Owner diagnostics; delegates see only a bounded, sanitized status."""
+        if not _is_owner(message):
+            user_id = getattr(getattr(message, "from_user", None), "id", None)
+            chat_id = getattr(getattr(message, "chat", None), "id", 0)
+            if not await capabilities.allowed(user_id, "diagnostics.read", chat_id if chat_id < 0 else 0):
+                await reply(message, OWNER_ONLY)
+                return
+            database = getattr(ctx, "db", None)
+            await reply(message, "Database connection: " + ("available" if database is not None and database.connected else "unavailable") + ". No credentials or private metadata are included.")
             return
         await reply(
             message,
@@ -387,20 +476,34 @@ def build(ctx):
                 "Database",
                 icon=ctx.theme.emoji("stats"),
                 subtitle=(
-                    "Every store (chats, premium, links, clones, plugins) is one "
-                    "document; the vault's files stay on this host's disk."
+                    "PostgreSQL stores relational records and scoped "
+                    "documents; durable media requires configured remote archives."
                 ),
                 table=kv_table(_database_rows()),
                 note=(
                     "Set <code>DATABASE_URL</code> to a PostgreSQL URL to share state "
                     "between instances and survive a redeploy."
                 ),
-                footer="Writes are queued and flushed in the background; a handler never waits.",
+                footer="Critical transactional writes are awaited; legacy settings still use queued writes.",
             ),
             reply_markup=nav_keyboard(),
         )
 
     async def plugins(_client, message):
+        if not _is_owner(message) and await _delegated(message, "plugins.inspect"):
+            if runtime is None:
+                await reply(message, "Plugin inventory is unavailable.")
+                return
+            from ...platform.policy import GROUP_CORE
+            state = runtime.state()
+            management = [entry for entry in state if entry["slug"] in GROUP_CORE]
+            rows = [("Group Management", "On" if all(entry["enabled"] for entry in management) else "Degraded")] if management else []
+            rows += [(entry.get("name") or entry["slug"], "Off" if not entry["enabled"] else "On" if entry["commands"] else "Idle")
+                     for entry in state if entry["slug"] not in {*GROUP_CORE, "ops", "core"}]
+            await reply(message, panel("Plugin inventory", subtitle="Read-only runtime inspection",
+                table=Table(headers=("Plugin", "Runtime"), rows=tuple(rows)),
+                note="Runtime availability is not group activation. Approval and runtime changes remain Owner-only; group activation requires group-admin rights."))
+            return
         if getattr(getattr(message, "chat", None), "id", 0) < 0:
             show = getattr(ctx, "group_plugin_panel", None)
             if show is not None:
@@ -431,7 +534,7 @@ def build(ctx):
             try:
                 operation = service.approve if args[1].lower() == "approve" else service.revoke
                 await operation(args[0].lower(), actor_id=message.from_user.id)
-                await reply(message, "Global plugin approval updated. Refresh group plugins to see current state.")
+                await reply(message, "Global plugin approval updated. For approval: a group admin must now open /plugins in the target group and tap Activate. Revocation removes group access; runtime on/off is a separate setting.")
             except AccessError as exc:
                 await reply(message, str(exc))
             except Exception:
@@ -449,16 +552,22 @@ def build(ctx):
         if action not in ("on", "off"):
             await reply(message, "Usage: <code>/plugin &lt;slug&gt; on|off</code>")
             return
-        if action == "on":
-            changed = runtime.enable(slug)
-        else:
-            try:
-                changed = runtime.disable(slug)
-            except ValueError as exc:
-                await reply(message, str(exc))
-                return
+        try:
+            changed = runtime.enable(slug) if action == 'on' else runtime.disable(slug)
+        except ValueError as exc:
+            await reply(message, str(exc))
+            return
+        except RuntimeError:
+            await reply(message, 'Runtime change could not be confirmed. Check /errors and refresh /plugins before retrying; no success is claimed.')
+            return
         if not changed:
-            await reply(message, f"<code>{slug}</code> was already {action if action == 'on' else 'off'}.")
+            current = next(row for row in runtime.state() if row['slug'] == slug)
+            if action == 'on' and not current.get('tracked_handlers'):
+                explanation = f'Cannot start {slug}: {_idle_reason(current)}. Configure this bot and restart with authorization.'
+            else:
+                explanation = f'{slug} is already {action}. No duplicate handlers were attached.'
+            await reply(message, html.escape(explanation) +
+                        (f' Group use still requires <code>/plugin {slug} approve</code> and group-admin activation in /plugins.' if action == 'on' else ' Group approval is separate from runtime state.'))
             return
         if events is not None:
             events.emit(
@@ -467,9 +576,9 @@ def build(ctx):
         await reply(message, 
             f"Plugin <code>{slug}</code> is now {'enabled' if action == 'on' else 'disabled'}."
             + (
-                ""
-                if action == "on"
-                else "\nIts handlers are detached, so none of its commands respond."
+                "\nIts handlers are detached, so none of its commands respond."
+                if action == "off"
+                else f"\nRuntime only: this does not approve or activate group use. Next: <code>/plugin {slug} approve</code>, then a group admin activates it in /plugins."
             )
         )
 
@@ -589,19 +698,6 @@ def build(ctx):
             return
         await reply(message, f"Log channel set to <b>{html.escape(str(title))}</b> (<code>{target}</code>). Saved in {logbook.backend}.")
 
-    async def unsetlog(_client, message):
-        if not await _owner_gate(message):
-            return
-        logbook = getattr(ctx, "logbook", None)
-        if logbook is None:  # pragma: no cover
-            return
-        try:
-            await logbook.configure(None)
-        except LogSettingsError as exc:
-            await reply(message, html.escape(str(exc)))
-            return
-        fallback = "your DM" if logbook.owner_id else "nowhere — set OWNER_ID or LOG_CHANNEL"
-        await reply(message, f"Log channel cleared and saved in {logbook.backend}. Events now go to {fallback}.")
 
     async def log(client, message):
         if not await _owner_gate(message):
@@ -641,31 +737,8 @@ def build(ctx):
     if router is not None and not router.handles(f"{PLUGIN_PREFIX}:x"):
         router.register(PLUGIN_PREFIX, on_plugin_press)
 
-    async def sudo(_client, message):
-        if not await _owner_gate(message):
-            return
-        if message.chat.id != message.from_user.id:
-            await reply(message, "Manage sudo access in a private chat with this bot.")
-            return
-        args = _args(message)[1:]
-        try:
-            if not args or args == ["list"]:
-                members = ctx.sudo.members()
-                await reply(message, panel("Sudo access", icon=ctx.theme.emoji("crown"),
-                    lines=[", ".join(str(uid) for uid in members) or "No sudo users."],
-                    footer="Sudo grants clone eligibility, not Owner or group-administrator rights."))
-                return
-            if len(args) != 2 or args[0] not in ("add", "remove"):
-                raise ValueError("Use /sudo add <user id>, /sudo remove <user id>, or /sudo list.")
-            ctx.sudo.change(message.from_user.id, int(args[1]), add=args[0] == "add")
-            if events is not None:
-                events.emit("sudo", action=args[0], user_id=int(args[1]), by=message.from_user.id)
-            await reply(message, "Sudo access updated.")
-        except (ValueError, PermissionError) as exc:
-            await reply(message, html.escape(str(exc)))
-
     return MANIFEST, {
-        "sudo": sudo,
+        **sudo_commands(capabilities, _owner_gate),
         "restart": restart,
         "watchdog": watchdog,
         "plugins": plugins,
@@ -674,6 +747,6 @@ def build(ctx):
         "events": show_events,
         "errors": errors,
         "setlog": setlog,
-        "unsetlog": unsetlog,
+
         "log": log,
     }

@@ -16,12 +16,11 @@ from .premium import emoji_table
 EMOJI_FALLBACKS, CUSTOM_EMOJI_IDS = emoji_table()
 
 
-
 class Theme:
     """Renders UI glyphs, upgrading them to custom emoji when available."""
 
     def __init__(self, custom_emoji: Mapping[str, int] | None = None) -> None:
-        source = CUSTOM_EMOJI_IDS if custom_emoji is None else custom_emoji
+        source = emoji_table()[1] if custom_emoji is None else custom_emoji
         self._custom_emoji = {
             name: emoji_id
             for name, emoji_id in source.items()
@@ -48,3 +47,28 @@ class Theme:
 def strip_custom_emoji(html_text: str) -> str:
     """Reduce custom emoji markup to the plain unicode character."""
     return CUSTOM_EMOJI_RE.sub(r"\1", html_text or "")
+
+
+def panel_icon(title: str) -> str:
+    """Stable feature accents using only the existing reviewed emoji catalog.
+
+    Explicit caller icons are authoritative. No made-up document IDs, animations
+    or semantic success claims are inferred from dynamic error/message bodies.
+    """
+    label = title.casefold()
+    accents = (
+        (("unconfirmed", "warning", "failed", "error", "denied"), "warn"),
+        (("music", "playback", "playlist", "queue", "volume", "voice"), "music"),
+        (("moderation", "blocklist", "flood", "protection", "approval"), "shield"),
+        (("encoder", "encoding", "media", "rename", "compress"), "gear"),
+        (("filestore", "vault", "files", "storage"), "lock"),
+        (("linkshare", "link", "share", "leech", "transfer", "download"), "link"),
+        (("post", "template", "greeting", "welcome", "goodbye"), "sparkles"),
+        (("ai agent", "clone", "bot"), "bot"),
+        (("premium", "plan"), "diamond"),
+        (("group", "topic", "federation", "admin", "settings", "plugin"), "gear"),
+    )
+    key = next(
+        (key for words, key in accents if any(word in label for word in words)), "info"
+    )
+    return Theme().emoji(key)

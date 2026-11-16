@@ -87,7 +87,14 @@ class PluginGate:
                     await update.answer('Plugin not active or approved for this group.', show_alert=True)
                 elif not silent:
                     from ..utils.rich import reply
-                    await reply(message, 'This optional plugin is not active or Owner-approved for this group. Ask an administrator to check the plugin settings.')
+                    from ..ui.tables import panel
+                    from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
+                    await reply(message, panel('Plugin setup required', lines=[
+                        'This optional plugin is not active or Owner-approved for this group.',
+                        f'Bot Owner: enable and approve <code>{slug}</code> with <code>/plugin {slug} on</code> then <code>/plugin {slug} approve</code>.',
+                        'Group admin: open /plugins and tap Activate for this tool. Runtime switches alone do not activate group use.',
+                    ], note='No plugin action was run. Approval and the three-slot limit are still required.'),
+                        reply_markup=Keyboard([[Button('Group plugin settings', callback_data='gplug:page:0')]]))
                 return
             token = GROUP_EXECUTION.set((group_id, slug) if is_group else None)
             if is_group:

@@ -17,13 +17,15 @@ instead of being reported as up.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import hashlib
+import time
 from dataclasses import replace
 from typing import Callable
 
 from . import lifecycle, profiles
-from .catalog import ALLOWED_PLUGINS
+from .catalog import validate_selection, plan_selection
 from .lifecycle import State, WorkerState
 from .store import Clone, CloneStore
 
@@ -59,30 +61,39 @@ class CloneManager:
         self._configuration_retry: dict[int, int] = {}
         self._running_revisions: dict[int, int] = {}
         self._reconciliation_locks: dict[int, asyncio.Lock] = {}
+        # Only supervisor-authorized transient stops enter this queue.
+        self._pending_recovery: dict[int, int] = {}
+        # Separate from consecutive startup failures: RUNNING never resets
+        # the rolling automatic-restart budget.
+        self._restart_history: dict[int, list[float]] = {}
+        self._clock = time.monotonic
 
     # -- settings ---------------------------------------------------------
-    def settings_for(self, clone: Clone):
+    def settings_for(self, clone: Clone, *, premium=False):
         """The settings a clone runs with: its token, directories and profile.
 
         Optional features come from a guided selection or legacy profile;
         mandatory core is added by Agent's module selector. Credentials and
         resource destinations never fall through to the parent's values.
         """
-        if clone.selected_plugins and (
-            len(clone.selected_plugins) != 1
-            or any(name not in ALLOWED_PLUGINS for name in clone.selected_plugins)
-        ):
-            raise CloneError("The guided clone selection is unsupported. Restart setup.")
-        if clone.selected_plugins == ("ai_agent",) and (not clone.ai_api_key or not clone.ai_model):
-            raise CloneError("AI Agent requires this clone's own provider key and model.")
-        if clone.selected_plugins == ("music",):
-            if not clone.assistant_session or not self._settings.database_url:
-                raise CloneError("Music requires its own assistant session and PostgreSQL.")
-            from .assistant import validate_session
+        selection = ()
+        if clone.selected_plugins:
+            from ...platform.selection import SelectionError
+            capabilities = {'postgresql'} if self._settings.database_url else set()
             try:
-                validate_session(clone.assistant_session)
-            except Exception:
-                raise CloneError("The assistant session is unsupported. Restart setup.") from None
+                planned = plan_selection(clone.selected_plugins)
+            except SelectionError as exc:
+                raise CloneError('Clone selection unsupported: ' + str(exc)) from None
+            if 'music' in planned:
+                from ...platform.voice import capability
+                if capability('dependency-check-only')[0]:
+                    capabilities.add('voice')
+            try:
+                selection = validate_selection(
+                    clone.selected_plugins, ai_api_key=clone.ai_api_key, ai_model=clone.ai_model,
+                    assistant_session=clone.assistant_session, capabilities=capabilities, premium=premium)
+            except SelectionError as exc:
+                raise CloneError('Clone selection unsupported: ' + str(exc)) from None
         return replace(
             self._settings,
             bot_token=clone.token,
@@ -95,15 +106,15 @@ class CloneManager:
             log_channel=clone.log_channel,
             storage_channel=clone.storage_channel,
             # Never share the deployment's user-session credential with clones.
-            session_string=clone.assistant_session if clone.selected_plugins == ("music",) else None,
-            ai_api_key=clone.ai_api_key if clone.selected_plugins == ("ai_agent",) else None,
-            ai_model=clone.ai_model if clone.selected_plugins == ("ai_agent",) else None,
+            session_string=clone.assistant_session if "music" in selection else None,
+            ai_api_key=clone.ai_api_key if "ai_agent" in selection else None,
+            ai_model=clone.ai_model if "ai_agent" in selection else None,
             health_port=None,
             # Its own rows in PostgreSQL. Without this every clone would write
             # the same ``runtime``/``premium``/``chats`` documents as the main
             # bot and the last writer would silently win.
             db_scope=f"clone:{clone.bot_id}",
-            plugins=tuple(name for name in clone.selected_plugins if name in ALLOWED_PLUGINS)
+            plugins=selection
             if clone.selected_plugins else profiles.plugins_for(clone.profile, self._settings),
         )
 
@@ -151,6 +162,13 @@ class CloneManager:
     def current(self) -> tuple[Clone, ...]:
         return self._store.all()
 
+    async def _eligible(self, user_id):
+        try:
+            result = self.eligible(user_id)
+            return await result if inspect.isawaitable(result) else result
+        except Exception:
+            raise CloneError("Clone premium authority is temporarily unavailable.") from None
+
     async def start(self, clone: Clone, *, automatic: bool = False) -> str:
         if self._store._db is None:
             return await self._start_assigned(clone, automatic=automatic)
@@ -196,18 +214,31 @@ class CloneManager:
             self._configuration_retry.setdefault(clone.bot_id, 0)
             raise CloneError('Clone revision reconciliation was not confirmed.') from None
 
-    async def _start_assigned(self, clone: Clone, *, automatic=False, assigned=False) -> str:
+    async def _start_assigned(self, clone: Clone, *, automatic: bool = False, assigned=False) -> str:
         """Start one clone and return its username (``""`` when Telegram hides it)."""
         async with self._lock:
-            if self.eligible is not None and not self.eligible(clone.owner_id):
-                raise CloneError("Clone owner no longer has premium, sudo or Owner eligibility.")
+            if self._store._db is not None and not assigned:
+                try:
+                    await self._store.aall()
+                except RuntimeError:
+                    raise CloneError("Authoritative clone state unavailable") from None
+                current = self._store.get(clone.bot_id)
+                if current is None:
+                    raise CloneError("Clone is no longer recorded")
+                clone = current
+            if automatic and clone.disabled:
+                raise CloneError("Disabled clones cannot be automatically restarted.")
+            premium = await self._eligible(clone.owner_id) if self.eligible is not None else False
+            if self.eligible is not None and not premium:
+                raise CloneError("Clone owner no longer has bot premium eligibility.")
             if clone.bot_id in self._running:
                 return self._running[clone.bot_id][2]
             bot = None
             client = None
             self._states.move(clone.bot_id, State.VALIDATING)
             try:
-                bot = self._factory(self.settings_for(clone))
+                settings = self.settings_for(clone, premium=premium)
+                bot = self._factory(settings)
                 database = getattr(bot, "database", None)
                 if database is not None:
                     if not await database.connect():
@@ -232,50 +263,48 @@ class CloneManager:
                 if registry is not None and clone.selected_plugins:
                     manifests = {manifest.slug: manifest for manifest in registry.manifests()}
                     if any(slug not in manifests or not manifests[slug].commands
-                           or not registry.is_enabled(slug) for slug in clone.selected_plugins):
+                           or not registry.is_enabled(slug) for slug in settings.plugins):
                         raise CloneError("A selected clone plugin is unavailable.")
                 self._states.move(clone.bot_id, State.STARTING)
                 await client.start()
-                if assigned:
-                    identity_check = await client.get_me()
-                    if getattr(identity_check, 'id', None) != clone.bot_id:
-                        raise CloneError('Clone identity confirmation failed.')
+                username = ""
+                identity = True
+                try:
+                    me = await client.get_me()
+                except Exception:
+                    identity = False
+                    logger.debug("could not read the clone's identity")
+                else:
+                    if getattr(me, "id", None) != clone.bot_id:
+                        raise CloneError("Telegram identity does not match the recorded clone.")
+                    username = getattr(me, "username", "") or ""
+                if assigned and not identity:
+                    raise CloneError("Clone identity confirmation is required before acknowledgement.")
+                storage = getattr(getattr(bot, 'modules', None), 'storage', None)
+                recover = getattr(storage, 'start_archive_recovery', None)
+                if recover is not None:
+                    recover()
                 voice = getattr(bot, "voice", None)
                 if voice is not None:
                     await voice.start()
                 sync_commands = getattr(bot, "_sync_commands", None)
                 if sync_commands is not None:
                     await sync_commands(client, reset_button=True)
-                if clone.selected_plugins == ("music",) and (voice is None or not voice.connected):
+                if clone.selected_plugins and "music" in settings.plugins and (voice is None or not voice.connected):
                     raise CloneError("The Music assistant did not connect.")
             except (Exception, asyncio.CancelledError) as exc:  # noqa: BLE001 - the reason is the message
                 category = "UNAUTHORIZED" if "UNAUTHORIZED" in str(exc).upper() else type(exc).__name__
                 reason = f"Clone {clone.bot_id} could not start ({category})."
+                if isinstance(exc, CloneError) and str(exc).startswith('Clone selection unsupported:'):
+                    reason = str(exc)  # resolver emits only safe codes/slugs/field names
                 self._states.move(clone.bot_id, State.FAILED, error=reason)
                 logger.warning("clone %s failed to start (%s)", clone.bot_id, type(exc).__name__)
-                voice = getattr(bot, "voice", None)
-                if voice is not None:
-                    try:
-                        await voice.shutdown()
-                    except Exception:
-                        pass
-                if client is not None:
-                    try:
-                        await client.stop()
-                    except Exception:
-                        pass
+                await self._cleanup_worker(bot, client)
                 await self._release_worker(bot)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
+                await self._record_event(clone.bot_id, 'startup_failed', type(exc).__name__)
                 raise CloneError(reason) from None
-            username = ""
-            identity = True
-            try:
-                me = await client.get_me()
-                username = getattr(me, "username", "") or ""
-            except Exception:  # noqa: BLE001 - a missing username is cosmetic
-                identity = False
-                logger.debug("could not read the clone's identity")
             state = self.state(clone.bot_id)
             state.username = username
             if identity:
@@ -289,15 +318,18 @@ class CloneManager:
                 )
             self._states.set(clone.bot_id, state)
             self._running[clone.bot_id] = (bot, client, username)
+            self._pending_recovery.pop(clone.bot_id, None)
             if lease is not None:
                 self._lease_monitors[clone.bot_id] = asyncio.create_task(
                     self._watch_lease(clone.bot_id, stop_event), name=f"clone-lease-{clone.bot_id}"
                 )
+            await self._record_event(clone.bot_id, 'started')
             logger.info("clone %s is running as @%s", clone.bot_id, username or "?")
             return username
 
     async def stop(self, bot_id: int) -> bool:
         async with self._lock:
+            self._pending_recovery.pop(int(bot_id), None)
             self._configuration_retry.pop(int(bot_id), None)
             self._running_revisions.pop(int(bot_id), None)
             entry = self._running.pop(int(bot_id), None)
@@ -309,14 +341,7 @@ class CloneManager:
             if monitor is not None and monitor is not asyncio.current_task():
                 monitor.cancel()
                 await asyncio.gather(monitor, return_exceptions=True)
-            try:
-                cleanup = getattr(bot, "_cleanup_services", None)
-                if cleanup is not None:
-                    await cleanup(client)
-                else:
-                    await client.stop()
-            except Exception:  # noqa: BLE001 - a dead client is still stopped
-                logger.warning("clone %s did not stop cleanly", bot_id)
+            await self._cleanup_worker(bot, client)
             await self._release_worker(bot)
             self._states.move(int(bot_id), State.STOPPED)
             return True
@@ -326,18 +351,44 @@ class CloneManager:
         await self.stop(bot_id)
 
     @staticmethod
+    async def _cleanup_worker(bot, client):
+        """Partial starts and custom factories need the same resource cleanup.
+
+        A broken aggregate cleanup must not skip Telegram disconnection. Each
+        fallback service is isolated; failed diagnostics never include secrets.
+        """
+        cleanup = getattr(bot, "_cleanup_services", None)
+        if cleanup is not None and client is not None:
+            try:
+                await cleanup(client)
+                return
+            except Exception as error:
+                logger.warning("Clone aggregate cleanup failed (%s); using fallback", type(error).__name__)
+        modules = getattr(bot, "modules", None)
+        services = [(getattr(bot, "voice", None), "shutdown"),
+                    (getattr(modules, "jobs", None), "shutdown"),
+                    (getattr(modules, "storage", None), "shutdown"),
+                    (getattr(modules, "verifier", None), "shutdown"),
+                    (client, "stop")]
+        for service, method in services:
+            callback = getattr(service, method, None)
+            if callback is not None:
+                try:
+                    await callback()
+                except Exception as error:
+                    logger.warning("Clone service cleanup failed (%s)", type(error).__name__)
+
+    @staticmethod
     async def _release_worker(bot):
         lease = getattr(bot, "lease", None)
-        try:
-            if lease is not None:
+        database = getattr(bot, "database", None)
+        for service, method in ((lease, "stop_heartbeat"), (lease, "release_async"), (database, "close")):
+            callback = getattr(service, method, None)
+            if callback is not None:
                 try:
-                    await lease.stop_heartbeat()
-                finally:
-                    await lease.release_async()
-        finally:
-            database = getattr(bot, "database", None)
-            if database is not None:
-                await database.close()
+                    await callback()
+                except Exception as error:
+                    logger.warning("Clone resource release failed (%s: %s)", method, type(error).__name__)
 
     async def restart(self, clone: Clone) -> str:
         await self.stop(clone.bot_id)
@@ -345,8 +396,37 @@ class CloneManager:
 
     async def stop_all(self) -> None:
         self._configuration_retry.clear()
+        self._pending_recovery.clear()
         for bot_id in tuple(self._running):
             await self.stop(bot_id)
+
+    async def _record_event(self, bot_id, event, category=''):
+        if self._store._db is None:
+            return
+        from ...platform.clone_recovery import CloneRecovery
+        try:
+            await asyncio.wait_for(CloneRecovery(self._store._db).record(bot_id, event, category), timeout=5)
+        except Exception:
+            logger.warning('#Errors Clone diagnostic write unconfirmed (%s)', event)
+
+    async def _restart_permission(self, bot_id, maximum):
+        if self._store._db is not None:
+            from ...platform.clone_recovery import CloneRecovery
+            try:
+                return await CloneRecovery(self._store._db).reserve(bot_id, maximum)
+            except Exception:
+                logger.warning('#Errors Clone restart budget could not be confirmed; retry deferred')
+                return 'waiting'
+        now = self._clock()
+        history = self._restart_history.setdefault(bot_id, [])
+        history[:] = [stamp for stamp in history if now - stamp < 3600]
+        if len(history) >= maximum:
+            logger.error('Clone %s automatic restart circuit open (%s retries/hour)', bot_id, maximum)
+            return 'exhausted'
+        if history and now < history[-1] + lifecycle.backoff(len(history)):
+            return 'waiting'
+        history.append(now)  # Counts failed attempts and successful reconnects.
+        return 'ready'
 
     async def supervise(self, *, max_attempts: int = 5) -> tuple[int, ...]:
         """One pass: notice dead clients, stop them, start them again if allowed.
@@ -359,7 +439,12 @@ class CloneManager:
         try:
             await self._store.aall()
         except Exception:
+            # A stale cache cannot authorize continued token-bearing workers.
+            logger.warning("Clone authority unavailable; stopping managed workers")
+            pending = dict(self._pending_recovery)
+            pending.update({bot_id: pending.get(bot_id, 0) for bot_id in self._running})
             await self.stop_all()
+            self._pending_recovery.update(pending)
             return ()
         for bot_id, attempts in tuple(self._configuration_retry.items()):
             record = self._store.get(bot_id)
@@ -372,16 +457,55 @@ class CloneManager:
             except CloneError:
                 self._configuration_retry[bot_id] = attempts + 1
                 continue
+        for bot_id, attempts in tuple(self._pending_recovery.items()):
+            record = self._store.get(bot_id)
+            if record is None or record.disabled or attempts >= max_attempts:
+                self._pending_recovery.pop(bot_id, None)
+                continue
+            permission = await self._restart_permission(bot_id, max_attempts)
+            if permission == 'exhausted':
+                self._pending_recovery.pop(bot_id, None)
+                continue
+            if permission == 'waiting':
+                continue
+            self._pending_recovery[bot_id] = attempts + 1
+            try:
+                await self.start(record, automatic=True)
+            except CloneError:
+                continue
+            restarted.append(bot_id)
         for bot_id in tuple(self._running):
             record = self._store.get(bot_id)
             if record is None or record.disabled:
                 await self.stop(bot_id)
                 continue
-            if record is not None and self.eligible is not None and not self.eligible(record.owner_id):
-                await self.stop(bot_id)
-                await self._store.aupdate(bot_id, disabled=True)
+            live_entry = self._running.get(bot_id)
+            if live_entry is None:
                 continue
-            client = self._running[bot_id][1]
+            live_settings = getattr(live_entry[0], "settings", None)
+            if live_settings is not None and (
+                live_settings.owner_id != record.owner_id
+                or live_settings.bot_token != record.token
+            ):
+                logger.warning("Clone ownership or credentials changed; stopping worker %s", bot_id)
+                await self.stop(bot_id)
+                continue
+            if self.eligible is not None:
+                try:
+                    entitled = await self._eligible(record.owner_id)
+                except Exception:
+                    logger.warning("Clone eligibility unavailable; stopping worker %s", bot_id)
+                    await self.stop(bot_id)
+                    self._pending_recovery[bot_id] = 0
+                    continue  # unavailable authority must not permanently revoke premium
+                if not entitled:
+                    await self.stop(bot_id)
+                    await self._store.aupdate(bot_id, disabled=True)
+                    continue
+            entry = self._running.get(bot_id)
+            if entry is None:
+                continue
+            client = entry[1]
             if getattr(client, "is_connected", True):
                 if self._store._db is not None:
                     metadata = await self.configuration.read(bot_id)
@@ -389,10 +513,11 @@ class CloneManager:
                         try:
                             await self.start(record, automatic=True)
                         except CloneError:
-                            pass
+                            self._pending_recovery[bot_id] = 0
                 continue
             state = self.state(bot_id)
             logger.warning("clone %s dropped its connection", bot_id)
+            await self._record_event(bot_id, 'runtime_disconnected')
             if state.state is State.RUNNING:
                 state.move(State.DEGRADED, error="connection lost")
                 self._states.set(bot_id, state)
@@ -407,9 +532,16 @@ class CloneManager:
                     self.state(bot_id).attempts,
                 )
                 continue
+            permission = await self._restart_permission(bot_id, max_attempts)
+            if permission == 'exhausted':
+                continue
+            if permission == 'waiting':
+                self._pending_recovery[bot_id] = 0
+                continue
             try:
-                await self.start(clone)
+                await self.start(clone, automatic=True)
             except CloneError:
+                self._pending_recovery[bot_id] = 1
                 continue
             restarted.append(bot_id)
         if restarted:
@@ -431,11 +563,15 @@ class CloneManager:
         """Start every clone that was running when the process last stopped."""
         started: list[int] = []
         for clone in await self._store.aall():
-            if (clone.disabled or self.is_running(clone.bot_id)
-                    or (self.eligible is not None and not self.eligible(clone.owner_id))):
+            if clone.disabled or self.is_running(clone.bot_id):
+                continue
+            permission = await self._restart_permission(clone.bot_id, 5)
+            if permission != 'ready':
+                if permission == 'waiting':
+                    self._pending_recovery[clone.bot_id] = 0
                 continue
             try:
-                await self.start(clone)
+                await self.start(clone, automatic=True)
             except CloneError as exc:
                 logger.warning("could not restore clone %s: %s", clone.bot_id, exc)
                 continue

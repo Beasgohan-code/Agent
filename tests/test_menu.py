@@ -92,7 +92,7 @@ def test_group_commands_do_not_leak_into_private_chats():
     assert names_of(group) == ["ban", "filter"]
 
 
-def test_every_registered_command_is_grouped_somewhere():
+def test_registered_commands_are_grouped_up_to_telegram_scope_limit():
     from agent.modules import MODULES
 
     all_names = ["start", "help", "ping"] + [
@@ -101,7 +101,19 @@ def test_every_registered_command_is_grouped_somewhere():
     private = names_of(menu.build_commands(all_names, group=False))
     group = names_of(menu.build_commands(all_names, group=True))
 
-    assert sorted(private + group) == sorted(set(all_names))
+    # Telegram caps each scope at 100 entries; /help retains all handlers.
+    unique = list(dict.fromkeys(all_names))
+    expected_private = [name for name in unique if name not in menu.GROUP_ONLY]
+    expected_group = [name for name in unique if name in menu.GROUP_ONLY]
+    assert len(private) == min(len(expected_private), menu.MAX_COMMANDS)
+    assert len(group) == min(len(expected_group), menu.MAX_COMMANDS)
+    assert set(private) <= set(expected_private)
+    assert set(group) <= set(expected_group)
+    assert {'settings', 'voicehealth'} <= set(group)
+    assert {'help', 'plugins', 'clone'} <= set(private)
+    from agent.ui.screens import HELP_SECTIONS
+    help_names = {name for _, _, commands in HELP_SECTIONS for name in commands}
+    assert set(unique) <= help_names | {"start", "help", "ping"}
 
 
 def test_names_are_validated_and_deduplicated():
@@ -304,4 +316,29 @@ def test_mid_sync_toggle_is_not_lost(tmp_path):
         await bot._menu_sync_task
         assert len(calls) == 4  # two scopes, followed by the latest state
         assert 'encode' in calls[-2]
+    asyncio.run(scenario())
+
+
+def test_overflow_menu_keeps_cross_feature_entry_points():
+    names = [f'command_{index}' for index in range(120)] + ['settings', 'plugins', 'menu', 'voicehealth', 'reports']
+    commands = menu.build_commands(names)
+    assert len(commands) <= 100
+    assert {'plugins', 'menu'} <= set(names_of(commands))
+    assert len(names_of(commands)) == len(set(names_of(commands)))
+
+
+def test_actual_builtin_menu_scopes_match_private_handlers_and_home_catalogue(tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    async def scenario():
+        bot = AgentBot(settings_in(tmp_path))
+        bot.build()
+        assert set(bot._visible_commands()) == set(bot.registry.active_commands()) | {'start', 'help', 'ping'}
+        client = SimpleNamespace(set_bot_commands=AsyncMock())
+        await bot._sync_commands(client)
+        lists = {type(call.kwargs['scope']): {item.command for item in call.args[0]}
+                 for call in client.set_bot_commands.await_args_list}
+        from pyrogram.types import BotCommandScopeDefault, BotCommandScopeAllGroupChats
+        assert {'start', 'help', 'ping'} <= lists[BotCommandScopeDefault]
+        assert not {'start', 'help', 'ping'} & lists[BotCommandScopeAllGroupChats]
     asyncio.run(scenario())

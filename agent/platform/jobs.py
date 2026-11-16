@@ -63,6 +63,7 @@ class JobQueue:
     """Bounded-concurrency runner with cancellation."""
 
     def __init__(self, *, concurrency: int = 2, max_history: int = 200) -> None:
+        self._closed = False
         self.eligibility_check = None
         self._limit = asyncio.Semaphore(max(1, concurrency))
         self._jobs: dict[str, Job] = {}
@@ -78,6 +79,8 @@ class JobQueue:
         *,
         label: str = "",
     ) -> Job:
+        if self._closed:
+            raise RuntimeError("Job queue is shut down")
         self._counter += 1
         job = Job(id=f"{module}-{self._counter}", module=module, owner_id=owner_id, label=label)
         from .execution import GROUP_EXECUTION
@@ -91,8 +94,21 @@ class JobQueue:
         job.task = asyncio.create_task(self._run(job, runner), name=job.id)
         self._tasks.add(job.task)
         job.task.add_done_callback(self._tasks.discard)
+        job.task.add_done_callback(lambda task: self._task_finished(job, task))
         self._trim()
         return job
+
+    def _task_finished(self, job, task):
+        self._finalize_cancel(job, task)
+        self._trim()
+
+    @staticmethod
+    def _finalize_cancel(job, task):
+        # Also runs when cancellation happens before _run starts or while
+        # waiting for concurrency/admission checks outside the runner body.
+        if task.cancelled():
+            job.state = JobState.CANCELLED
+            job.finished_at = job.finished_at or time.time()
 
     async def _run(self, job: Job, runner: Callable[[Job], Awaitable[Any]]) -> None:
         async with self._limit:
@@ -121,6 +137,10 @@ class JobQueue:
                 job.finished_at = time.time()
                 logger.exception("Job %s (%s) failed", job.id, job.module)
             else:
+                if job.state is JobState.CANCELLED:
+                    job.result = None
+                    job.finished_at = job.finished_at or time.time()
+                    return
                 job.state = JobState.DONE
                 job.progress = 1.0
                 job.finished_at = time.time()
@@ -160,8 +180,9 @@ class JobQueue:
 
     async def shutdown(self) -> None:
         """Cancel everything still running; used on graceful stop."""
+        self._closed = True
         for job in self.active():
-            job.state = JobState.CANCELLED
+            self.cancel(job.id)
         for task in list(self._tasks):
             task.cancel()
         if self._tasks:

@@ -128,6 +128,13 @@ def test_real_pg_playlist_quota_is_atomic_and_data_is_scoped(monkeypatch):
             name = records[0]['name']
             await service.save(-100, OWNER, name, [track('replacement')])
             assert (await service.load(-100, OWNER, name))[0]['title'] == 'replacement'
+            preview = await service.inspect(-100, OWNER, name)
+            assert preview['titles'] == ['replacement']
+            assert 'source' not in str(preview) and 'https://' not in str(preview)
+            for preview_service, group, user in [(service, -200, OWNER), (service, -100, STRANGER),
+                                                   (MusicPlaylists(other), -100, OWNER)]:
+                with pytest.raises(PlaylistError):
+                    await preview_service.inspect(group, user, name)
             assert not await service.list(-200, OWNER)
             assert not await service.list(-100, STRANGER)
             assert not await MusicPlaylists(other).list(-100, OWNER)
@@ -142,6 +149,8 @@ def test_real_pg_playlist_quota_is_atomic_and_data_is_scoped(monkeypatch):
             monkeypatch.setattr(music_lists, 'check_target', AsyncMock(side_effect=RuntimeError('private target')))
             with pytest.raises(PlaylistError):
                 await service.load(-100, OWNER, name)
+            # Metadata preview works even when media DNS fails; no fetch/play implied.
+            assert (await service.inspect(-100, OWNER, name))['titles'] == ['replacement']
             assert await service.delete(-100, OWNER, name)
             assert len(await service.list(-100, OWNER)) == 9
         finally:
@@ -157,10 +166,80 @@ def test_saved_playlist_commands_are_capability_gated(tmp_path, monkeypatch):
     from test_player_card import build
     from agent.modules import music
     ctx, manifest, handlers = build(tmp_path, monkeypatch)
-    assert len(handlers) == 24
+    assert len(handlers) == 29
     assert not set(playlists.COMMANDS).intersection(handlers)
     ctx.db = SimpleNamespace(connected=True, _pool=object(), scope='test')
     manifest, handlers = music.build(ctx)
-    assert len(handlers) == 28
+    assert len(handlers) == 33
     assert set(manifest.commands) == set(handlers)
     assert set(playlists.COMMANDS).issubset(handlers)
+
+
+def test_playlist_preview_reads_only_owned_metadata_without_loading_or_mutation(monkeypatch):
+    async def scenario():
+        ctx, queues, store, commands = command_context(monkeypatch, [track()])
+        store.inspect = AsyncMock(return_value={'titles': ['First & title', '<second>'], 'updated_at': None})
+        before = queues.for_chat(-100).current
+        denied = message('/playlist demo preview', uid=STRANGER)
+        await commands['playlist'](FakeClient(), denied)
+        store.inspect.assert_not_awaited()
+        view = message('/playlist demo preview')
+        await commands['playlist'](FakeClient(), view)
+        store.inspect.assert_awaited_once_with(-100, OWNER, 'demo')
+        store.load.assert_not_awaited(); store.save.assert_not_awaited()
+        assert queues.for_chat(-100).current is before
+        assert queues.for_chat(-100).waiting == []
+        text = view.reply.await_args.args[0]
+        assert 'Saved playlist details' in text and 'playback is unchanged' in text
+        assert '<second>' not in text
+        store.inspect.side_effect = PlaylistError('No playlist belongs to you here.')
+        missing = message('/playlist absent preview')
+        await commands['playlist'](FakeClient(), missing)
+        assert 'No playlist belongs' in missing.reply.await_args.args[0]
+    asyncio.run(scenario())
+
+
+def test_upcoming_snapshot_excludes_current_preserves_order_and_never_mutates_queue(monkeypatch):
+    async def scenario():
+        _, queues, store, commands = command_context(monkeypatch, [])
+        queue = queues.for_chat(-100)
+        current = queue.current
+        waiting = [Track('next one', 'https://example.test/one.mp3', OWNER),
+                   Track('next two', 'https://example.test/two.mp3', STRANGER)]
+        queue.waiting.extend(waiting)
+        request = message('/saveplaylist recovery upcoming')
+        await commands['saveplaylist'](FakeClient(), request)
+        store.save.assert_awaited_once_with(-100, OWNER, 'recovery', [
+            {'title': 'next one', 'source': 'https://example.test/one.mp3'},
+            {'title': 'next two', 'source': 'https://example.test/two.mp3'}])
+        assert queue.current is current and queue.waiting == waiting
+        assert 'Upcoming only' in request.reply.await_args.args[0]
+        assert 'requested_by' not in str(store.save.await_args)
+        store.load.assert_not_awaited()
+        store.save.reset_mock()
+        normal = message('/saveplaylist full')
+        await commands['saveplaylist'](FakeClient(), normal)
+        assert store.save.await_args.args[3][0]['title'] == current.title
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('change', ['drop', 'replace_current', 'disconnect'])
+def test_playlist_rechecks_live_playback_after_awaited_validation(monkeypatch, change):
+    async def scenario():
+        ctx, queues, store, commands = command_context(monkeypatch, [track()])
+        original = queues.for_chat(-100)
+        async def load(*args):
+            if change == 'drop':
+                queues.drop(-100)
+            elif change == 'replace_current':
+                original.current = Track('replacement', 'https://example.test/new.mp3', OWNER)
+            else:
+                ctx.voice.playback = lambda _: None
+            return [track()]
+        store.load.side_effect = load
+        request = message('/playlist list')
+        await commands['playlist'](FakeClient(), request)
+        assert not original.waiting
+        assert 'Playback changed' in request.reply.await_args.args[0]
+        assert 'No tracks were added' in request.reply.await_args.args[0]
+    asyncio.run(scenario())

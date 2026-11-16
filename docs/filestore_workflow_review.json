@@ -1,0 +1,61 @@
+{
+  "reference_url": "https://github.com/abhinai2244/Multi-FileStoreBot",
+  "reference_revision": "010172404c2121862deea99f0fe25766d130e392",
+  "reviewed_on": "2026-11-14",
+  "same_logic_as_current_bot": false,
+  "evidence": [
+    {
+      "path": "worker_bot/link_gen.py",
+      "findings": [
+        "Private genlink, batch and custom_batch handlers.",
+        "Builds bot /start payload links from channel-message references."
+      ]
+    },
+    {
+      "path": "worker_bot/engine.py",
+      "findings": [
+        "Private start-payload redemption flow.",
+        "Visible owner/admin controls and delivery/verification handling require deeper behavioral review."
+      ]
+    },
+    {
+      "path": "worker_bot/flink_logic.py",
+      "findings": [
+        "PyArmor wrapper with opaque payload. Not executed, deobfuscated or copied."
+      ]
+    }
+  ],
+  "license_review": "No root license identified; public source availability is not reuse permission. Preserve existing legal notices; implement reviewed behavior independently.",
+  "removed_commands": [
+    "fsave",
+    "files",
+    "del"
+  ],
+  "removal_notes": "fsave was already unregistered. files and del handlers, descriptions and UI instructions removed at explicit user request. Stored data and internal Storage APIs retained.",
+  "existing_differences": [
+    "Private /batch first last now creates archive range links; replied /batch count retains legacy owned-file saving for compatibility.",
+    "Current get retrieves an owned storage record, not a channel-start payload.",
+    "Existing linkshare uses owned records and token-scoped links; not complete parity with the reference."
+  ],
+  "next_work": [
+    "Design authorized archive-channel message references and bounded range links.",
+    "Use tenant-scoped signed or random server-side tokens, not trusting decoded user-supplied channel/message IDs.",
+    "Require sender-owned clone token and archive-channel rights; never use parent credentials.",
+    "Implement live permission checks, quotas, transactional metadata and truthful copy failures.",
+    "Preserve existing links and stored data during transition."
+  ],
+  "implemented_archive_workflow": {
+    "module": "agent/modules/filestore/channel_links.py",
+    "settings": "Existing per-bot STORAGE_CHANNEL; no production configuration changed.",
+    "creation": "Owner-only private /custom_batch first last or /batch first last, 1–50 source messages, live caller/bot archive-admin checks. /custom_batch ids id1 id2 … supports 1–50 non-contiguous unique messages in the supplied order; explicit selections are stored as a server-side SQL array, never trusted from a start payload. Reply-only /custom_batch resolves a forwarded message from the configured archive. Range and explicit selections accept exact private t.me/c/channel/message links bound to the configured archive; foreign channels and URL suffixes are rejected.",
+    "redemption": "Private /start archive_<opaque token>, tenant-scoped SQL grants, 24-hour expiry. Copies from Telegram without downloading. Durable per-request pending/applied/unconfirmed intent and confirmed-copy count; duplicate same-message requests never replay. Creator and bot archive-admin membership are rechecked at redemption.",
+    "remaining": [
+      "Interactive multi-step range wizard; direct forwarded-message and private channel-URL inputs are supported",
+      "Consolidating /genlink ownership without breaking existing Linkshare commands",
+      "Full source parity, reference verification/force-subscribe flows and live Telegram validation"
+    ],
+    "revocation": "Private Owner /custom_batch revoke token; creator and tenant enforced. Expiry/revocation rechecked before each copy. An in-flight Telegram copy may complete after revocation; no automatic retry.",
+    "delivery_ledger": "Each copy has a durable pending intent, confirmed destination message ID on success, or explicit unconfirmed outcome on exception. Parent confirmed count is saved after each successful copy. Crashes leave pending intents, never automatically replayed.",
+    "limits": "Optional --hours=1..168 (default 24), --uses=1..10000 (default unlimited until expiry). SQL row lock serializes admission across concurrent requests. Each admitted request consumes one use even if interrupted; replayed request IDs consume no extra use. No automatic refunds/retries for uncertain Telegram outcomes."
+  }
+}

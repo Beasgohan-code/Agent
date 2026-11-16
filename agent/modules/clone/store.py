@@ -2,8 +2,8 @@
 
 A clone is one bot token plus the person who added it. Tokens and optional AI
 provider keys are secrets, so the file is written ``0600``, the panel never shows
-more than its first digits, and the record is **encrypted at rest** when
-``TOKEN_KEY`` is configured (:mod:`agent.platform.secrets`). Masking is a screen
+more than its first digits, and credential writes require encryption with
+``TOKEN_KEY`` (:mod:`agent.platform.secrets`). Masking is a screen
 concern; encryption is a database concern, and this store needs both.
 
 Records written before encryption existed still load: a plaintext token is read
@@ -97,11 +97,13 @@ class Clone:
 class CloneStore:
     """A JSON list of clones, rewritten atomically on every change."""
 
-    def __init__(self, root: str | Path, *, db=None, box: SecretBox | None = None) -> None:
+    def __init__(
+        self, root: str | Path, *, db=None, box: SecretBox | None = None
+    ) -> None:
         self.path = Path(root) / "clones.json"
         #: With a database, clone records survive a redeploy on any instance.
         self._db = db
-        #: Token encryption at rest; a box without a key stores plaintext.
+        #: Token encryption at rest; no key permits legacy reads only.
         self._box = box if box is not None else SecretBox(None)
         #: Set when a plaintext record was read and should be rewritten.
         self._needs_rewrite = False
@@ -111,7 +113,9 @@ class CloneStore:
             # so a deployment that adds TOKEN_KEY does not keep old rows naked.
             self._needs_rewrite = False
             self._save()
-            logger.info("Encrypted %d clone record(s) that predate TOKEN_KEY", len(self._items))
+            logger.info(
+                "Encrypted %d clone record(s) that predate TOKEN_KEY", len(self._items)
+            )
 
     # -- persistence ------------------------------------------------------
     def _load(self) -> dict[int, Clone]:
@@ -142,14 +146,20 @@ class CloneStore:
                     try:
                         ai_key = self._box.decrypt(str(entry["ai_api_key_enc"]))
                     except SecretError:
-                        logger.error("clone AI credential cannot be decrypted; skipping record")
+                        logger.error(
+                            "clone AI credential cannot be decrypted; skipping record"
+                        )
                         continue
                 assistant_session = None
                 if entry.get("assistant_session_enc"):
                     try:
-                        assistant_session = self._box.decrypt(str(entry["assistant_session_enc"]))
+                        assistant_session = self._box.decrypt(
+                            str(entry["assistant_session_enc"])
+                        )
                     except SecretError:
-                        logger.error("clone assistant credential cannot be decrypted; skipping record")
+                        logger.error(
+                            "clone assistant credential cannot be decrypted; skipping record"
+                        )
                         continue
                 clone = Clone(
                     bot_id=int(entry["bot_id"]),
@@ -190,10 +200,9 @@ class CloneStore:
             if not box.enabled:
                 raise SecretError("AI clone credentials require TOKEN_KEY.")
             data["ai_api_key_enc"] = box.encrypt(str(ai_key))
-        if box.enabled:
-            data["token_enc"] = box.encrypt(str(token))
-        else:
-            data["token"] = str(token)
+        if not box.enabled:
+            raise SecretError('Clone token writes require TOKEN_KEY.')
+        data["token_enc"] = box.encrypt(str(token))
         return data
 
     def _save(self) -> None:
@@ -330,7 +339,9 @@ class CloneStore:
 
     def all(self) -> tuple[Clone, ...]:
         return tuple(
-            sorted(self._items.values(), key=lambda clone: clone.created_at, reverse=True)
+            sorted(
+                self._items.values(), key=lambda clone: clone.created_at, reverse=True
+            )
         )
 
     def by_owner(self, owner_id: int) -> tuple[Clone, ...]:
@@ -344,7 +355,9 @@ class CloneStore:
         if self._db is not None:
             raise RuntimeError("Awaited PostgreSQL clone operation required")
         if clone.bot_id in self._items:
-            raise ValueError("This bot is already recorded; ownership cannot be overwritten")
+            raise ValueError(
+                "This bot is already recorded; ownership cannot be overwritten"
+            )
         self._items[clone.bot_id] = clone
         try:
             self._save()
@@ -368,16 +381,26 @@ class CloneStore:
         clone = self._items.get(int(bot_id))
         if clone is None:
             return None
+        previous = copy.deepcopy(clone)
         for key, value in fields.items():
             if hasattr(clone, key):
                 setattr(clone, key, value)
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            self._items[int(bot_id)] = previous
+            raise
         return clone
 
     def remove(self, bot_id: int) -> bool:
         if self._db is not None:
             raise RuntimeError("Awaited PostgreSQL clone operation required")
-        if self._items.pop(int(bot_id), None) is None:
+        previous = self._items.pop(int(bot_id), None)
+        if previous is None:
             return False
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            self._items[int(bot_id)] = previous
+            raise
         return True

@@ -21,9 +21,8 @@ PostgreSQL transaction, not by rewriting a whole JSON settings document. Log
 destinations also use a dedicated table so /setlog confirms an awaited write.
 
 Writes are batched: a mutation queues the document and one background task
-flushes the queue, so a handler never waits on the network. A database that is
-missing or unreachable is logged once and the bot keeps running on its files —
-losing the database must not take the bot down with it.
+flushes the queue, so a handler never waits on the network. Normal runtime requires PostgreSQL; a configured database never falls back to
+local files. Dedicated feature tables use awaited writes where documented.
 
 **Every row is scoped to one bot.** The main bot and each clone connect to the
 same database, and they all keep a document called ``runtime``, ``premium`` or
@@ -38,15 +37,33 @@ genuinely deployment-wide.
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import logging
 import time
 from pathlib import Path
 from typing import Any
 
+from .group_rules import SCHEMA as GROUP_RULES_SCHEMA
+from .group_trust import SCHEMA as GROUP_TRUST_SCHEMA
+from .admin_settings import SCHEMA as ADMIN_SETTINGS_SCHEMA
+from .federations import SCHEMA as FEDERATION_SCHEMA
+from .federation_roles import SCHEMA as FEDERATION_ROLES_SCHEMA
+from .restriction_cases import SCHEMA as RESTRICTION_CASE_SCHEMA
+from .blocklists import SCHEMA as BLOCKLIST_SCHEMA
+from .service_cleaning import SCHEMA as SERVICE_CLEANING_SCHEMA
+from .command_cleaning import SCHEMA as COMMAND_CLEANING_SCHEMA
+from .action_topics import SCHEMA as ACTION_TOPIC_SCHEMA
+from .archive_links import SCHEMA as ARCHIVE_LINK_SCHEMA
+from .group_filters import SCHEMA as GROUP_FILTERS_SCHEMA
+from .antispam import SCHEMA as ANTISPAM_SCHEMA
+from .sudo_access import SCHEMA as SUDO_SCHEMA
+from .entitlements import SCHEMA as ENTITLEMENT_SCHEMA
 from .plugin_access import SCHEMA as PLUGIN_SCHEMA
 from .music_lists import SCHEMA as MUSIC_SCHEMA
 from .incidents import SCHEMA as INCIDENT_SCHEMA
+from .post_templates import SCHEMA as POST_TEMPLATE_SCHEMA
+from .greetings import SCHEMA as GREETING_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +86,7 @@ SCHEMA: tuple[str, ...] = (
     """,
 )
 
-SCHEMA += PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + (
+SCHEMA += ARCHIVE_LINK_SCHEMA + ACTION_TOPIC_SCHEMA + COMMAND_CLEANING_SCHEMA + SERVICE_CLEANING_SCHEMA + BLOCKLIST_SCHEMA + RESTRICTION_CASE_SCHEMA + FEDERATION_SCHEMA + FEDERATION_ROLES_SCHEMA + ADMIN_SETTINGS_SCHEMA + GROUP_TRUST_SCHEMA + GROUP_FILTERS_SCHEMA + GROUP_RULES_SCHEMA + ANTISPAM_SCHEMA + SUDO_SCHEMA + ENTITLEMENT_SCHEMA + PLUGIN_SCHEMA + MUSIC_SCHEMA + INCIDENT_SCHEMA + POST_TEMPLATE_SCHEMA + GREETING_SCHEMA + (
     """CREATE TABLE IF NOT EXISTS agent_log_settings (
         tenant TEXT PRIMARY KEY,
         channel_id BIGINT CHECK (channel_id IS NULL OR channel_id < 0),
@@ -151,6 +168,7 @@ class Database:
         self._writer: asyncio.Task | None = None
         self._warned = False
         self._flush_interval = flush_interval
+        self._write_lock = asyncio.Lock()
 
     # -- scoping -----------------------------------------------------------
     def name_for(self, name: str) -> str:
@@ -189,6 +207,8 @@ class Database:
     # -- lifecycle ---------------------------------------------------------
     async def connect(self) -> bool:
         """Connect and apply the schema. The bot refuses startup on failure."""
+        if self.connected and self._pool is not None:
+            return True
         if self.url is None:
             return False
         if not self.driver_installed():
@@ -206,18 +226,28 @@ class Database:
             async with self._pool.acquire() as connection:
                 for statement in SCHEMA:
                     await connection.execute(statement)
-        except Exception as exc:  # noqa: BLE001 - a database is an option, not a requirement
-            self.error = f"{type(exc).__name__}: {exc}"
-            logger.warning(
-                "Could not use PostgreSQL (%s); no local-state fallback.", self.error
-            )
-            self._pool = None
-            self.connected = False
+        except asyncio.CancelledError:
+            self._discard_failed_pool()
+            raise
+        except Exception as exc:
+            self.error = type(exc).__name__
+            logger.warning('Could not initialize PostgreSQL (%s); no local-state fallback.', self.error)
+            self._discard_failed_pool()
             return False
         self.connected = True
         self.error = None
         logger.info("PostgreSQL connected; stores are backed by agent_documents")
         return True
+
+    def _discard_failed_pool(self) -> None:
+        """No usable pool escapes a failed/cancelled initialization attempt."""
+        pool, self._pool = self._pool, None
+        self.connected = False
+        if pool is not None:
+            try:
+                pool.terminate()
+            except Exception as error:
+                logger.warning('#Errors Failed PostgreSQL pool disposal (%s)', type(error).__name__)
 
     async def load(self) -> int:
         """Read every stored document into memory. Returns how many were found."""
@@ -249,13 +279,14 @@ class Database:
         return len(self._docs)
 
     async def close(self) -> None:
-        await self.flush()
         if self._writer is not None and not self._writer.done():
             self._writer.cancel()
             try:
                 await self._writer
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
+        # Cancellation requeues unconfirmed writes before this final flush.
+        await self.flush()
         if self._pool is not None:
             await self._pool.close()
             self._pool = None
@@ -272,32 +303,30 @@ class Database:
         """Queue a document write. Never blocks, never raises at a handler."""
         if not self.connected:
             return
-        self._docs[name] = value
-        self._pending[name] = value
+        # Independent snapshots: caller/cache mutation must not change an
+        # already queued batch without a subsequent explicit save.
+        self._docs[name] = deepcopy(value)
+        self._pending[name] = deepcopy(value)
         if self._writer is not None and not self._writer.done():
             return
         try:
-            self._writer = asyncio.create_task(self._drain(), name="agent-db-writer")
+            loop = asyncio.get_running_loop()
+            self._writer = loop.create_task(self._drain(), name="agent-db-writer")
         except RuntimeError:
             # No event loop (a synchronous test, or shutdown): the pending
             # document stays queued and the next flush picks it up.
             logger.debug("no running loop to flush %r yet", name)
 
     async def _drain(self) -> None:
+        retry_delay = 1.0
         while self._pending:
-            batch = dict(self._pending)
-            self._pending.clear()
-            try:
-                await self._write_batch(batch)
-            except Exception as exc:  # noqa: BLE001 - durability is best effort
-                if not self._warned:
-                    logger.warning("Could not persist documents: %s", exc)
-                    self._warned = True
-                # Put them back so a later flush retries, without looping hot.
-                for key, value in batch.items():
-                    self._pending.setdefault(key, value)
-                await asyncio.sleep(1.0)
-                return
+            if not await self.flush():
+                # Keep ownership of retries: save() deliberately does not
+                # create a second writer while this task is alive.
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(30.0, retry_delay * 2)
+                continue
+            retry_delay = 1.0
             await asyncio.sleep(self._flush_interval)
 
     async def _write_batch(self, batch: dict[str, Any]) -> None:
@@ -311,19 +340,24 @@ class Database:
                     )
 
     async def flush(self) -> int:
-        """Write everything queued right now. Returns how many documents went."""
-        if not self.connected or not self._pending:
-            return 0
-        batch = dict(self._pending)
-        self._pending.clear()
-        try:
-            await self._write_batch(batch)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Final flush failed: %s", exc)
-            for key, value in batch.items():
-                self._pending.setdefault(key, value)
-            return 0
-        return len(batch)
+        """Serialize queue draining; cancellation preserves unconfirmed writes."""
+        async with self._write_lock:
+            if not self.connected or not self._pending:
+                return 0
+            batch = dict(self._pending)
+            self._pending.clear()
+            try:
+                await self._write_batch(batch)
+            except asyncio.CancelledError:
+                for key, value in batch.items():
+                    self._pending.setdefault(key, value)
+                raise
+            except Exception as error:
+                logger.warning('Document flush failed (%s); queued for retry.', type(error).__name__)
+                for key, value in batch.items():
+                    self._pending.setdefault(key, value)
+                return 0
+            return len(batch)
 
     # -- the lease ---------------------------------------------------------
     async def take_lease(self, name: str, holder: str, ttl: float) -> str:

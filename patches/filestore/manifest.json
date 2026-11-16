@@ -1,0 +1,620 @@
+{
+  "repository": "https://github.com/abhinai2244/Multi-FileStoreBot",
+  "revision": "010172404c2121862deea99f0fe25766d130e392",
+  "edited_checkout": "Filestore",
+  "files": [
+    {
+      "path": "worker_bot/link_gen.py",
+      "before_sha256": "8914c3969b0e2c15a8648525c8ac9e3515102e9dbf085de8da4945b7f44314f8",
+      "after_sha256": "dfa4ebe5c948e6496f0444a046b31dbe2805638f0f406623b3cb73f1a2eb5e36"
+    },
+    {
+      "path": "worker_bot/engine.py",
+      "before_sha256": "8e05372147fbdaaf4df57fe3ce66ee99f415e1b9f67b9dfe22c25e91cf1e059c",
+      "after_sha256": "5e18a1159048e7b09d5e05b5520413dfc9d91007bfc13ba6a9e43bfa959a8e5d",
+      "literal_changes": [
+        {
+          "before": "<b>🗑 Your files have been auto-deleted.</b>\n\n<blockquote>Click below to retrieve them again.</blockquote>",
+          "after": "<b>🗑 Meiko · Your files have been auto-deleted.</b>\n\n<blockquote>Use the button below to retrieve them again.</blockquote>"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n🔒 𝗔𝗖𝗖𝗘𝗦𝗦 𝗥𝗘𝗦𝗧𝗥𝗜𝗖𝗧𝗘𝗗\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>ʜᴇʏ ",
+          "after": "<b>🔒 Meiko · Join to continue\n</b>\n\n<blockquote>Hello "
+        },
+        {
+          "before": ",\n\nᴛᴏ ᴜsᴇ ᴛʜɪs ʙᴏᴛ ʏᴏᴜ ᴍᴜsᴛ ᴊᴏɪɴ ᴛʜᴇ\nᴄʜᴀɴɴᴇʟs ʙᴇʟᴏᴡ ᴀɴᴅ ᴛᴀᴘ <b>♻️ ʀᴇʟᴏᴀᴅ</b>.</blockquote>",
+          "after": ",\n\nTo access your files, join the\nchannels below, then tap <b>↻ Check membership</b>.</blockquote>"
+        },
+        {
+          "before": "<b>⏳ Preparing broadcast...</b>",
+          "after": "<b>⏳ Meiko · Preparing broadcast…</b>"
+        },
+        {
+          "before": "📢 Join Channel",
+          "after": "📢 Join channel"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n⛔ 𝗔𝗖𝗖𝗘𝗦𝗦 𝗗𝗘𝗡𝗜𝗘𝗗\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>ʏᴏᴜ ᴀʀᴇ ʙᴀɴɴᴇᴅ ꜰʀᴏᴍ ᴜsɪɴɢ ᴛʜɪs ʙᴏᴛ.</blockquote>",
+          "after": "<b>⛔ Meiko · Access denied\n</b>\n\n<blockquote>You are banned from using this bot.</blockquote>"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n✅ 𝗩𝗘𝗥𝗜𝗙𝗜𝗘𝗗\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>ʏᴏᴜ ᴀʀᴇ ɴᴏᴡ ᴠᴇʀɪꜰɪᴇᴅ!\nʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴀᴄᴄᴇss ꜰɪʟᴇs.\n\nᴛᴀᴘ ʏᴏᴜʀ ᴏʀɪɢɪɴᴀʟ ʟɪɴᴋ ᴀɢᴀɪɴ.</blockquote>",
+          "after": "<b>✅ Meiko · Verified\n</b>\n\n<blockquote>Verification complete!\nYou can now access files.\n\nOpen your original file link again.</blockquote>"
+        },
+        {
+          "before": "<blockquote>ᴡᴇʟᴄᴏᴍᴇ ",
+          "after": "<blockquote>✨ Welcome to Meiko, "
+        },
+        {
+          "before": "!\n\nɪ ᴄᴀɴ sᴛᴏʀᴇ ꜰɪʟᴇs ᴀɴᴅ sʜᴀʀᴇ ᴛʜᴇᴍ\nᴠɪᴀ sᴘᴇᴄɪᴀʟ ʟɪɴᴋs.\n\nᴘᴏᴡᴇʀᴇᴅ ʙʏ @cantarellabots</blockquote>",
+          "after": "!\n\nStore files and share them\nthrough dedicated delivery links.\n\nMeiko · File sharing</blockquote>"
+        },
+        {
+          "before": "<b>Usage:</b> <code>/ban [user_id]</code>",
+          "after": "<b>Meiko · Usage:</b> <code>/ban [user_id]</code>"
+        },
+        {
+          "before": "<b>Usage:</b> <code>/unban [user_id]</code>",
+          "after": "<b>Meiko · Usage:</b> <code>/unban [user_id]</code>"
+        },
+        {
+          "before": "<b>❌ Please reply to a message to broadcast.</b>",
+          "after": "<b>⚠️ Meiko · Reply to the message you want to broadcast.</b>"
+        },
+        {
+          "before": "<b>❌ No users found in database.</b>",
+          "after": "<b>⚠️ Meiko · No users found in the database.</b>"
+        },
+        {
+          "before": "<b>⏳ Broadcasting to ",
+          "after": "<b>⏳ Meiko · Broadcasting to "
+        },
+        {
+          "before": "<b>✅ Broadcast Completed</b>\n\n<b>Total Users:</b> ",
+          "after": "<b>✅ Meiko · Broadcast complete</b>\n\n<b>Total Users:</b> "
+        },
+        {
+          "before": "♻️ Reload",
+          "after": "↻ Check membership"
+        },
+        {
+          "before": "<b>⏳ ʟᴏᴀᴅɪɴɢ ʏᴏᴜʀ ꜰɪʟᴇs...</b>",
+          "after": "<b>⏳ Meiko · Loading your files…</b>"
+        },
+        {
+          "before": "<b>✅ User ",
+          "after": "<b>✅ Meiko · User "
+        },
+        {
+          "before": "<b>❌ Invalid User ID.</b>",
+          "after": "<b>⚠️ Meiko · Invalid user ID.</b>"
+        },
+        {
+          "before": "<b>✅ User ",
+          "after": "<b>✅ Meiko · User "
+        },
+        {
+          "before": "<b>❌ Invalid User ID.</b>",
+          "after": "<b>⚠️ Meiko · Invalid user ID.</b>"
+        },
+        {
+          "before": "Start the bot / Retrieve files",
+          "after": "Welcome to Meiko · Retrieve files"
+        },
+        {
+          "before": "Generate link for a single post",
+          "after": "Create a single-message link"
+        },
+        {
+          "before": "Generate link for multiple posts",
+          "after": "Create a batch link"
+        },
+        {
+          "before": "Generate link for custom posts",
+          "after": "Build a custom batch link"
+        },
+        {
+          "before": "Formatted links generator",
+          "after": "Create formatted links"
+        },
+        {
+          "before": "Broadcast a message (Admin)",
+          "after": "Send a broadcast (admin)"
+        },
+        {
+          "before": "📥 Get File Again",
+          "after": "📥 Get files again"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n❌ 𝗘𝗥𝗥𝗢𝗥\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>sᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ ᴡʜɪʟᴇ ꜰᴇᴛᴄʜɪɴɢ ʏᴏᴜʀ ꜰɪʟᴇs.</blockquote>",
+          "after": "<b>⚠️ Meiko · Files unavailable\n</b>\n\n<blockquote>Something went wrong while fetching your files.</blockquote>"
+        },
+        {
+          "before": "<b>⏱ These files will be auto-deleted in ",
+          "after": "<b>⏱ Meiko · These files will be auto-deleted in "
+        },
+        {
+          "before": "🔗 ᴠᴇʀɪꜰʏ",
+          "after": "🔗 Verify"
+        },
+        {
+          "before": "✅ ɪ ʜᴀᴠᴇ ᴠᴇʀɪꜰɪᴇᴅ",
+          "after": "✅ Check verification"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n🔗 𝗩𝗘𝗥𝗜𝗙𝗜𝗖𝗔𝗧𝗜𝗢𝗡 𝗥𝗘𝗤𝗨𝗜𝗥𝗘𝗗\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>ʜᴇʏ ",
+          "after": "<b>🔗 Meiko · Verification required\n</b>\n\n<blockquote>Hello "
+        },
+        {
+          "before": ",\n\nᴛᴀᴘ <b>🔗 ᴠᴇʀɪꜰʏ</b> ᴀɴᴅ ᴄᴏᴍᴘʟᴇᴛᴇ ᴛʜᴇ\nsʜᴏʀᴛ ʟɪɴᴋ ᴛᴏ ᴜɴʟᴏᴄᴋ ꜰɪʟᴇs.\n\nᴀꜰᴛᴇʀ ᴠᴇʀɪꜰʏɪɴɢ, ᴛᴀᴘ\n<b>✅ ɪ ʜᴀᴠᴇ ᴠᴇʀɪꜰɪᴇᴅ</b>.\n\n◈ ᴠᴀʟɪᴅ ꜰᴏʀ: <b>",
+          "after": ",\n\nTap <b>🔗 Verify</b> and complete the\nshort link to unlock your files.\n\nAfter verifying, tap\n<b>✅ Check verification</b>.\n\nValid for: <b>"
+        },
+        {
+          "before": "📹 ᴛᴜᴛᴏʀɪᴀʟ",
+          "after": "📹 How to verify"
+        }
+      ]
+    },
+    {
+      "path": "main_bot/plugins/bans.py",
+      "before_sha256": "21c4aa92c092ac9135cef5793c26fb5a62364663f74db692c8dcaafcf0169dfb",
+      "after_sha256": "1f01583f602ea98c94c42a01c116a750376c87037fb6d77e1533b4f65406b9ac",
+      "literal_changes": [
+        {
+          "before": "<b>Usage:</b> <code>/ban [user_id]</code>",
+          "after": "<b>Meiko · Usage:</b> <code>/ban [user_id]</code>"
+        },
+        {
+          "before": "<b>Usage:</b> <code>/unban [user_id]</code>",
+          "after": "<b>Meiko · Usage:</b> <code>/unban [user_id]</code>"
+        },
+        {
+          "before": "<b>✅ User ",
+          "after": "<b>✅ Meiko · User "
+        },
+        {
+          "before": "<b>❌ Invalid User ID.</b>",
+          "after": "<b>⚠️ Meiko · Invalid user ID.</b>"
+        },
+        {
+          "before": "<b>✅ User ",
+          "after": "<b>✅ Meiko · User "
+        },
+        {
+          "before": "<b>❌ Invalid User ID.</b>",
+          "after": "<b>⚠️ Meiko · Invalid user ID.</b>"
+        }
+      ]
+    },
+    {
+      "path": "main_bot/plugins/broadcast.py",
+      "before_sha256": "496c72e9c4199c1027abb225157bcbb0a3b00834b810fc1f6eb1a7b795c4cb1c",
+      "after_sha256": "1a4a2ea4f8b1d690c027bb559ddbfe4a3f6dfb9e92e729d8876b90119b5791ac",
+      "literal_changes": [
+        {
+          "before": "<b>⏳ Preparing broadcast...</b>",
+          "after": "<b>⏳ Meiko · Preparing broadcast…</b>"
+        },
+        {
+          "before": "<b>❌ Please reply to a message to broadcast.</b>",
+          "after": "<b>⚠️ Meiko · Reply to the message you want to broadcast.</b>"
+        },
+        {
+          "before": "<b>❌ No users found in database.</b>",
+          "after": "<b>⚠️ Meiko · No users found in the database.</b>"
+        },
+        {
+          "before": "<b>⏳ Broadcasting to ",
+          "after": "<b>⏳ Meiko · Broadcasting to "
+        },
+        {
+          "before": "<b>✅ Broadcast Completed</b>\n\n<b>Total Users:</b> ",
+          "after": "<b>✅ Meiko · Broadcast complete</b>\n\n<b>Total Users:</b> "
+        }
+      ]
+    },
+    {
+      "path": "main_bot/plugins/create_bot.py",
+      "before_sha256": "53000099cfbb1067c3310fa71ec214660f9a9e8bbdb12a915f40140ebfc04920",
+      "after_sha256": "0d5882df6d849fd4dc65933a67acc0abcb847bc25e2cad491b3fd0ca43da15c8",
+      "literal_changes": [
+        {
+          "before": "<b>🤖 Create a New Bot</b>\n\n<blockquote><b>Step 1/2:</b> Send me your bot token.\n\nYou can get a bot token from @BotFather.\nExample: <code>123456:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw</code></blockquote>",
+          "after": "<b>✨ Meiko · Create a bot</b>\n\n<blockquote><b>Step 1 of 2:</b> Send me your bot token.\n\nYou can get a bot token from @BotFather.\nExample: <code>123456:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw</code></blockquote>"
+        },
+        {
+          "before": "<b>❌ Bot creation cancelled.</b>",
+          "after": "<b>✖️ Meiko · Bot creation cancelled.</b>"
+        },
+        {
+          "before": "<b>⏳ Validating bot token...</b>",
+          "after": "<b>⏳ Meiko · Checking your bot token…</b>"
+        },
+        {
+          "before": "❌ You've reached the limit of ",
+          "after": "⚠️ Meiko · You've reached the limit of "
+        },
+        {
+          "before": "<b>❌ Please send valid text.</b>",
+          "after": "<b>⚠️ Meiko · Please send valid text.</b>"
+        },
+        {
+          "before": "<b>❌ Invalid token format.</b>\n\nA valid bot token looks like: <code>123456:AAH...</code>\nPlease send a valid token or click Cancel.",
+          "after": "<b>⚠️ Meiko · Invalid token format.</b>\n\nA valid bot token looks like: <code>123456:AAH...</code>\nPlease send a valid token or click Cancel."
+        },
+        {
+          "before": "<b>❌ Invalid bot token!</b>\n\nThe token could not be verified with Telegram.\nPlease check and send again.",
+          "after": "<b>⚠️ Meiko · Token could not be verified</b>\n\nThe token could not be verified with Telegram.\nPlease check and send again."
+        },
+        {
+          "before": "<b>✅ Token verified!</b>\n\n<blockquote>Bot: <b>",
+          "after": "<b>✅ Meiko · Token verified</b>\n\n<blockquote>Bot: <b>"
+        },
+        {
+          "before": ")\n\n<b>Step 2/2:</b> Send me the <b>Log Channel ID</b>.\n\nThis is where your bot will store files.\nMake sure the bot (@",
+          "after": ")\n\n<b>Step 2 of 2:</b> Send me the <b>Archive Channel ID</b>.\n\nThis is where your bot will store files.\nMake sure the bot (@"
+        },
+        {
+          "before": "<b>⏳ Validating channel access...</b>",
+          "after": "<b>⏳ Meiko · Checking archive access…</b>"
+        },
+        {
+          "before": "⏳ Please wait ",
+          "after": "⏳ Meiko · Please wait "
+        },
+        {
+          "before": "<b>✅ Bot Created Successfully!</b>\n\n<blockquote><b>Bot:</b> @",
+          "after": "<b>✨ Meiko · Bot created</b>\n\n<blockquote><b>Bot:</b> @"
+        },
+        {
+          "before": "<b>❌ This bot is already registered!</b>\n\nBot @",
+          "after": "<b>⚠️ Meiko · Bot already registered</b>\n\nBot @"
+        },
+        {
+          "before": "<b>❌ Invalid channel ID.</b>\n\nChannel ID should be a number like <code>-1001234567890</code>",
+          "after": "<b>⚠️ Meiko · Invalid channel ID.</b>\n\nChannel ID should be a number like <code>-1001234567890</code>"
+        },
+        {
+          "before": "❌ Cancel",
+          "after": "✖️ Cancel"
+        },
+        {
+          "before": "🔙 Back to Menu",
+          "after": "← Main menu"
+        },
+        {
+          "before": "✅ Channel verified for FileStore bot.",
+          "after": "✅ Archive channel verified for Meiko."
+        },
+        {
+          "before": "<b>❌ Verification failed!</b>\n\n<blockquote>Error: <code>",
+          "after": "<b>⚠️ Meiko · Verification failed</b>\n\n<blockquote>Error: <code>"
+        },
+        {
+          "before": "❌ Cancel",
+          "after": "✖️ Cancel"
+        },
+        {
+          "before": "<b>❌ Cannot access channel!</b>\n\n<blockquote>Make sure:\n1. The channel ID is correct\n2. The bot (@",
+          "after": "<b>⚠️ Meiko · Archive unavailable</b>\n\n<blockquote>Make sure:\n1. The channel ID is correct\n2. The bot (@"
+        },
+        {
+          "before": "❌ Cancel",
+          "after": "✖️ Cancel"
+        },
+        {
+          "before": "❌ Cancel",
+          "after": "✖️ Cancel"
+        },
+        {
+          "before": "⚙️ Bot Dashboard",
+          "after": "⚙️ Bot dashboard"
+        },
+        {
+          "before": "🔙 Back to Menu",
+          "after": "← Main menu"
+        },
+        {
+          "before": "🔙 Back to Menu",
+          "after": "← Main menu"
+        },
+        {
+          "before": "❌ Cancel",
+          "after": "✖️ Cancel"
+        },
+        {
+          "before": "❌ Cancel",
+          "after": "✖️ Cancel"
+        },
+        {
+          "before": "❌ Cancel",
+          "after": "✖️ Cancel"
+        }
+      ]
+    },
+    {
+      "path": "main_bot/plugins/my_bots.py",
+      "before_sha256": "67d26eaf80d64a7c5fc0a2b16d5c923d01ab86e6a25a010115ea1d32ca48bc1d",
+      "after_sha256": "113711ef402d08168b1737c9bc3f280925e4a6f73b44f81e188e5b8fa21fba46",
+      "literal_changes": [
+        {
+          "before": "🟢 ʀᴜɴɴɪɴɢ",
+          "after": "🟢 running"
+        },
+        {
+          "before": "🔴 sᴛᴏᴘᴘᴇᴅ",
+          "after": "🔴 stopped"
+        },
+        {
+          "before": "ᴅɪsᴀʙʟᴇᴅ",
+          "after": "disabled"
+        },
+        {
+          "before": "✅ ᴏɴ",
+          "after": "✅ on"
+        },
+        {
+          "before": "❌ ᴏꜰꜰ",
+          "after": "❌ off"
+        },
+        {
+          "before": "✅ ᴏɴ",
+          "after": "✅ on"
+        },
+        {
+          "before": "❌ ᴏꜰꜰ",
+          "after": "❌ off"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n⚙️ 𝗕𝗢𝗧 𝗗𝗔𝗦𝗛𝗕𝗢𝗔𝗥𝗗\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>◈ <b>ʙᴏᴛ:</b> @",
+          "after": "<b>⚙️ Meiko · Bot dashboard\n</b>\n\n<blockquote>◈ <b>bot:</b> @"
+        },
+        {
+          "before": "\n◈ <b>sᴛᴀᴛᴜs:</b> ",
+          "after": "\n◈ <b>status:</b> "
+        },
+        {
+          "before": "\n◈ <b>ᴄʜᴀɴɴᴇʟ:</b> <code>",
+          "after": "\n◈ <b>channel:</b> <code>"
+        },
+        {
+          "before": "</code>\n◈ <b>ᴀᴜᴛᴏ-ᴅᴇʟ:</b> ",
+          "after": "</code>\n◈ <b>auto-del:</b> "
+        },
+        {
+          "before": "\n◈ <b>sʜᴏʀᴛᴇɴᴇʀ:</b> ",
+          "after": "\n◈ <b>shortener:</b> "
+        },
+        {
+          "before": "\n◈ <b>ᴘʀᴏᴛᴇᴄᴛɪᴏɴ:</b> ",
+          "after": "\n◈ <b>protection:</b> "
+        },
+        {
+          "before": "\n◈ <b>ᴘᴇʀᴍ ʟɪɴᴋ:</b> ",
+          "after": "\n◈ <b>perm link:</b> "
+        },
+        {
+          "before": "ɴᴏ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ",
+          "after": "no data found"
+        },
+        {
+          "before": "✅ ʙᴏᴛ ᴅᴇʟᴇᴛᴇᴅ!",
+          "after": "✅ bot deleted!"
+        },
+        {
+          "before": "<b>⏳ ᴛʀᴀɴsꜰᴇʀʀɪɴɢ ᴅᴀᴛᴀ...</b>",
+          "after": "<b>⏳ transferring data...</b>"
+        },
+        {
+          "before": "✅ ᴛʀᴀɴsꜰᴇʀ ᴅᴏɴᴇ!",
+          "after": "✅ transfer done!"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n📋 𝗠𝗬 𝗕𝗢𝗧𝗦\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ ᴄʀᴇᴀᴛᴇᴅ ᴀɴʏ ʙᴏᴛs ʏᴇᴛ.\nᴛᴀᴘ <b>⚡ ᴄʀᴇᴀᴛᴇ ʙᴏᴛ</b> ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</blockquote>",
+          "after": "<b>📋 Meiko · My bots\n</b>\n\n<blockquote>you haven't created any bots yet.\ntap <b>✨ Create bot</b> to get started!</blockquote>"
+        },
+        {
+          "before": "🔙 ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ",
+          "after": "← Main menu"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n📋 𝗠𝗬 𝗕𝗢𝗧𝗦  [",
+          "after": "<b>📋 Meiko · My bots  ["
+        },
+        {
+          "before": "/5]\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>sᴇʟᴇᴄᴛ ᴀ ʙᴏᴛ ᴛᴏ ᴏᴘᴇɴ ɪᴛs ᴅᴀsʜʙᴏᴀʀᴅ:</blockquote>",
+          "after": "/5]\n</b>\n\n<blockquote>select a bot to open its dashboard:</blockquote>"
+        },
+        {
+          "before": "❌ Invalid bot!",
+          "after": "⚠️ Meiko · Invalid bot!"
+        },
+        {
+          "before": "❌ Bot not found or access denied!",
+          "after": "⚠️ Meiko · Bot not found or access denied!"
+        },
+        {
+          "before": "❌ Access denied!",
+          "after": "⚠️ Meiko · Access denied!"
+        },
+        {
+          "before": "🔴 sᴛᴏᴘᴘɪɴɢ...",
+          "after": "🔴 stopping..."
+        },
+        {
+          "before": "🟢 sᴛᴀʀᴛɪɴɢ...",
+          "after": "🟢 starting..."
+        },
+        {
+          "before": "❌ Access denied!",
+          "after": "⚠️ Meiko · Access denied!"
+        },
+        {
+          "before": "❌ Access denied!",
+          "after": "⚠️ Meiko · Access denied!"
+        },
+        {
+          "before": "❌ Access denied!",
+          "after": "⚠️ Meiko · Access denied!"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n⚠️ 𝗗𝗘𝗟𝗘𝗧𝗘 @",
+          "after": "<b>⚠️ Meiko · Delete @"
+        },
+        {
+          "before": "?\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>ᴛʜɪs ᴡɪʟʟ ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ᴅᴇʟᴇᴛᴇ ᴛʜᴇ ʙᴏᴛ ᴀɴᴅ ᴀʟʟ ɪᴛs ᴅᴀᴛᴀ (ᴜsᴇʀs, ᴄʜᴀɴɴᴇʟs, sᴇᴛᴛɪɴɢs).\n\n<b>ᴛʜɪs ᴀᴄᴛɪᴏɴ ᴄᴀɴɴᴏᴛ ʙᴇ ᴜɴᴅᴏɴᴇ!</b></blockquote>",
+          "after": "?\n</b>\n\n<blockquote>this will permanently delete the bot and all its data (users, channels, settings).\n\n<b>this action cannot be undone!</b></blockquote>"
+        },
+        {
+          "before": "❌ Access denied!",
+          "after": "⚠️ Meiko · Access denied!"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n🗑 𝗕𝗢𝗧 𝗗𝗘𝗟𝗘𝗧𝗘𝗗\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>@",
+          "after": "<b>🗑 Meiko · Bot removed\n</b>\n\n<blockquote>@"
+        },
+        {
+          "before": " ʜᴀs ʙᴇᴇɴ ʀᴇᴍᴏᴠᴇᴅ.\n\n📦 <b>ʏᴏᴜʀ ᴅᴀᴛᴀ ɪs sᴀꜰᴇ!</b>\nᴜsᴇʀs, ᴀᴅᴍɪɴs, ᴄʜᴀɴɴᴇʟs ᴀʀᴇ ᴘʀᴇsᴇʀᴠᴇᴅ.\nʏᴏᴜ ᴄᴀɴ ᴛʀᴀɴsꜰᴇʀ ᴛʜᴇᴍ ᴛᴏ ᴀ ɴᴇᴡ ʙᴏᴛ\nᴠɪᴀ ᴛʜᴇ <b>📦 ᴛʀᴀɴsꜰᴇʀ ᴅᴀᴛᴀ</b> ʙᴜᴛᴛᴏɴ\nɪɴ ʏᴏᴜʀ ɴᴇᴡ ʙᴏᴛ's ᴅᴀsʜʙᴏᴀʀᴅ.</blockquote>",
+          "after": " has been removed.\n\n📦 <b>your data is safe!</b>\nusers, admins, channels are preserved.\nyou can transfer them to a new bot\nvia the <b>📦 transfer data</b> button\nin your new bot's dashboard.</blockquote>"
+        },
+        {
+          "before": "❌ Access denied!",
+          "after": "⚠️ Meiko · Access denied!"
+        },
+        {
+          "before": "📭 ɴᴏ ᴅᴇʟᴇᴛᴇᴅ ʙᴏᴛs ꜰᴏᴜɴᴅ ᴛᴏ ᴛʀᴀɴsꜰᴇʀ ꜰʀᴏᴍ.",
+          "after": "📭 no deleted bots found to transfer from."
+        },
+        {
+          "before": "🔙 ʙᴀᴄᴋ",
+          "after": "← Back"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n📦 𝗧𝗥𝗔𝗡𝗦𝗙𝗘𝗥 𝗗𝗔𝗧𝗔\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>sᴇʟᴇᴄᴛ ᴀ ᴅᴇʟᴇᴛᴇᴅ ʙᴏᴛ ᴛᴏ ᴛʀᴀɴsꜰᴇʀ\nɪᴛs ᴅᴀᴛᴀ (ᴜsᴇʀs, ᴀᴅᴍɪɴs, ᴄʜᴀɴɴᴇʟs)\nɪɴᴛᴏ ʏᴏᴜʀ ᴄᴜʀʀᴇɴᴛ ʙᴏᴛ.</blockquote>",
+          "after": "<b>📦 Meiko · Transfer data\n</b>\n\n<blockquote>select a deleted bot to transfer\nits data (users, admins, channels)\ninto your current bot.</blockquote>"
+        },
+        {
+          "before": "❌ Access denied!",
+          "after": "⚠️ Meiko · Access denied!"
+        },
+        {
+          "before": "❌ Source bot not found!",
+          "after": "⚠️ Meiko · Source bot not found!"
+        },
+        {
+          "before": "<b>━━━━━━━━━━━━━━━━━━━━━\n✅ 𝗧𝗥𝗔𝗡𝗦𝗙𝗘𝗥 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘\n━━━━━━━━━━━━━━━━━━━━━</b>\n\n<blockquote>ᴅᴀᴛᴀ ꜰʀᴏᴍ @",
+          "after": "<b>✅ Meiko · Transfer complete\n</b>\n\n<blockquote>data from @"
+        },
+        {
+          "before": " ʜᴀs ʙᴇᴇɴ\nᴛʀᴀɴsꜰᴇʀʀᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ!\n\n",
+          "after": " has been\ntransferred successfully!\n\n"
+        },
+        {
+          "before": "📢 ʟᴏɢ ᴄʜᴀɴɴᴇʟ",
+          "after": "📢 log channel"
+        },
+        {
+          "before": "⏱ ᴀᴜᴛᴏ-ᴅᴇʟ",
+          "after": "⏱ auto-del"
+        },
+        {
+          "before": "🔗 ᴘᴇʀᴍᴀɴᴇɴᴛ ʟɪɴᴋ",
+          "after": "🔗 permanent link"
+        },
+        {
+          "before": "🔗 ꜰsᴜʙ",
+          "after": "🔗 fsub"
+        },
+        {
+          "before": "🔗 sʜᴏʀᴛᴇɴᴇʀ",
+          "after": "🔗 shortener"
+        },
+        {
+          "before": "👥 ᴀᴅᴍɪɴs",
+          "after": "👥 admins"
+        },
+        {
+          "before": "📩 sᴛᴀʀᴛ ᴄꜰɢ",
+          "after": "📩 start cfg"
+        },
+        {
+          "before": "📝 ᴄᴀᴘᴛɪᴏɴ",
+          "after": "📝 caption"
+        },
+        {
+          "before": "📊 sᴛᴀᴛs",
+          "after": "📊 stats"
+        },
+        {
+          "before": "🛡️ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ",
+          "after": "🛡️ protection"
+        },
+        {
+          "before": "📦 ᴛʀᴀɴsꜰᴇʀ",
+          "after": "📦 transfer"
+        },
+        {
+          "before": "🗑 ᴅᴇʟᴇᴛᴇ",
+          "after": "🗑 delete"
+        },
+        {
+          "before": "🔙 ʙᴀᴄᴋ ᴛᴏ ᴍʏ ʙᴏᴛs",
+          "after": "← My bots"
+        },
+        {
+          "before": "🔴 sᴛᴏᴘ",
+          "after": "🔴 stop"
+        },
+        {
+          "before": "🟢 sᴛᴀʀᴛ",
+          "after": "🟢 start"
+        },
+        {
+          "before": "<b>❌ ᴛʀᴀɴsꜰᴇʀ ꜰᴀɪʟᴇᴅ</b>\n\n<blockquote>",
+          "after": "<b>❌ transfer failed</b>\n\n<blockquote>"
+        },
+        {
+          "before": "✅ ʏᴇs, ᴅᴇʟᴇᴛᴇ",
+          "after": "✅ yes, delete"
+        },
+        {
+          "before": "❌ ᴄᴀɴᴄᴇʟ",
+          "after": "✖️ Cancel"
+        },
+        {
+          "before": "🔙 ʙᴀᴄᴋ ᴛᴏ ᴍʏ ʙᴏᴛs",
+          "after": "← My bots"
+        },
+        {
+          "before": "🔙 ᴅᴀsʜʙᴏᴀʀᴅ",
+          "after": "← Dashboard"
+        },
+        {
+          "before": "⚡ ᴄʀᴇᴀᴛᴇ ʙᴏᴛ",
+          "after": "✨ Create bot"
+        },
+        {
+          "before": "🔙 ʙᴀᴄᴋ",
+          "after": "← Back"
+        },
+        {
+          "before": "🔙 ʙᴀᴄᴋ",
+          "after": "← Back"
+        }
+      ]
+    }
+  ],
+  "scope": "UI strings only; upstream logic, callback IDs, commands, attribution comments unchanged",
+  "not_executed": true,
+  "blocked": [
+    "Opaque PyArmor screens cannot be edited without readable source."
+  ],
+  "apply": "git -C Filestore apply ../patches/filestore/001-meiko-link-ui.patch ../patches/filestore/002-meiko-worker-ui.patch ../patches/filestore/003-meiko-controller-admin-ui.patch ../patches/filestore/004-meiko-creation-ui.patch ../patches/filestore/005-meiko-dashboard-ui.patch",
+  "patches": [
+    "001-meiko-link-ui.patch",
+    "002-meiko-worker-ui.patch",
+    "003-meiko-controller-admin-ui.patch",
+    "004-meiko-creation-ui.patch",
+    "005-meiko-dashboard-ui.patch"
+  ]
+}

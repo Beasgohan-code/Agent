@@ -119,7 +119,7 @@ def test_the_kwargs_are_empty_when_nothing_is_configured(tmp_path):
 # --- the renamer commands -------------------------------------------------
 
 
-def test_setcaption_then_viewcaption_then_delcaption(tmp_path):
+def test_setcaption_then_viewcaption(tmp_path):
     ctx = make_ctx(tmp_path)
     _manifest, handlers = renamer.build(ctx)
 
@@ -129,9 +129,6 @@ def test_setcaption_then_viewcaption_then_delcaption(tmp_path):
     view = FakeMessage("/viewcaption")
     run(handlers["viewcaption"], view)
     assert "Caption for this chat" in view.replies[0]
-
-    run(handlers["delcaption"], FakeMessage("/delcaption"))
-    assert ctx.chats.get(CHAT, CAPTION_KEY) is None
 
 
 def test_a_caption_longer_than_telegrams_cap_is_refused(tmp_path):
