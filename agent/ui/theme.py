@@ -27,6 +27,8 @@ class Theme:
             for name, emoji_id in source.items()
             if name in EMOJI_FALLBACKS and emoji_id
         }
+        # Keep fallback metadata even after premium icons are disabled on retry.
+        self._button_fallbacks = {str(value): EMOJI_FALLBACKS[name] for name, value in self._custom_emoji.items()}
 
     def emoji_id(self, name: str) -> str | None:
         """Reviewed custom icon for Telegram buttons, respecting fallback mode."""
@@ -38,9 +40,10 @@ class Theme:
         from pyrogram.enums import ButtonStyle
         from pyrogram.types import InlineKeyboardButton
         glyph = EMOJI_FALLBACKS.get(icon, '')
+        icon_id = self.emoji_id(icon)
         return InlineKeyboardButton(
-            text=f'{glyph} {text}'.strip(), callback_data=callback_data, copy_text=copy_text,
-            icon_custom_emoji_id=self.emoji_id(icon), disabled=disabled,
+            text=text if icon_id else f'{glyph} {text}'.strip(), callback_data=callback_data, copy_text=copy_text,
+            icon_custom_emoji_id=icon_id, disabled=disabled,
             style=ButtonStyle.DEFAULT if style is None else style,
         )
 

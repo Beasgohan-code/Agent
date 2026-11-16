@@ -19,7 +19,7 @@ from richgram import rich_caption
 from ..ui import tables
 from ..ui.screens import Screen
 from . import rich as rich_utils
-from ..ui.theme import Theme, strip_custom_emoji
+from ..ui.theme import Theme, strip_custom_emoji, EMOJI_FALLBACKS, CUSTOM_EMOJI_IDS
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def _has_emoji(screen):
         for row in getattr(screen.keyboard, 'inline_keyboard', ()) for button in row)
 
 
-def _plain_screen(screen):
+def _plain_screen(screen, theme=None):
     # Copy only the presentation fields; callbacks, styles and actions survive.
     keyboard = screen.keyboard
     if hasattr(keyboard, 'inline_keyboard'):
@@ -103,6 +103,12 @@ def _plain_screen(screen):
         keyboard.inline_keyboard = [[copy(button) for button in row] for row in keyboard.inline_keyboard]
         for row in keyboard.inline_keyboard:
             for button in row:
+                icon_id = getattr(button, 'icon_custom_emoji_id', None)
+                glyphs = {str(value): EMOJI_FALLBACKS[name] for name, value in CUSTOM_EMOJI_IDS.items() if name in EMOJI_FALLBACKS}
+                glyphs.update(getattr(theme, '_button_fallbacks', {}))
+                glyph = glyphs.get(str(icon_id), '') if icon_id else ''
+                if glyph and not button.text.startswith(glyph):
+                    button.text = f'{glyph} {button.text}'
                 button.icon_custom_emoji_id = None
     text = strip_custom_emoji(screen.rich_text)
     if hasattr(screen.rich_text, 'classic'):
@@ -141,14 +147,14 @@ class ScreenSender:
 
     async def send(self, chat_id, screen: Screen):
         if not self._theme.custom_emoji_enabled:
-            screen = _plain_screen(screen)
+            screen = _plain_screen(screen, self._theme)
         try:
             sent = await self._send_rich(chat_id, screen)
         except Exception as exc:
             if not _has_emoji(screen) or not _emoji_rejected(exc):
                 raise
             self._theme.disable_custom_emoji()
-            return await self.send(chat_id, _plain_screen(screen))
+            return await self.send(chat_id, _plain_screen(screen, self._theme))
         if sent is not None:
             return sent
         text = rich_utils._classic_form(screen, screen.rich_text)
@@ -159,7 +165,7 @@ class ScreenSender:
                 raise
             logger.warning("Custom emoji rejected (%s); retrying with unicode.", exc)
             self._theme.disable_custom_emoji()
-            return await self._post(chat_id, strip_custom_emoji(text), _plain_screen(screen).keyboard)
+            return await self._post(chat_id, strip_custom_emoji(text), _plain_screen(screen, self._theme).keyboard)
 
     async def send_hero(self, chat_id, screen: Screen, photo: str | None):
         """Native rich image and card in one message, with explicit-only fallback.
@@ -168,7 +174,7 @@ class ScreenSender:
         custom network downloader or link-preview trick is involved.
         """
         if not self._theme.custom_emoji_enabled:
-            screen = _plain_screen(screen)
+            screen = _plain_screen(screen, self._theme)
         if photo and tables.rich_enabled() and rich_utils.available(self._client):
             try:
                 return await self._client.send_rich_message(
@@ -182,7 +188,7 @@ class ScreenSender:
             except Exception as exc:
                 if _has_emoji(screen) and _emoji_rejected(exc):
                     self._theme.disable_custom_emoji()
-                    return await self.send_hero(chat_id, _plain_screen(screen), photo)
+                    return await self.send_hero(chat_id, _plain_screen(screen, self._theme), photo)
                 if not rich_utils._refused(exc) and not _photo_rejected(exc):
                     raise
         return await self.send_photo(chat_id, screen, photo)
@@ -196,7 +202,7 @@ class ScreenSender:
                 
         """
         if not self._theme.custom_emoji_enabled:
-            screen = _plain_screen(screen)
+            screen = _plain_screen(screen, self._theme)
         text = to_safe_html(screen.rich_text)
         if not photo:
             return await self.send(chat_id, screen)
@@ -214,7 +220,7 @@ class ScreenSender:
         except Exception as exc:  # noqa: BLE001 - the picture is decoration
             if _has_emoji(screen) and _emoji_rejected(exc):
                 self._theme.disable_custom_emoji()
-                return await self.send_photo(chat_id, _plain_screen(screen), photo, caption_limit=caption_limit)
+                return await self.send_photo(chat_id, _plain_screen(screen, self._theme), photo, caption_limit=caption_limit)
             if not _photo_rejected(exc):
                 raise
             logger.warning("Start image was rejected (%s); sending text instead.", type(exc).__name__)
@@ -231,7 +237,7 @@ class ScreenSender:
         button press instead of collapsing into a monospace grid.
         """
         if not self._theme.custom_emoji_enabled:
-            screen = _plain_screen(screen)
+            screen = _plain_screen(screen, self._theme)
         client = getattr(callback_query, "_client", None) or self._client
         if (
             tables.rich_enabled()
@@ -249,7 +255,7 @@ class ScreenSender:
             except Exception as exc:  # noqa: BLE001 - a refused edit is not fatal
                 if _has_emoji(screen) and _emoji_rejected(exc):
                     self._theme.disable_custom_emoji()
-                    return await self.edit(callback_query, _plain_screen(screen))
+                    return await self.edit(callback_query, _plain_screen(screen, self._theme))
                 if not rich_utils._refused(exc):
                     logger.warning("Screen edit failed (%s); no automatic retry.", type(exc).__name__)
                     return False if _uneditable(exc) else None
@@ -274,7 +280,7 @@ class ScreenSender:
                 await callback_query.edit_message_text(
                     text=strip_custom_emoji(text),
                     parse_mode=ParseMode.HTML,
-                    reply_markup=_plain_screen(screen).keyboard,
+                    reply_markup=_plain_screen(screen, self._theme).keyboard,
                     link_preview_options=_no_preview(),
                 )
                 return True
