@@ -4,7 +4,7 @@ Telegram Bot API 10.3 can render a real table, a real heading and collapsible
 details, but only through a *rich message* (``send_rich_message``). A bot that
 has it gets native tables; a deployment whose client library predates it — or
 whose Telegram build refuses the call — falls back to the HTML that has always
-worked, with tables drawn in ``<pre>``.
+worked, with untruncated label/value rows.
 
 Explicit unsupported-feature errors disable rich rendering for the process.
 An invalid individual rich card falls back locally; transport, permission and
@@ -14,7 +14,7 @@ Editing is covered too: the Bot API edits a rich message through
 ``edit_message_text(rich_text=…)``, so navigating `/menu` keeps the native table
 instead of collapsing the screen into a grid on the first button press. When
 either call is refused the classic form is built from the same object — tables
-drawn in ``<pre>``, which stays aligned instead of becoming a run-on line.
+shown as label/value rows without box art.
 """
 
 from __future__ import annotations
@@ -126,7 +126,7 @@ async def edit(target, text, *, reply_markup=None):
 
     Rich when the text needs it and the client can send it, classic otherwise;
     the classic form is derived from the same object, so a refused rich edit
-    degrades to the grid rather than to nothing.
+    degrades to readable labels rather than to nothing.
     """
     payload = str(text or "")
     if not payload:
@@ -178,7 +178,7 @@ def _refused(exc: Exception) -> bool:
 def _cannot(client) -> None:
     """The client library has no rich support: same downgrade, said once."""
     logger.info(
-        "%s has no send_rich_message; using the classic grid.",
+        "%s has no send_rich_message; using box-free HTML.",
         type(client).__name__,
     )
     tables.set_rich(False)
@@ -187,8 +187,8 @@ def _cannot(client) -> None:
 def _classic_form(text, payload: str) -> str:
     """The best classic rendering available for *text*.
 
-        A :class:`agent.ui.tables.Panel` carries its own monospace form, which keeps
-        the table aligned; anything else is normalised from its rich markup.
+        A :class:`agent.ui.tables.Panel` carries its own box-free HTML form;
+        anything else is normalised from its rich markup.
         
     """
     return getattr(text, "classic", None) or classic(payload)
@@ -205,8 +205,8 @@ def _cell_text(cell: str) -> str:
     return " ".join(html.unescape(_CELL_TAG.sub("", cell)).split())
 
 
-def _table_to_pre(match: re.Match) -> str:
-    """Draw one native table as the monospace grid classic messages can show."""
+def _table_to_classic(match: re.Match) -> str:
+    """Convert one native table to readable label/value HTML."""
     headers: tuple[str, ...] = ()
     rows: list[tuple[str, ...]] = []
     for row in _ROW_RE.finditer(match.group(1)):
@@ -229,11 +229,12 @@ def classic(text: str) -> str:
     """The same content as HTML Telegram has always accepted.
 
     A native table would arrive as one run-on line — Telegram does not lay out
-    ``<table>`` outside a rich message — so it is drawn as a ``<pre>`` grid first.
+    ``<table>`` outside a rich message — so it is converted to label/value HTML first.
     """
     from .sender import to_safe_html
 
     body = text or ""
     if "<table" in body.lower():
-        body = _TABLE_RE.sub(_table_to_pre, body)
+        body = _TABLE_RE.sub(_table_to_classic, body)
+    body = re.sub(r"<hr\b[^>]*>", "\n", body, flags=re.IGNORECASE)
     return to_safe_html(body)

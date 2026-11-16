@@ -436,4 +436,4 @@ def test_a_plugin_with_no_commands_is_reported_as_idle(tmp_path):
 
     assert "idle" in body
     assert "SESSION_STRING" in body          # the reason, not a shrug
-    assert "idle" in body.split("<pre>")[1]  # the state column itself
+    assert "idle" in body and "<pre>" not in body  # box-free state row

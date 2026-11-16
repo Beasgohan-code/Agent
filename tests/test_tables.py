@@ -169,7 +169,8 @@ def test_panel_normalises_headings_and_notes_but_not_the_table(classic_mode):
     assert rendered.startswith("<b>")          # <h2> became bold
     assert "<blockquote>" in rendered
     assert "owner only" in rendered
-    assert "<pre>" in rendered
+    assert "<pre>" not in rendered
+    assert "<b>a</b>: 1" in rendered
 
 
 def test_panel_without_a_table_has_no_pre_block():
@@ -203,16 +204,14 @@ def test_one_refusal_switches_rendering_for_every_later_panel():
 
     tables.set_rich(False)
     try:
-        assert "<pre>" in panel("X", table=Table(rows=(("a",),)))
+        assert "<pre>" not in panel("X", table=Table(rows=(("a",),)))
         assert "<table" not in panel("X", table=Table(rows=(("a",),)))
     finally:
         tables.set_rich(True)
 
 
-def test_classic_block_is_still_the_aligned_grid():
+def test_classic_block_is_box_free_labelled_rows():
     table = Table(headers=("Slug", "State"), rows=(("ops", "on"), ("group", "off")))
-
-    lines = pre_body(table.classic_block()).splitlines()
-
-    assert lines[0].startswith("\u250c")
-    assert len({text_width(line) for line in lines}) == 1
+    body = table.classic_block()
+    assert "<pre>" not in body and "\u250c" not in body
+    assert "<b>Slug</b>: ops" in body and "<b>State</b>: off" in body

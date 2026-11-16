@@ -39,3 +39,29 @@ def test_watchdog_failure_does_not_expose_exception_body(caplog):
     assert probe not in json.dumps(health_payload(monitor))
     assert probe not in caplog.text
     assert monitor.snapshot().failures == 1
+
+
+@pytest.mark.parametrize('path', ['watcher', 'recovery_notice', 'escalation'])
+def test_moderation_background_failures_do_not_log_exception_body(caplog, monkeypatch, path):
+    from agent.modules import moderation
+
+    caplog.set_level(logging.DEBUG)
+    probe = 'SYNTHETIC_PRIVATE_MODERATION_PROVIDER_VALUE'
+    message = SimpleNamespace(chat=SimpleNamespace(id=-100), from_user=SimpleNamespace(id=7))
+    ctx = SimpleNamespace()
+
+    async def scenario():
+        if path == 'escalation':
+            monkeypatch.setattr(moderation, 'target_is_protected', AsyncMock(return_value=False))
+            client = SimpleNamespace(restrict_chat_member=AsyncMock(side_effect=RuntimeError(probe)))
+            result = await moderation.escalate_warning(client, ctx, message, 7, 'mute')
+            assert probe not in result and 'Escalation failed' in result
+        else:
+            failure = moderation.PartialKickError('safe recovery instruction') if path == 'recovery_notice' else RuntimeError(probe)
+            monkeypatch.setattr(moderation, 'clean_service', AsyncMock(side_effect=failure))
+            monkeypatch.setattr(moderation, 'reply', AsyncMock(side_effect=RuntimeError(probe)))
+            await moderation.watch(ctx)(None, message)
+    asyncio.run(scenario())
+    assert probe not in caplog.text
+    records = [record for record in caplog.records if record.name == moderation.__name__]
+    assert records and all(record.exc_info is None for record in records)

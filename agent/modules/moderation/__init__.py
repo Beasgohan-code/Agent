@@ -266,7 +266,7 @@ async def escalate_warning(client, ctx, message, target_id: int, action: str) ->
     except PartialKickError as exc:
         return str(exc)
     except Exception as exc:  # noqa: BLE001 - the moderator needs the real reason
-        logger.exception("warn escalation failed")
+        logger.warning("Warning escalation failed (%s).", type(exc).__name__)
         return f"Escalation failed: {type(exc).__name__}. Check my rights."
     ctx.chats.log(
         chat_id, f"warnlimit:{action}", actor_id=None, target_id=target_id,
@@ -403,12 +403,10 @@ def watch(ctx):
         except PartialKickError as exc:
             try:
                 await reply(message, str(exc))
-            except Exception:
-                logger.exception("Could not send partial-kick recovery notice.")
-        except Exception:  # noqa: BLE001 - a watcher must never break the client
-            import logging
-
-            logging.getLogger(__name__).exception("anti-spam watcher failed")
+            except Exception as error:
+                logger.warning("Partial-kick recovery notice failed (%s).", type(error).__name__)
+        except Exception as error:  # a watcher must never break the client
+            logger.warning("Anti-spam watcher failed (%s).", type(error).__name__)
 
     return on_message
 

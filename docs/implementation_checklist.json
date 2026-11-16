@@ -2704,6 +2704,17 @@
         "Remote URL/YouTube playback deliberately disabled pending enforceable mediated fetching; not a native exploitation or sandbox certification"
       ],
       "validation": "15 boundary regressions red before fix. Final focused 87 passed (0.76s); dirty full 1833 passed (22.23s); exact staged-source export 1746 passed (23.37s), no skips, disposable PostgreSQL enabled. Compileall/Pyflakes/diff checks passed. Installed py-tgcalls command contracts tested with authored tool-help fixtures. FFmpeg/FFprobe binaries absent: no real native decode, exploit, live Telegram or deployment validation."
+    },
+    {
+      "id": "richgram-box-free-ui-and-moderation-diagnostics",
+      "status": "completed",
+      "changes": [
+        "Retained Badmunda05 Richgram native tables/headings; removed box-art/clipped-grid compatibility messages in favor of full escaped label/value rows",
+        "Clarified missing TOKEN_KEY clone guidance without removing encryption guard or collecting secrets",
+        "Redacted exception bodies/tracebacks from three reachable moderation watcher/escalation/recovery-notice log paths",
+        "Updated legacy UI expectations for the requested box-free fallback; preserve rich rejection/keyboard/ambiguous-transport behavior"
+      ],
+      "validation": "Four UI and three diagnostic cases red before fixes. Focused 194 passed (1.03s); full dirty 1840 passed (21.26s); exact staged-source export 1753 passed (23.45s), no skips, disposable PostgreSQL. Compileall/Pyflakes/diff checks passed. Verified installed richgram 0.2.0 source metadata; Telegram transport mocked, no live visual/deployment/config changes. Wider SEC-02 remains open."
     }
   ],
   "production_changes": false,

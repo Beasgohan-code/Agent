@@ -149,7 +149,7 @@ def test_a_rich_client_edits_in_place_and_keeps_the_table():
     assert "text" not in rich_edit
 
 
-def test_a_plain_client_gets_the_grid_on_edit(restore_rich):
+def test_a_plain_client_gets_box_free_labels_on_edit(restore_rich):
     client = FakeClient(rich=False)
     query = FakeQuery(client)
 
@@ -158,21 +158,23 @@ def test_a_plain_client_gets_the_grid_on_edit(restore_rich):
     edit = query.edits[0]
     assert "rich_text" not in edit
     assert "<table" not in edit["text"]
-    assert "<pre>" in edit["text"]          # drawn, not flattened
+    assert "<pre>" not in edit["text"]
+    assert "<b>a</b>: 1" in edit["text"]
     assert edit["parse_mode"] == "html"
 
 
-def test_a_refused_rich_edit_falls_back_to_the_grid(restore_rich):
+def test_a_refused_rich_edit_falls_back_to_labels(restore_rich):
     client = FakeClient()
     query = FakeQuery(client, edit_error=RuntimeError("RICH_TEXT_INVALID"))
 
     asyncio.run(rich.edit(query, panel("X", table=kv_table([("a", "1")]))))
 
     assert len(query.edits) == 1
-    assert "<pre>" in query.edits[0]["text"]
+    assert "<pre>" not in query.edits[0]["text"]
+    assert "<b>a</b>: 1" in query.edits[0]["text"]
 
 
-def test_a_native_table_survives_the_classic_form_as_a_grid():
+def test_a_native_table_survives_the_classic_form_as_labels():
     body = Table(
         headers=("Command", "What it does"),
         rows=(("/pin", "Pin the replied message"), ("/rules", "Show this group's rules")),
@@ -181,8 +183,9 @@ def test_a_native_table_survives_the_classic_form_as_a_grid():
     classic = rich.classic(body)
 
     assert "<table" not in classic
-    assert "<pre>" in classic
-    assert "\u250c" in classic               # the box survives, aligned
+    assert "<pre>" not in classic
+    assert "\u250c" not in classic
+    assert "<b>Command</b>: /pin" in classic
     assert "/pin" in classic and "Pin the replied message" in classic
 
 
@@ -312,7 +315,7 @@ def test_invalid_card_falls_back_locally_with_keyboard(restore_rich, path):
         result = query.edits[0]
         text = result['text']
     assert result['reply_markup'] is keyboard
-    assert '<pre>' in text and 'ready' in text and '<table' not in text
+    assert '<pre>' not in text and 'ready' in text and '<table' not in text
     assert tables.rich_enabled()
 
 
@@ -344,4 +347,4 @@ def test_prebuilt_rich_card_degrades_after_support_was_disabled(restore_rich, pa
     else:
         asyncio.run(rich.reply(message, body))
         text = message.replies[0][0]
-    assert '<pre>' in text and '<table' not in text
+    assert '<pre>' not in text and '<table' not in text

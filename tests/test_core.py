@@ -109,7 +109,7 @@ def test_status_reports_live_counters(tmp_path):
     assert "Probes" in body
     # Rendered as a table row now: label and value are separate cells.
     assert "Jobs running" in body
-    assert "| 0 " in body or "\u2502 0 " in body or "<td>0</td>" in body
+    assert "<b>Jobs running</b>: 0" in body or "<td>0</td>" in body
 
 
 def test_cancel_actually_cancels_the_callers_job(tmp_path):

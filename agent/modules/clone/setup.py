@@ -183,10 +183,10 @@ class CloneSetup:
             await reply(message, panel('Clone encryption needs setup', icon=self.ctx.theme.emoji('lock'),
                 table=kv_table([('Status', 'No encryption key configured'),
                                 ('Who sets it', 'Deployment Owner only'),
-                                ('Other commands', 'No TOKEN_KEY needed unless storing clone credentials')]),
+                                ('Other commands', 'Available without clone encryption setup')]),
                 lines=['<code>TOKEN_KEY</code> encrypts stored clone bot tokens, AI keys and assistant sessions.',
                        'It is not your BotFather token, Telegram password or OTP. Clone users do not supply this key.'],
-                note='Owner: configure a stable random TOKEN_KEY in the hosting environment and keep a secure backup. '
+                note='Deployment Owner: configure a stable random TOKEN_KEY in the hosting environment and keep a secure backup. '
                      'Do not send it in Telegram or chat. Do not replace an existing key without a migration plan.',
                 footer='No credentials requested · no draft created · /mybots manages existing clones'))
             return

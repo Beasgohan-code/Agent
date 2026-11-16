@@ -131,7 +131,7 @@ def test_the_panel_has_one_management_suite_and_optional_buttons(tmp_path):
 
     asyncio.run(commands["plugins"](None, message))
 
-    assert "<pre>" in message.replies[0]          # editable classic grid
+    assert "<pre>" not in message.replies[0]  # readable HTML fallback
     slugs = [m.slug for m in bot.registry.manifests()]
     data = [b.callback_data for b in buttons(message.markup)]
     assert data == ["plugin:info:group"] + [f"plugin:info:{slug}" for slug in slugs if slug not in {*GROUP_CORE, "ops", "core"}]

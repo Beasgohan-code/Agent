@@ -168,7 +168,7 @@ def pre(markup: str) -> str:
     if "<table" in markup:
         return html.unescape(" ".join(CELL_RE.findall(markup)))
     match = PRE_RE.search(markup)
-    return html.unescape(match.group(1)) if match else ""
+    return html.unescape(match.group(1)) if match else html.unescape(re.sub(r"<[^>]+>", "", markup))
 
 
 # --- permissions -----------------------------------------------------------
