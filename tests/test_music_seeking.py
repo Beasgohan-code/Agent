@@ -9,6 +9,7 @@ import pytest
 
 from agent.modules.music.seeking import seek_target
 from agent.platform.voice import VoiceEngine, Playback, VoiceUnavailable
+from agent.platform import voice
 from test_music_controls import wire, invoke, CHAT, STRANGER
 
 
@@ -24,6 +25,10 @@ def test_bad_seek_targets(raw):
 
 
 def native(monkeypatch):
+    # These tests isolate acknowledgement/clock behavior; boundary coverage lives
+    # in test_native_media_safety with real local files and tool capability probes.
+    monkeypatch.setattr(voice, 'local_source', lambda source: source)
+    monkeypatch.setattr(voice, 'require_offline_options', AsyncMock())
     stream = SimpleNamespace(Flags=SimpleNamespace(IGNORE='ignore'))
     def media(source, **kwargs):
         return SimpleNamespace(source=source, **kwargs)
@@ -41,7 +46,7 @@ def test_native_seek_updates_clock_after_ack_only(monkeypatch):
         engine = native(monkeypatch)
         await engine.seek(CHAT, 90)
         stream = engine._call.play.await_args.args[1]
-        assert stream.ffmpeg_parameters == '-ss 90' and stream.video_flags == 'ignore'
+        assert stream.ffmpeg_parameters == voice.POLICY + ' -ss 90' and stream.video_flags == 'ignore'
         assert 90 <= engine.playback(CHAT).elapsed < 92
         before = engine.playback(CHAT).started_at
         engine._call.play.return_value = False

@@ -329,7 +329,10 @@ def build(ctx):
             return
         try:
             source, title = await resolve(message, argument or None)
-        except SourceError as exc:
+            validate = getattr(engine, 'validate_source', None)
+            if validate is not None:
+                source = validate(source)
+        except (SourceError, VoiceUnavailable) as exc:
             await reply(message, f"<b>Cannot play that</b>\n{html.escape(str(exc))}.")
             return
         if gate is not None and not await gate.allowed(message.chat.id, "music"):

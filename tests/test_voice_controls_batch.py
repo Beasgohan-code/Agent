@@ -28,7 +28,11 @@ async def operate(worker, method):
 
 @pytest.mark.parametrize('method', ['play', 'pause', 'resume', 'leave', 'volume'])
 @pytest.mark.parametrize('failure', ['timeout', 'false', 'error'])
-def test_failed_native_controls_keep_existing_state(monkeypatch, method, failure):
+def test_failed_native_controls_keep_existing_state(monkeypatch, tmp_path, method, failure):
+    path = tmp_path / "audio.wav"
+    path.write_bytes(b"test fixture")
+    monkeypatch.setattr(voice, "local_source", lambda source: str(path))
+    monkeypatch.setattr(voice, "require_offline_options", AsyncMock())
     async def scenario():
         worker = engine()
         if method == 'resume':

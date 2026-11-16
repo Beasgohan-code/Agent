@@ -1,9 +1,10 @@
 """Turning a command or a reply into something the engine can stream.
 
-Two sources are supported, and both are real:
+Input resolution is separate from native offline-only playback admission:
 
 * a URL — validated here before anything is fetched (http/https, no embedded
-  credentials, not a private address), then streamed by the engine itself;
+  credentials, not a private address). Native playback currently refuses remote
+  URLs until a bounded mediated-fetch path is implemented;
 * a Telegram media reply — downloaded by the bot (≤20 MB, the Bot API cap) and
   streamed from disk.
 

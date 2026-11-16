@@ -18,6 +18,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from .native_media import NativeMediaError, POLICY, local_source, require_offline_options
+
 logger = logging.getLogger(__name__)
 
 #: How long a stop may take before the process continues anyway.
@@ -220,11 +222,26 @@ class VoiceEngine:
             raise VoiceUnavailable("the voice engine is not running")
         return self._call
 
+    def validate_source(self, source: str) -> str:
+        """Admission check shared with queues; playback rechecks before native use."""
+        try:
+            return local_source(source)
+        except NativeMediaError as exc:
+            raise VoiceUnavailable(str(exc)) from None
+
     async def play(self, chat_id: int, source: str, *, title: str, requested_by: int | None = None) -> None:
         """Join the call in *chat_id* if needed and start streaming *source*."""
         call = self._require()
         try:
-            acknowledged = await asyncio.wait_for(call.play(int(chat_id), source), timeout=START_TIMEOUT)
+            source = local_source(source)
+            await require_offline_options()
+        except NativeMediaError as exc:
+            raise VoiceUnavailable(str(exc)) from None
+        try:
+            from pytgcalls.types import MediaStream
+            stream = MediaStream(source, video_flags=MediaStream.Flags.IGNORE,
+                                 ffmpeg_parameters=POLICY)
+            acknowledged = await asyncio.wait_for(call.play(int(chat_id), stream), timeout=START_TIMEOUT)
             if acknowledged is False:
                 raise VoiceUnavailable("Playback was not acknowledged.")
         except Exception as exc:  # noqa: BLE001 - the command reports the reason
@@ -249,9 +266,14 @@ class VoiceEngine:
         if playback.paused:
             raise VoiceUnavailable("Resume playback before seeking.")
         try:
+            assigned_source = local_source(playback.source)
+            await require_offline_options()
+        except NativeMediaError as exc:
+            raise VoiceUnavailable(str(exc)) from None
+        try:
             from pytgcalls.types import MediaStream
-            stream = MediaStream(playback.source, video_flags=MediaStream.Flags.IGNORE,
-                                 ffmpeg_parameters=f"-ss {seconds}")
+            stream = MediaStream(assigned_source, video_flags=MediaStream.Flags.IGNORE,
+                                 ffmpeg_parameters=f"{POLICY} -ss {seconds}")
             acknowledged = await asyncio.wait_for(call.play(int(chat_id), stream), timeout=START_TIMEOUT)
             if acknowledged is False:
                 raise VoiceUnavailable("Seek was not acknowledged.")

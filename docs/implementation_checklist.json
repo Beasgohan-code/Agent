@@ -2693,6 +2693,17 @@
         "Four PostgreSQL regression scenarios cover concurrent writers/clears, stale document flush, rollback/cancellation, isolation, bounds and handler persistence/denial"
       ],
       "validation": "Pre-fix probe submitted 2/persisted 1; new API/guard regressions failed before fix. Focused 119 passed (2.30s); full dirty 1811 passed (21.19s); isolated staged-source export 1724 passed (24.49s), no skips. Compileall/Pyflakes/diff checks passed. Telegram mocked; no production migration/deployment. Other ChatStore document races and exactly-once escalation remain outside scope."
+    },
+    {
+      "id": "net01-native-egress-failclosed",
+      "status": "completed",
+      "changes": [
+        "Fail-closed native voice playback/seek: reject remote protocols; require regular local files and offline protocol/container whitelists",
+        "Verify FFmpeg and FFprobe security-option support; bound and reap capability probes on timeout/cancellation",
+        "Real-engine queue admission rejects remote sources; preserve previous playback on rejection",
+        "Remote URL/YouTube playback deliberately disabled pending enforceable mediated fetching; not a native exploitation or sandbox certification"
+      ],
+      "validation": "15 boundary regressions red before fix. Final focused 87 passed (0.76s); dirty full 1833 passed (22.23s); exact staged-source export 1746 passed (23.37s), no skips, disposable PostgreSQL enabled. Compileall/Pyflakes/diff checks passed. Installed py-tgcalls command contracts tested with authored tool-help fixtures. FFmpeg/FFprobe binaries absent: no real native decode, exploit, live Telegram or deployment validation."
     }
   ],
   "production_changes": false,
