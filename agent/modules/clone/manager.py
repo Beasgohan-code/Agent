@@ -141,6 +141,44 @@ class CloneManager:
     def running(self) -> tuple[int, ...]:
         return tuple(sorted(self._running))
 
+    def observe_worker(self, bot_id: int) -> dict:
+        """Whitelisted local telemetry, never credentials or raw transport errors.
+
+        Missing local state is not a fleet-wide offline assertion. No worker is
+        constructed or contacted to manufacture a registry for a stopped clone.
+        """
+        entry = self._running.get(int(bot_id))
+        result = dict(observed=entry is not None, plugins=None, connected='Unavailable',
+                      activity='Unavailable', health='Unavailable')
+        if entry is None:
+            return result
+        bot, client, _ = entry
+        connected = getattr(client, 'is_connected', None)
+        result['connected'] = 'Yes' if connected is True else 'No' if connected is False else 'Unavailable'
+        registry = getattr(bot, 'registry', None)
+        if registry is not None:
+            result['plugins'] = tuple(dict(slug=m.slug, name=m.name, commands=tuple(m.commands),
+                enabled=registry.is_enabled(m.slug), scope=m.scope, permissions=tuple(m.permissions),
+                dependencies=tuple(m.dependencies), fields=tuple(m.config_schema),
+                credentials=tuple(m.required_credentials), capabilities=tuple(m.required_capabilities)) for m in registry.manifests())
+            # Built-ins are attached outside PluginRegistry. Read the bot's
+            # own effective catalogue rather than pretending they do not exist.
+            visible = getattr(bot, '_visible_commands', None)
+            if callable(visible):
+                known = {command for item in result['plugins'] for command in item['commands']}
+                builtins = tuple(sorted(set(visible()) - known))
+                if builtins:
+                    result['plugins'] += (dict(slug='navigation', name='Built-in navigation', commands=builtins,
+                        enabled=True, scope='private', permissions=(), dependencies=(), fields=(), credentials=(), capabilities=()),)
+        monitor = getattr(bot, 'health', None)
+        if monitor is not None:
+            snapshot = monitor.snapshot()
+            result['health'] = snapshot.state if snapshot.state in ('healthy', 'degraded', 'starting', 'unhealthy', 'stopped') else 'Unknown'
+            age = snapshot.seconds_since_activity
+            if type(age) in (float, int) and 0 <= age < 10**12:
+                result['activity'] = f'{int(age)}s ago · this worker session'
+        return result
+
     def username(self, bot_id: int) -> str:
         entry = self._running.get(int(bot_id))
         return entry[2] if entry else ""

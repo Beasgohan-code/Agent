@@ -82,6 +82,10 @@ def build(ctx):
     manager = CloneManager(ctx.settings, store, getattr(ctx, "clone_factory", None))
     events = getattr(ctx, "events", None)
     ctx.clones = manager
+    from .control_centre import CloneControlCentre
+    control_centre = CloneControlCentre(ctx, manager)
+    if ctx.actions is not None and not ctx.actions.handles('cc:x'):
+        ctx.actions.register('cc', control_centre.press)
     from ...platform.roles import SudoStore
     from .setup import CloneSetup
     if getattr(ctx, "sudo", None) is None:
@@ -143,9 +147,9 @@ def build(ctx):
             ),
             table=Table(headers=("Bot", "Profile", "State"), rows=rows),
             lines=tuple(
-                f"<b>{html.escape(clone.handle)}</b> — {html.escape(state.last_error[:160])}"
+                f"<b>{html.escape(clone.handle)}</b> — worker failed; open its dashboard diagnostics. Raw errors are hidden."
                 for clone in mine
-                if (state := manager.state(clone.bot_id)).state is lifecycle.State.FAILED
+                if manager.state(clone.bot_id).state is lifecycle.State.FAILED
             ),
             note=pitch(),
             footer=(
@@ -174,6 +178,8 @@ def build(ctx):
                     ),
                 ]
             )
+            buttons.append([ctx.theme.button(f'{clone.handle} · Dashboard', icon='bot',
+                            callback_data=f'cc:{clone.bot_id}:home', style=ButtonStyle.PRIMARY)])
             buttons.append([Button(f"ℹ {clone.handle} · Details", callback_data=f"{PREFIX}:{clone.bot_id}:details"),
                             Button("↻ Restart", callback_data=f"{PREFIX}:{clone.bot_id}:restart")])
         buttons.append([Button("↻ Refresh all", callback_data="clone:refresh")])

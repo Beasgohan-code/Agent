@@ -1,0 +1,143 @@
+"""Owner-private observations of the existing clone authority, never a second writer.
+
+This first slice is read-only. Missing local workers/telemetry are not evidence
+that a worker on another controller is offline. No bot credentials enter cards.
+"""
+import logging
+import re
+import time
+
+from pyrogram.errors import MessageNotModified
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.enums import ButtonStyle
+
+from ...ui.tables import Table, kv_table, panel, markup
+from ...utils import rich
+
+logger = logging.getLogger(__name__)
+PAGE_SIZE = 6
+
+
+class CloneControlCentre:
+    def __init__(self, ctx, manager):
+        self.ctx, self.manager, self.store = ctx, manager, manager._store
+
+    def button(self, clone, title, view, icon='info'):
+        return self.ctx.theme.button(title, icon=icon, callback_data=f'cc:{clone.bot_id}:{view}')
+
+    @staticmethod
+    def date(value):
+        return time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(value)) if value else 'Unavailable'
+
+    def navigation(self, clone):
+        return [self.button(clone, 'Dashboard', 'home', 'bot'),
+                self.ctx.theme.button('My Bots', icon='back', callback_data='clone:refresh')]
+
+    async def render(self, clone, view, page=0):
+        observation = self.manager.observe_worker(clone.bot_id)
+        plugins = observation['plugins']
+        metadata = await self.manager.configuration.read(clone.bot_id) if self.store._db is not None else None
+        rows, keys = [], []
+        if view == 'home':
+            registered = sum(len(p['commands']) for p in plugins) if plugins is not None else 'Unavailable'
+            enabled = sum(len(p['commands']) for p in plugins if p['enabled']) if plugins is not None else 'Unavailable'
+            rows = [('Name', clone.name[:80] or 'Not saved'), ('Username', clone.handle[:80]), ('Telegram ID', str(clone.bot_id)),
+                    ('Created', self.date(clone.created_at)), ('Local lifecycle', self.manager.state(clone.bot_id).label),
+                    ('Local worker', 'Observed in this controller' if observation['observed'] else 'Not observed in this controller'),
+                    ('Desired intent', 'Stopped' if clone.disabled else 'Start eligible; subject to entitlement and validation'),
+                    ('Configuration', metadata['configuration_status'] if metadata else 'Unavailable · legacy local record'),
+                    ('Desired / applied revision', f"{metadata['desired_revision']} / {metadata['applied_revision']}" if metadata else 'Unavailable'),
+                    ('Lifecycle generation', str(clone.lifecycle_generation)),
+                    ('Registered / enabled commands', f'{registered} / {enabled}'),
+                    ('Enabled plugins', str(sum(bool(p['enabled']) for p in plugins if p['slug'] != 'navigation')) if plugins is not None else 'Unavailable'),
+                    ('Last activity', observation['activity']), ('Profile picture', 'Unavailable · not fetched'),
+                    ('Per-worker CPU / RAM', 'Unavailable · workers share this process')]
+            keys = [[self.button(clone, 'Commands', 'commands:0', 'search'), self.button(clone, 'Plugins', 'plugins:0', 'gear')],
+                    [self.button(clone, 'Configuration', 'configuration', 'gear'), self.button(clone, 'Diagnostics', 'diagnostics', 'stats')],
+                    [self.button(clone, 'Refresh', 'home', 'stats')]]
+            if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{4,31}', clone.username or ''):
+                keys.append([InlineKeyboardButton('Open Bot', url=f'https://t.me/{clone.username}',
+                             icon_custom_emoji_id=self.ctx.theme.emoji_id('link'), style=ButtonStyle.PRIMARY)])
+            note = 'Local observation is not fleet-wide online status. Registered commands do not prove provider readiness or group activation.'
+        elif view == 'configuration':
+            rows = [('Profile', clone.profile), ('Selected features', ', '.join(clone.selected_plugins) or 'Legacy profile selection'),
+                    ('Group Management', 'Mandatory · always available'),
+                    ('Archive channel', str(clone.storage_channel) if clone.storage_channel else 'Not configured'),
+                    ('Log channel', str(clone.log_channel) if clone.log_channel else 'Not configured'),
+                    ('Desired revision', str(metadata['desired_revision']) if metadata else 'Unavailable'),
+                    ('Applied revision', str(metadata['applied_revision']) if metadata else 'Unavailable'),
+                    ('Pending revision', str(metadata['pending_revision']) if metadata and metadata['pending_revision'] is not None else 'None observed'),
+                    ('Last applied', self.date(metadata['last_applied_at']) if metadata else 'Unavailable')]
+            keys = [[self.ctx.theme.button('Existing profile editor', icon='gear', callback_data=f'clone:{clone.bot_id}:profile')]]
+            note = 'Read-only saved configuration. The existing profile editor uses the canonical revision writer. Generic field editing/reset and command toggles are not implemented in this dashboard.'
+        elif view == 'diagnostics':
+            rows = [('Local lifecycle', self.manager.state(clone.bot_id).label),
+                    ('Startup attempts', str(self.manager.state(clone.bot_id).attempts)),
+                    ('Last lifecycle failure', 'Recorded · inspect controller #Errors privately' if self.manager.state(clone.bot_id).last_error else 'None recorded locally'),
+                    ('Connected client', observation['connected']), ('Health', observation['health']),
+                    ('Last activity', observation['activity']),
+                    ('Configuration status', metadata['configuration_status'] if metadata else 'Unavailable'),
+                    ('Failed revision', str(metadata['last_failed_revision']) if metadata and metadata['last_failed_revision'] else 'None observed'),
+                    ('Logs / recent event feed', 'Unavailable in this dashboard')]
+            note = 'If configuration is pending or failed, review setup with the existing profile editor and lifecycle controls. Missing local observation is not proof of a remote failure. Raw errors and credentials are deliberately hidden.'
+        elif view in ('commands', 'plugins'):
+            if plugins is None:
+                rows = [('Registry', 'Unavailable · no inspectable local worker')]
+                note = 'No command list is inferred from a saved profile. Start through the existing controls, then refresh after successful reconciliation.'
+            else:
+                items = [p for p in plugins] if view == 'plugins' else [(p, command) for p in plugins if p['enabled'] for command in p['commands']]
+                pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
+                if not 0 <= page < pages:
+                    raise ValueError('Stale page')
+                if view == 'plugins':
+                    rows = [(p['name'], ('Enabled' if p['enabled'] else 'Disabled') + f" · {len(p['commands'])} registered commands\n" +
+                             'Scope: ' + p['scope'] + '\nPermissions: ' + (', '.join(p['permissions']) or 'None declared') +
+                             '\nDependencies: ' + (', '.join(p['dependencies']) or 'None declared') +
+                             '\nConfiguration fields: ' + (', '.join(p['fields']) or 'None declared') +
+                             '\nRequired credential names: ' + (', '.join(p['credentials']) or 'None declared') +
+                             '\nRequired capabilities: ' + (', '.join(p['capabilities']) or 'None declared')) for p in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]]
+                else:
+                    from ...platform.menu import DESCRIPTIONS
+                    rows = [(markup(f'<code>/{command}</code>'), DESCRIPTIONS.get(command, 'Send this command for current usage.') + '\nPlugin: ' + p['name'] + '\nScope: ' + p['scope'] + '\nPermissions: ' + (', '.join(p['permissions']) or 'None declared')) for p, command in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]]
+                paging = []
+                if page:
+                    paging.append(self.button(clone, 'Previous', f'{view}:{page-1}', 'back'))
+                if page + 1 < pages:
+                    paging.append(self.button(clone, 'Next', f'{view}:{page+1}', 'arrow'))
+                if paging:
+                    keys.append(paging)
+                rows.append(('Page', f'{page+1} / {pages} · {len(items)} entries'))
+                note = 'Snapshot of this clone’s actual local registry. Disabled plugin commands are excluded from Commands. Individual command toggles are not supported here; plugin runtime and group approval are separate.'
+        else:
+            raise ValueError('Stale view')
+        keys.append(self.navigation(clone))
+        return panel('Clone dashboard · ' + view.title(), icon=self.ctx.theme.emoji('bot'),
+                     subtitle=f'Bot {clone.bot_id}', table=kv_table(rows) if view not in ('commands', 'plugins') else Table(headers=('Item', 'Details'), rows=tuple(rows)),
+                     note=note, footer='Owner-private · existing in-process workers · no OS sandbox'), InlineKeyboardMarkup(keys)
+
+    async def press(self, client, query, rest):
+        user = getattr(query, 'from_user', None)
+        uid = getattr(user, 'id', None)
+        origin = getattr(query, 'message', None)
+        if type(uid) is not int or uid <= 0 or getattr(getattr(origin, 'chat', None), 'id', None) != uid:
+            await query.answer('Open /mybots privately as yourself.', show_alert=True)
+            return
+        match = re.fullmatch(r'([0-9]{6,12}):(home|configuration|diagnostics|commands|plugins)(?::([0-9]{1,4}))?', rest)
+        if not match or ((match[2] in ('commands', 'plugins')) != (match[3] is not None)):
+            await query.answer('That dashboard control is stale.', show_alert=True)
+            return
+        try:
+            await self.store.aall()  # Canonical reload before ownership check, including after deletion/transfer.
+            clone = self.store.get(int(match[1]))
+            if clone is None or clone.owner_id != uid:
+                await query.answer('This clone is unavailable to you. Refresh My Bots.', show_alert=True)
+                return
+            body, keyboard = await self.render(clone, match[2], int(match[3] or 0))
+            try:
+                await rich.edit(query, body, reply_markup=keyboard)
+            except MessageNotModified:
+                pass
+            await query.answer()
+        except Exception as exc:
+            logger.warning('#Errors Clone dashboard unavailable (%s)', type(exc).__name__)
+            await query.answer('Dashboard could not be confirmed. Refresh My Bots; no changes were made.', show_alert=True)
