@@ -1,7 +1,7 @@
 """Focused worker front doors. Presentation only, never an authorization source."""
 import re
 
-from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
+from pyrogram.types import InlineKeyboardMarkup as Keyboard
 from pyrogram.enums import ButtonStyle
 
 from ..platform.policy import GROUP_CORE
@@ -60,11 +60,14 @@ def allowed(theme, slug):
 
 
 def button(theme, slug, *, page=0):
-    from .theme import strip_custom_emoji
     title, icon, _ = PROFILES[slug]
-    return Button(f'{strip_custom_emoji(theme.emoji(icon))} {title}',
-                  callback_data=f'worker:{slug}:{page}',
-                  icon_custom_emoji_id=theme.emoji_id(icon), style=ButtonStyle.PRIMARY)
+    return theme.button(title, icon=icon, callback_data=f'worker:{slug}:{page}',
+                        style=ButtonStyle.PRIMARY)
+
+
+def navigation(theme):
+    return [theme.button('Home', icon='bot', callback_data=CB_HOME),
+            theme.button('All tools', icon='search', callback_data=CB_HELP, style=ButtonStyle.PRIMARY)]
 
 
 def overview(user, theme, *, active=None, help_mode=False):
@@ -84,15 +87,15 @@ def overview(user, theme, *, active=None, help_mode=False):
         preferred = [command for command in QUICK_START[slug] if command in available]
         examples = ' · '.join('/' + command for command in (preferred or available[:3]))
         rows.append((markup(f'{theme.emoji(accent)} {rich_esc(name)}'), examples))
-    lines = [f'Welcome, <b>{rich_esc(display_name(user) or "there")}</b>.']
+    lines = [f'{theme.emoji("wave")} Welcome, <b>{rich_esc(display_name(user) or "there")}</b>.']
     lines.extend(PROFILES[slug][2] for slug in primary)
     if not visible:
         lines.append('No tools are currently available. Ask this bot’s owner to check its configuration.')
-    body = panel(title, icon=theme.emoji(icon), table=Table(headers=('Tools', 'Try'), rows=tuple(rows)),
+    body = panel(title, icon=theme.emoji(icon), subtitle='Explore your tools' if help_mode else 'Quick start', table=Table(headers=('Tools', 'Try'), rows=tuple(rows)),
                  lines=lines, note='Choose a tool below for instructions.' if not help_mode else 'Group actions require administrator permissions. Optional tools require owner approval and group activation.',
                  footer='/help command · More detail for any available command')
     keys = [[button(theme, slug)] for slug in visible]
-    keys.append([Button('How to use', callback_data=CB_HELP, style=ButtonStyle.PRIMARY), Button('About', callback_data='worker:about')])
+    keys.append([theme.button('How to use', icon='question', callback_data=CB_HELP, style=ButtonStyle.PRIMARY), theme.button('About', icon='info', callback_data='worker:about')])
     return Screen(body, Keyboard(keys))
 
 
@@ -112,14 +115,14 @@ def plugin_screen(user, theme, slug, *, active=None, page=0):
                  for command in available[page * PAGE_SIZE:(page + 1) * PAGE_SIZE])
     body = panel(f'{title} · Commands', icon=theme.emoji(icon),
                  table=Table(headers=('Command', 'Usage'), rows=rows), lines=[introduction],
-                 note='Only commands registered in this worker are listed. Each command rechecks its own permissions; viewing this page grants no access.',
-                 footer=f'Page {page + 1} of {pages} · /help <command> · Prefixes / ! . ?')
-    navigation = []
+                 note='Choose a command from this page. Administrator actions still require the appropriate permissions.',
+                 footer=f'Page {page + 1} of {pages} · {len(available)} commands · /help command')
+    paging = []
     if page:
-        navigation.append(Button('‹ Previous', callback_data=f'worker:{slug}:{page - 1}'))
+        paging.append(theme.button('Previous', icon='back', callback_data=f'worker:{slug}:{page - 1}'))
     if page + 1 < pages:
-        navigation.append(Button('Next ›', callback_data=f'worker:{slug}:{page + 1}'))
-    keys = ([navigation] if navigation else []) + [[Button('All tools', callback_data=CB_HELP), Button('⌂ Home', callback_data=CB_HOME)]]
+        paging.append(theme.button('Next', icon='arrow', callback_data=f'worker:{slug}:{page + 1}', style=ButtonStyle.PRIMARY))
+    keys = ([paging] if paging else []) + [navigation(theme)]
     return Screen(body, Keyboard(keys))
 
 
@@ -137,14 +140,14 @@ def about_screen(user, theme, *, active=None):
     from .screens import Screen
     configured = selected(theme) or ('moderation',)
     identity = PROFILES[configured[0]][0] if len(configured) == 1 else 'Multi-plugin'
-    rows = tuple((PROFILES[slug][0], str(len(commands(slug, active))))
+    rows = tuple((markup(f'{theme.emoji(PROFILES[slug][1])} {PROFILES[slug][0]}'), str(len(commands(slug, active))))
                  for slug in dict.fromkeys((*configured, 'moderation')) if commands(slug, active))
-    body = panel(f'About · {identity}', icon=theme.emoji('info'),
+    body = panel(f'About · {identity}', icon=theme.emoji('info'), subtitle='Purpose & available tools',
                  lines=[PROFILES[slug][2] for slug in configured],
-                 table=Table(headers=('Available tools', 'Commands'), rows=rows),
+                 table=Table(headers=('Tools', 'Commands'), rows=rows),
                  note='Availability depends on this bot’s configuration. Private data and administrator actions remain permission-protected.',
                  footer='Open Help for usage and available commands.')
-    return Screen(body, Keyboard([[Button('Home', callback_data=CB_HOME), Button('Help', callback_data=CB_HELP)]]))
+    return Screen(body, Keyboard([navigation(theme)]))
 
 
 def lookup(argument, user, theme, *, active=None):
@@ -159,15 +162,15 @@ def lookup(argument, user, theme, *, active=None):
             return screen
     if not query or active is None or query not in active or query not in DESCRIPTIONS:
         return overview(user, theme, active=active, help_mode=True)
-    body = panel('Command help', icon=theme.emoji('help'),
+    body = panel('Command help', icon=theme.emoji('question'),
                  table=Table(headers=('Command', 'Usage'), rows=((markup(f'<code>/{query}</code>'), DESCRIPTIONS[query]),)),
                  note='Each action checks the permissions it needs.', footer='Use /help to explore all available tools.')
-    return Screen(body, Keyboard([[Button('All tools', callback_data=CB_HELP), Button('Home', callback_data=CB_HOME)]]))
+    return Screen(body, Keyboard([navigation(theme)]))
 
 
 def profile_screen(user, theme, *, active=None):
     from .screens import Screen, display_name
-    body = panel('Your profile', icon=theme.emoji('info'),
+    body = panel('Your profile', icon=theme.emoji('info'), subtitle='Your Telegram details',
                  table=Table(headers=('Detail', 'Value'), rows=(
                      ('Name', display_name(user) or 'Not provided'),
                      ('Telegram ID', str(getattr(user, 'id', None) or 'Not provided')),
@@ -175,4 +178,4 @@ def profile_screen(user, theme, *, active=None):
                  )),
                  note='These details come from your Telegram profile, not a paid plan.',
                  footer='Personal settings and access are managed by this bot.')
-    return Screen(body, Keyboard([[Button('Home', callback_data=CB_HOME), Button('Help', callback_data=CB_HELP)]]))
+    return Screen(body, Keyboard([navigation(theme)]))

@@ -33,6 +33,17 @@ class Theme:
         value = self._custom_emoji.get(name)
         return str(value) if value else None
 
+    def button(self, text: str, *, icon: str, callback_data: str, style=None):
+        """A native custom-emoji button with a readable Unicode fallback label."""
+        from pyrogram.enums import ButtonStyle
+        from pyrogram.types import InlineKeyboardButton
+        glyph = EMOJI_FALLBACKS.get(icon, '')
+        return InlineKeyboardButton(
+            text=f'{glyph} {text}'.strip(), callback_data=callback_data,
+            icon_custom_emoji_id=self.emoji_id(icon),
+            style=ButtonStyle.DEFAULT if style is None else style,
+        )
+
     @property
     def custom_emoji_enabled(self) -> bool:
         return bool(self._custom_emoji)
