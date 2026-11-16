@@ -182,6 +182,7 @@ def build(ctx):
                             callback_data=f'cc:{clone.bot_id}:home', style=ButtonStyle.PRIMARY)])
             buttons.append([Button(f"ℹ {clone.handle} · Details", callback_data=f"{PREFIX}:{clone.bot_id}:details"),
                             Button("↻ Restart", callback_data=f"{PREFIX}:{clone.bot_id}:restart")])
+        buttons.append([ctx.theme.button('Browse My Bots', icon='search', callback_data='cc:list:all:0')])
         buttons.append([Button("↻ Refresh all", callback_data="clone:refresh")])
         buttons.append(
             [

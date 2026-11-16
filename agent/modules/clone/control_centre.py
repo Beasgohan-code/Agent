@@ -33,7 +33,7 @@ class CloneControlCentre:
 
     def navigation(self, clone):
         return [self.button(clone, 'Dashboard', 'home', 'bot'),
-                self.ctx.theme.button('My Bots', icon='back', callback_data='clone:refresh')]
+                self.ctx.theme.button('My Bots', icon='back', callback_data='cc:list:all:0')]
 
     def confirmation(self, clone, action, revision, generation):
         body = panel(f'Confirm {action}', icon=self.ctx.theme.emoji('warn'),
@@ -145,6 +145,48 @@ class CloneControlCentre:
                      subtitle=f'Bot {clone.bot_id}', table=kv_table(rows) if view not in ('commands', 'plugins') else Table(headers=('Item', 'Details'), rows=tuple(rows)),
                      lines=[operation] if operation else [], note=note, footer='Owner-private · existing in-process workers · no OS sandbox'), InlineKeyboardMarkup(keys)
 
+    async def directory(self, query, uid, mode, page):
+        """Owner-only canonical directory. Intent is not observed availability."""
+        try:
+            await self.store.aall()
+            owned = sorted((c for c in self.store.all() if c.owner_id == uid), key=lambda c: c.bot_id)
+            matches = [c for c in owned if mode == 'all' or (c.disabled if mode == 'stopped' else not c.disabled)]
+            pages = max(1, (len(matches) + PAGE_SIZE - 1) // PAGE_SIZE)
+            if page >= pages:
+                await query.answer('That page changed. Open My Bots again.', show_alert=True)
+                return
+            rows, keys = [], []
+            for clone in matches[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
+                rows.append((clone.name[:48] or clone.handle[:48],
+                    f'Bot {clone.bot_id} · ' + ('Saved stop intent' if clone.disabled else 'Saved start eligibility') +
+                    '\nLocal worker: ' + ('observed' if self.manager.is_running(clone.bot_id) else 'not observed')))
+                keys.append([self.button(clone, (clone.name or clone.handle)[:40], 'home', 'bot')])
+            for pair in ((('all', 'All'), ('eligible', 'Start eligible')), (('stopped', 'Stop intent'), (mode, 'Refresh'))):
+                keys.append([self.ctx.theme.button(label, icon='stats' if label == 'Refresh' else 'search',
+                    callback_data=f'cc:list:{value}:0') for value, label in pair])
+            paging = []
+            if page:
+                paging.append(self.ctx.theme.button('Previous', icon='back', callback_data=f'cc:list:{mode}:{page-1}'))
+            if page + 1 < pages:
+                paging.append(self.ctx.theme.button('Next', icon='arrow', callback_data=f'cc:list:{mode}:{page+1}'))
+            if paging:
+                keys.append(paging)
+            keys.append([self.ctx.theme.button('Controller panel', icon='back', callback_data='clone:refresh')])
+            body = panel('My Bots', icon=self.ctx.theme.emoji('bot'),
+                subtitle=f'{len(matches)} matching · {len(owned)} owned · Page {page+1} / {pages}',
+                table=kv_table(rows) if rows else None,
+                lines=[] if rows else ['No clones match this filter. Choose All or use /clone to begin setup.'],
+                note='Filters show saved intent, not fleet-wide online status. Start eligibility is still subject to Premium and validation. Local worker observation only describes this controller.',
+                footer='Owner-private · select a bot to open its dashboard')
+            try:
+                await rich.edit(query, body, reply_markup=InlineKeyboardMarkup(keys))
+            except MessageNotModified:
+                pass
+            await query.answer()
+        except Exception as exc:
+            logger.warning('#Errors Clone directory unavailable (%s)', type(exc).__name__)
+            await query.answer('Saved bots could not be read safely. Retry My Bots after checking controller availability.', show_alert=True)
+
     async def reset_channel(self, query, uid, match):
         """Narrow, non-secret editor; never reconfigure workers inside a save."""
         from .configuration import ConfigurationWriteError
@@ -197,6 +239,10 @@ class CloneControlCentre:
         if type(uid) is not int or uid <= 0 or getattr(getattr(origin, 'chat', None), 'id', None) != uid:
             await query.answer('Open /mybots privately as yourself.', show_alert=True)
             return
+        directory_match = re.fullmatch(r'list:(all|eligible|stopped):([0-9]{1,4})', rest)
+        if directory_match:
+            await self.directory(query, uid, directory_match[1], int(directory_match[2]))
+            return
         reset_match = re.fullmatch(r'([0-9]{6,12}):(reset|save):(log_channel|storage_channel):([0-9]{1,12}):([0-9]{1,12})', rest)
         if reset_match:
             await self.reset_channel(query, uid, reset_match)
@@ -230,7 +276,7 @@ class CloneControlCentre:
                     if action == 'delete':
                         body = panel('Clone removed', icon=self.ctx.theme.emoji('info'), lines=[result],
                             note='This removes the managed record, not messages/files already delivered or all retained worker data.')
-                        keyboard = InlineKeyboardMarkup([[self.ctx.theme.button('My Bots', icon='back', callback_data='clone:refresh')]])
+                        keyboard = InlineKeyboardMarkup([[self.ctx.theme.button('My Bots', icon='back', callback_data='cc:list:all:0')]])
                     elif current is None or current.owner_id != uid:
                         raise ControlConflict('Clone changed during the operation. Refresh My Bots.')
                     else:
