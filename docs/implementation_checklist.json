@@ -82,6 +82,22 @@
         "Workers are in-process clients, not OS-process isolation or sandboxing",
         "No premium revocation policy changes, production data, deployment, push or PR merge"
       ]
+    },
+    {
+      "id": "phase3-clean-snapshot-test-contract-fixes",
+      "status": "validated-local",
+      "summary": "Fix three reproducible committed-snapshot test failures: rejected synchronous PostgreSQL link/clone mutations and obsolete dot-separated link-token assumption. Only relevant test hunks staged; unrelated work preserved.",
+      "evidence": {
+        "red": "Isolated git archive of 006ec8b: 3 failed,875 passed in10.22s; disposable PostgreSQL",
+        "green_snapshot": "Isolated tracked-file export plus exact staged test fixes:878 passed,no skips,in10.22s; no dirty-tree source dependencies copied",
+        "dirty_tree": "1791 passed,no skips,in20.48s; disposable PostgreSQL",
+        "static": "compileall and pyflakes passed in both working tree and isolated export; working/staged diff checks passed"
+      },
+      "limitations": [
+        "Isolated export uses existing installed virtualenv, not a fresh dependency installation or live Telegram test",
+        "Clean export contains878 tracked tests; additional local uncommitted tests account for dirty-tree total",
+        "No production data,deployment,merge or unrelated feature commits"
+      ]
     }
   ]
 }
