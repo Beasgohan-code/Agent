@@ -87,7 +87,7 @@ def build(ctx):
 
     queues = QueueBook()
     from .queue_cards import QueueCards
-    queue_cards = QueueCards()
+    queue_cards = QueueCards(theme=ctx.theme)
     history, volumes = {}, {}
     locks = WeakValueDictionary()
 

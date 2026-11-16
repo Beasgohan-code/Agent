@@ -5,25 +5,28 @@ import time
 from collections import OrderedDict
 
 from pyrogram.types import (
-    InlineKeyboardButton as Button,
     InlineKeyboardMarkup as Keyboard,
 )
 from ...utils.rich import reply, edit
+from ...ui.theme import Theme
+from pyrogram.enums import ButtonStyle
 
 
 class QueueCards:
-    def __init__(self, *, clock=time.monotonic):
+    def __init__(self, *, clock=time.monotonic, theme=None):
+        self.theme = theme if theme is not None else Theme()
         self.clock = clock
         self.cards = OrderedDict()
 
     def keyboard(self, token, page, pages):
-        row = []
+        paging = []
         if page > 1:
-            row.append(Button("← Previous", callback_data=f"mqueue:{token}:{page - 1}"))
-        row.append(Button("Refresh", callback_data=f"mqueue:{token}:{page}"))
+            paging.append(self.theme.button('Previous', icon='back', callback_data=f'mqueue:{token}:{page - 1}'))
         if page < pages:
-            row.append(Button("Next →", callback_data=f"mqueue:{token}:{page + 1}"))
-        return Keyboard([row, [Button("Close", callback_data=f"mqueue:{token}:close")]])
+            paging.append(self.theme.button('Next', icon='arrow', callback_data=f'mqueue:{token}:{page + 1}', style=ButtonStyle.PRIMARY))
+        controls = [self.theme.button('Refresh', icon='stats', callback_data=f'mqueue:{token}:{page}'),
+                    self.theme.button('Close', icon='ban', callback_data=f'mqueue:{token}:close', style=ButtonStyle.DANGER)]
+        return Keyboard(([paging] if paging else []) + [controls])
 
     def resolve(self, query, token):
         entry = self.cards.get(token)
