@@ -127,7 +127,8 @@ def build(ctx):
         previous, waiting = queue.current, list(queue.waiting)
         track = queue.advance(force=force)
         if track is None:
-            queues.drop(chat_id)
+            # Queue exhaustion proposes leaving; preserve intent until acknowledgement.
+            queue.current, queue.waiting = previous, waiting
             return None
         try:
             source = track.source
@@ -175,10 +176,13 @@ def build(ctx):
         """Called by the engine when a stream finishes on its own."""
         try:
             async with chat_lock(chat_id):
+                if queues.peek(chat_id) is None:
+                    return  # Ignore late completion after acknowledged stop/cleanup.
                 if await _play_next(chat_id) is None:
                     await engine.leave(chat_id)
-        except Exception:  # noqa: BLE001 - an ended stream must not kill the handler
-            logger.exception("could not advance the queue in chat %s", chat_id)
+                    queues.drop(chat_id)
+        except Exception as exc:  # noqa: BLE001 - retain recoverable intent, not raw errors
+            logger.warning("#Errors Music queue transition unconfirmed chat=%s (%s)", chat_id, type(exc).__name__)
 
     def _card(chat_id: int) -> Panel:
         """The player card, read from the engine at the moment it is drawn."""
@@ -279,6 +283,7 @@ def build(ctx):
                         logger.debug("leave after an empty skip failed", exc_info=True)
                         await query.answer("Queue finished, but leaving was not confirmed. Check /voicehealth.", show_alert=True)
                         return
+                    queues.drop(chat_id)
                     said = "Queue finished \u2014 left the voice chat."
                 else:
                     said = f"Now playing {started}."
@@ -420,6 +425,7 @@ def build(ctx):
                 logger.debug("leave after empty skip failed", exc_info=True)
                 await reply(message, "Queue finished, but leaving the voice chat was not confirmed. Check /voicehealth and retry /leave.")
                 return
+            queues.drop(message.chat.id)
             await reply(message, "Queue finished — left the voice chat.")
             return
         await reply(message, f"Now playing <b>{html.escape(started)}</b>.")
