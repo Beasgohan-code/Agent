@@ -317,8 +317,8 @@ def build(ctx):
         for entry in state:
             locked = entry["protected"]
             row_buttons.append(
-                Button(
-                    text=f"{'🔒' if locked else ('✅' if entry['enabled'] else '⛔')} {entry.get('name') or entry['slug']}",
+                ctx.theme.button(
+                    text=f"{entry.get('name') or entry['slug']}", icon='lock' if locked else 'gear',
                     callback_data=f"{PLUGIN_PREFIX}:info:{entry['slug']}",
                     style=(ButtonStyle.SUCCESS if entry["enabled"] else ButtonStyle.DEFAULT),
                     disabled=locked,
@@ -350,10 +350,11 @@ def build(ctx):
             footer='Refresh is read-only. Use /help for command usage; credentials are never displayed here.')
         buttons = []
         if not entry['protected'] and entry.get('tracked_handlers', 0):
-            buttons.append([Button('Disable runtime…' if entry['enabled'] else 'Enable runtime',
+            buttons.append([ctx.theme.button('Disable runtime…' if entry['enabled'] else 'Enable runtime',
+                icon='ban' if entry['enabled'] else 'bolt', style=ButtonStyle.DANGER if entry['enabled'] else ButtonStyle.PRIMARY,
                 callback_data=f'{PLUGIN_PREFIX}:ask:{slug}' if entry['enabled'] else f'{PLUGIN_PREFIX}:on:{slug}')])
-        buttons += [[Button('Refresh', callback_data=f'{PLUGIN_PREFIX}:info:{slug}')],
-                    [Button('‹ Plugin runtime', callback_data=f'{PLUGIN_PREFIX}:home')]]
+        buttons += [[ctx.theme.button('Refresh', icon='stats', style=ButtonStyle.DEFAULT, callback_data=f'{PLUGIN_PREFIX}:info:{slug}')],
+                    [ctx.theme.button('‹ Plugin runtime', icon='back', style=ButtonStyle.DEFAULT, callback_data=f'{PLUGIN_PREFIX}:home')]]
         return body, Keyboard(buttons)
 
     async def _edit_plugin(query, body, keyboard):
@@ -395,8 +396,8 @@ def build(ctx):
                 f'Detach <b>{html.escape(slug)}</b> handlers for this bot? Its commands stop responding in every chat.',
                 'This does not revoke Owner approval or release group slots. Running external jobs are not guaranteed to stop.'],
                 note='Use the group plugin panel to disable only one group.'), Keyboard([
-                    [Button('Confirm disable runtime', callback_data=f'{PLUGIN_PREFIX}:off:{slug}')],
-                    [Button('Cancel', callback_data=f'{PLUGIN_PREFIX}:info:{slug}')]]))
+                    [ctx.theme.button('Confirm disable runtime', icon='ban', style=ButtonStyle.DANGER, callback_data=f'{PLUGIN_PREFIX}:off:{slug}')],
+                    [ctx.theme.button('Cancel', icon='back', style=ButtonStyle.DEFAULT, callback_data=f'{PLUGIN_PREFIX}:info:{slug}')]]))
             await query.answer()
             return
         try:

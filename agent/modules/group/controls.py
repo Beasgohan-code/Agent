@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 from pyrogram.enums import ChatType, ButtonStyle
 from pyrogram.types import (
-    InlineKeyboardButton as Button,
     InlineKeyboardMarkup as Keyboard,
 )
 
@@ -25,18 +24,18 @@ PREFIX = "gmanage"
 def keyboard(ctx):
     rows = [
         [
-            Button("Welcome messages", callback_data="gmanage:welcome:show"),
-            Button("Goodbye messages", callback_data="gmanage:goodbye:show"),
+            ctx.theme.button("Welcome messages", icon="sparkles", callback_data="gmanage:welcome:show"),
+            ctx.theme.button("Goodbye messages", icon="back", callback_data="gmanage:goodbye:show"),
         ],
         [
-            Button("Protection controls", callback_data="gmanage:protection:show"),
-            Button("Group rules", callback_data="gmanage:rules:show"),
+            ctx.theme.button("Protection controls", icon="shield", callback_data="gmanage:protection:show"),
+            ctx.theme.button("Group rules", icon="pin", callback_data="gmanage:rules:show"),
         ],
     ]
-    rows.append([Button("Blocklist settings", callback_data="gmanage:blocklist:show")])
+    rows.append([ctx.theme.button("Blocklist settings", icon="ban", callback_data="gmanage:blocklist:show")])
     if getattr(ctx, "group_plugin_panel", None) is not None:
-        rows.append([Button("Optional plugins", callback_data="gplug:page:0")])
-    rows.append([Button("Refresh overview", callback_data="gmanage:home:show")])
+        rows.append([ctx.theme.button("Optional plugins", icon="gear", callback_data="gplug:page:0")])
+    rows.append([ctx.theme.button("Refresh overview", icon="stats", callback_data="gmanage:home:show")])
     return Keyboard(rows)
 
 
@@ -109,7 +108,7 @@ def register(ctx):
                     return
                 state = await read_blocklist(ctx, chat.id)
                 text = panel(
-                    "Blocklist settings",
+                    "Blocklist settings", subtitle="Triggers, actions & message deletion",
                     table=kv_table(
                         [
                             ("Triggers", str(len(state["entries"]))),
@@ -122,8 +121,8 @@ def register(ctx):
                 )
                 buttons = Keyboard(
                     [
-                        [Button("Refresh", callback_data="gmanage:blocklist:show")],
-                        [Button("Group Management", callback_data="gmanage:home:show")],
+                        [ctx.theme.button("Refresh", icon="stats", callback_data="gmanage:blocklist:show")],
+                        [ctx.theme.button("Group Management", icon="shield", callback_data="gmanage:home:show")],
                     ]
                 )
             elif kind == "rules":
@@ -136,7 +135,7 @@ def register(ctx):
                 body = state["body"]
                 preview = body[:1000]
                 text = panel(
-                    "Group rules",
+                    "Group rules", subtitle="Published rules & revision",
                     table=kv_table(
                         [
                             ("Status", "Published" if body else "Not configured"),
@@ -156,9 +155,9 @@ def register(ctx):
                 buttons = Keyboard(
                     [
                         [
-                            Button("Refresh", callback_data=f"{PREFIX}:rules:show"),
-                            Button(
-                                "Group Management", callback_data=f"{PREFIX}:home:show"
+                            ctx.theme.button("Refresh", icon="stats", callback_data=f"{PREFIX}:rules:show"),
+                            ctx.theme.button(
+                                "Group Management", icon="shield", callback_data=f"{PREFIX}:home:show"
                             ),
                         ]
                     ]
@@ -180,7 +179,7 @@ def register(ctx):
                     ("duplicates", "Duplicate protection", "duplicate_enabled"),
                 ]
                 text = panel(
-                    "Group protection",
+                    "Group protection", subtitle="Filtering & anti-spam switches",
                     table=kv_table(
                         [
                             (label, "On" if policy[key] else "Off")
@@ -196,8 +195,10 @@ def register(ctx):
                 buttons = Keyboard(
                     [
                         [
-                            Button(
+                            ctx.theme.button(
                                 f"{label} · {'Turn off' if policy[key] else 'Turn on'}",
+                                icon="ban" if policy[key] else "shield",
+                                style=ButtonStyle.DANGER if policy[key] else ButtonStyle.PRIMARY,
                                 callback_data=f"{PREFIX}:{name}:{'off' if policy[key] else 'on'}",
                             )
                         ]
@@ -205,11 +206,11 @@ def register(ctx):
                     ]
                     + [
                         [
-                            Button(
-                                "Refresh", callback_data=f"{PREFIX}:protection:show"
+                            ctx.theme.button(
+                                "Refresh", icon="stats", callback_data=f"{PREFIX}:protection:show"
                             ),
-                            Button(
-                                "Group Management", callback_data=f"{PREFIX}:home:show"
+                            ctx.theme.button(
+                                "Group Management", icon="shield", callback_data=f"{PREFIX}:home:show"
                             ),
                         ]
                     ]
@@ -225,7 +226,7 @@ def register(ctx):
                 current_rules = await read_rules(ctx, chat.id)
                 blocklist = await read_blocklist(ctx, chat.id)
                 text = panel(
-                    "Group Management",
+                    "Group Management", subtitle="Settings for this group",
                     table=kv_table(
                         [
                             ("Welcome", "On" if states[0]["enabled"] else "Off"),
@@ -281,15 +282,16 @@ def register(ctx):
                 )
                 rows = [
                     [
-                        Button(
+                        ctx.theme.button(
                             "Turn off" if state["enabled"] else "Turn on",
+                            icon="ban" if state["enabled"] else "sparkles",
                             callback_data=f"{PREFIX}:{kind}:{'off' if state['enabled'] else 'on'}",
-                            style=ButtonStyle.PRIMARY,
+                            style=ButtonStyle.DANGER if state["enabled"] else ButtonStyle.PRIMARY,
                         )
                     ],
                     [
-                        Button("Refresh", callback_data=f"{PREFIX}:{kind}:show"),
-                        Button("Group Management", callback_data=f"{PREFIX}:home:show"),
+                        ctx.theme.button("Refresh", icon="stats", callback_data=f"{PREFIX}:{kind}:show"),
+                        ctx.theme.button("Group Management", icon="shield", callback_data=f"{PREFIX}:home:show"),
                     ],
                 ]
                 buttons = Keyboard(rows)
