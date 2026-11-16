@@ -1,4 +1,5 @@
 """Focused worker front doors. Presentation only, never an authorization source."""
+import base64
 import re
 import difflib
 
@@ -156,6 +157,18 @@ def plugin_screen(user, theme, slug, *, active=None, page=0):
 
 
 def callback(data, user, theme, *, active=None):
+    search = re.fullmatch(r'worker:find:([0-9]{1,4}):([A-Za-z0-9_-]{1,32})', data)
+    if search:
+        try:
+            encoded = search[2]
+            query = base64.b64decode(encoded + '=' * (-len(encoded) % 4), altchars=b'-_', validate=True).decode('utf-8')
+            if not query or len(query.encode()) > 24 or any(ord(c) < 32 for c in query):
+                return None
+            if base64.urlsafe_b64encode(query.encode()).decode().rstrip('=') != encoded:
+                return None
+        except (ValueError, UnicodeError):
+            return None
+        return search_screen(user, theme, query, active=active, page=int(search[1]))
     if data == 'worker:availability':
         return availability_screen(user, theme, active=active) if selected(theme) is not None else None
     command = re.fullmatch(r'worker:cmd:([a-z][a-z0-9_]{0,31})', data)
@@ -189,8 +202,6 @@ def about_screen(user, theme, *, active=None):
 
 def lookup(argument, user, theme, *, active=None):
     """Resolve only this bot's tools; never fall through to controller categories."""
-    from .screens import Screen
-    from ..platform.menu import DESCRIPTIONS
     query = (argument or '').strip().lstrip('/!.?').lower()[:64]
     slug = next((key for key, (name, _, _) in PROFILES.items() if query in (key, name.lower())), None)
     if slug:
@@ -200,22 +211,49 @@ def lookup(argument, user, theme, *, active=None):
     direct = command_screen(user, theme, query, active=active)
     if direct is not None:
         return direct
+    return search_screen(user, theme, query, active=active)
+
+
+def search_screen(user, theme, query, *, active=None, page=0):
+    from .screens import Screen
+    from ..platform.menu import DESCRIPTIONS
+    if selected(theme) is None:
+        return None
+    if (not query or len(query.encode('utf-8')) > 24 or any(ord(c) < 32 for c in query)):
+        if page:
+            return None
+        return Screen(panel('Find a command', icon=theme.emoji('search'),
+            lines=['Search with /help followed by 1–24 UTF-8 bytes without control characters.'],
+            note='Exact command and tool names can still be opened directly.'), Keyboard([navigation(theme)]))
     candidates = sorted(name for name in discoverable(theme, active) if name in DESCRIPTIONS)
     matches = [name for name in candidates if query in name] if len(query) >= 3 else []
+    fuzzy = False
     if not matches and len(query) >= 3:
         matches = difflib.get_close_matches(query, candidates, n=6, cutoff=0.7)
-    matches = matches[:6]
-    if not matches:
-        return overview(user, theme, active=active, help_mode=True)
+        fuzzy = bool(matches)
+    pages = max(1, (len(matches) + 5) // 6)
+    if not 0 <= page < pages:
+        return None
+    current = matches[page * 6:(page + 1) * 6]
     from richgram import rich_esc
     body = panel('Find a command', icon=theme.emoji('search'),
                  subtitle=f'Results for {rich_esc(query)}',
                  table=Table(headers=('Command', 'What it does'), rows=tuple(
-                     (markup(f'<code>/{name}</code>'), DESCRIPTIONS[name]) for name in matches)),
-                 note='Tap a command for details. Suggestions do not execute actions.',
-                 footer='Results include only this bot’s selected, registered commands.')
-    buttons = [theme.button(f'/{name}', icon='question', callback_data=f'worker:cmd:{name}') for name in matches]
-    return Screen(body, Keyboard([buttons[index:index + 2] for index in range(0, len(buttons), 2)] + [navigation(theme)]))
+                     (markup(f'<code>/{name}</code>'), DESCRIPTIONS[name]) for name in current)) if current else None,
+                 lines=[] if current else ['No matching commands in this bot’s selected, registered tools. Try another /help query.'],
+                 note='Similar spelling suggestions; not exact matches.' if fuzzy else 'Tap a command for details. Search does not execute actions.',
+                 footer=f'Page {page+1} / {pages} · {len(matches)} matches · selected, registered commands only')
+    buttons = [theme.button(f'/{name}', icon='question', callback_data=f'worker:cmd:{name}') for name in current]
+    keys = [buttons[index:index + 2] for index in range(0, len(buttons), 2)]
+    encoded = base64.urlsafe_b64encode(query.encode()).decode().rstrip('=')
+    paging = []
+    if page:
+        paging.append(theme.button('Previous', icon='back', callback_data=f'worker:find:{page-1}:{encoded}'))
+    if page + 1 < pages:
+        paging.append(theme.button('Next', icon='arrow', callback_data=f'worker:find:{page+1}:{encoded}'))
+    if paging:
+        keys.append(paging)
+    return Screen(body, Keyboard(keys + [navigation(theme)]))
 
 
 def discoverable(theme, active):
