@@ -21,7 +21,7 @@ import copy
 import json
 import re
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from ...platform.db import load_document, save_document
@@ -75,6 +75,7 @@ class Clone:
     log_channel: int | None = None
     storage_channel: int | None = None
     configuration_revision: int = 0
+    lifecycle_generation: int = 0
 
     @property
     def handle(self) -> str:
@@ -178,6 +179,7 @@ class CloneStore:
                     log_channel=entry.get("log_channel"),
                     storage_channel=entry.get("storage_channel"),
                     configuration_revision=int(entry.get("configuration_revision", 0)),
+                    lifecycle_generation=int(entry.get("lifecycle_generation", 0)),
                 )
             except (KeyError, TypeError, ValueError):
                 logger.warning("skipping a malformed clone record")
@@ -216,7 +218,7 @@ class CloneStore:
         )
 
     async def _atomic(
-        self, operation, *args, owner_limit=None, total_limit=None, **fields
+        self, operation, *args, owner_limit=None, total_limit=None, expected_generation=None, **fields
     ):
         """Await canonical document mutations under a tenant transaction lock.
 
@@ -225,6 +227,8 @@ class CloneStore:
         This compatibility bridge preserves the existing encrypted wire format.
         """
         if self._db is None:
+            if operation == "fence":
+                return self.update(*args, **fields)
             if operation == "add" and (
                 len(self.by_owner(args[0].owner_id)) >= owner_limit
                 or self.count() >= total_limit
@@ -280,12 +284,33 @@ class CloneStore:
                         "assistant_session",
                     }:
                         raise RuntimeError("Clone identity fields cannot be updated")
-                    result = getattr(work, operation)(*args, **fields)
+                    previous = work.get(args[0].bot_id if operation == "add" else args[0]) if operation != "all" else None
+                    if expected_generation is not None and (previous is None or previous.lifecycle_generation != expected_generation):
+                        raise RuntimeError('Clone lifecycle changed; refresh before retrying')
+                    was_disabled = previous.disabled if previous is not None else None
+                    result = getattr(work, "update" if operation == "fence" else operation)(*args, **fields)
+                    changed = (operation == "add" or (previous is not None and (
+                        operation in ("remove", "fence") or
+                        (operation == "update" and "disabled" in fields and was_disabled != fields["disabled"]))))
+                    if changed:
+                        bot_id = args[0].bot_id if operation == "add" else int(args[0])
+                        generation = await self._next_generation(conn, bot_id,
+                            previous.lifecycle_generation if previous is not None else 0)
+                        if operation != "remove":
+                            result = replace(result, lifecycle_generation=generation)
+                            work._items[bot_id] = result
                     if operation == "add":
                         if getattr(self, 'configuration', None) is None:
                             raise RuntimeError("Canonical configuration validator unavailable")
-                        result, _ = await self.configuration._persist(conn, result, expected_revision=0,
-                            request_id='creation', identity='creation')
+                        repo = self.configuration.repository
+                        revision_key = repo.key(result.bot_id)
+                        await conn.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', revision_key, timeout=5)
+                        state = repo._decode(await conn.fetchval(
+                            'SELECT value FROM agent_documents WHERE name=$1 FOR UPDATE', revision_key, timeout=5))
+                        result, _ = await self.configuration._persist(conn, result,
+                            expected_revision=state['desired_revision'],
+                            request_id=f'creation_{result.lifecycle_generation}',
+                            identity=f'creation_{result.lifecycle_generation}')
                         work._items[args[0].bot_id] = result
                     if operation != "all":
                         await conn.execute(
@@ -309,6 +334,28 @@ class CloneStore:
                 "Clone result not confirmed; check before retrying"
             ) from None
 
+    async def _next_generation(self, conn, bot_id, previous):
+        """Registry lock held; retain a non-secret tombstone across deletion."""
+        key = self._db.name_for(f'clone_lifecycle:{bot_id}')
+        raw = await conn.fetchval('SELECT value FROM agent_documents WHERE name=$1 FOR UPDATE', key, timeout=5)
+        raw = json.loads(raw) if isinstance(raw, str) else raw
+        generation = 0 if raw is None else raw.get('generation')
+        if type(generation) is not int or generation < 0 or type(previous) is not int or previous < 0:
+            raise RuntimeError('Clone lifecycle state invalid')
+        generation = max(generation, previous) + 1
+        await conn.execute('''INSERT INTO agent_documents(name,value) VALUES($1,$2::jsonb)
+            ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value,updated_at=now()''',
+            key, json.dumps({'generation': generation}), timeout=5)
+        return generation
+
+    async def afence(self, bot_id, *, disabled, expected_generation=None):
+        """Persist explicit stop/restart intent, even if no local worker exists."""
+        if type(disabled) is not bool:
+            raise RuntimeError('Invalid lifecycle state')
+        if expected_generation is not None and (type(expected_generation) is not int or expected_generation < 0):
+            raise RuntimeError('Invalid lifecycle generation')
+        return await self._atomic('fence', bot_id, disabled=disabled, expected_generation=expected_generation)
+
     async def aadd(self, clone, *, owner_limit, total_limit):
         if (
             type(owner_limit) is not int
@@ -321,6 +368,8 @@ class CloneStore:
         )
 
     async def aupdate(self, bot_id, **fields):
+        if 'disabled' in fields and type(fields['disabled']) is not bool:
+            raise RuntimeError('Invalid lifecycle state')
         if self._db is not None:
             from .configuration import CONFIG_FIELDS
             if set(fields) & CONFIG_FIELDS:

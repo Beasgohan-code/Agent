@@ -119,13 +119,13 @@ class CloneConfigurationRevisions:
             result = self._metadata(state)
         return result
 
-    async def confirm_applied(self, bot_id, *, revision, attempt=None, worker_owner=None):
+    async def confirm_applied(self, bot_id, *, revision, attempt=None, worker_owner=None, generation=None):
         """Lease-fenced internal acknowledgement; never infer worker success."""
-        if not attempt or not worker_owner:
+        if not attempt or not worker_owner or type(generation) is not int or generation < 0:
             raise RevisionConflict('Worker ownership required')
         from .reconcile import CloneReconciler
         return await CloneReconciler(self).acknowledge(bot_id, revision=revision,
-            attempt=attempt, worker_owner=worker_owner)
+            attempt=attempt, worker_owner=worker_owner, generation=generation)
 
     async def record_failure(self, bot_id, *, revision, code):
         if not isinstance(code, str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,63}', code):

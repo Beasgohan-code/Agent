@@ -2672,6 +2672,17 @@
         "Open P0 findings are documented, not fixed by this slice; next gate lifecycle acknowledgement fencing",
         "No external plugin execution boundary changes,production configuration changes,cleanup replay or PR merge"
       ]
+    },
+    {
+      "id": "clone-lifecycle-generation-fencing",
+      "status": "completed",
+      "changes": [
+        "Durable tenant lifecycle generation tombstones and CAS stop/start/restart fencing",
+        "Registry eligibility, owner, credential and generation checks before apply and acknowledgement/recovery",
+        "Safe delete/recreate advances desired revisions; worker teardown separated from durable stop intent",
+        "11 real PostgreSQL regressions; unrelated Music/Premium/UI edits excluded"
+      ],
+      "validation": "Red regressions reproduced before fixes. Focused 50 passed (2.48s); dirty full 1807 passed (24.36s); isolated staged-source export 1720 passed (24.54s), no skips. Compileall, Pyflakes, working/staged diff checks passed. No live Telegram or production deployment validation."
     }
   ],
   "production_changes": false,

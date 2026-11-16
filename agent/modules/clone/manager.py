@@ -59,6 +59,7 @@ class CloneManager:
         self.eligible = None
         self._lease_monitors = {}
         self._configuration_retry: dict[int, int] = {}
+        self._running_generations: dict[int, int] = {}
         self._running_revisions: dict[int, int] = {}
         self._reconciliation_locks: dict[int, asyncio.Lock] = {}
         # Only supervisor-authorized transient stops enter this queue.
@@ -186,31 +187,41 @@ class CloneManager:
             current = self._store.get(clone.bot_id)
             if current is None or (automatic and current.disabled):
                 raise ReconciliationError('Clone unavailable')
+            if current.disabled:
+                current = await self._store.afence(clone.bot_id, disabled=False,
+                    expected_generation=current.lifecycle_generation)
+                if current is None:
+                    raise ReconciliationError('Clone unavailable')
             state = await self.configuration.read(clone.bot_id)
             revision = state['desired_revision']
             if revision <= 0:
                 raise ReconciliationError('Clone requires revision-tracked configuration')
             entry = self._running.get(clone.bot_id)
-            live = entry is not None and self._running_revisions.get(clone.bot_id) == revision and getattr(entry[1], "is_connected", True)
+            live = entry is not None and self._running_revisions.get(clone.bot_id) == revision and self._running_generations.get(clone.bot_id) == current.lifecycle_generation and getattr(entry[1], "is_connected", True)
+            applied_generation = None
             async def apply(configuration):
+                nonlocal applied_generation
+                applied_generation = configuration.lifecycle_generation
                 if not live:
-                    await self.stop(configuration.bot_id)
+                    await self._stop_worker(configuration.bot_id)
                     await self._start_assigned(configuration, automatic=automatic, assigned=True)
                 lease = getattr(self._running[configuration.bot_id][0], 'lease', None)
                 if (lease is None or getattr(lease, 'name', None) != 'agent'
                         or getattr(getattr(lease, '_db', None), 'scope', None) != f'clone:{configuration.bot_id}'):
                     raise ReconciliationError('Worker PostgreSQL lease unavailable')
                 return lease
-            await CloneReconciler(self.configuration.repository).run(clone.bot_id, revision=revision, apply=apply)
+            await CloneReconciler(self.configuration.repository).run(clone.bot_id, revision=revision, apply=apply,
+                generation=current.lifecycle_generation)
             self._configuration_retry.pop(clone.bot_id, None)
+            self._running_generations[clone.bot_id] = applied_generation
             self._running_revisions[clone.bot_id] = revision
             return self.username(clone.bot_id)
         except asyncio.CancelledError:
-            await self.stop(clone.bot_id)
+            await self._stop_worker(clone.bot_id)
             raise
         except Exception:
             # Failed/lost acknowledgement cannot leave an unconfirmed worker live.
-            await self.stop(clone.bot_id)
+            await self._stop_worker(clone.bot_id)
             self._configuration_retry.setdefault(clone.bot_id, 0)
             raise CloneError('Clone revision reconciliation was not confirmed.') from None
 
@@ -328,9 +339,22 @@ class CloneManager:
             return username
 
     async def stop(self, bot_id: int) -> bool:
+        """Persist stop before waiting on local startup/teardown locks."""
+        if self._store._db is None:
+            return await self._stop_worker(bot_id)
+        try:
+            record = await self._store.afence(bot_id, disabled=True)
+        except Exception:
+            await self._stop_worker(bot_id)
+            raise CloneError('Clone stop intent was not confirmed.') from None
+        stopped = await self._stop_worker(bot_id)
+        return record is not None or stopped
+
+    async def _stop_worker(self, bot_id: int) -> bool:
         async with self._lock:
             self._pending_recovery.pop(int(bot_id), None)
             self._configuration_retry.pop(int(bot_id), None)
+            self._running_generations.pop(int(bot_id), None)
             self._running_revisions.pop(int(bot_id), None)
             entry = self._running.pop(int(bot_id), None)
             if entry is None:
@@ -348,7 +372,7 @@ class CloneManager:
 
     async def _watch_lease(self, bot_id, stop_event):
         await stop_event.wait()
-        await self.stop(bot_id)
+        await self._stop_worker(bot_id)
 
     @staticmethod
     async def _cleanup_worker(bot, client):
@@ -391,14 +415,24 @@ class CloneManager:
                     logger.warning("Clone resource release failed (%s: %s)", method, type(error).__name__)
 
     async def restart(self, clone: Clone) -> str:
-        await self.stop(clone.bot_id)
+        if self._store._db is not None:
+            try:
+                await self._store.aall()
+                current = self._store.get(clone.bot_id)
+                if current is None:
+                    raise CloneError('Clone unavailable')
+                await self._store.afence(clone.bot_id, disabled=False,
+                    expected_generation=current.lifecycle_generation)
+            except Exception:
+                raise CloneError('Clone restart intent was not confirmed.') from None
+        await self._stop_worker(clone.bot_id)
         return await self.start(clone)
 
     async def stop_all(self) -> None:
         self._configuration_retry.clear()
         self._pending_recovery.clear()
         for bot_id in tuple(self._running):
-            await self.stop(bot_id)
+            await self._stop_worker(bot_id)
 
     async def _record_event(self, bot_id, event, category=''):
         if self._store._db is None:
@@ -477,7 +511,7 @@ class CloneManager:
         for bot_id in tuple(self._running):
             record = self._store.get(bot_id)
             if record is None or record.disabled:
-                await self.stop(bot_id)
+                await self._stop_worker(bot_id)
                 continue
             live_entry = self._running.get(bot_id)
             if live_entry is None:
@@ -488,18 +522,18 @@ class CloneManager:
                 or live_settings.bot_token != record.token
             ):
                 logger.warning("Clone ownership or credentials changed; stopping worker %s", bot_id)
-                await self.stop(bot_id)
+                await self._stop_worker(bot_id)
                 continue
             if self.eligible is not None:
                 try:
                     entitled = await self._eligible(record.owner_id)
                 except Exception:
                     logger.warning("Clone eligibility unavailable; stopping worker %s", bot_id)
-                    await self.stop(bot_id)
+                    await self._stop_worker(bot_id)
                     self._pending_recovery[bot_id] = 0
                     continue  # unavailable authority must not permanently revoke premium
                 if not entitled:
-                    await self.stop(bot_id)
+                    await self._stop_worker(bot_id)
                     await self._store.aupdate(bot_id, disabled=True)
                     continue
             entry = self._running.get(bot_id)
@@ -509,7 +543,8 @@ class CloneManager:
             if getattr(client, "is_connected", True):
                 if self._store._db is not None:
                     metadata = await self.configuration.read(bot_id)
-                    if metadata['desired_revision'] != self._running_revisions.get(bot_id):
+                    if (metadata['desired_revision'] != self._running_revisions.get(bot_id)
+                            or record.lifecycle_generation != self._running_generations.get(bot_id)):
                         try:
                             await self.start(record, automatic=True)
                         except CloneError:
@@ -521,7 +556,7 @@ class CloneManager:
             if state.state is State.RUNNING:
                 state.move(State.DEGRADED, error="connection lost")
                 self._states.set(bot_id, state)
-            await self.stop(bot_id)
+            await self._stop_worker(bot_id)
             clone = self._store.get(bot_id)
             if clone is None or clone.disabled:
                 continue

@@ -616,13 +616,15 @@ def build(ctx):
             except CloneError as exc:
                 await query.answer(str(exc), show_alert=True)
                 return
-            await store.aupdate(bot_id, username=username or target.username, disabled=False)
+            await store.aupdate(bot_id, username=username or target.username,
+                **({"disabled": False} if store._db is None else {}))
             said = f"{target.handle} is running."
         elif action == "stop":
             if not await manager.stop(bot_id):
                 await query.answer("It was already stopped.", show_alert=True)
                 return
-            await store.aupdate(bot_id, disabled=True)
+            if store._db is None:
+                await store.aupdate(bot_id, disabled=True)
             said = f"{target.handle} is stopped."
         elif action == "delete_confirm":
             await manager.stop(bot_id)
