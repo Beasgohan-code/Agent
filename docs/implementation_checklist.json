@@ -1,0 +1,43 @@
+{
+  "tasks": [
+    {
+      "id": "requested-deeplink-security-redemption-boundary-audit",
+      "status": "completed_security_hardening",
+      "inspection": [
+        "Inspected existing deep-link diff/tests before edits; preserved all local changes",
+        "Audited DeepLinkRouter,linkshare redemption,subscription gate,send_stored,archive redemption SQL",
+        "Found share use counters atomic but not duplicate-request-idempotent; archive already uses transactional unique delivery claims",
+        "Removed linkshare token-fragment/refusal-text logs and stored-delivery filename/raw-exception logs"
+      ],
+      "implementation": [
+        "LinkRecord persists redemption_requests using existing tenant JSONB document schema; old records default empty list",
+        "Request identity is chat:user:message; no reply-retry assumption. Atomic PostgreSQL advisory-lock transaction validates expiry/cap/revocation, records request and increments use together",
+        "Duplicate claims fail closed before delivery; failed/unconfirmed deliveries retain claims, not automatically replayed",
+        "Production redemption refuses missing/invalid Telegram request identity; test message fixtures now supply real-shaped distinct IDs"
+      ],
+      "evidence": {
+        "red": "New request-id reload test failed unexpected keyword before implementation",
+        "focused": "51 passed in0.97s with disposable PostgreSQL covering atomic links/router/archive/subscription; 2 additional handler security regressions passed",
+        "first_full": "1781 passed,2 failed due share fixtures missing chat/message IDs; updated fixtures, did not weaken production check",
+        "full": "1783 passed,no skips,20.09s; AGENT_TEST_DATABASE_URL from disposable pgserver, pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "static": "compileall/pyflakes/diff --check passed",
+        "database": "20 concurrent same-request claims across2 instances admit exactly1; fresh store rejects replay; expired request increments0; existing archive test proves concurrent duplicate copy requests and partial delivery replay prevention",
+        "latest_full": "1786 passed,no skips,19.05s including Phase3 resumed read-fence regression; disposable PostgreSQL",
+        "latest_static": "compileall,pyflakes,working-tree and staged diff checks passed"
+      },
+      "limitations": [
+        "At-most-once admitted request, not exactly-once remote delivery; failed delivery may spend use without delivering",
+        "Legacy service calls without request_id retain non-idempotent consume semantics; bot redemption always supplies identity",
+        "Claim list retained with link record until purge; unlimited-use links can grow; no destructive migration or production cleanup performed",
+        "No production data,deployment,push or merge",
+        "Commit validation is current local tree; preexisting uncommitted feature dependencies remain and are not broadly bundled"
+      ],
+      "commit_scope": "Explicit security files plus preexisting atomic-link authority prerequisite; unrelated linkshare features excluded through index-only staging. Full historical checklist retained in working tree, only this security evidence staged.",
+      "outer_boundary_audit": [
+        "CommandHandlers.start raw payload logging reproduced red then sanitized to payload-present boolean",
+        "PluginGate exception traceback leak reproduced red then sanitized to exception class; no raw redemption exception traceback",
+        "8 router/entrypoint/execution-gate regressions pass"
+      ]
+    }
+  ]
+}

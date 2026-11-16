@@ -104,8 +104,8 @@ class PluginGate:
                 if asyncio.current_task().cancelling():
                     raise
                 return None  # group cleanup cancelled the owned child only
-            except Exception:
-                logger.exception('Optional plugin execution failed: %s', slug)
+            except Exception as exc:
+                logger.error('Optional plugin execution failed: %s (%s)', slug, type(exc).__name__)
                 if callback:
                     await update.answer('Plugin action failed; moderation remains available.', show_alert=True)
                 elif not silent:

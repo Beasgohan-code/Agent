@@ -51,7 +51,7 @@ class CommandHandlers:
         payload = start_payload(getattr(message, "text", "") or "")
         if self._monitor is not None:
             self._monitor.record_activity("start")
-        logger.info("/start%s from user %s", f" {payload}" if payload else "", user_id)
+        logger.info("/start from user %s (payload present=%s)", user_id, bool(payload))
         if self._events is not None and user_id is not None:
             first = self._users.remember(user_id) if self._users is not None else False
             self._events.emit(

@@ -40,7 +40,7 @@ async def send_stored(message, storage, stored, *, caption: str | None = None, *
             await message.reply_cached_media(file_id, caption=caption, **kwargs)
             return True
         except Exception:  # noqa: BLE001 - a stale file_id falls back to the disk
-            logger.warning("cached file_id for %s was refused; trying the disk", stored.name)
+            logger.warning("Cached media reference refused; trying local delivery")
 
     path = storage.path_for(stored)
     try:
@@ -61,6 +61,6 @@ async def send_stored(message, storage, stored, *, caption: str | None = None, *
             )
         return True
     except Exception as exc:  # noqa: BLE001 - the user gets the reason
-        logger.exception("could not deliver %s", stored.name)
+        logger.warning("Stored media delivery refused (%s)", type(exc).__name__)
         await message.reply(f"Telegram refused that file: {type(exc).__name__}")
         return False

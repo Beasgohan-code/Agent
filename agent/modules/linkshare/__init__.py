@@ -84,7 +84,7 @@ async def _username(client) -> str:
         try:
             me = await client.get_me()
         except Exception:  # noqa: BLE001 - a missing username is cosmetic
-            logger.debug("could not read the bot's own username", exc_info=True)
+            logger.debug("Could not read bot username")
             return ""
     return getattr(me, "username", "") or ""
 
@@ -164,7 +164,7 @@ def build(ctx):
     async def _grant(client, message, stored, ttl, uses, *, source: str) -> None:
         """Create the link for *stored* and answer with the share card."""
         owner = message.from_user.id
-        record = ctx.links.create(stored.id, owner, ttl_hours=ttl, max_uses=uses)
+        record = await ctx.links.acreate(stored.id, owner, ttl_hours=ttl, max_uses=uses)
         if getattr(ctx, "events", None) is not None:
             ctx.events.emit("link", owner=owner, uses=uses)
         logger.info(
@@ -257,7 +257,7 @@ def build(ctx):
 
     async def links(_client, message):
         owner = message.from_user.id
-        records = ctx.links.owned(owner)
+        records = await ctx.links.aowned(owner)
         if not records:
             await reply(
                 message,
@@ -321,7 +321,7 @@ def build(ctx):
             return
         owner = message.from_user.id
         try:
-            record = ctx.links.resolve(parts[1].strip())
+            record = await ctx.links.aresolve(parts[1].strip())
         except LinkError as exc:
             # A revoked token must still be revocable-by-owner idempotently;
             # anything else is a genuine failure.
@@ -331,7 +331,7 @@ def build(ctx):
                 await reply(message, f"Invalid link: {html.escape(str(exc))}")
             return
 
-        if ctx.links.revoke(record.token, owner_id=owner):
+        if await ctx.links.arevoke(record.token, owner_id=owner):
             await reply(message, "Link revoked.")
         else:
             await reply(message, "That link does not belong to you.")
@@ -340,7 +340,7 @@ def build(ctx):
     async def redeem(client, message, token: str):
         """Send the file behind *token*, or say precisely why it cannot be sent."""
         try:
-            record = ctx.links.consume(token)
+            record = await ctx.links.aresolve(token)
         except LinkError as exc:
             reason = {
                 "link revoked": "The owner revoked this link.",
@@ -348,14 +348,27 @@ def build(ctx):
                 "link used up": "This link has been opened as often as it allows.",
                 "bad signature": "This link was not created by this bot.",
             }.get(str(exc), "This link is not valid.")
-            logger.info("link refused (%s) for %s", exc, getattr(message.from_user, "id", None))
+            logger.info("Share link refused")
             await _refused(message, reason)
             return
 
         stored = ctx.storage.get(record.file_id)
         if stored is None:
-            logger.warning("link %s… points at a missing file", record.token[:12])
+            logger.warning("Share link points at missing file metadata")
             await _refused(message, "The file behind this link is no longer stored.")
+            return
+
+        # No use is spent for a missing metadata entry. Consume immediately
+        # before delivery, with a second expiry/revocation/cap check.
+        try:
+            mid = getattr(message, "id", None)
+            uid = getattr(getattr(message, "from_user", None), "id", None)
+            chat = getattr(getattr(message, "chat", None), "id", None)
+            if type(mid) is not int or mid <= 0 or type(uid) is not int or uid <= 0 or type(chat) is not int:
+                raise LinkError("Invalid redemption request identity")
+            record = await ctx.links.aconsume(token, request_id=f"{chat}:{uid}:{mid}")
+        except LinkError:
+            await _refused(message, "This link is no longer available.")
             return
 
         caption = (
@@ -366,7 +379,7 @@ def build(ctx):
         # works, because Telegram holds the bytes rather than this host.
         delivered = await send_stored(message, ctx.storage, stored, caption=caption)
         if not delivered:
-            logger.info("link %s… could not deliver %s", record.token[:12], stored.name)
+            logger.info("Share link delivery was not confirmed")
             return
         if getattr(ctx, "events", None) is not None:
             ctx.events.emit("link:redeem", uses=record.uses)
@@ -399,21 +412,21 @@ def build(ctx):
             return
         presser = getattr(getattr(query, "from_user", None), "id", None)
         try:
-            record = ctx.links.resolve(token)
+            record = await ctx.links.aresolve(token)
         except LinkError as exc:
             await query.answer(f"Nothing to revoke: {exc}.", show_alert=True)
             return
         if presser is None or record.owner_id != int(presser):
             await query.answer("Only the owner of this link can revoke it.", show_alert=True)
             return
-        ctx.links.revoke(token, owner_id=int(presser))
+        await ctx.links.arevoke(token, owner_id=int(presser))
         stored = ctx.storage.get(record.file_id)
         username = await _username(client)
         text, keyboard = _panel(record, stored, username)
         try:
             await rich_ui.edit(query, text, reply_markup=keyboard)
         except Exception:  # noqa: BLE001 - a stale card is not a failed revoke
-            logger.debug("could not redraw the share card", exc_info=True)
+            logger.debug("Could not redraw share card")
         if getattr(ctx, "events", None) is not None:
             ctx.events.emit("link:revoke", by=presser)
         logger.info("link revoked from its card by %s", presser)
