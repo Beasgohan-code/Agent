@@ -115,12 +115,25 @@ def overview(user, theme, *, active=None, help_mode=False):
     if not visible:
         lines.append('Command registration is unknown. Open Availability and refresh.' if active is None else
                      'No tools are currently registered. Ask this bot’s owner to check its configuration.')
+    shortcuts = []
+    if not help_mode:
+        preferred = [[cmd for cmd in QUICK_START[slug] if cmd in commands(slug, active)] for slug in primary]
+        # One first action per selected workspace before a second from one tool.
+        for position in range(3):
+            for choices in preferred:
+                if position < len(choices) and choices[position] not in shortcuts:
+                    shortcuts.append(choices[position])
+        shortcuts = shortcuts[:2]
+        if shortcuts:
+            lines.append('Copying does not run a command. Add required arguments and send it yourself; normal access checks still apply.')
     body = panel(title, icon=theme.emoji(icon), subtitle='Explore your tools' if help_mode else 'Quick start', table=Table(headers=('Tools', 'Try'), rows=tuple(rows)),
                  lines=lines, note='Choose a tool below for instructions.' if not help_mode else 'Group actions require administrator permissions. Optional tools require owner approval and group activation.',
                  footer='/help command · More detail for any available command')
     keys = [[button(theme, slug)] for slug in visible]
     if visible and not help_mode:
         keys.insert(0, [theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{visible[0]}', style=ButtonStyle.PRIMARY)])
+    if shortcuts:
+        keys.insert(1, [theme.button('Copy /' + cmd, icon='pin', copy_text='/' + cmd) for cmd in shortcuts])
     keys.append([theme.button('Availability', icon='stats', callback_data='worker:availability')])
     keys.append([theme.button('How to use', icon='question', callback_data=CB_HELP, style=ButtonStyle.PRIMARY), theme.button('About', icon='info', callback_data='worker:about')])
     return Screen(body, Keyboard(keys))
@@ -359,4 +372,8 @@ def availability_screen(user, theme, *, active=None):
                  lines=['Not registered can mean disabled runtime, missing setup, or a module that could not load. This screen does not diagnose the cause.'],
                  note='Registration does not prove provider connectivity, Telegram permissions, Owner approval or group activation. Ask the bot’s owner to inspect configuration privately.',
                  footer='Refresh reads the current command registry. No credentials or internal errors are shown.')
-    return Screen(body, Keyboard([[theme.button('Refresh availability', icon='stats', callback_data='worker:availability', style=ButtonStyle.PRIMARY)], navigation(theme)]))
+    links = [button(theme, slug) for slug in dict.fromkeys((*(configured or ('moderation',)), 'moderation'))
+             if allowed(theme, slug) and commands(slug, active)]
+    keys = [links[index:index+2] for index in range(0, len(links), 2)]
+    keys.extend([[theme.button('Refresh availability', icon='stats', callback_data='worker:availability', style=ButtonStyle.PRIMARY)], navigation(theme)])
+    return Screen(body, Keyboard(keys))

@@ -23,7 +23,7 @@ def test_all_worker_navigation_is_consistently_accented(custom):
                 if button.callback_data:
                     assert len(button.callback_data.encode()) <= 64
                 else:
-                    assert button.copy_text.text == '/encode'
+                    assert button.copy_text.text in {'/encode', '/compress'}
                 assert '<tg-emoji' not in button.text
                 if custom:
                     assert button.icon_custom_emoji_id

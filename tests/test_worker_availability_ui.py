@@ -61,4 +61,6 @@ def test_availability_respects_unicode_mode_and_has_no_mutations():
     for row in screen.keyboard.inline_keyboard:
         for button in row:
             assert not button.icon_custom_emoji_id
-            assert button.callback_data in {'worker:availability', 'menu:home', 'menu:help'}
+            assert button.callback_data in {'worker:availability', 'menu:home', 'menu:help', 'worker:encoder:0'}
+            if button.callback_data == 'worker:encoder:0':
+                assert callback(button.callback_data, None, theme, active={'encode'}) is not None

@@ -26,7 +26,14 @@ def test_single_plugin_worker_has_its_own_home_help_and_options(slug, title, com
         assert 'Not registered' not in screen.rich_text
         assert '<Alice>' not in screen.rich_text
         assert screen.keyboard
-        assert all(len(button.callback_data.encode()) <= 64 for row in screen.keyboard.inline_keyboard for button in row)
+        for row in screen.keyboard.inline_keyboard:
+            for button in row:
+                assert bool(button.callback_data) != bool(button.copy_text)
+                if button.callback_data:
+                    assert len(button.callback_data.encode()) <= 64
+                else:
+                    from agent.ui.workers import commands
+                    assert button.copy_text.text.removeprefix('/') in commands(slug, active)
 
 
 def test_worker_presentation_does_not_leak_between_instances():
@@ -72,7 +79,7 @@ def test_multi_plugin_pagination_icons_and_unavailable_commands():
     assert 'Music' not in screen.rich_text
     for row in screen.keyboard.inline_keyboard:
         for button in row:
-            if button.callback_data.startswith('worker:'):
+            if button.callback_data and button.callback_data.startswith('worker:'):
                 assert callback(button.callback_data, None, theme, active=active)
     assert plugin_screen(None, theme, 'encoder', active={'get'}) is None
     assert callback('worker:encoder:999', None, theme, active=active) is None
