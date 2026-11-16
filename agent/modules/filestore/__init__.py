@@ -278,6 +278,12 @@ def build(ctx):
                 await reply(message, 'Send /genlink without arguments, then send or forward one message to this bot. Use /batch for a range.')
                 return
             await conversation.start(client, message, 'genlink')
+        async def selected_batch(client, message):
+            if len(_args(message)) == 1 and not getattr(message, 'reply_to_message', None):
+                await conversation.start(client, message, 'custom_selection')
+                return
+            await original_generate(client, message)
+        handlers['custom_batch'] = selected_batch
         handlers.pop('get')
         handlers['genlink'] = genlink
         manifest = replace(MANIFEST, commands=tuple('genlink' if name == 'get' else name for name in MANIFEST.commands),
