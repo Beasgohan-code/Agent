@@ -16,6 +16,8 @@ expiry refresh and arbitrary-site extraction are not implemented.
 from __future__ import annotations
 
 import logging
+import asyncio
+import stat
 from pathlib import Path
 
 from ...platform.net import LinkError, check_target, parse_url
@@ -25,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 #: Telegram's Bot API download cap for bots.
 BOT_DOWNLOAD_LIMIT = 20 * 1024 * 1024
+DOWNLOAD_TIMEOUT = 45
 MEDIA_ATTRIBUTES = ("audio", "video", "document", "voice")
 
 
@@ -79,15 +82,34 @@ async def resolve(message, arg: str | None) -> tuple[str, str]:
         )
     replied, media = found
     size = getattr(media, "file_size", 0) or 0
-    if size and size > BOT_DOWNLOAD_LIMIT:
+    if type(size) is not int or size < 0:
+        raise SourceError('Invalid media size metadata. Try another file.')
+    if size > BOT_DOWNLOAD_LIMIT:
         raise SourceError(
             "that file is larger than the Bot API lets me download (20 MB)"
         )
+    async def progress(current, total):
+        if current > BOT_DOWNLOAD_LIMIT:
+            raise SourceError("Downloaded media exceeds the music size limit.")
+
     try:
-        downloaded = await replied.download()
-    except Exception as exc:  # noqa: BLE001 - reported to the requester
-        logger.exception("could not download the replied media")
-        raise SourceError(f"download failed: {type(exc).__name__}") from exc
+        downloaded = await asyncio.wait_for(replied.download(progress=progress), timeout=DOWNLOAD_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise SourceError("Media download timed out. Retry with supported media.") from None
+    except SourceError:
+        raise
+    except Exception as exc:
+        logger.warning("#Errors Music media download failed (%s)", type(exc).__name__)
+        raise SourceError("Media download failed. Retry with supported media.") from None
     if not downloaded:
         raise SourceError("Telegram returned no file to play")
-    return str(downloaded), name_of(message)
+    try:
+        path = Path(downloaded)
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size <= 0:
+            raise SourceError("Telegram returned no usable media file.")
+        if info.st_size > BOT_DOWNLOAD_LIMIT:
+            raise SourceError("Downloaded media exceeds the music size limit.")
+    except (OSError, TypeError, ValueError):
+        raise SourceError("Downloaded media is unavailable. Retry the request.") from None
+    return str(path), name_of(message)
