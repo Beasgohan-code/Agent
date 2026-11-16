@@ -2683,6 +2683,16 @@
         "11 real PostgreSQL regressions; unrelated Music/Premium/UI edits excluded"
       ],
       "validation": "Red regressions reproduced before fixes. Focused 50 passed (2.48s); dirty full 1807 passed (24.36s); isolated staged-source export 1720 passed (24.54s), no skips. Compileall, Pyflakes, working/staged diff checks passed. No live Telegram or production deployment validation."
+    },
+    {
+      "id": "atomic-warning-authority-data01",
+      "status": "completed",
+      "changes": [
+        "Tenant/group/member-scoped PostgreSQL warning history with serialized awaited mutations and one-time persisted legacy import",
+        "Awaited warning reads and writes in moderation, group reset, anti-spam, blocklist and info handlers; synchronous database access fails before cache mutation",
+        "Four PostgreSQL regression scenarios cover concurrent writers/clears, stale document flush, rollback/cancellation, isolation, bounds and handler persistence/denial"
+      ],
+      "validation": "Pre-fix probe submitted 2/persisted 1; new API/guard regressions failed before fix. Focused 119 passed (2.30s); full dirty 1811 passed (21.19s); isolated staged-source export 1724 passed (24.49s), no skips. Compileall/Pyflakes/diff checks passed. Telegram mocked; no production migration/deployment. Other ChatStore document races and exactly-once escalation remain outside scope."
     }
   ],
   "production_changes": false,

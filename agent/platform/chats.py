@@ -3,7 +3,8 @@
 Warnings, member notes, trust flags, anti-spam policy and the moderation audit
 trail live here. PostgreSQL persists a bot-scoped JSONB document when connected,
 with local JSON as the standalone fallback. Group ids partition that document;
-this is not a relational member/case database or a safe cross-process slot counter.
+warnings use an awaited member-scoped table in PostgreSQL to prevent lost updates.
+Other document-backed state is not a safe cross-process slot counter.
 
 Keys are Telegram ids stringified, because JSON object keys must be strings.
 """
@@ -83,6 +84,7 @@ class ChatStore:
 
     def add_warning(self, chat_id: int, user_id: int, *, moderator_id: int, reason: str) -> int:
         """Record a warning and return how many the member now has active."""
+        self._require_local_warnings()
         member = self._member(chat_id, user_id)
         member["warnings"].append(
             {
@@ -96,15 +98,41 @@ class ChatStore:
         self._save()
         return self.active_warning_count(chat_id, user_id)
 
+    def _require_local_warnings(self):
+        if self._db is not None:
+            raise RuntimeError("Awaited PostgreSQL warning operation required.")
+
+    async def aadd_warning(self, chat_id, user_id, *, moderator_id, reason):
+        from .warnings import operate
+        return await operate(self, chat_id, user_id, 'add_warning',
+                             moderator_id=moderator_id, reason=reason)
+
+    async def aclear_warning(self, chat_id, user_id):
+        from .warnings import operate
+        return await operate(self, chat_id, user_id, 'clear_warning')
+
+    async def aclear_all_warnings(self, chat_id, user_id):
+        from .warnings import operate
+        return await operate(self, chat_id, user_id, 'clear_all_warnings')
+
+    async def awarnings_of(self, chat_id, user_id):
+        from .warnings import operate
+        return await operate(self, chat_id, user_id, 'warnings_of')
+
+    async def aactive_warning_count(self, chat_id, user_id):
+        return len(await self.awarnings_of(chat_id, user_id))
+
     def active_warning_count(self, chat_id: int, user_id: int) -> int:
         return len(self.warnings_of(chat_id, user_id))
 
     def warnings_of(self, chat_id: int, user_id: int) -> list[dict]:
+        self._require_local_warnings()
         member = self._chat(chat_id)["members"].get(str(int(user_id)), {})
         return [w for w in member.get("warnings", []) if w.get("active")]
 
     def clear_warning(self, chat_id: int, user_id: int) -> bool:
         """Clear the most recent active warning. False when there was none."""
+        self._require_local_warnings()
         member = self._member(chat_id, user_id)
         for warning in reversed(member["warnings"]):
             if warning.get("active"):
@@ -116,6 +144,7 @@ class ChatStore:
 
     def clear_all_warnings(self, chat_id: int, user_id: int) -> int:
         """Clear every active warning; return how many were cleared."""
+        self._require_local_warnings()
         member = self._member(chat_id, user_id)
         cleared = 0
         now = time.time()

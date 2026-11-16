@@ -309,7 +309,7 @@ async def enforce(ctx, client, message):
             )
             result = True
         elif mode == "warn":
-            count = ctx.chats.add_warning(
+            count = await ctx.chats.aadd_warning(
                 chat.id, user.id, moderator_id=0, reason=reason
             )
             limit, action = warn_policy(ctx.chats, chat.id)

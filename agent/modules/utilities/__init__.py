@@ -113,8 +113,8 @@ def build(ctx):
             status = getattr(member, "status", None)
             lines.append(f"Status here: {getattr(status, 'name', 'unknown').title()}")
         manager = await is_moderator(client, message, owner_id=ctx.settings.owner_id)
-        if ctx.chats is not None and manager:
-            warnings = ctx.chats.active_warning_count(message.chat.id, target.id)
+        if ctx.chats is not None and manager and message.chat.id < 0:
+            warnings = await ctx.chats.aactive_warning_count(message.chat.id, target.id)
             if warnings:
                 lines.append(f"Warnings: {warnings}")
             from ...platform.group_trust import trusted_members, TrustError

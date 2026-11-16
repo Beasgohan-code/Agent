@@ -330,10 +330,10 @@ async def _punish(client, ctx, message, action: str, *, policy: dict) -> None:
         except Exception:  # noqa: BLE001 - already gone is fine
             pass
     if action == "warn":
-        ctx.chats.add_warning(chat_id, user_id, moderator_id=0, reason="anti-spam")
+        count = await ctx.chats.aadd_warning(chat_id, user_id, moderator_id=0, reason="anti-spam")
         await reply(message, 
             f"Anti-spam: {_mention(user_id, getattr(message.from_user, 'first_name', 'member'))} "
-            f"warned. Warnings: {ctx.chats.active_warning_count(chat_id, user_id)}"
+            f"warned. Warnings: {count}"
         )
     elif action == "mute":
         await client.restrict_chat_member(
@@ -447,7 +447,7 @@ def build(ctx):
         if await _protected(client, message, target_id):
             return
         reason = _reason(message, skip_target=True)
-        count = ctx.chats.add_warning(
+        count = await ctx.chats.aadd_warning(
             message.chat.id, target_id, moderator_id=message.from_user.id, reason=reason
         )
         ctx.chats.log(
@@ -468,7 +468,7 @@ def build(ctx):
             await reply(message, "Reply to a member to inspect their warnings.")
             return
         target_id, mention = target
-        rows = ctx.chats.warnings_of(message.chat.id, target_id)
+        rows = await ctx.chats.awarnings_of(message.chat.id, target_id)
         note = ctx.chats.note_of(message.chat.id, target_id)
         try:
             trusted = target_id in await trusted_members(ctx, message.chat.id)
@@ -522,7 +522,7 @@ def build(ctx):
             await reply(message, "Reply to a member to clear a warning.")
             return
         target_id, mention = target
-        if not ctx.chats.clear_warning(message.chat.id, target_id):
+        if not await ctx.chats.aclear_warning(message.chat.id, target_id):
             await reply(message, "That member has no active warnings.")
             return
         ctx.chats.log(

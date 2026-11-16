@@ -413,7 +413,7 @@ def build(ctx):
         target_id, mention = target
         if await _protected(client, message, target_id):
             return
-        cleared = ctx.chats.clear_all_warnings(message.chat.id, target_id)
+        cleared = await ctx.chats.aclear_all_warnings(message.chat.id, target_id)
         if not cleared:
             await reply(message, f"{mention} had no active warnings.")
             return
