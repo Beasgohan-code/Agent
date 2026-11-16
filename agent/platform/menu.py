@@ -257,6 +257,7 @@ DESCRIPTIONS: dict[str, str] = {
     "ig": "Instagram profile-link card; no live account lookup",
     "dwarn": "Warn and delete the replied message (admin)",
     "swarn": "Warn without public success confirmation (admin)",
+    "resetallwarns": "Clear group active warnings with confirm; keep history (admin)",
     "rmwarn": "Clear latest active warning; retain history (admin)",
     "resetwarn": "Clear a member’s active warnings; retain history (admin)",
     "resetrules": "Clear this group’s rules; retain revisions (admin)",
@@ -286,7 +287,7 @@ DESCRIPTIONS: dict[str, str] = {
 #: Commands that only make sense inside a group.
 GROUP_ONLY = frozenset(
     {
-        "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules",
+        "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules",
         "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "settings", "rules", "setrules", "pin", "unpin",

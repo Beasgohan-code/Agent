@@ -5,7 +5,7 @@ from ...platform.warnings import WarningStoreError
 from ...utils.rich import reply
 from .restrictions import target_and_reason
 
-COMMANDS = ('rmwarn', 'resetwarn')
+COMMANDS = ('rmwarn', 'resetwarn', 'resetallwarns')
 
 
 def build(ctx):
@@ -21,6 +21,18 @@ def build(ctx):
                 return
             if not await is_moderator(client, message, need='can_restrict_members'):
                 await reply(message, 'You need Restrict members permission to clear warnings.')
+                return
+            if command == 'resetallwarns':
+                if (getattr(message, 'text', '') or '').split()[1:] != ['confirm']:
+                    await reply(message, 'This clears every active warning in this group, retaining history. Run <code>/resetallwarns confirm</code> to proceed. It does not unban or unmute anyone.')
+                    return
+                from ...platform.warnings import reset_group
+                try:
+                    cleared = await reset_group(ctx.chats, chat.id, actor=user.id, request_id=message.id)
+                except WarningStoreError as error:
+                    await reply(message, str(error))
+                    return
+                await reply(message, f'Group reset committed: {cleared} active warnings cleared. History retained; Telegram restrictions unchanged.')
                 return
             try:
                 replied = getattr(message, 'reply_to_message', None)
