@@ -1,11 +1,15 @@
 """Bounded private archive conversations matching the reviewed prompt sequence."""
 
 import asyncio
+import logging
 import time
 from types import SimpleNamespace
 
 from ...utils.rich import reply
 from .channel_links import archive_reference, private
+
+
+logger = logging.getLogger(__name__)
 
 
 class ArchiveConversation:
@@ -29,7 +33,7 @@ class ArchiveConversation:
                 channel=self.ctx.settings.storage_channel,
             )
         text = (
-            "Forward ONE message from this bot’s configured archive, or send its private Telegram link."
+            "Send or forward ONE message to generate its delivery link. Existing configured-archive forwards or private archive links are also accepted."
             if mode == "genlink" else
             "Send or forward the FIRST archive message, or its private Telegram link."
             if mode == "batch"
@@ -77,6 +81,27 @@ class ArchiveConversation:
                 return
             forwarded = getattr(message, "forward_from_chat", None)
             mid = getattr(message, "forward_from_message_id", None)
+            origin = getattr(message, 'forward_origin', None)
+            if getattr(origin, 'chat', None) is not None:
+                forwarded, mid = origin.chat, getattr(origin, 'message_id', None)
+            if state['mode'] == 'genlink' and getattr(forwarded, 'id', None) != state['channel'] and not text.startswith('https://t.me/c/'):
+                # Consume before I/O: duplicate input cannot replay an ambiguous copy.
+                self.state = None
+                from .ingest import copy_into_archive, IngestError
+                try:
+                    mid = await copy_into_archive(self.ctx, client, message, state['channel'])
+                    if self.clock() >= state['expires']:
+                        raise IngestError('Session expired after copying. No link issued; an archive copy may remain.')
+                except IngestError as error:
+                    await reply(message, str(error))
+                    return
+                except Exception as error:
+                    logger.warning('#Errors FileStore archive copy unconfirmed (%s)', type(error).__name__)
+                    await reply(message, 'Archive copy unconfirmed. No link issued. Inspect the archive before restarting /genlink; a copy may remain.')
+                    return
+                state['ids'] = [mid]
+                await self.finish(client, message, state)
+                return
             try:
                 if getattr(forwarded, "id", None) != state["channel"]:
                     mid = int(archive_reference(text, state["channel"]))

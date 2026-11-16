@@ -275,7 +275,7 @@ def build(ctx):
     if specialized:
         async def genlink(client, message):
             if len(_args(message)) != 1:
-                await reply(message, 'Send /genlink without arguments, then forward a message from this bot’s configured archive. Use /batch for a range.')
+                await reply(message, 'Send /genlink without arguments, then send or forward one message to this bot. Use /batch for a range.')
                 return
             await conversation.start(client, message, 'genlink')
         handlers.pop('get')
