@@ -210,6 +210,32 @@ class CloneManager:
         except Exception:
             raise CloneError("Clone premium authority is temporarily unavailable.") from None
 
+    async def control(self, bot_id, action, *, actor_id, expected_revision, expected_generation, request_id):
+        """Owner dashboard admission plus existing lifecycle application.
+
+        No alternate worker launcher. Local I/O is serialized with start/recovery;
+        PostgreSQL generations/revisions fence independent controller attempts.
+        """
+        from .control_actions import CloneControlActions, ControlConflict
+        if type(bot_id) is not int or bot_id <= 0:
+            raise ControlConflict('Invalid clone identity.')
+        lock = self._reconciliation_locks.setdefault(bot_id, asyncio.Lock())
+        async with lock:
+            await self._store.aall()
+            clone = self._store.get(bot_id)
+            if clone is None or clone.owner_id != actor_id:
+                raise ControlConflict('Clone ownership changed or access was refused.')
+            if action in ('start', 'restart', 'reconcile') and self.eligible is not None and not await self._eligible(clone.owner_id):
+                raise CloneError('Clone owner no longer has bot premium eligibility.')
+            assignment = await CloneControlActions(self._store).admit(bot_id, action,
+                actor_id=actor_id, expected_revision=expected_revision,
+                expected_generation=expected_generation, request_id=request_id)
+            if action == 'stop':
+                await self._stop_worker(bot_id)
+                return 'Stop intent saved; local teardown requested. Refresh diagnostics; remote controllers must reconcile.'
+            await self._reconcile_start(assignment, strict_assignment=True)
+            return 'Worker identity and revision acknowledgement confirmed in this controller.'
+
     async def start(self, clone: Clone, *, automatic: bool = False) -> str:
         if self._store._db is None:
             return await self._start_assigned(clone, automatic=automatic)
@@ -217,7 +243,7 @@ class CloneManager:
         async with lock:
             return await self._reconcile_start(clone, automatic=automatic)
 
-    async def _reconcile_start(self, clone: Clone, *, automatic: bool = False) -> str:
+    async def _reconcile_start(self, clone: Clone, *, automatic: bool = False, strict_assignment=False) -> str:
         """All PostgreSQL starts/restarts/recovery use one revision authority."""
         if self._store._db is None:
             return await self._start_assigned(clone, automatic=automatic)
@@ -227,6 +253,10 @@ class CloneManager:
             current = self._store.get(clone.bot_id)
             if current is None or (automatic and current.disabled):
                 raise ReconciliationError('Clone unavailable')
+            if strict_assignment and (current.disabled or current.owner_id != clone.owner_id
+                    or current.lifecycle_generation != clone.lifecycle_generation
+                    or current.configuration_revision != clone.configuration_revision):
+                raise ReconciliationError('Lifecycle assignment superseded')
             if current.disabled:
                 current = await self._store.afence(clone.bot_id, disabled=False,
                     expected_generation=current.lifecycle_generation)
@@ -234,6 +264,8 @@ class CloneManager:
                     raise ReconciliationError('Clone unavailable')
             state = await self.configuration.read(clone.bot_id)
             revision = state['desired_revision']
+            if strict_assignment and revision != clone.configuration_revision:
+                raise ReconciliationError('Configuration assignment superseded')
             if revision <= 0:
                 raise ReconciliationError('Clone requires revision-tracked configuration')
             entry = self._running.get(clone.bot_id)

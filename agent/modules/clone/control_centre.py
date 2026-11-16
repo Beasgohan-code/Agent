@@ -1,9 +1,11 @@
 """Owner-private observations of the existing clone authority, never a second writer.
 
-This first slice is read-only. Missing local workers/telemetry are not evidence
-that a worker on another controller is offline. No bot credentials enter cards.
+Views are read-only; confirmed lifecycle actions use durable owner/revision/
+generation admission and the existing reconciler. Missing local telemetry is
+not proof of fleet-wide offline state. No credentials enter cards.
 """
 import logging
+import hashlib
 import re
 import time
 
@@ -33,7 +35,7 @@ class CloneControlCentre:
         return [self.button(clone, 'Dashboard', 'home', 'bot'),
                 self.ctx.theme.button('My Bots', icon='back', callback_data='clone:refresh')]
 
-    async def render(self, clone, view, page=0):
+    async def render(self, clone, view, page=0, *, operation=None):
         observation = self.manager.observe_worker(clone.bot_id)
         plugins = observation['plugins']
         metadata = await self.manager.configuration.read(clone.bot_id) if self.store._db is not None else None
@@ -55,6 +57,13 @@ class CloneControlCentre:
             keys = [[self.button(clone, 'Commands', 'commands:0', 'search'), self.button(clone, 'Plugins', 'plugins:0', 'gear')],
                     [self.button(clone, 'Configuration', 'configuration', 'gear'), self.button(clone, 'Diagnostics', 'diagnostics', 'stats')],
                     [self.button(clone, 'Refresh', 'home', 'stats')]]
+            if metadata and metadata['desired_revision'] > 0:
+                actions = []
+                for action, label, icon in (('start', 'Start', 'bolt'), ('stop', 'Stop', 'ban'),
+                                            ('restart', 'Restart', 'gear'), ('reconcile', 'Reconcile', 'stats')):
+                    actions.append(self.ctx.theme.button(label, icon=icon,
+                        callback_data=f'cc:{clone.bot_id}:ask:{action}:{metadata["desired_revision"]}:{clone.lifecycle_generation}'))
+                keys.extend([actions[:2], actions[2:]])
             if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{4,31}', clone.username or ''):
                 keys.append([InlineKeyboardButton('Open Bot', url=f'https://t.me/{clone.username}',
                              icon_custom_emoji_id=self.ctx.theme.emoji_id('link'), style=ButtonStyle.PRIMARY)])
@@ -113,7 +122,7 @@ class CloneControlCentre:
         keys.append(self.navigation(clone))
         return panel('Clone dashboard · ' + view.title(), icon=self.ctx.theme.emoji('bot'),
                      subtitle=f'Bot {clone.bot_id}', table=kv_table(rows) if view not in ('commands', 'plugins') else Table(headers=('Item', 'Details'), rows=tuple(rows)),
-                     note=note, footer='Owner-private · existing in-process workers · no OS sandbox'), InlineKeyboardMarkup(keys)
+                     lines=[operation] if operation else [], note=note, footer='Owner-private · existing in-process workers · no OS sandbox'), InlineKeyboardMarkup(keys)
 
     async def press(self, client, query, rest):
         user = getattr(query, 'from_user', None)
@@ -122,22 +131,55 @@ class CloneControlCentre:
         if type(uid) is not int or uid <= 0 or getattr(getattr(origin, 'chat', None), 'id', None) != uid:
             await query.answer('Open /mybots privately as yourself.', show_alert=True)
             return
+        action_match = re.fullmatch(r'([0-9]{6,12}):(ask|run):(start|stop|restart|reconcile):([0-9]{1,12}):([0-9]{1,12})', rest)
         match = re.fullmatch(r'([0-9]{6,12}):(home|configuration|diagnostics|commands|plugins)(?::([0-9]{1,4}))?', rest)
-        if not match or ((match[2] in ('commands', 'plugins')) != (match[3] is not None)):
+        if not action_match and (not match or ((match[2] in ('commands', 'plugins')) != (match[3] is not None))):
             await query.answer('That dashboard control is stale.', show_alert=True)
             return
         try:
             await self.store.aall()  # Canonical reload before ownership check, including after deletion/transfer.
-            clone = self.store.get(int(match[1]))
+            clone = self.store.get(int(action_match[1] if action_match else match[1]))
             if clone is None or clone.owner_id != uid:
                 await query.answer('This clone is unavailable to you. Refresh My Bots.', show_alert=True)
                 return
-            body, keyboard = await self.render(clone, match[2], int(match[3] or 0))
+            result = None
+            if action_match:
+                from .control_actions import ControlConflict
+                stage, action, revision, generation = action_match[2], action_match[3], int(action_match[4]), int(action_match[5])
+                if self.store._db is None or revision <= 0 or (clone.configuration_revision, clone.lifecycle_generation) != (revision, generation):
+                    raise ControlConflict('Lifecycle control is unavailable or stale. Refresh the dashboard.')
+                if stage == 'ask':
+                    body = panel(f'Confirm {action}', icon=self.ctx.theme.emoji('warn'),
+                        lines=[f'Apply {action} to bot {clone.bot_id}?',
+                               'Stop saves durable stop intent; remote controllers must observe it. Start, restart and reconcile can replace the worker and interrupt work.',
+                               f'Configuration revision {revision} · lifecycle generation {generation}.'],
+                        note='No changes have been made. Confirmation rechecks owner, revision, generation and start eligibility.')
+                    keyboard = InlineKeyboardMarkup([
+                        [self.ctx.theme.button(f'Confirm {action}', icon='ban' if action in ('stop', 'restart') else 'bolt',
+                            style=ButtonStyle.DANGER if action in ('stop', 'restart') else ButtonStyle.PRIMARY,
+                            callback_data=f'cc:{clone.bot_id}:run:{action}:{revision}:{generation}')],
+                        [self.button(clone, 'Cancel', 'home', 'back')]])
+                else:
+                    await query.answer('Validating lifecycle request…')
+                    request_id = hashlib.sha256(f'{uid}:{rest}'.encode()).hexdigest()
+                    result = await self.manager.control(clone.bot_id, action, actor_id=uid,
+                        expected_revision=revision, expected_generation=generation, request_id=request_id)
+                    await self.store.aall()
+                    current = self.store.get(clone.bot_id)
+                    if current is None or current.owner_id != uid:
+                        raise ControlConflict('Clone changed during the operation. Refresh My Bots.')
+                    body, keyboard = await self.render(current, 'home', operation=result)
+            else:
+                body, keyboard = await self.render(clone, match[2], int(match[3] or 0))
             try:
                 await rich.edit(query, body, reply_markup=keyboard)
             except MessageNotModified:
                 pass
-            await query.answer()
+            if result is None:
+                await query.answer()
         except Exception as exc:
             logger.warning('#Errors Clone dashboard unavailable (%s)', type(exc).__name__)
-            await query.answer('Dashboard could not be confirmed. Refresh My Bots; no changes were made.', show_alert=True)
+            from .control_actions import ControlConflict
+            from .manager import CloneError
+            notice = str(exc) if isinstance(exc, (ControlConflict, CloneError)) else 'Result could not be confirmed. Refresh My Bots before retrying.'
+            await query.answer(notice, show_alert=True)
