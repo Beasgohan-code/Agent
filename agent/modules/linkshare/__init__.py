@@ -25,7 +25,6 @@ import logging
 import time
 
 from pyrogram.enums import ButtonStyle
-from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
 from ...platform.links import LinkError
@@ -117,19 +116,19 @@ def build(ctx):
         buttons = []
         if url:
             buttons.append(
-                [Button("\U0001f4cb Copy link", copy_text=url, style=ButtonStyle.SUCCESS)]
+                [ctx.theme.button("Copy link", icon="link", copy_text=url, style=ButtonStyle.SUCCESS)]
             )
         buttons.append(
             [
-                Button(
-                    "\U0001f6ab Revoke",
+                ctx.theme.button(
+                    "Revoke", icon="ban",
                     callback_data=f"{PREFIX}:revoke:{record.token}",
                     style=ButtonStyle.DANGER,
                 )
             ]
         )
         buttons.append(
-            [Button("\u21a9\ufe0f Menu", callback_data="menu:home", style=ButtonStyle.PRIMARY)]
+            [ctx.theme.button("Menu", icon="back", callback_data="menu:home", style=ButtonStyle.PRIMARY)]
         )
         body = panel(
             "Share link",

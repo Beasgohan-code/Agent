@@ -51,7 +51,7 @@ def available(client) -> bool:
     return callable(getattr(client, "send_rich_message", None))
 
 
-async def send(client, chat_id, text: str, *, reply_markup=None, **kwargs):
+async def _send(client, chat_id, text: str, *, reply_markup=None, **kwargs):
     """Send *text*: rich when possible, plain HTML otherwise."""
     payload = str(text or "")
     if not payload:
@@ -79,7 +79,7 @@ async def send(client, chat_id, text: str, *, reply_markup=None, **kwargs):
     )
 
 
-async def reply(message, text, **kwargs):
+async def _reply(message, text, **kwargs):
     """Reply to *message*: rich when possible, plain HTML otherwise."""
     payload = str(text or "")
     if not payload:
@@ -121,7 +121,7 @@ def _editor(target):
     return nested if callable(nested) else None
 
 
-async def edit(target, text, *, reply_markup=None):
+async def _edit(target, text, *, reply_markup=None):
     """Edit the message *target* (a callback query) points at.
 
     Rich when the text needs it and the client can send it, classic otherwise;
@@ -238,3 +238,38 @@ def classic(text: str) -> str:
         body = _TABLE_RE.sub(_table_to_classic, body)
     body = re.sub(r"<hr\b[^>]*>", "\n", body, flags=re.IGNORECASE)
     return to_safe_html(body)
+
+
+async def _retry_emoji(operation, text, keyboard):
+    """Retry explicit decorative rejections once, never ambiguous delivery failures."""
+    from .sender import _emoji_rejected, _has_emoji, _plain_screen
+    from ..ui.screens import Screen
+    screen = Screen(text, keyboard)
+    try:
+        return await operation(text, keyboard)
+    except Exception as exc:
+        if not _has_emoji(screen) or not _emoji_rejected(exc):
+            raise
+        plain = _plain_screen(screen)
+        return await operation(plain.rich_text, plain.keyboard)
+
+
+async def send(client, chat_id, text: str, *, reply_markup=None, **kwargs):
+    async def deliver(body, keyboard):
+        return await _send(client, chat_id, body, reply_markup=keyboard, **kwargs)
+    return await _retry_emoji(deliver, text, reply_markup)
+
+
+async def reply(message, text, **kwargs):
+    async def deliver(body, keyboard):
+        options = dict(kwargs)
+        if keyboard is not None or 'reply_markup' in options:
+            options['reply_markup'] = keyboard
+        return await _reply(message, body, **options)
+    return await _retry_emoji(deliver, text, kwargs.get('reply_markup'))
+
+
+async def edit(target, text, *, reply_markup=None):
+    async def deliver(body, keyboard):
+        return await _edit(target, body, reply_markup=keyboard)
+    return await _retry_emoji(deliver, text, reply_markup)

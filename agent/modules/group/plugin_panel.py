@@ -2,7 +2,9 @@
 from types import SimpleNamespace
 from pyrogram.errors import MessageNotModified
 
-from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
+from pyrogram.types import InlineKeyboardMarkup as Keyboard
+from pyrogram.enums import ButtonStyle
+from ...ui.theme import Theme
 
 from ...platform.plugin_access import AccessError
 from ...ui.tables import Table, panel
@@ -31,6 +33,7 @@ def available(deployment):
 
 
 def build(ctx):
+    theme = getattr(ctx, 'theme', None) or Theme()
     service = getattr(ctx, 'plugin_access', None)
     if service is None:
         return None
@@ -53,18 +56,18 @@ def build(ctx):
                 'Private-chat only' if deployment and deployment.get('scope') == 'private' else 'Runtime unavailable')
             rows.append((name, label))
             if row['active']:
-                buttons.append([Button(f'Disable {name}', callback_data=f'{PREFIX}:ask:{slug}:{page}')])
+                buttons.append([theme.button(f'Disable {name}', icon='ban', style=ButtonStyle.DANGER, callback_data=f'{PREFIX}:ask:{slug}:{page}')])
             elif row['approved'] and usable and used < 3:
-                buttons.append([Button(f'Activate {name}', callback_data=f'{PREFIX}:on:{slug}:{page}')])
-            buttons.append([Button(f'About {name} · setup', callback_data=f'{PREFIX}:info:{slug}:{page}')])
+                buttons.append([theme.button(f'Activate {name}', icon='bolt', style=ButtonStyle.PRIMARY, callback_data=f'{PREFIX}:on:{slug}:{page}')])
+            buttons.append([theme.button(f'About {name} · setup', icon='info', style=ButtonStyle.DEFAULT, callback_data=f'{PREFIX}:info:{slug}:{page}')])
         nav = []
         if page:
-            nav.append(Button('‹ Previous', callback_data=f'{PREFIX}:page:{page-1}'))
+            nav.append(theme.button('‹ Previous', icon='back', style=ButtonStyle.DEFAULT, callback_data=f'{PREFIX}:page:{page-1}'))
         if (page + 1) * PAGE_SIZE < len(state):
-            nav.append(Button('Next ›', callback_data=f'{PREFIX}:page:{page+1}'))
+            nav.append(theme.button('Next ›', icon='arrow', style=ButtonStyle.PRIMARY, callback_data=f'{PREFIX}:page:{page+1}'))
         if nav:
             buttons.append(nav)
-        buttons.append([Button('Refresh', callback_data=f'{PREFIX}:page:{page}')])
+        buttons.append([theme.button('Refresh', icon='stats', style=ButtonStyle.DEFAULT, callback_data=f'{PREFIX}:page:{page}')])
         return panel('Group plugins', subtitle=f'{3-used} / 3 slots available · choose a tool workspace',
                      table=Table(headers=['Plugin', 'Status'], rows=rows, aligns=['left', 'left'], total_width=48),
                      lines=['Moderation · welcome · anti-spam · filters · reports · verification are included.',
@@ -97,11 +100,11 @@ def build(ctx):
             footer='Refresh reads live permission state. No credentials or stored configuration values are displayed.')
         buttons = []
         if selected['active']:
-            buttons.append([Button('Disable for this group', callback_data=f'{PREFIX}:ask:{slug}:{page}')])
+            buttons.append([theme.button('Disable for this group', icon='ban', style=ButtonStyle.DANGER, callback_data=f'{PREFIX}:ask:{slug}:{page}')])
         elif selected['approved'] and usable and used < 3:
-            buttons.append([Button('Activate for this group', callback_data=f'{PREFIX}:on:{slug}:{page}')])
-        buttons += [[Button('Refresh status', callback_data=f'{PREFIX}:info:{slug}:{page}')],
-                    [Button('‹ All group plugins', callback_data=f'{PREFIX}:page:{page}')]]
+            buttons.append([theme.button('Activate for this group', icon='bolt', style=ButtonStyle.PRIMARY, callback_data=f'{PREFIX}:on:{slug}:{page}')])
+        buttons += [[theme.button('Refresh status', icon='stats', style=ButtonStyle.DEFAULT, callback_data=f'{PREFIX}:info:{slug}:{page}')],
+                    [theme.button('‹ All group plugins', icon='back', style=ButtonStyle.DEFAULT, callback_data=f'{PREFIX}:page:{page}')]]
         return body, Keyboard(buttons)
 
     async def update(query, body, keyboard):
@@ -141,8 +144,8 @@ def build(ctx):
                     await update(query, panel('Disable plugin?', lines=[
                         f'Disable <b>{slug}</b> for this group? Its group-owned work will be cancelled.'
                     ]), Keyboard([
-                        [Button('Confirm disable', callback_data=f'{PREFIX}:off:{slug}:{page}')],
-                        [Button('Cancel', callback_data=f'{PREFIX}:page:{page}')],
+                        [theme.button('Confirm disable', icon='ban', style=ButtonStyle.DANGER, callback_data=f'{PREFIX}:off:{slug}:{page}')],
+                        [theme.button('Cancel', icon='back', style=ButtonStyle.DEFAULT, callback_data=f'{PREFIX}:page:{page}')],
                     ]))
                     await query.answer()
                     return

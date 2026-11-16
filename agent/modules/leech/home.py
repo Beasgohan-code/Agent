@@ -3,8 +3,8 @@
 import logging
 
 from pyrogram.errors import MessageNotModified
+from pyrogram.enums import ButtonStyle
 from pyrogram.types import (
-    InlineKeyboardButton as Button,
     InlineKeyboardMarkup as Keyboard,
 )
 from ...ui.tables import panel, kv_table
@@ -22,7 +22,7 @@ def screen(ctx, view="home", user_id=None):
         caption = chats.get(user_id, CAPTION_KEY) if ready else None
         thumb = chats.get(user_id, THUMB_KEY) if ready else None
         body = panel(
-            "Personal upload settings",
+            "Personal upload settings", subtitle="Caption & thumbnail preferences",
             icon=ctx.theme.emoji("gear"),
             table=kv_table(
                 [
@@ -51,7 +51,7 @@ def screen(ctx, view="home", user_id=None):
         from . import backends
 
         body = panel(
-            "Leech availability",
+            "Leech availability", subtitle="Installed tools & supported transfers",
             icon=ctx.theme.emoji("gear"),
             table=kv_table(
                 [
@@ -70,7 +70,7 @@ def screen(ctx, view="home", user_id=None):
         )
     elif view == "help":
         body = panel(
-            "Start a transfer",
+            "Start a transfer", subtitle="Send a link · receive a file",
             icon=ctx.theme.emoji("info"),
             lines=[
                 "<code>/leech https://example.com/file.zip</code>",
@@ -96,11 +96,11 @@ def screen(ctx, view="home", user_id=None):
     return body, Keyboard(
         [
             [
-                Button("How to transfer", callback_data="leech:help"),
-                Button("Availability", callback_data="leech:backends"),
+                ctx.theme.button("How to transfer", icon="question", callback_data="leech:help", style=ButtonStyle.PRIMARY),
+                ctx.theme.button("Availability", icon="stats", callback_data="leech:backends"),
             ],
-            [Button("Upload settings", callback_data="leech:uploads")],
-            [Button("Leech home", callback_data="leech:home")],
+            [ctx.theme.button("Upload settings", icon="gear", callback_data="leech:uploads")],
+            [ctx.theme.button("Leech home", icon="link", callback_data="leech:home")],
         ]
     )
 
