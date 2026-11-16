@@ -172,17 +172,45 @@ def build(ctx):
         if track is not None:
             track.source = source
 
-    async def on_stream_end(chat_id: int) -> None:
-        """Called by the engine when a stream finishes on its own."""
+    async def _transition_notice(chat_id, body, *, keyboard=None):
+        client = getattr(ctx, "client", None)
+        if client is None:
+            return
         try:
-            async with chat_lock(chat_id):
-                if queues.peek(chat_id) is None:
-                    return  # Ignore late completion after acknowledged stop/cleanup.
-                if await _play_next(chat_id) is None:
+            await asyncio.wait_for(rich_ui.send(client, chat_id, body, reply_markup=keyboard), timeout=10)
+        except Exception as exc:
+            # A failed message does not mean the acknowledged playback failed.
+            logger.warning("#Errors Music transition notice failed chat=%s (%s)", chat_id, type(exc).__name__)
+
+    async def on_stream_end(chat_id: int) -> None:
+        """Advance once; delivery failures never cause a playback retry."""
+        async with chat_lock(chat_id):
+            if queues.peek(chat_id) is None:
+                return  # A late callback after explicit stop/deactivation.
+            if gate is not None and not await gate.allowed(chat_id, "music"):
+                await _cleanup_group(chat_id)
+                return
+            try:
+                started = await _play_next(chat_id)
+                if started is None:
                     await engine.leave(chat_id)
                     queues.drop(chat_id)
-        except Exception as exc:  # noqa: BLE001 - retain recoverable intent, not raw errors
-            logger.warning("#Errors Music queue transition unconfirmed chat=%s (%s)", chat_id, type(exc).__name__)
+            except Exception as exc:
+                logger.warning("#Errors Music queue advance unconfirmed chat=%s (%s)", chat_id, type(exc).__name__)
+                await _transition_notice(chat_id, panel(
+                    "Playback not confirmed", icon=ctx.theme.emoji("warn"),
+                    lines=["The next track or leaving the call was not confirmed."],
+                    note="Check /queue and /voicehealth before retrying /skip. No automatic retry was made.",
+                ))
+                return
+            if started is None:
+                await _transition_notice(chat_id, panel(
+                    "Queue finished", icon=ctx.theme.emoji("music"),
+                    lines=["Left the voice chat after the final track."],
+                    footer="Reply to supported local media with /play. Access checks still apply.",
+                ))
+            else:
+                await _transition_notice(chat_id, _card(chat_id), keyboard=_transport(chat_id))
 
     def _card(chat_id: int) -> Panel:
         """The player card, read from the engine at the moment it is drawn."""
