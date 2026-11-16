@@ -2725,6 +2725,17 @@
         "Four red regressions cover raw/unprintable job errors, actual PostgreSQL failure/rollback/isolation/replacement-pool reads and heartbeat stop behavior"
       ],
       "validation": "Focused 50 passed (0.66s); dirty full 1844 passed (20.59s); exact staged-source export 1757 passed (22.62s), no skips; actual disposable PostgreSQL failure triggers and pools. Compileall/Pyflakes/diff checks passed. Wider SEC-02, other runner fields and job restart durability remain outside scope. No live provider/deployment/config changes."
+    },
+    {
+      "id": "sec02-encoder-diagnostics-and-delivery-outcomes",
+      "status": "completed",
+      "changes": [
+        "Remove raw provider bodies/local paths/tracebacks from Encoder download, delivery and cleanup diagnostics",
+        "Report missing/empty output and false/none/ambiguous upload acknowledgements as unconfirmed without automatic resend; retain completed conversion/artifact",
+        "Preserve original conversion and cancellation exceptions when owned-output/directory cleanup fails; clarify no-upload-client notification",
+        "42 new parameterized checks across six download commands, five delivery routes, cleanup, acknowledged sends and cancellation"
+      ],
+      "validation": "Initial 7 failed/5 passed before fix. Focused 140 passed (2.28s), includes existing actual FFmpeg tests. Dirty full 1886 passed (20.44s); exact staged-source export 1799 passed (22.38s), no skips, disposable PostgreSQL enabled. Compileall/Pyflakes/diff checks passed. New Telegram/error fixtures mocked; no production/deployment/config/schema/dependency changes. Wider SEC-02 and durable delivery/cleanup recovery remain open."
     }
   ],
   "production_changes": false,

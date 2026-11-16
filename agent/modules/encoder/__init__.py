@@ -328,12 +328,17 @@ async def encode_job(job: Job, ctx, src: Path, preset: str, codec: str,
             raise RuntimeError("output failed validation (unplayable or empty)")
         return produced
     except BaseException:
-        output.unlink(missing_ok=True)
+        # Cleanup must not replace the conversion/cancellation exception, nor
+        # log its chained diagnostic body or the job's local path.
+        try:
+            output.unlink(missing_ok=True)
+        except OSError as error:
+            logger.warning("#Errors Encoder output cleanup failed (%s).", type(error).__name__)
         # Only this job's newly created directory is owned here.
         try:
             output.parent.rmdir()
-        except OSError:
-            logger.warning("Could not remove Encoder temporary directory", exc_info=True)
+        except OSError as error:
+            logger.warning("#Errors Encoder directory cleanup failed (%s).", type(error).__name__)
         raise
 
 
@@ -380,7 +385,7 @@ def build(ctx):
         try:
             source = await _source_message(message).download()
         except Exception as exc:  # noqa: BLE001 - reported to the user
-            logger.exception("Download failed for encoder")
+            logger.warning("#Errors Encoder download failed (%s).", type(exc).__name__)
             await reply(message, f"Could not download that file: {type(exc).__name__}")
             return
         if not source:
@@ -409,16 +414,28 @@ def build(ctx):
 
     async def _deliver(client, message, job: Job, produced: Path) -> None:
         """Send the file a tool produced, with the chat's caption/thumbnail."""
-        size = human_bytes(produced.stat().st_size)
+        try:
+            byte_count = produced.stat().st_size
+            if not produced.is_file() or byte_count <= 0:
+                raise ValueError("Output is unavailable")
+            size = human_bytes(byte_count)
+        except OSError as exc:
+            logger.warning("#Errors Encoder output access failed (%s).", type(exc).__name__)
+            await reply(message, "The job finished but delivery was not confirmed: the output is unavailable. No automatic retry was attempted.")
+            return
+        except ValueError:
+            logger.warning("#Errors Encoder output is not a nonempty regular file.")
+            await reply(message, "The job finished but delivery was not confirmed: the output is unavailable. No automatic retry was attempted.")
+            return
         if client is None or not hasattr(client, "send_document"):
             await reply(
                 message,
                 f"<b>{html.escape(job.label)} finished</b>\n"
-                f"<code>{html.escape(produced.name)}</code> · {size}",
+                f"<code>{html.escape(produced.name)}</code> · {size}\nFile delivery is unavailable in this context.",
             )
             return
         try:
-            await client.send_document(
+            sent = await client.send_document(
                 message.chat.id,
                 str(produced),
                 file_name=produced.name,
@@ -426,12 +443,14 @@ def build(ctx):
                     ctx.chats,
                     message.chat.id,
                     name=produced.name,
-                    size=human_bytes(produced.stat().st_size),
+                    size=size,
                 ),
             )
-        except Exception as exc:  # noqa: BLE001 - the job still happened
-            logger.exception("could not deliver %s", produced)
-            await reply(message, f"The job finished but sending it failed: {type(exc).__name__}")
+            if sent is None or sent is False:
+                raise RuntimeError("Delivery acknowledgement unavailable")
+        except Exception as exc:  # the conversion still happened; do not resend
+            logger.warning("#Errors Encoder delivery unconfirmed (%s).", type(exc).__name__)
+            await reply(message, "The job finished but delivery was not confirmed. Check this chat before retrying; no automatic resend was attempted.")
 
     async def _run_tool(client, message, *, kind: str, label: str, make) -> None:
         """Shared body for the tools: download, queue, report, deliver."""
