@@ -29,6 +29,8 @@ class ArchiveConversation:
                 channel=self.ctx.settings.storage_channel,
             )
         text = (
+            "Forward ONE message from this bot’s configured archive, or send its private Telegram link."
+            if mode == "genlink" else
             "Send or forward the FIRST archive message, or its private Telegram link."
             if mode == "batch"
             else "Send or forward archive messages one by one. Send /done to create the first-to-last range link. All intervening messages are included."
@@ -90,7 +92,7 @@ class ArchiveConversation:
                 await reply(message, str(error))
                 return
             state["ids"].append(mid)
-            if state["mode"] == "batch" and len(state["ids"]) == 2:
+            if state["mode"] == "genlink" or (state["mode"] == "batch" and len(state["ids"]) == 2):
                 await self.finish(client, message, state)
             else:
                 await reply(

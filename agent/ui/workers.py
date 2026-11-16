@@ -26,7 +26,7 @@ PROFILES = {
 
 # Prefer useful first actions over manifest ordering (which may start with aliases).
 QUICK_START = {
-    'filestore': ('get', 'batch', 'check'),
+    'filestore': ('genlink', 'batch', 'check'),
     'encoder': ('encode', 'compress', 'mediainfo'),
     'moderation': ('settings', 'setwelcome', 'warn'),
     'postmaker': ('post',),
@@ -69,6 +69,10 @@ def commands(slug, active):
     manifests = {module.MANIFEST.slug: module.MANIFEST for module in MODULES}
     slugs = GROUP_CORE if slug == 'moderation' else (slug,)
     candidates = tuple(dict.fromkeys(command for key in slugs if key in manifests for command in manifests[key].commands))
+    # Specialized FileStore clones register /genlink in place of /get; combined
+    # suites keep Linkshare ownership, distinguished by their active /get.
+    if slug == 'filestore' and active is not None and 'genlink' in active and 'get' not in active:
+        candidates = ('genlink',) + candidates
     # Unknown registry state is not evidence that optional commands are loaded.
     return tuple(command for command in candidates if active is not None and command in active)
 
@@ -296,8 +300,11 @@ def command_screen(user, theme, name, *, active=None):
     from ..modules import MODULES
     slugs = GROUP_CORE if owner == 'moderation' else (owner,) if owner else ()
     manifest = next((module.MANIFEST for module in MODULES
-                     if module.MANIFEST.slug in slugs and name in module.MANIFEST.commands), None)
-    rows = [(markup(f'<code>/{name}</code>'), DESCRIPTIONS[name])]
+                     if module.MANIFEST.slug in slugs and (name in module.MANIFEST.commands or
+                        (owner == 'filestore' and name == 'genlink' and 'get' not in (active or ())))), None)
+    description = ('Create a single-message archive delivery link (Owner, private chat).'
+                   if owner == 'filestore' and name == 'genlink' else DESCRIPTIONS[name])
+    rows = [(markup(f'<code>/{name}</code>'), description)]
     if manifest is not None:
         rows.extend([('Tool', PROFILES[owner][0]), ('Chat scope', manifest.scope),
                      ('Permissions', ', '.join(manifest.permissions) or 'None declared'),

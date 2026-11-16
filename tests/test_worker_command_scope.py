@@ -32,7 +32,7 @@ def test_group_worker_registers_group_commands_and_navigation_only(tmp_path, plu
     assert bot.plugin_gate is not None  # Mandatory protection remains gated by its own permissions.
 
 
-@pytest.mark.parametrize('slug,command', [('encoder', 'encode'), ('leech', 'leech'), ('filestore', 'get')])
+@pytest.mark.parametrize('slug,command', [('encoder', 'encode'), ('leech', 'leech'), ('filestore', 'genlink')])
 def test_optional_worker_keeps_selected_tools_and_required_plugin_controls(tmp_path, slug, command):
     bot = build_worker(tmp_path, (slug,))
     registered = set(bot.registry.active_commands())
@@ -41,7 +41,7 @@ def test_optional_worker_keeps_selected_tools_and_required_plugin_controls(tmp_p
     assert not {'restart', 'db', 'owner', 'addsudo', 'clone', 'plans', 'addpremium'} & registered
     assert {m.slug for m in bot.registry.manifests()} == set(GROUP_CORE) | {'core', 'ops', slug}
     if slug == 'filestore':
-        assert not {'jobs', 'cancel', 'encode', 'leech', 'ask'} & registered
+        assert not {'get', 'jobs', 'cancel', 'encode', 'leech', 'ask'} & registered
     else:
         assert {'jobs', 'cancel'} <= registered
     assert bot.actions.handles('plugin:home')

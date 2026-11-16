@@ -8,6 +8,7 @@ their download limits do not apply to archive-channel delivery.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 from ...platform.attachments import attachment_kwargs
 from ...platform.manifest import PluginManifest
@@ -265,7 +266,23 @@ def build(ctx):
         "check": check,
 
     }
-    return MANIFEST, {name: identified(handler) for name, handler in handlers.items()}
+    # A specialized FileStore clone owns this command only when Linkshare is
+    # absent. Never collide with /genlink in controller or combined suites.
+    selected = tuple(getattr(ctx.settings, 'plugins', ()) or ())
+    specialized = ((getattr(ctx.settings, 'db_scope', '') or '').startswith('clone:')
+                   and 'filestore' in selected and 'linkshare' not in selected and '*' not in selected)
+    manifest = MANIFEST
+    if specialized:
+        async def genlink(client, message):
+            if len(_args(message)) != 1:
+                await reply(message, 'Send /genlink without arguments, then forward a message from this bot’s configured archive. Use /batch for a range.')
+                return
+            await conversation.start(client, message, 'genlink')
+        handlers.pop('get')
+        handlers['genlink'] = genlink
+        manifest = replace(MANIFEST, commands=tuple('genlink' if name == 'get' else name for name in MANIFEST.commands),
+                           description='FileStore archive links: guided single-message and batch creation with private delivery.')
+    return manifest, {name: identified(handler) for name, handler in handlers.items()}
 
 
 def extra_handlers(ctx):
