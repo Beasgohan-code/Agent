@@ -427,12 +427,12 @@ def build(ctx):
     async def stop(client, message):
         if not await _can_control(client, message):
             return
-        queues.for_chat(message.chat.id).stop()
         try:
             await engine.leave(message.chat.id)
         except VoiceUnavailable:
-            await reply(message, "The queue was cleared, but stopping/leaving was not confirmed. Check /voicehealth and retry /leave.")
+            await reply(message, "Stopping/leaving was not confirmed. The queue is preserved. Check /voicehealth and retry /stop.")
             return
+        queues.drop(message.chat.id)
         logger.info("stopped chat=%s by=%s", message.chat.id, message.from_user.id)
         await reply(message, "Stopped and left the voice chat. The queue is cleared.")
 
