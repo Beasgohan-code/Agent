@@ -87,7 +87,7 @@ ALL_MODULES = {
 }
 
 
-def select(slugs) -> tuple:
+def select(slugs, *, worker=False) -> tuple:
     """The modules to register for *slugs*, in :data:`ORDER`.
 
         ``("*",)`` selects everything compiled in. Otherwise *slugs* plus
@@ -97,9 +97,14 @@ def select(slugs) -> tuple:
         
     """
     requested = tuple(slugs or ())
-    if requested == ("*",):
-        return tuple(ALL_MODULES[name] for name in ORDER)
-    wanted = set(requested) | set(SHELL) | set(GROUP_CORE)
+    wanted = set(ORDER) if requested == ("*",) else set(requested) | set(SHELL) | set(GROUP_CORE)
+    if worker:
+        # Never inject controller-only modules through the shared shell or a
+        # legacy inherited selection. Worker controls are narrowed at build.
+        wanted = {slug for slug in wanted if slug in ALL_MODULES and
+                  (slug in GROUP_CORE or slug == 'core' or ALL_MODULES[slug].MANIFEST.clone_compatible)}
+        if wanted - set(GROUP_CORE) - {'core'}:
+            wanted.add('ops')  # Approval/activation controls only, no process ops.
     return tuple(ALL_MODULES[name] for name in ORDER if name in wanted)
 
 
@@ -111,9 +116,9 @@ def unknown(slugs) -> tuple[str, ...]:
     return tuple(name for name in requested if name not in ALL_MODULES)
 
 
-def not_selected(slugs) -> tuple[str, ...]:
+def not_selected(slugs, *, worker=False) -> tuple[str, ...]:
     """Modules compiled in but not registering, in :data:`ORDER`."""
-    chosen = {module.MANIFEST.slug for module in select(slugs)}
+    chosen = {module.MANIFEST.slug for module in select(slugs, worker=worker)}
     return tuple(name for name in ORDER if name not in chosen)
 
 

@@ -99,7 +99,7 @@ def build(ctx):
                     "Every module shares the same queue, store and link signer, so "
                     "a file saved in one can be fetched by another."
                 ),
-                footer="<code>/plugins</code> shows what is on; <code>/help</code> shows every command.",
+                footer="<code>/help</code> shows this bot's registered tools.",
             ),
             reply_markup=nav_keyboard(),
         )
@@ -261,7 +261,7 @@ def build(ctx):
             note="Latest 20 jobs in this bot only. Source links, local paths and raw error details are hidden. /cancel &lt;job-id&gt; stops one job; /cancel stops all your active jobs.",
             footer="Process memory only; history does not survive restart."))
 
-    return MANIFEST, {
+    handlers = {
         "menu": menu,
         "about": about,
         "status": status,
@@ -271,3 +271,14 @@ def build(ctx):
         "jobs": jobs,
         "owner": owner,
     }
+
+    from dataclasses import replace
+    from ...platform.policy import is_worker, worker_job_tools
+    if is_worker(ctx.settings):
+        allowed = {'menu', 'about'}
+        if worker_job_tools(ctx.settings.plugins):
+            allowed.update(('jobs', 'cancel'))
+        handlers = {name: handler for name, handler in handlers.items() if name in allowed}
+        return replace(MANIFEST, name='Worker navigation', clone_compatible=True,
+                       commands=tuple(handlers)), handlers
+    return MANIFEST, handlers

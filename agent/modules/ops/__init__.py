@@ -525,6 +525,10 @@ def build(ctx):
             await reply(message, "Plugin runtime is unavailable.")
             return
         args = _args(message)[1:]
+        from ...platform.policy import is_worker
+        if is_worker(ctx.settings) and args and args[0].lower() not in {row['slug'] for row in runtime.state()}:
+            await reply(message, 'That plugin is not part of this worker. Change its selection through the controller first.')
+            return
         if len(args) == 2 and args[1].lower() in ("approve", "revoke"):
             from ...platform.plugin_access import AccessError
             service = getattr(ctx, "plugin_access", None)
@@ -737,7 +741,7 @@ def build(ctx):
     if router is not None and not router.handles(f"{PLUGIN_PREFIX}:x"):
         router.register(PLUGIN_PREFIX, on_plugin_press)
 
-    return MANIFEST, {
+    handlers = {
         **sudo_commands(capabilities, _owner_gate),
         "restart": restart,
         "watchdog": watchdog,
@@ -750,3 +754,13 @@ def build(ctx):
 
         "log": log,
     }
+
+    from dataclasses import replace
+    from ...platform.policy import is_worker
+    if is_worker(ctx.settings):
+        handlers = {name: handler for name, handler in handlers.items() if name in ('plugins', 'plugin')}
+        return replace(MANIFEST, name='Worker plugin controls', clone_compatible=True,
+                       description='Owner approval and group activation for selected worker tools.',
+                       permissions=('messages.read', 'messages.send', 'plugins.manage'),
+                       commands=tuple(handlers)), handlers
+    return MANIFEST, handlers

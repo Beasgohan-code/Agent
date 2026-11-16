@@ -249,10 +249,12 @@ class AgentBot:
         self.actions.gate = self.plugin_gate
         self.deeplinks.gate = self.plugin_gate
 
-        self._modules = select(self.settings.plugins)
+        from .platform.policy import is_worker
+        worker = is_worker(self.settings)
+        self._modules = select(self.settings.plugins, worker=worker)
         for slug in unknown(self.settings.plugins):
             logger.warning("PLUGINS names %r, which is not a module here; ignoring it", slug)
-        skipped = not_selected(self.settings.plugins)
+        skipped = not_selected(self.settings.plugins, worker=worker)
         if skipped:
             logger.info("Plugins not selected (compile in, register nothing): %s", ", ".join(skipped))
         built = []
