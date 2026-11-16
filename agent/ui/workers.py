@@ -240,15 +240,29 @@ def command_screen(user, theme, name, *, active=None):
         return None
     configured = selected(theme) or ()
     owner = next((slug for slug in (*configured, 'moderation') if name in commands(slug, active)), None)
+    from ..modules import MODULES
+    slugs = GROUP_CORE if owner == 'moderation' else (owner,) if owner else ()
+    manifest = next((module.MANIFEST for module in MODULES
+                     if module.MANIFEST.slug in slugs and name in module.MANIFEST.commands), None)
+    rows = [(markup(f'<code>/{name}</code>'), DESCRIPTIONS[name])]
+    if manifest is not None:
+        rows.extend([('Tool', PROFILES[owner][0]), ('Chat scope', manifest.scope),
+                     ('Permissions', ', '.join(manifest.permissions) or 'None declared'),
+                     ('Dependencies', ', '.join(manifest.dependencies) or 'None declared'),
+                     ('Required credential names', ', '.join(manifest.required_credentials) or 'None declared'),
+                     ('Required capabilities', ', '.join(manifest.required_capabilities) or 'None declared')])
+    else:
+        rows.append(('Tool', 'Built-in navigation · no feature requirements declared here'))
     body = panel(f'/{name}', icon=theme.emoji(PROFILES[owner][1] if owner else 'question'),
                  subtitle='Command details',
-                 table=Table(headers=('Command', 'What it does'), rows=((markup(f'<code>/{name}</code>'), DESCRIPTIONS[name]),)),
-                 note='Copying does not run this command. Add any required arguments before sending; permissions are checked when it runs.',
+                 table=Table(headers=('Detail', 'Information'), rows=tuple(rows)),
+                 note='Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Copying does not run this command; add required arguments before sending.',
                  footer='Send the command for its current usage. Never include passwords or secret tokens.')
     keys = [[theme.button(f'Copy /{name}', icon='pin', copy_text=f'/{name}', style=ButtonStyle.PRIMARY)]]
     if owner:
         page = commands(owner, active).index(name) // PAGE_SIZE
-        keys.append([theme.button('Back to commands', icon='back', callback_data=f'worker:{owner}:{page}')])
+        keys.append([theme.button('Back to commands', icon='back', callback_data=f'worker:{owner}:{page}'),
+                     theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{owner}')])
     keys.append(navigation(theme))
     return Screen(body, Keyboard(keys))
 
