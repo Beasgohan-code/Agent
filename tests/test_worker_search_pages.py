@@ -23,7 +23,7 @@ def test_worker_search_paginates_current_available_matches():
     assert 'Previous' in str(second.keyboard)
     assert all(len(b.callback_data.encode()) <= 64 for b in keys if b.callback_data)
     assert all(len(row) <= 2 for row in second.keyboard.inline_keyboard)
-    reduced = active - set(candidates[6:])
+    reduced = set(candidates[:6])  # Six active commands cannot produce a second page.
     assert callback(next_data, None, theme, active=reduced) is None
     assert 'meiko' not in first.rich_text.lower()
 

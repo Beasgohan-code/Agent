@@ -230,6 +230,7 @@ def lookup(argument, user, theme, *, active=None):
 def search_screen(user, theme, query, *, active=None, page=0):
     from .screens import Screen
     from ..platform.menu import DESCRIPTIONS
+    query = query.casefold()
     if selected(theme) is None:
         return None
     if (not query or len(query.encode('utf-8')) > 24 or any(ord(c) < 32 for c in query)):
@@ -239,7 +240,8 @@ def search_screen(user, theme, query, *, active=None, page=0):
             lines=['Search with /help followed by 1–24 UTF-8 bytes without control characters.'],
             note='Exact command and tool names can still be opened directly.'), Keyboard([navigation(theme)]))
     candidates = sorted(name for name in discoverable(theme, active) if name in DESCRIPTIONS)
-    matches = [name for name in candidates if query in name] if len(query) >= 3 else []
+    matches = sorted((name for name in candidates if query in name or query in DESCRIPTIONS[name].casefold()),
+                     key=lambda name: (0 if name.startswith(query) else 1 if query in name else 2, name)) if len(query) >= 3 else []
     fuzzy = False
     if not matches and len(query) >= 3:
         matches = difflib.get_close_matches(query, candidates, n=6, cutoff=0.7)
@@ -254,7 +256,7 @@ def search_screen(user, theme, query, *, active=None, page=0):
                  table=Table(headers=('Command', 'What it does'), rows=tuple(
                      (markup(f'<code>/{name}</code>'), DESCRIPTIONS[name]) for name in current)) if current else None,
                  lines=[] if current else ['No matching commands in this bot’s selected, registered tools. Try another /help query.'],
-                 note='Similar spelling suggestions; not exact matches.' if fuzzy else 'Tap a command for details. Search does not execute actions.',
+                 note='Similar spelling suggestions; not exact matches.' if fuzzy else 'Command name matches first, then description matches. Tap for details; search does not execute actions.',
                  footer=f'Page {page+1} / {pages} · {len(matches)} matches · selected, registered commands only')
     buttons = [theme.button(f'/{name}', icon='question', callback_data=f'worker:cmd:{name}') for name in current]
     keys = [buttons[index:index + 2] for index in range(0, len(buttons), 2)]
