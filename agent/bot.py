@@ -74,7 +74,8 @@ class AgentBot:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.theme = Theme()
+        self.theme = Theme(worker_plugins=settings.plugins
+                           if (settings.db_scope or '').startswith('clone:') else None)
         self.keepalive = KeepAlive(settings.keepalive_origin)
         self.health = HealthMonitor(
             degraded_after=max(60.0, settings.watchdog_interval * 3),

@@ -39,8 +39,13 @@ class CallbackHandlers:
             if dispatched:
                 return
 
+        active = set(self._active_commands()) if self._active_commands is not None else None
+        worker_screen = None
+        if data.startswith('worker:'):
+            from ..ui.workers import callback
+            worker_screen = callback(data, user, self._theme, active=active)
         builder = SCREENS.get(data)
-        if builder is None:
+        if builder is None and worker_screen is None:
             logger.warning("Unknown callback control")
             await self._answer(callback_query, STALE_OPTION, show_alert=True)
             return
@@ -53,8 +58,7 @@ class CallbackHandlers:
             logger.debug("Callback has no message to edit; ignoring.")
             return
 
-        active = set(self._active_commands()) if self._active_commands is not None else None
-        screen = builder(user, self._theme, active=active)
+        screen = worker_screen if worker_screen is not None else builder(user, self._theme, active=active)
         outcome = await self._sender.edit(callback_query, screen)
         if outcome is None:
             await self._answer(callback_query, "Update not confirmed. Please try again shortly.")

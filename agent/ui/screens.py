@@ -94,6 +94,9 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None) -> Scr
     Tool suggestions come from the live registry. Avoid unverifiable online or
     blanket privacy claims; show policy and available navigation instead.
     """
+    if theme.worker_plugins is not None:
+        from .workers import overview
+        return overview(user, theme, active=active)
     name = display_name(user)
     greeting = (
         f"{theme.emoji('wave')} Hello, <b>{rich_esc(name)}</b>!"
@@ -239,6 +242,9 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
     It stays a *rich* message: a native table, a heading and a footer. Editing
     keeps it that way, because the Bot API can edit a rich message too.
     """
+    if theme.worker_plugins is not None:
+        from .workers import overview
+        return overview(user, theme, active=active, help_mode=True)
     rows: list[tuple[str, str]] = []
     for icon, title, commands in HELP_SECTIONS:
         visible = help_visible(commands, active)
@@ -427,6 +433,14 @@ def help_lookup_screen(
     from ..platform.menu import DESCRIPTIONS
 
     query = (argument or "").strip().lstrip("/!.?").lower()[:64]
+    if theme.worker_plugins is not None:
+        from .workers import PROFILES, plugin_screen
+        slug = next((key for key, (name, _, _) in PROFILES.items()
+                     if query in (key, name.lower())), None)
+        if slug:
+            screen = plugin_screen(user, theme, slug, active=active)
+            if screen is not None:
+                return screen
     for _icon, title, commands in HELP_SECTIONS:
         if query and query in {title.lower(), section_slug(title)}:
             return _section_builder(title)(user, theme, active=active)

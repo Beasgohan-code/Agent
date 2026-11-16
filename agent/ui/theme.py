@@ -19,13 +19,19 @@ EMOJI_FALLBACKS, CUSTOM_EMOJI_IDS = emoji_table()
 class Theme:
     """Renders UI glyphs, upgrading them to custom emoji when available."""
 
-    def __init__(self, custom_emoji: Mapping[str, int] | None = None) -> None:
+    def __init__(self, custom_emoji: Mapping[str, int] | None = None, *, worker_plugins=None) -> None:
+        self.worker_plugins = None if worker_plugins is None else tuple(worker_plugins)
         source = emoji_table()[1] if custom_emoji is None else custom_emoji
         self._custom_emoji = {
             name: emoji_id
             for name, emoji_id in source.items()
             if name in EMOJI_FALLBACKS and emoji_id
         }
+
+    def emoji_id(self, name: str) -> str | None:
+        """Reviewed custom icon for Telegram buttons, respecting fallback mode."""
+        value = self._custom_emoji.get(name)
+        return str(value) if value else None
 
     @property
     def custom_emoji_enabled(self) -> bool:

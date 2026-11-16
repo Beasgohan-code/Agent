@@ -111,6 +111,8 @@ class CloneManager:
             ai_api_key=clone.ai_api_key if "ai_agent" in selection else None,
             ai_model=clone.ai_model if "ai_agent" in selection else None,
             health_port=None,
+            # Worker front doors must not inherit the controller hero artwork.
+            start_image=None,
             # Its own rows in PostgreSQL. Without this every clone would write
             # the same ``runtime``/``premium``/``chats`` documents as the main
             # bot and the last writer would silently win.

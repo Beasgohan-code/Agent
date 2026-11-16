@@ -2736,6 +2736,17 @@
         "42 new parameterized checks across six download commands, five delivery routes, cleanup, acknowledged sends and cancellation"
       ],
       "validation": "Initial 7 failed/5 passed before fix. Focused 140 passed (2.28s), includes existing actual FFmpeg tests. Dirty full 1886 passed (20.44s); exact staged-source export 1799 passed (22.38s), no skips, disposable PostgreSQL enabled. Compileall/Pyflakes/diff checks passed. New Telegram/error fixtures mocked; no production/deployment/config/schema/dependency changes. Wider SEC-02 and durable delivery/cleanup recovery remain open."
+    },
+    {
+      "id": "plugin-specific-worker-front-doors",
+      "status": "completed",
+      "changes": [
+        "Explicit user request: focused worker start/help/menu identities, workflow guidance, reviewed custom icons and paginated registered-command options for all eight clone template identities",
+        "Multi-plugin worker hub, legacy Renamer/Utilities presentation and slot-free group-management navigation; controller UI unchanged",
+        "Revalidate worker help callback selection/commands/page bounds; deep links remain first; no parent hero-image inheritance",
+        "Reference-only review of Videl1 worker extras/encoder start at 6a00a55f6ad013c85e14c39a9b06922c1bb6f08c; no copying/execution/parity claim"
+      ],
+      "validation": "10 initial red UI regressions; 13 final new checks. Focused 118 passed (0.60s); dirty full 1899 passed (20.34s); exact staged-source export 1812 passed (21.34s), no skips, disposable PostgreSQL. Compileall/Pyflakes/diff checks passed. UI presets only: owner-edited branding persistence remains unfinished; no live Telegram/production/deployment testing."
     }
   ],
   "production_changes": false,
