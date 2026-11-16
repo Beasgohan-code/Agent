@@ -56,6 +56,9 @@ class CloneManager:
         self._lock = asyncio.Lock()
         self.eligible = None
         self._lease_monitors = {}
+        self._configuration_retry: dict[int, int] = {}
+        self._running_revisions: dict[int, int] = {}
+        self._reconciliation_locks: dict[int, asyncio.Lock] = {}
 
     # -- settings ---------------------------------------------------------
     def settings_for(self, clone: Clone):
@@ -148,17 +151,63 @@ class CloneManager:
     def current(self) -> tuple[Clone, ...]:
         return self._store.all()
 
-    async def start(self, clone: Clone) -> str:
+    async def start(self, clone: Clone, *, automatic: bool = False) -> str:
+        if self._store._db is None:
+            return await self._start_assigned(clone, automatic=automatic)
+        lock = self._reconciliation_locks.setdefault(clone.bot_id, asyncio.Lock())
+        async with lock:
+            return await self._reconcile_start(clone, automatic=automatic)
+
+    async def _reconcile_start(self, clone: Clone, *, automatic: bool = False) -> str:
+        """All PostgreSQL starts/restarts/recovery use one revision authority."""
+        if self._store._db is None:
+            return await self._start_assigned(clone, automatic=automatic)
+        from .reconcile import CloneReconciler, ReconciliationError
+        try:
+            await self._store.aall()
+            current = self._store.get(clone.bot_id)
+            if current is None or (automatic and current.disabled):
+                raise ReconciliationError('Clone unavailable')
+            state = await self.configuration.read(clone.bot_id)
+            revision = state['desired_revision']
+            if revision <= 0:
+                raise ReconciliationError('Clone requires revision-tracked configuration')
+            entry = self._running.get(clone.bot_id)
+            live = entry is not None and self._running_revisions.get(clone.bot_id) == revision and getattr(entry[1], "is_connected", True)
+            async def apply(configuration):
+                if not live:
+                    await self.stop(configuration.bot_id)
+                    await self._start_assigned(configuration, automatic=automatic, assigned=True)
+                lease = getattr(self._running[configuration.bot_id][0], 'lease', None)
+                if (lease is None or getattr(lease, 'name', None) != 'agent'
+                        or getattr(getattr(lease, '_db', None), 'scope', None) != f'clone:{configuration.bot_id}'):
+                    raise ReconciliationError('Worker PostgreSQL lease unavailable')
+                return lease
+            await CloneReconciler(self.configuration.repository).run(clone.bot_id, revision=revision, apply=apply)
+            self._configuration_retry.pop(clone.bot_id, None)
+            self._running_revisions[clone.bot_id] = revision
+            return self.username(clone.bot_id)
+        except asyncio.CancelledError:
+            await self.stop(clone.bot_id)
+            raise
+        except Exception:
+            # Failed/lost acknowledgement cannot leave an unconfirmed worker live.
+            await self.stop(clone.bot_id)
+            self._configuration_retry.setdefault(clone.bot_id, 0)
+            raise CloneError('Clone revision reconciliation was not confirmed.') from None
+
+    async def _start_assigned(self, clone: Clone, *, automatic=False, assigned=False) -> str:
         """Start one clone and return its username (``""`` when Telegram hides it)."""
         async with self._lock:
             if self.eligible is not None and not self.eligible(clone.owner_id):
                 raise CloneError("Clone owner no longer has premium, sudo or Owner eligibility.")
             if clone.bot_id in self._running:
                 return self._running[clone.bot_id][2]
-            bot = self._factory(self.settings_for(clone))
+            bot = None
             client = None
             self._states.move(clone.bot_id, State.VALIDATING)
             try:
+                bot = self._factory(self.settings_for(clone))
                 database = getattr(bot, "database", None)
                 if database is not None:
                     if not await database.connect():
@@ -187,6 +236,10 @@ class CloneManager:
                         raise CloneError("A selected clone plugin is unavailable.")
                 self._states.move(clone.bot_id, State.STARTING)
                 await client.start()
+                if assigned:
+                    identity_check = await client.get_me()
+                    if getattr(identity_check, 'id', None) != clone.bot_id:
+                        raise CloneError('Clone identity confirmation failed.')
                 voice = getattr(bot, "voice", None)
                 if voice is not None:
                     await voice.start()
@@ -245,6 +298,8 @@ class CloneManager:
 
     async def stop(self, bot_id: int) -> bool:
         async with self._lock:
+            self._configuration_retry.pop(int(bot_id), None)
+            self._running_revisions.pop(int(bot_id), None)
             entry = self._running.pop(int(bot_id), None)
             if entry is None:
                 return False
@@ -289,6 +344,7 @@ class CloneManager:
         return await self.start(clone)
 
     async def stop_all(self) -> None:
+        self._configuration_retry.clear()
         for bot_id in tuple(self._running):
             await self.stop(bot_id)
 
@@ -300,14 +356,40 @@ class CloneManager:
         revoked token does not turn into a loop.
         """
         restarted: list[int] = []
+        try:
+            await self._store.aall()
+        except Exception:
+            await self.stop_all()
+            return ()
+        for bot_id, attempts in tuple(self._configuration_retry.items()):
+            record = self._store.get(bot_id)
+            if record is None or record.disabled or attempts >= max_attempts:
+                self._configuration_retry.pop(bot_id, None)
+                continue
+            self._configuration_retry[bot_id] = attempts + 1
+            try:
+                await self.start(record, automatic=True)
+            except CloneError:
+                self._configuration_retry[bot_id] = attempts + 1
+                continue
         for bot_id in tuple(self._running):
             record = self._store.get(bot_id)
+            if record is None or record.disabled:
+                await self.stop(bot_id)
+                continue
             if record is not None and self.eligible is not None and not self.eligible(record.owner_id):
                 await self.stop(bot_id)
                 await self._store.aupdate(bot_id, disabled=True)
                 continue
             client = self._running[bot_id][1]
             if getattr(client, "is_connected", True):
+                if self._store._db is not None:
+                    metadata = await self.configuration.read(bot_id)
+                    if metadata['desired_revision'] != self._running_revisions.get(bot_id):
+                        try:
+                            await self.start(record, automatic=True)
+                        except CloneError:
+                            pass
                 continue
             state = self.state(bot_id)
             logger.warning("clone %s dropped its connection", bot_id)
@@ -348,7 +430,7 @@ class CloneManager:
     async def restore(self) -> tuple[int, ...]:
         """Start every clone that was running when the process last stopped."""
         started: list[int] = []
-        for clone in self._store.all():
+        for clone in await self._store.aall():
             if (clone.disabled or self.is_running(clone.bot_id)
                     or (self.eligible is not None and not self.eligible(clone.owner_id))):
                 continue

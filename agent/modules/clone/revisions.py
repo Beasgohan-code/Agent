@@ -1,9 +1,9 @@
 """Internal PostgreSQL revision repository, not a worker/entitlement authority.
 
-Snapshots are encrypted as a whole. This repository never starts a worker or
-changes the canonical clone registry. A future configuration service must combine
-caller authorization, entitlement checks and worker lease confirmation with these
-CAS primitives before wiring them into user-facing mutations.
+Snapshots are encrypted as a whole. Canonical writes live in configuration.py;
+worker application and lease-fenced acknowledgement live in reconcile.py.
+The low-level propose primitive is retained for storage compatibility tests and
+must not replace the canonical registry transaction in runtime call sites.
 """
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -68,17 +68,20 @@ class CloneConfigurationRevisions:
         return {field: state[field] for field in METADATA}
 
     @asynccontextmanager
-    async def _locked(self, bot_id):
+    async def _locked(self, bot_id, *, with_connection=False, registry_lock=False):
         self._available()
         key = self.key(bot_id)
         async with self.db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():
+                if registry_lock:
+                    await conn.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+                                       self.db.name_for('clones'), timeout=5)
                 await conn.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', key, timeout=5)
                 raw = await conn.fetchval('SELECT value FROM agent_documents WHERE name=$1 FOR UPDATE', key)
                 state = self._decode(raw)
                 previous = copy.deepcopy(state)
                 now = float(await conn.fetchval('SELECT EXTRACT(EPOCH FROM clock_timestamp())'))
-                yield state, now
+                yield (state, now, conn) if with_connection else (state, now)
                 if state != previous:
                     await conn.execute('''INSERT INTO agent_documents(name,value) VALUES($1,$2::jsonb)
                         ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value,updated_at=now()''',
@@ -116,21 +119,13 @@ class CloneConfigurationRevisions:
             result = self._metadata(state)
         return result
 
-    async def confirm_applied(self, bot_id, *, revision):
-        """Storage fence only; caller must verify worker identity/lease beforehand."""
-        async with self._locked(bot_id) as (state, now):
-            if type(revision) is not int or revision != state['desired_revision'] or revision <= 0:
-                raise RevisionConflict('Stale worker acknowledgement')
-            if state['applied_revision'] != revision:
-                state['previous_applied_snapshot'] = state['applied_snapshot']
-                state['applied_snapshot'] = state['desired_snapshot']
-                state['applied_revision'] = revision
-                state['pending_revision'] = None
-                state['configuration_status'] = 'applied'
-                state['last_applied_at'] = state['updated_at'] = now
-                state['last_error_code'] = None
-            result = self._metadata(state)
-        return result
+    async def confirm_applied(self, bot_id, *, revision, attempt=None, worker_owner=None):
+        """Lease-fenced internal acknowledgement; never infer worker success."""
+        if not attempt or not worker_owner:
+            raise RevisionConflict('Worker ownership required')
+        from .reconcile import CloneReconciler
+        return await CloneReconciler(self).acknowledge(bot_id, revision=revision,
+            attempt=attempt, worker_owner=worker_owner)
 
     async def record_failure(self, bot_id, *, revision, code):
         if not isinstance(code, str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,63}', code):

@@ -1,4 +1,5 @@
 """Canonical revision writes on real concurrent PostgreSQL transactions."""
+from clone_revision_helpers import reconcile_revision
 import asyncio
 import os
 import uuid
@@ -85,7 +86,7 @@ def test_configuration_transaction_rollback_preserves_applied_and_cache(tmp_path
             await store.aadd(clone, owner_limit=3, total_limit=5)
             # Storage-level acknowledgement simulates a previously reconciled
             # revision; no live worker or automatic acknowledgement is added.
-            await writer.repository.confirm_applied(clone.bot_id, revision=1)
+            await reconcile_revision(writer.repository, clone.bot_id, 1)
             before = await writer.read(clone.bot_id)
             async with db._pool.acquire() as conn:
                 await conn.execute(f'''CREATE FUNCTION {trigger}() RETURNS trigger LANGUAGE plpgsql AS $$

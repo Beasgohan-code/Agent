@@ -1,4 +1,5 @@
 """First Phase 3 storage contracts; disposable PostgreSQL only."""
+from clone_revision_helpers import reconcile_revision
 import asyncio
 import os
 import uuid
@@ -35,9 +36,9 @@ def test_revision_cas_encrypted_snapshots_and_restart(tmp_path):
             assert state['desired_revision'] == state['pending_revision'] == 1
             assert state['applied_revision'] == 0
             assert state['configuration_status'] == 'pending'
-            await a.confirm_applied(clone.bot_id, revision=1)
+            await reconcile_revision(a, clone.bot_id, 1)
             confirmed = await a.read(clone.bot_id)
-            assert await a.confirm_applied(clone.bot_id, revision=1) == confirmed
+            assert await reconcile_revision(a, clone.bot_id, 1) == confirmed
             second = replace(clone, selected_plugins=('postmaker',))
             pending = await b.propose(second, expected_revision=1, request_id='second')
             assert pending['applied_revision'] == 1 and pending['desired_revision'] == 2
@@ -106,7 +107,7 @@ def test_pending_configuration_read_is_revision_fenced(tmp_path):
             with pytest.raises(revisions.RevisionConflict):
                 await repo.pending_configuration(clone.bot_id, revision=1)
             assert (await repository().pending_configuration(clone.bot_id, revision=2)).name == newer.name
-            await repo.confirm_applied(clone.bot_id, revision=2)
+            await reconcile_revision(repo, clone.bot_id, 2)
             with pytest.raises(revisions.RevisionConflict):
                 await repository().pending_configuration(clone.bot_id, revision=2)
             assert (await repository().applied_configuration(clone.bot_id)).name == newer.name

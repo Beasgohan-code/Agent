@@ -54,6 +54,34 @@
         "Validation is current dirty working tree, not clean commit checkout",
         "Selective commit includes atomic clone storage prerequisite and revision reader; earlier manager validation/setup and other feature changes remain uncommitted"
       ]
+    },
+    {
+      "id": "phase3-worker-reconciliation",
+      "status": "implemented-local",
+      "summary": "Exact revision assignment, unique expiring attempt claim, worker lease and registry-owner fenced CAS acknowledgement; shared startup/restart/recovery authority. No transaction spans worker I/O. Failed or stale application preserves last applied snapshot.",
+      "evidence": {
+        "red_service": "1 failed: missing agent.modules.clone.reconcile before implementation",
+        "red_manager": "1 failed,1 passed: startup left applied_revision=0 before wiring",
+        "focused": "39 passed in 1.25s; disposable PostgreSQL; existing writer/replay and bootstrap tests",
+        "full": "1791 passed in 19.54s, no skips; disposable PostgreSQL; final dirty working tree",
+        "static": "compileall, pyflakes, working-tree and staged diff checks passed",
+        "staged_manager": "14 passed in 0.81s using indexed manager source with dirty-tree dependencies; NOT a clean snapshot test"
+      },
+      "coverage": [
+        "successful acknowledgement; repeated live reconciliation; failed application",
+        "stale assignment; two concurrent reconcilers; newer revision during application",
+        "worker lease expiry; attempt lease expiry; unfenced acknowledgement rejected",
+        "interruption before apply; cancellation after apply before acknowledgement; retry by fresh reconciler",
+        "manager restart, supervisor update and restore; tenant isolation; encrypted snapshots and safe errors"
+      ],
+      "limitations": [
+        "No clean-checkout commit validation; earlier uncommitted dependencies remain outside this selective commit",
+        "Application is at-least-once after an unacknowledged crash, not exactly-once external effects; callbacks must be idempotent",
+        "Attempt lease TTL is 60 seconds; longer application fails closed and needs retry; no durable cleanup/replay added",
+        "Legacy untracked revision zero fails closed until configuration is revision-tracked",
+        "Workers are in-process clients, not OS-process isolation or sandboxing",
+        "No premium revocation policy changes, production data, deployment, push or PR merge"
+      ]
     }
   ]
 }

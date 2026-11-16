@@ -175,8 +175,15 @@ def test_worker_supervisor_observes_changes_from_another_controller(
                 for i, db in enumerate(dbs)
             ]
             ctx, _, _ = build(tmp_path / "controller")
-            manager = ctx.clones
-            manager._store = stores[0]
+            from agent.modules.clone.manager import CloneManager
+            from agent.platform.instance import InstanceLease
+            from test_clone import FakeBot
+            class Worker(FakeBot):
+                def __init__(self, settings):
+                    super().__init__(settings)
+                    self.database = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=settings.db_scope)
+                    self.lease = InstanceLease(tmp_path / 'unused', db=self.database)
+            manager = CloneManager(ctx.settings, stores[0], factory=Worker)
             record = Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A)
             await stores[0].aadd(record, owner_limit=3, total_limit=5)
             await manager.start(record)
@@ -229,16 +236,16 @@ def test_invalid_selection_start_preserves_canonical_records_and_other_tenants(t
                                                db.name_for('clones'))
             before = [await document(db) for db in dbs]
             ctx, _, _ = build(tmp_path / 'controller')
-            manager = ctx.clones
-            manager._store = stores[0]
+            from agent.modules.clone.manager import CloneManager
+            manager = CloneManager(ctx.settings, stores[0])
             factory = Mock(side_effect=AssertionError('validation must precede worker construction'))
             manager._factory = factory
-            with pytest.raises(CloneError, match='clone incompatible'):
+            with pytest.raises(CloneError, match='reconciliation was not confirmed'):
                 await manager.start(stores[0].get(111111111))
             factory.assert_not_called()
             assert [await document(db) for db in dbs] == before
             assert not manager.running()
-            assert 'clone incompatible' in manager.state(111111111).last_error
+            assert not manager.state(111111111).live
         finally:
             if manager:
                 await manager.stop_all()
