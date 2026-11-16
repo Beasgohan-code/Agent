@@ -383,6 +383,9 @@ def _section_builder(title: str, page: int = 0):
 
 
 def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+    if theme.worker_plugins is not None:
+        from .workers import profile_screen
+        return profile_screen(user, theme, active=active)
     user_id = getattr(user, "id", None)
     language = (getattr(user, "language_code", None) or "").strip() or "not reported"
     premium = getattr(user, "is_premium", None)
@@ -434,13 +437,8 @@ def help_lookup_screen(
 
     query = (argument or "").strip().lstrip("/!.?").lower()[:64]
     if theme.worker_plugins is not None:
-        from .workers import PROFILES, plugin_screen
-        slug = next((key for key, (name, _, _) in PROFILES.items()
-                     if query in (key, name.lower())), None)
-        if slug:
-            screen = plugin_screen(user, theme, slug, active=active)
-            if screen is not None:
-                return screen
+        from .workers import lookup
+        return lookup(argument, user, theme, active=active)
     for _icon, title, commands in HELP_SECTIONS:
         if query and query in {title.lower(), section_slug(title)}:
             return _section_builder(title)(user, theme, active=active)

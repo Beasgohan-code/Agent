@@ -24,13 +24,14 @@ import aiohttp
 from ...platform.manifest import PluginManifest
 from ...utils.rich import reply
 from ...ui.tables import panel
+from ...ui.identity import controller_label
 
 logger = logging.getLogger(__name__)
 
 
 def card(title, text, *, note=None):
     return panel(
-        title, lines=[text], note=note, footer="Meiko · /ask question · /help ask"
+        title, lines=[text], note=note, footer=controller_label("Meiko · /ask question · /help ask", "/ask question · /help ask")
     )
 
 
@@ -83,7 +84,7 @@ async def complete(key, model, question, on_delta=None):
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are Meiko, a helpful Telegram assistant. Answer concisely. You cannot perform Telegram actions or access group records. Do not claim to have done so.",
+                            "content": controller_label("You are Meiko, a helpful Telegram assistant.", "You are a helpful Telegram assistant.") + " Answer concisely. You cannot perform Telegram actions or access group records. Do not claim to have done so.",
                         },
                         {"role": "user", "content": question},
                     ],
@@ -185,11 +186,11 @@ class AnswerDraft:
             if self.rich:
                 await self.client.send_rich_message_draft(
                     **kwargs, rich_text=InputRichMessage(html=str(card(
-                        'AI Agent · Meiko', escaped + rich_thinking(),
+                        controller_label('AI Agent · Meiko', 'AI Assistant'), escaped + rich_thinking(),
                         note='Generating an AI answer · external provider · no Telegram actions.'))))
             else:
                 await self.client.send_message_draft(
-                    **kwargs, text=('Meiko · Generating…\n' + text)[:3000], parse_mode=None)
+                    **kwargs, text=(controller_label('Meiko · Generating…\n', 'Generating…\n') + text)[:3000], parse_mode=None)
         except Exception:
             # Drafts are cosmetic. Do not retry ambiguous/flood/permission errors.
             self.enabled = False
@@ -228,7 +229,7 @@ def build(ctx):
             await reply(
                 message,
                 card(
-                    "AI Agent · Ask Meiko",
+                    controller_label("AI Agent · Ask Meiko", "Ask a question"),
                     "Use <code>/ask your question</code> with any supported prefix: / ! . ?",
                     note="Only your question is sent to the external AI provider; group history is not included. AI answers can be wrong. Do not send secrets.",
                 ),
@@ -308,7 +309,7 @@ def build(ctx):
             await reply(
                 message,
                 card(
-                    "AI Agent · Meiko",
+                    controller_label("AI Agent · Meiko", "AI Assistant"),
                     preview,
                     note=(
                         "Answer shortened to fit Telegram. Ask a narrower follow-up if needed. "
@@ -357,7 +358,7 @@ def build(ctx):
         enabled = chats.get(chat_id, 'ai_autochat', False) is True
         await reply(message, card('AI Agent · Auto-chat',
             f'State: <b>{"on" if enabled else "off"}</b>. ' +
-            ('Ordinary private text can receive AI replies.' if private else 'Only mentions of Meiko or replies to this bot can receive AI replies.'),
+            ('Ordinary private text can receive AI replies.' if private else controller_label('Only mentions of Meiko or replies to this bot can receive AI replies.', 'Only mentions of this bot or replies to it can receive AI replies.')),
             note='Only the triggering message goes to the external AI provider, without conversation history. Do not send secrets. Use /autochat off to stop; /ask remains available. Group Owner approval and plugin activation are still required.'))
 
     async def automatic(client, message):

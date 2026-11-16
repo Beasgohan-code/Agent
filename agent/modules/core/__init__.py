@@ -79,6 +79,12 @@ def build(ctx):
         )
 
     async def about(_client, message):
+        from ...platform.policy import is_worker
+        if is_worker(ctx.settings):
+            from ...ui.workers import about_screen
+            active = set(ctx.registry.active_commands())
+            await ctx.sender.send(message.chat.id, about_screen(message.from_user, ctx.theme, active=active))
+            return
         modules, commands = _registry_summary()
         await reply(
             message,

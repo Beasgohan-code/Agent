@@ -45,6 +45,10 @@ class CallbackHandlers:
             from ..ui.workers import callback
             worker_screen = callback(data, user, self._theme, active=active)
         builder = SCREENS.get(data)
+        if getattr(self._theme, 'worker_plugins', None) is not None:
+            from ..ui.keyboards import CB_HOME, CB_HELP, CB_INFO
+            if data not in (CB_HOME, CB_HELP, CB_INFO):
+                builder = None  # Old controller category buttons are not worker navigation.
         if builder is None and worker_screen is None:
             logger.warning("Unknown callback control")
             await self._answer(callback_query, STALE_OPTION, show_alert=True)

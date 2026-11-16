@@ -265,6 +265,8 @@ class AgentBot:
             link_routes = dict(self.deeplinks._routes)
             try:
                 manifest, handlers = module.build(self.modules)
+                from .ui.identity import presentation
+                handlers = {name: presentation(handler, worker=worker) for name, handler in handlers.items()}
                 self.registry.register(manifest, handlers)
                 built.append(module)
             except Exception:
@@ -309,6 +311,12 @@ class AgentBot:
                 watcher.callback = self.plugin_gate.wrap(slug, watcher.callback, silent=True)
                 self._watchers.append(watcher)
                 self.runtime.track(slug, watcher, len(self._watchers))
+
+        # Scope all update paths, including base callbacks, watchers and child
+        # tasks. No process-global theme switch or payload-wide text replacement.
+        from .ui.identity import presentation
+        for handler in (*self._handlers, *self._watchers):
+            handler.callback = presentation(handler.callback, worker=worker)
 
         for manifest in self.registry.manifests():
             if self.runtime.wants_disabled(manifest.slug):

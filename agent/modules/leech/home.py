@@ -82,8 +82,9 @@ def screen(ctx, view="home", user_id=None):
             note="YouTube video links download audio through TypeTube’s public cluster. Other webpage links, torrents, login-required pages and remote-drive uploads are not implemented. Never submit private credentials or secret links.",
         )
     else:
+        from ...platform.policy import is_worker
         body = panel(
-            "Meiko · Leech",
+            "Leech" if is_worker(ctx.settings) else "Meiko · Leech",
             icon=ctx.theme.emoji("gear"),
             lines=[
                 "Download a public HTTP(S) file and receive it here as a Telegram document.",
