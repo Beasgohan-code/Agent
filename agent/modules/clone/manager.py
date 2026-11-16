@@ -46,6 +46,9 @@ class CloneManager:
         self._settings = settings
         self._store = store
         self._factory = factory or _default_factory
+        from .configuration import CloneConfigurationWriter
+        self.configuration = CloneConfigurationWriter(store, self.settings_for, controller_owner_id=settings.owner_id)
+        store.configuration = self.configuration
         #: bot_id -> (bot, client, username)
         self._running: dict[int, tuple[object, object, str]] = {}
         #: What each worker is doing, including the ones that are not running.
@@ -301,7 +304,7 @@ class CloneManager:
             record = self._store.get(bot_id)
             if record is not None and self.eligible is not None and not self.eligible(record.owner_id):
                 await self.stop(bot_id)
-                self._store.update(bot_id, disabled=True)
+                await self._store.aupdate(bot_id, disabled=True)
                 continue
             client = self._running[bot_id][1]
             if getattr(client, "is_connected", True):

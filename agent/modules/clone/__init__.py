@@ -7,6 +7,7 @@ clone inherits parent assistant credentials or permits recursive cloning.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 
@@ -213,7 +214,7 @@ def build(ctx):
                 [
                     Button(
                         f"{mark} {name}",
-                        callback_data=f"{PREFIX}:{clone.bot_id}:p:{name}",
+                        callback_data=f"{PREFIX}:{clone.bot_id}:p:{name}" + (f"~{clone.configuration_revision}" if store._db is not None else ""),
                         style=ButtonStyle.SUCCESS
                         if name == current
                         else ButtonStyle.DEFAULT,
@@ -314,22 +315,22 @@ def build(ctx):
             )
             return
 
-        record = store.add(
+        record = await store.aadd(
             Clone(
                 bot_id=bot_id,
                 owner_id=user.id,
                 managed_owner=True,
                 token=parts[1].strip(),
                 profile=profile,
-            )
+            ), owner_limit=allowed, total_limit=ctx.settings.clone_limit
         )
         try:
             username = await manager.start(record)
         except CloneError:
-            store.remove(bot_id)
+            await store.aremove(bot_id)
             await reply(message, "<b>Could not start that clone</b>\nTelegram or deployment startup failed. Check bot credentials and try again.")
             return
-        store.update(bot_id, username=username)
+        await store.aupdate(bot_id, username=username)
         if events is not None:
             events.emit("clone:add", bot_id=bot_id, by=user.id)
         logger.info("clone %s added by %s as @%s", bot_id, user.id, username or "?")
@@ -383,7 +384,7 @@ def build(ctx):
             await reply(message, "That clone belongs to somebody else.")
             return
         await manager.stop(target.bot_id)
-        store.remove(target.bot_id)
+        await store.aremove(target.bot_id)
         if events is not None:
             events.emit("clone:delete", bot_id=target.bot_id, by=user.id)
         await reply(message, f"Deleted the clone <b>{target.handle}</b> and stopped it.")
@@ -434,10 +435,37 @@ def build(ctx):
             await _redraw(query, client, text, keyboard)
             await query.answer("Choose a profile.")
             return
+        expected_revision = None
+        if store._db is not None:
+            extra, separator, version = extra.partition('~')
+            if not separator or not version.isascii() or not version.isdecimal() or len(version) > 12:
+                text, keyboard = _profile_panel(target)
+                await _redraw(query, client, text, keyboard)
+                await query.answer("Reopen the profile picker; this control has no current revision.", show_alert=True)
+                return
+            expected_revision = int(version)
         if profiles.clean(extra) != extra or extra not in profiles.ORDER:
             await query.answer("That profile does not exist.", show_alert=True)
             return
-        store.update(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None)
+        if store._db is not None:
+            from .configuration import ConfigurationWriteError
+            from .revisions import RevisionConflict
+            request_id = hashlib.sha256(str(getattr(query, 'id', '')).encode()).hexdigest()
+            if not getattr(query, 'id', None):
+                await query.answer("Request identity missing; reopen the profile picker.", show_alert=True)
+                return
+            try:
+                result = await manager.configuration.write(target.bot_id, actor_id=presser,
+                    expected_revision=expected_revision, request_id=request_id,
+                    changes=dict(profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None))
+            except (ConfigurationWriteError, RevisionConflict):
+                await query.answer("Configuration not confirmed or control stale. Refresh before retrying.", show_alert=True)
+                return
+            text, keyboard = _profile_panel(store.get(target.bot_id) or target)
+            await _redraw(query, client, text, keyboard)
+            await query.answer(f"Desired revision {result['desired_revision']} saved; awaiting reconciliation.")
+            return
+        await store.aupdate(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None)
         said = f"{target.handle} is on {extra}."
         if manager.is_running(target.bot_id):
             try:
@@ -445,7 +473,7 @@ def build(ctx):
             except CloneError as exc:
                 await query.answer(str(exc), show_alert=True)
                 return
-            store.update(target.bot_id, username=username or target.username)
+            await store.aupdate(target.bot_id, username=username or target.username)
             said = f"{target.handle} restarted on {extra}."
         if events is not None:
             events.emit("clone:profile", bot_id=target.bot_id, by=presser)
@@ -495,17 +523,17 @@ def build(ctx):
             except CloneError as exc:
                 await query.answer(str(exc), show_alert=True)
                 return
-            store.update(bot_id, username=username or target.username, disabled=False)
+            await store.aupdate(bot_id, username=username or target.username, disabled=False)
             said = f"{target.handle} is running."
         elif action == "stop":
             if not await manager.stop(bot_id):
                 await query.answer("It was already stopped.", show_alert=True)
                 return
-            store.update(bot_id, disabled=True)
+            await store.aupdate(bot_id, disabled=True)
             said = f"{target.handle} is stopped."
         elif action == "delete":
             await manager.stop(bot_id)
-            store.remove(bot_id)
+            await store.aremove(bot_id)
             said = f"{target.handle} was deleted."
             if events is not None:
                 events.emit("clone:delete", bot_id=bot_id, by=presser)

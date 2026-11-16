@@ -38,6 +38,22 @@
         "PluginGate exception traceback leak reproduced red then sanitized to exception class; no raw redemption exception traceback",
         "8 router/entrypoint/execution-gate regressions pass"
       ]
+    },
+    {
+      "id": "phase3-canonical-configuration-writes",
+      "status": "implemented-local",
+      "summary": "Canonical encrypted desired configuration, pending revision and request receipt in one PostgreSQL transaction; registry then revision lock, expected-revision CAS, owner authorization and safe errors. No worker acknowledgement.",
+      "validation": {
+        "focused": "12 passed in 0.60s (actual disposable PostgreSQL)",
+        "full": "1789 passed in 18.94s; no skips; current dirty working tree",
+        "red": "Initial canonical test failed: missing manager.configuration; subsequent rollback and reconnect regressions added after implementation",
+        "static": "compileall, pyflakes, working-tree and staged diff checks passed"
+      },
+      "limitations": [
+        "No worker reconciliation, lease-authorized apply, durable cleanup, deployment, push or merge",
+        "Validation is current dirty working tree, not clean commit checkout",
+        "Selective commit includes atomic clone storage prerequisite and revision reader; earlier manager validation/setup and other feature changes remain uncommitted"
+      ]
     }
   ]
 }
