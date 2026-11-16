@@ -82,11 +82,18 @@ def test_directory_postgresql_refresh_deletion_and_outage(tmp_path):
                 await centre.press(None, q, q.data.split(':', 1)[1])
                 return q
             assert 'Saved A' in (await show('all')).edits[-1][0]
+            found, keys = await centre.render_directory(MEMBER, 'all', 0, 'saved a')
+            assert 'Saved A' in found
+            foreign, _ = await centre.render_directory(OWNER, 'all', 0, 'saved a')
+            assert 'No clones match' in foreign
+            assert all(len(b.callback_data.encode()) <= 64 for row in keys.inline_keyboard for b in row if b.callback_data)
             await stores[0].afence(111111111, disabled=True)
             assert 'No clones match' in (await show('eligible')).edits[-1][0]
             assert 'Saved A' in (await show('stopped')).edits[-1][0]
             await stores[0].aremove(111111111)
             assert 'No clones match' in (await show('all')).edits[-1][0]
+            removed, _ = await centre.render_directory(MEMBER, 'all', 0, 'saved a')
+            assert 'No clones match' in removed
             await dbs[1].close()
             q = await show('all')
             assert not q.edits and q.answers[-1][1]

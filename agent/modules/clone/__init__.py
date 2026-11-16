@@ -401,7 +401,16 @@ def build(ctx):
             return
         try:
             await store.aall()
-            text, keyboard = _panel(user.id)
+            argument = (getattr(message, 'text', '') or '').split(maxsplit=1)
+            if len(argument) == 2:
+                try:
+                    search = control_centre.search_text(argument[1])
+                except ValueError:
+                    await reply(message, 'Search by name, @username or bot ID using at most 24 UTF-8 bytes without control characters.')
+                    return
+                text, keyboard = await control_centre.render_directory(user.id, 'all', 0, search)
+            else:
+                text, keyboard = _panel(user.id)
         except Exception:
             logger.warning('#Errors Clone panel state could not be loaded')
             await reply(message, panel('Clone controller unavailable',

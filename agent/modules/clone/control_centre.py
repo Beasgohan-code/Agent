@@ -4,6 +4,7 @@ Views are read-only; confirmed lifecycle actions use durable owner/revision/
 generation admission and the existing reconciler. Missing local telemetry is
 not proof of fleet-wide offline state. No credentials enter cards.
 """
+import base64
 import logging
 import hashlib
 import re
@@ -145,47 +146,65 @@ class CloneControlCentre:
                      subtitle=f'Bot {clone.bot_id}', table=kv_table(rows) if view not in ('commands', 'plugins') else Table(headers=('Item', 'Details'), rows=tuple(rows)),
                      lines=[operation] if operation else [], note=note, footer='Owner-private · existing in-process workers · no OS sandbox'), InlineKeyboardMarkup(keys)
 
-    async def directory(self, query, uid, mode, page):
-        """Owner-only canonical directory. Intent is not observed availability."""
+    @staticmethod
+    def search_text(value):
+        value = value.strip()
+        if len(value.encode('utf-8')) > 24 or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError('Search must be at most 24 UTF-8 bytes without control characters.')
+        return value
+
+    async def render_directory(self, uid, mode, page, search=''):
+        """Canonical owner-only read; callers enforce private Telegram origin."""
+        await self.store.aall()
+        search = self.search_text(search)
+        suffix = ':' + base64.urlsafe_b64encode(search.encode()).decode().rstrip('=') if search else ''
+        owned = sorted((c for c in self.store.all() if c.owner_id == uid), key=lambda c: c.bot_id)
+        matches = [c for c in owned if mode == 'all' or (c.disabled if mode == 'stopped' else not c.disabled)]
+        if search:
+            term = search.casefold().removeprefix('@')
+            matches = [c for c in matches if term in c.name.casefold() or term in c.username.casefold() or term in str(c.bot_id)]
+        pages = max(1, (len(matches) + PAGE_SIZE - 1) // PAGE_SIZE)
+        if page >= pages:
+            raise ValueError('That page changed. Open My Bots again.')
+        rows, keys = [], []
+        for clone in matches[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
+            rows.append((clone.name[:48] or clone.handle[:48],
+                f'Bot {clone.bot_id} · ' + ('Saved stop intent' if clone.disabled else 'Saved start eligibility') +
+                '\nLocal worker: ' + ('observed' if self.manager.is_running(clone.bot_id) else 'not observed')))
+            keys.append([self.button(clone, (clone.name or clone.handle)[:40], 'home', 'bot')])
+        for pair in ((('all', 'All'), ('eligible', 'Start eligible')), (('stopped', 'Stop intent'), (mode, 'Refresh'))):
+            keys.append([self.ctx.theme.button(label, icon='stats' if label == 'Refresh' else 'search',
+                callback_data=f'cc:list:{value}:0{suffix}') for value, label in pair])
+        paging = []
+        if page:
+            paging.append(self.ctx.theme.button('Previous', icon='back', callback_data=f'cc:list:{mode}:{page-1}{suffix}'))
+        if page + 1 < pages:
+            paging.append(self.ctx.theme.button('Next', icon='arrow', callback_data=f'cc:list:{mode}:{page+1}{suffix}'))
+        if paging:
+            keys.append(paging)
+        if search:
+            keys.append([self.ctx.theme.button('Clear search', icon='search', callback_data='cc:list:all:0')])
+        keys.append([self.ctx.theme.button('Controller panel', icon='back', callback_data='clone:refresh')])
+        body = panel('My Bots', icon=self.ctx.theme.emoji('bot'),
+            subtitle=f'{len(matches)} matching · {len(owned)} owned · Page {page+1} / {pages}',
+            table=kv_table(rows) if rows else None,
+            lines=([f'Search: {search}'] if search else []) + ([] if rows else ['No clones match this filter. Choose All or use /clone to begin setup.']),
+            note='Filters show saved intent, not fleet-wide online status. Start eligibility is still subject to Premium and validation. Local worker observation only describes this controller.',
+            footer='Owner-private · search with /mybots <name, @username or bot ID> (24 UTF-8 bytes)')
+        return body, InlineKeyboardMarkup(keys)
+
+    async def directory(self, query, uid, mode, page, search=''):
         try:
-            await self.store.aall()
-            owned = sorted((c for c in self.store.all() if c.owner_id == uid), key=lambda c: c.bot_id)
-            matches = [c for c in owned if mode == 'all' or (c.disabled if mode == 'stopped' else not c.disabled)]
-            pages = max(1, (len(matches) + PAGE_SIZE - 1) // PAGE_SIZE)
-            if page >= pages:
-                await query.answer('That page changed. Open My Bots again.', show_alert=True)
-                return
-            rows, keys = [], []
-            for clone in matches[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
-                rows.append((clone.name[:48] or clone.handle[:48],
-                    f'Bot {clone.bot_id} · ' + ('Saved stop intent' if clone.disabled else 'Saved start eligibility') +
-                    '\nLocal worker: ' + ('observed' if self.manager.is_running(clone.bot_id) else 'not observed')))
-                keys.append([self.button(clone, (clone.name or clone.handle)[:40], 'home', 'bot')])
-            for pair in ((('all', 'All'), ('eligible', 'Start eligible')), (('stopped', 'Stop intent'), (mode, 'Refresh'))):
-                keys.append([self.ctx.theme.button(label, icon='stats' if label == 'Refresh' else 'search',
-                    callback_data=f'cc:list:{value}:0') for value, label in pair])
-            paging = []
-            if page:
-                paging.append(self.ctx.theme.button('Previous', icon='back', callback_data=f'cc:list:{mode}:{page-1}'))
-            if page + 1 < pages:
-                paging.append(self.ctx.theme.button('Next', icon='arrow', callback_data=f'cc:list:{mode}:{page+1}'))
-            if paging:
-                keys.append(paging)
-            keys.append([self.ctx.theme.button('Controller panel', icon='back', callback_data='clone:refresh')])
-            body = panel('My Bots', icon=self.ctx.theme.emoji('bot'),
-                subtitle=f'{len(matches)} matching · {len(owned)} owned · Page {page+1} / {pages}',
-                table=kv_table(rows) if rows else None,
-                lines=[] if rows else ['No clones match this filter. Choose All or use /clone to begin setup.'],
-                note='Filters show saved intent, not fleet-wide online status. Start eligibility is still subject to Premium and validation. Local worker observation only describes this controller.',
-                footer='Owner-private · select a bot to open its dashboard')
+            body, keys = await self.render_directory(uid, mode, page, search)
             try:
-                await rich.edit(query, body, reply_markup=InlineKeyboardMarkup(keys))
+                await rich.edit(query, body, reply_markup=keys)
             except MessageNotModified:
                 pass
             await query.answer()
         except Exception as exc:
             logger.warning('#Errors Clone directory unavailable (%s)', type(exc).__name__)
-            await query.answer('Saved bots could not be read safely. Retry My Bots after checking controller availability.', show_alert=True)
+            notice = str(exc) if isinstance(exc, ValueError) else 'Saved bots could not be read safely. Retry My Bots after checking controller availability.'
+            await query.answer(notice, show_alert=True)
 
     async def reset_channel(self, query, uid, match):
         """Narrow, non-secret editor; never reconfigure workers inside a save."""
@@ -239,9 +258,18 @@ class CloneControlCentre:
         if type(uid) is not int or uid <= 0 or getattr(getattr(origin, 'chat', None), 'id', None) != uid:
             await query.answer('Open /mybots privately as yourself.', show_alert=True)
             return
-        directory_match = re.fullmatch(r'list:(all|eligible|stopped):([0-9]{1,4})', rest)
+        directory_match = re.fullmatch(r'list:(all|eligible|stopped):([0-9]{1,4})(?::([A-Za-z0-9_-]{1,32}))?', rest)
         if directory_match:
-            await self.directory(query, uid, directory_match[1], int(directory_match[2]))
+            try:
+                encoded = directory_match[3]
+                search = base64.b64decode(encoded + '=' * (-len(encoded) % 4), altchars=b'-_', validate=True).decode('utf-8') if encoded else ''
+                search = self.search_text(search)
+                if encoded and base64.urlsafe_b64encode(search.encode()).decode().rstrip('=') != encoded:
+                    raise ValueError('Noncanonical search')
+            except (ValueError, UnicodeError):
+                await query.answer('That search control is stale. Use /mybots to search again.', show_alert=True)
+                return
+            await self.directory(query, uid, directory_match[1], int(directory_match[2]), search)
             return
         reset_match = re.fullmatch(r'([0-9]{6,12}):(reset|save):(log_channel|storage_channel):([0-9]{1,12}):([0-9]{1,12})', rest)
         if reset_match:
