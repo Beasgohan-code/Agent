@@ -1,5 +1,6 @@
 """Focused worker front doors. Presentation only, never an authorization source."""
 import re
+import difflib
 
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
 from pyrogram.enums import ButtonStyle
@@ -140,11 +141,17 @@ def plugin_screen(user, theme, slug, *, active=None, page=0):
         paging.append(theme.button('Previous', icon='back', callback_data=f'worker:{slug}:{page - 1}'))
     if page + 1 < pages:
         paging.append(theme.button('Next', icon='arrow', callback_data=f'worker:{slug}:{page + 1}', style=ButtonStyle.PRIMARY))
-    keys = ([paging] if paging else []) + [[theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{slug}', style=ButtonStyle.PRIMARY)]] + [navigation(theme)]
+    detail_buttons = [theme.button(f'/{name}', icon='question', callback_data=f'worker:cmd:{name}')
+                      for name in available[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]]
+    details = [detail_buttons[index:index + 2] for index in range(0, len(detail_buttons), 2)]
+    keys = details + ([paging] if paging else []) + [[theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{slug}', style=ButtonStyle.PRIMARY)]] + [navigation(theme)]
     return Screen(body, Keyboard(keys))
 
 
 def callback(data, user, theme, *, active=None):
+    command = re.fullmatch(r'worker:cmd:([a-z][a-z0-9_]{0,31})', data)
+    if command:
+        return command_screen(user, theme, command[1], active=active)
     guide = re.fullmatch(r'worker:guide:([a-z_]{1,32})', data)
     if guide:
         return guide_screen(user, theme, guide[1], active=active)
@@ -181,12 +188,60 @@ def lookup(argument, user, theme, *, active=None):
         screen = plugin_screen(user, theme, slug, active=active)
         if screen is not None:
             return screen
-    if not query or active is None or query not in active or query not in DESCRIPTIONS:
+    direct = command_screen(user, theme, query, active=active)
+    if direct is not None:
+        return direct
+    candidates = sorted(name for name in discoverable(theme, active) if name in DESCRIPTIONS)
+    matches = [name for name in candidates if query in name] if len(query) >= 3 else []
+    if not matches and len(query) >= 3:
+        matches = difflib.get_close_matches(query, candidates, n=6, cutoff=0.7)
+    matches = matches[:6]
+    if not matches:
         return overview(user, theme, active=active, help_mode=True)
-    body = panel('Command help', icon=theme.emoji('question'),
-                 table=Table(headers=('Command', 'Usage'), rows=((markup(f'<code>/{query}</code>'), DESCRIPTIONS[query]),)),
-                 note='Each action checks the permissions it needs.', footer='Use /help to explore all available tools.')
-    return Screen(body, Keyboard([navigation(theme)]))
+    from richgram import rich_esc
+    body = panel('Find a command', icon=theme.emoji('search'),
+                 subtitle=f'Results for {rich_esc(query)}',
+                 table=Table(headers=('Command', 'What it does'), rows=tuple(
+                     (markup(f'<code>/{name}</code>'), DESCRIPTIONS[name]) for name in matches)),
+                 note='Tap a command for details. Suggestions do not execute actions.',
+                 footer='Results include only this bot’s selected, registered commands.')
+    buttons = [theme.button(f'/{name}', icon='question', callback_data=f'worker:cmd:{name}') for name in matches]
+    return Screen(body, Keyboard([buttons[index:index + 2] for index in range(0, len(buttons), 2)] + [navigation(theme)]))
+
+
+def discoverable(theme, active):
+    """Intersection of live registry and this worker's feature/navigation boundary."""
+    configured = selected(theme)
+    if configured is None or active is None:
+        return set()
+    candidates = {'start', 'help', 'menu', 'about', 'ping'}
+    for slug in (*configured, 'moderation'):
+        candidates.update(commands(slug, active))
+    if configured:
+        candidates.update(('plugin', 'plugins'))
+    if set(configured) & {'encoder', 'leech', 'renamer'}:
+        candidates.update(('jobs', 'cancel'))
+    return candidates & set(active)
+
+
+def command_screen(user, theme, name, *, active=None):
+    from .screens import Screen
+    from ..platform.menu import DESCRIPTIONS
+    if name not in discoverable(theme, active) or name not in DESCRIPTIONS:
+        return None
+    configured = selected(theme) or ()
+    owner = next((slug for slug in (*configured, 'moderation') if name in commands(slug, active)), None)
+    body = panel(f'/{name}', icon=theme.emoji(PROFILES[owner][1] if owner else 'question'),
+                 subtitle='Command details',
+                 table=Table(headers=('Command', 'What it does'), rows=((markup(f'<code>/{name}</code>'), DESCRIPTIONS[name]),)),
+                 note='Copying does not run this command. Add any required arguments before sending; permissions are checked when it runs.',
+                 footer='Send the command for its current usage. Never include passwords or secret tokens.')
+    keys = [[theme.button(f'Copy /{name}', icon='pin', copy_text=f'/{name}', style=ButtonStyle.PRIMARY)]]
+    if owner:
+        page = commands(owner, active).index(name) // PAGE_SIZE
+        keys.append([theme.button('Back to commands', icon='back', callback_data=f'worker:{owner}:{page}')])
+    keys.append(navigation(theme))
+    return Screen(body, Keyboard(keys))
 
 
 def profile_screen(user, theme, *, active=None):
