@@ -2,6 +2,7 @@
 import copy
 import json
 import time
+import re
 
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS agent_member_warnings (
@@ -21,7 +22,7 @@ class WarningStoreError(RuntimeError):
 
 
 async def operate(store, chat_id, user_id, operation, **fields):
-    if operation not in {'add_warning', 'clear_warning', 'clear_all_warnings', 'warnings_of'}:
+    if operation not in {'add_warning', 'clear_warning', 'clear_all_warnings', 'warnings_of','clear_warning_id'}:
         raise WarningStoreError('Invalid warning operation.')
     if (type(chat_id) is not int or not -(2**63) < chat_id < 0
             or type(user_id) is not int or not 0 < user_id < 2**63):
@@ -31,6 +32,13 @@ async def operate(store, chat_id, user_id, operation, **fields):
             or not 0 <= fields['moderator_id'] < 2**63
             or not isinstance(fields.get('reason'), str)):
         raise WarningStoreError('Invalid warning actor or reason.')
+    if operation=='clear_warning_id' and (
+            not isinstance(fields.get('warning_id'),str) or not re.fullmatch(r'[0-9a-f]{32}',fields['warning_id'])
+            or type(fields.get('actor_id')) is not int or not 0<fields['actor_id']<2**63):
+        raise WarningStoreError('Valid warning identity and personal actor required.')
+    if operation=='add_warning' and fields.get('warning_id') is not None and (
+            not isinstance(fields['warning_id'],str) or not re.fullmatch(r'[0-9a-f]{32}',fields['warning_id'])):
+        raise WarningStoreError('Invalid warning identity.')
     db = store._db
     if db is None:
         return getattr(store, operation)(chat_id, user_id, **fields)

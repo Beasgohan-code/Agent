@@ -50,7 +50,7 @@ def render():
             '## One-by-one improvement order', '',
             '1. Mute/unmute: rich cards, live rights, acknowledged actions and protected Unmute button implemented; live failure still needs runtime evidence.',
             '2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.',
-            '3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Warning-removal cards now share one strict live-authorized path. Next: safely bound specific-warning removal controls and remaining warning-read parity.',
+            '3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Warning-removal cards now share one strict live-authorized path. New /warn cards now include exact-warning removal controls; remaining warning-read parity is next.',
             '4. Timed promotion: durable expiry/recovery before registering /tpromote.',
             '5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.',
             '6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.', '']

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
+import re
 from pathlib import Path
 
 from .db import load_document, save_document
@@ -82,9 +84,14 @@ class ChatStore:
 
     # -- warnings ----------------------------------------------------------
 
-    def add_warning(self, chat_id: int, user_id: int, *, moderator_id: int, reason: str, expires_at: float | None = None) -> int:
+    def add_warning(self, chat_id: int, user_id: int, *, moderator_id: int, reason: str, expires_at: float | None = None, warning_id: str | None = None) -> int:
         """Record a warning and return how many the member now has active."""
         self._require_local_warnings()
+        warning_id=uuid.uuid4().hex if warning_id is None else warning_id
+        if not isinstance(warning_id,str) or not re.fullmatch(r'[0-9a-f]{32}',warning_id):
+            raise ValueError('Invalid warning identity.')
+        if any(row.get('id')==warning_id for row in self._member(chat_id,user_id)['warnings']):
+            raise ValueError('Warning identity already exists.')
         if expires_at is None:
             seconds=self.get(chat_id,'warn_expiry_seconds',0)
             if type(seconds) is not int or not (seconds==0 or 60<=seconds<=366*86400):
@@ -93,6 +100,7 @@ class ChatStore:
         member = self._member(chat_id, user_id)
         member["warnings"].append(
             {
+                "id": warning_id,
                 "reason": reason[:500],
                 "by": int(moderator_id),
                 "at": time.time(),
@@ -108,10 +116,29 @@ class ChatStore:
         if self._db is not None:
             raise RuntimeError("Awaited PostgreSQL warning operation required.")
 
-    async def aadd_warning(self, chat_id, user_id, *, moderator_id, reason):
+    async def aadd_warning(self, chat_id, user_id, *, moderator_id, reason, warning_id=None):
         from .warnings import operate
-        return await operate(self, chat_id, user_id, 'add_warning',
-                             moderator_id=moderator_id, reason=reason)
+        fields={'moderator_id':moderator_id,'reason':reason}
+        if warning_id is not None:
+            fields['warning_id']=warning_id
+        return await operate(self, chat_id, user_id, 'add_warning',**fields)
+
+    async def aclear_warning_id(self,chat_id,user_id,warning_id,*,actor_id):
+        from .warnings import operate
+        return await operate(self,chat_id,user_id,'clear_warning_id',warning_id=warning_id,actor_id=actor_id)
+
+    def clear_warning_id(self,chat_id,user_id,*,warning_id,actor_id):
+        self._require_local_warnings()
+        if (not isinstance(warning_id,str) or not re.fullmatch(r'[0-9a-f]{32}',warning_id)
+                or type(actor_id) is not int or not 0<actor_id<2**63):
+            raise ValueError('Valid warning identity and personal actor required.')
+        self.warnings_of(chat_id,user_id)
+        for row in self._member(chat_id,user_id)['warnings']:
+            if row.get('id')==warning_id and row.get('active'):
+                row.update(active=False,cleared_at=time.time(),cleared_by=actor_id)
+                self._save()
+                return True
+        return False
 
     async def aclear_warning(self, chat_id, user_id):
         from .warnings import operate

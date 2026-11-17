@@ -2,6 +2,8 @@
 import asyncio
 import logging
 import re
+import uuid
+from .warning_undo import setup as setup_undo,issue as issue_undo,bind as bind_undo
 from types import SimpleNamespace
 from pyrogram.enums import ChatType,ChatMemberStatus
 from pyrogram.types import InlineKeyboardMarkup
@@ -27,6 +29,7 @@ def build(ctx):
     from . import is_moderator,target_is_protected,escalate_warning
     from .restrictions import target_and_reason
     router=getattr(ctx,'actions',None)
+    setup_undo(ctx)
 
     async def view(client,query,data):
         match=re.fullmatch(r'(-[0-9]{1,19}):([1-9][0-9]{0,18})',data)
@@ -88,7 +91,8 @@ def build(ctx):
             if not await asyncio.wait_for(is_moderator(client,message,need='can_restrict_members'),5):
                 raise WarningInputError('Your administrator permission changed. No warning recorded.')
             reason=reason.strip()[:500] or 'no reason given'
-            count=await ctx.chats.aadd_warning(chat.id,uid,moderator_id=user.id,reason=reason)
+            warning_id=uuid.uuid4().hex
+            count=await ctx.chats.aadd_warning(chat.id,uid,moderator_id=user.id,reason=reason,warning_id=warning_id)
             recorded=True
             audit=''
             try:
@@ -102,11 +106,16 @@ def build(ctx):
                     escalation=await escalate_warning(client,ctx,message,uid,policy['action'],confirm=True)
                 else:
                     escalation='Warning recorded; escalation not attempted because caller permissions changed.'
-            keyboard=InlineKeyboardMarkup([[ctx.theme.button('View warnings',icon='warn',callback_data=f'{PREFIX}:{chat.id}:{uid}')]]) if router is not None else None
-            await reply(message,panel('Warning issued',icon=ctx.theme.emoji('warn'),table=kv_table([
+            token,remove_button=issue_undo(ctx,chat.id,uid,warning_id)
+            buttons=[ctx.theme.button('View warnings',icon='warn',callback_data=f'{PREFIX}:{chat.id}:{uid}')] if router is not None else []
+            if remove_button is not None:
+                buttons.append(remove_button)
+            keyboard=InlineKeyboardMarkup([buttons]) if buttons else None
+            sent=await reply(message,panel('Warning issued',icon=ctx.theme.emoji('warn'),table=kv_table([
                 ('Member',str(uid)),('Moderator',str(user.id)),('Active warnings',str(count)),
                 ('Threshold',str(policy['limit']) if policy['limit'] else 'off'),('Reason',reason),('Status','Warning recorded')]),
-                lines=[escalation],note='View details with /warns '+str(uid)+'. Removing warnings does not undo Telegram restrictions.'+audit),reply_markup=keyboard)
+                lines=[escalation],note='View details with /warns '+str(uid)+'. Removing warnings does not undo Telegram restrictions.'+audit+(' Removal button expires in 15 minutes or on restart; current admin rights required.' if remove_button is not None else '')),reply_markup=keyboard)
+            bind_undo(ctx,token,sent)
         except WarningInputError as error:
             await reply(message,panel('Warning not applied',icon=ctx.theme.emoji('warn'),lines=[str(error)]))
         except Exception as error:

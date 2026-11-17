@@ -577,3 +577,18 @@ undo. Seven regressions and existing group-reset/profile/expiry coverage. Full
 realPG working **2,286 passed in21.36s**, exact staged **2,207 passed in23.29s**,
 no skips. Inventory regenerated from selected source, Compile/Pyflakes/diff clean.
 No live Telegram/production/deployment/merge; unrelated dirty work excluded.
+
+## Exact warning-card removal control
+
+New /warn Remove this warning control uses pre-issued UUID history identity,
+canonical exact-ID member/group-locked clear and cleared_by/cleared_at retained
+history. No latest-row fallback, no new table/schema rewrite or competing warning
+writer. Personal current admin rechecks/protected target, opaque bounded15min
+one-use group/message/context token, no restart replay or automatic ambiguous retry.
+No Telegram unmute/unban side effect. Eight test-first cases incl realPG concurrent
+clear-once/restart/group+tenant isolation and actual callback/replay/forged/expired/
+nonadmin/legacy safety. Final full realPG exact staged **2,215 passed in22.37s**,
+working **2,294 passed in21.31s**, no skips. Inventory regenerated from selected
+source. Compile/Pyflakes/diff clean. No live Telegram/production/deploy/merge;
+unrelated dirty work excluded. Specific button is not general exactly-once warning
+command delivery; old/history-retention limits documented.

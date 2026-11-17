@@ -237,3 +237,37 @@ username/rich result/history, audit-failed committed result, group confirmation/
 final rights loss, provider redaction and member denial. Full working realPG
 **2,286 passed in21.36s**, no skips; exact staged suite in CODEBASE_AUDIT. Existing
 profile and warning-reset/expiry tests preserved. No live Telegram/production changes.
+
+## Exact-warning Remove button
+
+New /warn cards include Remove this warning alongside View warnings, when action
+router/capacity is available. Every newly issued warning now gets a random UUID
+identity stored in its existing JSON history, no SQL schema rewrite. /warn supplies
+that ID before issue and binds the button to that warning, not the post-issue
+latest row. Automated/variant warnings also gain generated IDs through shared
+store; old warning rows without IDs remain readable/clearable via explicit commands
+but are never guessed or retroactively linked to an old card.
+
+Added shared clear_warning_id operation to canonical member/group-locked warning
+store: exact identity+active/unexpired test and inactive/cleared_at/cleared_by update
+commit atomically, including SQL concurrency/restart. Missing/cleared/expired or
+no-longer-retained ID returns False; never fall back to latest. History retained
+within existing cap. Ordinary remove/reset semantics unchanged. Strict hex ID and
+positive personal actor validation before storage. Existing tenant/group/member
+isolation and expiry materialization preserved, no secondary writer.
+
+Opaque token controls max200 per bot context,15min monotonic expiry, group/target/
+result-message bound, consumed before store mutation. Current personal Restrict
+members admin required twice, protected target checked. Concurrent/replayed presses
+cannot remove another warning; SQL exact-ID mutation remains safe even if invoked
+concurrently outside the process. Restart invalidates controls with explicit manual
+command guidance. Stored actor/timestamp is authoritative; supplemental local audit
+failure separately reported. No unmute/unban API called; clearing warning does not
+reverse escalation. No automatic retry after ambiguous commit/delivery. This is
+not a durable replayable UI or exactly-once warning command admission mechanism.
+
+Eight new cases: first2 missing-API/button failures and DB-required skip before
+realPG run. Local exact-vs-newer/replay, PG concurrent exact clears/restart/group+
+tenant isolation, actual routed card button/replay, four wrong group/message/expired/
+nonadmin cases, expired/legacy no-fallback. Full suite results in CODEBASE_AUDIT.
+Synthetic callbacks/Telegram; no live moderation or production migration.
