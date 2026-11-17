@@ -7,11 +7,11 @@ from ...platform.warning_policy import operate,PolicyError
 from ...utils.rich import reply
 from ...ui.tables import panel,kv_table
 
-COMMANDS=('warnmode',)
+COMMANDS=('warnmode','warntime')
 
 
 def build(ctx):
-    from ..moderation import is_moderator
+    from ..moderation import is_moderator,duration_label
 
     def handler(command):
         async def call(client,message):
@@ -41,13 +41,23 @@ def build(ctx):
                         if len(args)!=1 or args[0].lower() not in ('mute','kick','ban'):
                             raise PolicyError('Usage: /warnmode mute|kick|ban. Use /warnlimit off to disable escalation.')
                         changes['action']=args[0].lower()
+                    elif command=='warntime':
+                        if len(args)==1 and args[0].lower()=='off':
+                            changes['expiry_seconds']=0
+                        else:
+                            match=re.fullmatch(r'([0-9]{1,8})([smhd])',args[0].lower()) if len(args)==1 else None
+                            if not match:
+                                raise PolicyError('Usage: /warntime off or 1m–366d (units s/m/h/d). New warnings only; history retained.')
+                            changes['expiry_seconds']=int(match[1])*{'s':1,'m':60,'h':3600,'d':86400}[match[2]]
+                            if not 60<=changes['expiry_seconds']<=366*86400:
+                                raise PolicyError('Warning expiry must be 60s–366d or off. No settings changed.')
                     if not await asyncio.wait_for(is_moderator(client,message,need='can_change_info'),5):
                         raise PolicyError('Administrator permissions changed. No settings changed.')
                 policy=await operate(ctx.chats,chat.id,actor=user.id,changes=changes)
                 await reply(message,panel('Warning escalation policy',icon=ctx.theme.emoji('warn'),
-                    table=kv_table([('Threshold',str(policy['limit'])),('Mode',policy['action'])]),
+                    table=kv_table([('Threshold',str(policy['limit'])),('Mode',policy['action']),('New warning expiry',duration_label(policy['expiry_seconds']) if policy['expiry_seconds'] else 'off')]),
                     lines=['Warnings do not escalate in this group.' if not policy['limit'] else f"Threshold: {policy['limit']} active warnings."],
-                    note='Saved policy for future warning escalation only; existing warnings/restrictions unchanged. Kick removes a member; ban is permanent. /warnlimit off disables escalation.'))
+                    note='Saved policy for future warning escalation only; existing warnings/restrictions unchanged. Expiry is snapshotted on new warnings only; expired warnings stop counting but stay in history. Kick removes a member; ban is permanent. /warnlimit off disables escalation.'))
             except PolicyError as error:
                 await reply(message,str(error))
             except Exception as error:

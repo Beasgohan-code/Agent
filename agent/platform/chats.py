@@ -82,9 +82,14 @@ class ChatStore:
 
     # -- warnings ----------------------------------------------------------
 
-    def add_warning(self, chat_id: int, user_id: int, *, moderator_id: int, reason: str) -> int:
+    def add_warning(self, chat_id: int, user_id: int, *, moderator_id: int, reason: str, expires_at: float | None = None) -> int:
         """Record a warning and return how many the member now has active."""
         self._require_local_warnings()
+        if expires_at is None:
+            seconds=self.get(chat_id,'warn_expiry_seconds',0)
+            if type(seconds) is not int or not (seconds==0 or 60<=seconds<=366*86400):
+                raise ValueError('Invalid warning expiry setting.')
+            expires_at=time.time()+seconds if seconds else None
         member = self._member(chat_id, user_id)
         member["warnings"].append(
             {
@@ -92,6 +97,7 @@ class ChatStore:
                 "by": int(moderator_id),
                 "at": time.time(),
                 "active": True,
+                "expires_at": expires_at,
             }
         )
         member["warnings"] = member["warnings"][-self._max_warnings :]
@@ -128,12 +134,24 @@ class ChatStore:
     def warnings_of(self, chat_id: int, user_id: int) -> list[dict]:
         self._require_local_warnings()
         member = self._chat(chat_id)["members"].get(str(int(user_id)), {})
+        changed=False
+        now=time.time()
+        for warning in member.get('warnings',[]):
+            expiry=warning.get('expires_at')
+            if expiry is not None and (type(expiry) not in (int,float) or not 0<expiry<float('inf')):
+                raise ValueError('Invalid warning expiry record.')
+            if warning.get('active') and expiry is not None and expiry<=now:
+                warning.update(active=False,expired_at=now)
+                changed=True
+        if changed:
+            self._save()
         return [w for w in member.get("warnings", []) if w.get("active")]
 
     def clear_warning(self, chat_id: int, user_id: int) -> bool:
         """Clear the most recent active warning. False when there was none."""
         self._require_local_warnings()
         member = self._member(chat_id, user_id)
+        self.warnings_of(chat_id,user_id)
         for warning in reversed(member["warnings"]):
             if warning.get("active"):
                 warning["active"] = False
@@ -146,6 +164,7 @@ class ChatStore:
         """Clear every active warning; return how many were cleared."""
         self._require_local_warnings()
         member = self._member(chat_id, user_id)
+        self.warnings_of(chat_id,user_id)
         cleared = 0
         now = time.time()
         for warning in member["warnings"]:

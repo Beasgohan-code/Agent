@@ -37,6 +37,11 @@ async def operate(store, chat_id, user_id, operation, **fields):
     if not db.connected or db._pool is None:
         raise WarningStoreError('PostgreSQL warning state unavailable. No changes confirmed.')
     try:
+        if operation=='add_warning':
+            from .warning_policy import operate as read_policy
+            policy=await read_policy(store,chat_id)
+            seconds=policy['expiry_seconds']
+            fields['expires_at']=time.time()+seconds if seconds else None
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():
                 await conn.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
@@ -63,6 +68,7 @@ async def operate(store, chat_id, user_id, operation, **fields):
                 work._max_warnings = store._max_warnings
                 work._save = lambda: None
                 work._member(chat_id, user_id)['warnings'] = copy.deepcopy(rows)
+                work.warnings_of(chat_id,user_id)
                 result = getattr(work, operation)(chat_id, user_id, **fields)
                 # Persist even a first read/empty clear: legacy import is one-time,
                 # so later stale document flushes cannot resurrect cleared history.
@@ -117,6 +123,11 @@ async def reset_group(store, chat_id, *, actor, request_id):
                     if not isinstance(history,list) or any(not isinstance(w,dict) for w in history):
                         raise WarningStoreError('Warning history invalid. Reset rolled back.')
                     for warning in history:
+                        expiry=warning.get('expires_at')
+                        if expiry is not None and (type(expiry) not in (int,float) or not 0<expiry<float('inf')):
+                            raise WarningStoreError('Invalid warning expiry record. Reset rolled back.')
+                        if warning.get('active') and expiry is not None and expiry<=now:
+                            warning.update(active=False,expired_at=now)
                         if warning.get('active'):
                             cleared += 1
                             warning.update(active=False,cleared_at=now)

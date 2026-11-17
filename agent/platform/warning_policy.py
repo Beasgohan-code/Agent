@@ -9,7 +9,7 @@ SCHEMA=(
     id BIGSERIAL PRIMARY KEY, tenant TEXT NOT NULL, group_id BIGINT NOT NULL,
     actor_id BIGINT NOT NULL, policy JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())""",
 )
-DEFAULT={'limit':3,'action':'mute'}
+DEFAULT={'limit':3,'action':'mute','expiry_seconds':0}
 
 
 class PolicyError(RuntimeError):
@@ -17,14 +17,16 @@ class PolicyError(RuntimeError):
 
 
 def validate(policy):
+    policy={**{'expiry_seconds':0},**policy}
     if (set(policy)!=set(DEFAULT) or type(policy['limit']) is not int or not 0<=policy['limit']<=20
-            or policy['action'] not in ('mute','kick','ban')):
-        raise PolicyError('Invalid warning policy: limit 0–20 and mode mute|kick|ban.')
+            or policy['action'] not in ('mute','kick','ban') or type(policy['expiry_seconds']) is not int
+            or not (policy['expiry_seconds']==0 or 60<=policy['expiry_seconds']<=366*86400)):
+        raise PolicyError('Invalid warning policy: limit 0–20, mode mute|kick|ban and expiry off or 60s–366d.')
     return policy
 
 
 def legacy(settings):
-    policy={key:settings.get(old,DEFAULT[key]) for key,old in [('limit','warn_limit'),('action','warn_action')]}
+    policy={key:settings.get(old,DEFAULT[key]) for key,old in [('limit','warn_limit'),('action','warn_action'),('expiry_seconds','warn_expiry_seconds')]}
     try:
         policy['limit']=max(0,min(20,int(policy['limit'])))
         if policy['action'] not in ('mute','kick','ban'):
@@ -43,10 +45,10 @@ async def operate(store,group,*,actor=None,changes=None):
         validate({**DEFAULT,**changes})
     db=getattr(store,'_db',None)
     if db is None:
-        current=legacy({key:store.get(group,key) for key in ('warn_limit','warn_action') if store.get(group,key) is not None})
+        current=legacy({key:store.get(group,key) for key in ('warn_limit','warn_action','warn_expiry_seconds') if store.get(group,key) is not None})
         if changes is not None:
             current=validate({**current,**changes})
-            for key,old in [('limit','warn_limit'),('action','warn_action')]:
+            for key,old in [('limit','warn_limit'),('action','warn_action'),('expiry_seconds','warn_expiry_seconds')]:
                 store.put(group,old,current[key])
             store.log(group,'warnpolicy',actor_id=actor,reason=f"{current['limit']}:{current['action']}")
         return current
