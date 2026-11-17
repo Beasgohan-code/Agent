@@ -3,6 +3,8 @@ import asyncio
 import logging
 import os
 import re
+from datetime import datetime, timezone
+from ...ui.screens import format_uptime
 from pyrogram.enums import ChatType, ChatMemberStatus, ChatMembersFilter
 from pyrogram.file_id import FileId, FileType
 from ...ui.keyboards import nav_keyboard
@@ -11,7 +13,7 @@ from ...utils.rich import reply
 from ..moderation import is_moderator
 from .admin import resolve, RIGHTS
 
-COMMANDS = ('admincount','rights','setchatname','setchatdescription','setchatphoto')
+COMMANDS = ('userstats','recentactivity','admincount','rights','setchatname','setchatdescription','setchatphoto')
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +38,31 @@ def build(ctx):
                     raise DetailInputError('You do not have the current administrator permission required for this command.')
                 parts=(getattr(message,'text','') or '').split(maxsplit=1)
                 value=parts[1].strip() if len(parts)==2 else ''
+                if command in ('userstats','recentactivity'):
+                    if value:
+                        raise DetailInputError(f'Usage: /{command} without arguments, in the current group.')
+                    if command=='userstats':
+                        count=await asyncio.wait_for(client.get_chat_members_count(chat.id),5)
+                        if type(count) is not int or count<1:
+                            raise RuntimeError('Member count not acknowledged')
+                        monitor=getattr(ctx,'monitor',None)
+                        registry=getattr(ctx,'registry',None)
+                        rows=[('Members (live)',str(count)),
+                              ('Bot uptime',format_uptime(monitor.snapshot().uptime_seconds) if monitor is not None else 'Unavailable'),
+                              ('Registered commands',str(len(registry.active_commands())) if registry is not None else 'Unavailable')]
+                        await reply(message,panel('Group and bot statistics',icon=ctx.theme.emoji('stats'),table=kv_table(rows),
+                            note='Member count read live from Telegram for this group. Uptime/commands describe this bot process, not group presence, message activity, or all Telegram users.'),reply_markup=nav_keyboard(theme=ctx.theme))
+                    else:
+                        store=getattr(ctx,'chats',None)
+                        if store is None:
+                            raise RuntimeError('Group history unavailable')
+                        events=store.history(chat.id,limit=10)
+                        rows=tuple((datetime.fromtimestamp(float(event['at']),tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),str(event.get('action','unknown'))[:64]) for event in events)
+                        await reply(message,panel('Recent recorded group actions',icon=ctx.theme.emoji('clock'),
+                            table=Table(headers=('UTC','Action'),rows=rows) if rows else None,
+                            lines=[] if rows else ['No actions recorded in this bot’s cached group history.'],
+                            note='Latest 10 entries from this group’s cached moderation log, not a complete Telegram activity feed or authoritative full SQL audit. Reasons, message text and other-group records are not shown.'),reply_markup=nav_keyboard(theme=ctx.theme))
+                    return
                 if command=='admincount':
                     if value:
                         raise DetailInputError('Usage: /admincount')

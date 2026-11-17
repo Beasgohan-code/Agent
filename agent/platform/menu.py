@@ -251,6 +251,8 @@ DESCRIPTIONS: dict[str, str] = {
     "del_caption": "Remove your private upload caption",
     # ops (owner)
     "restart": "Restart the process (owner)",
+    "userstats": "Live group member count and bot uptime (admin)",
+    "recentactivity": "Recent cached group moderation actions (admin)",
     "admincount": "Live administrator count (group admin)",
     "rights": "Read-only current Telegram admin-rights card (admin)",
     "setchatname": "Set this group’s title (Change info permission)",
@@ -294,7 +296,7 @@ DESCRIPTIONS: dict[str, str] = {
 #: Commands that only make sense inside a group.
 GROUP_ONLY = frozenset(
     {
-        "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto",
+        "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto",
         "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules",
         "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
