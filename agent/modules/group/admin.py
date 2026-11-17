@@ -1,6 +1,10 @@
 """Administrator commands; mutations always authorize against live Telegram state."""
 
 import html
+import asyncio
+import logging
+import re
+import unicodedata
 from pyrogram.enums import ChatMemberStatus, ChatType, ChatMembersFilter
 from pyrogram.types import ChatPrivileges
 from ...platform.admin_settings import options, denied, AdminStateError
@@ -40,6 +44,44 @@ async def resolve(client, message):
     elif not value.startswith("@"):
         raise ValueError("Use a positive user ID or @username.")
     return await client.get_users(value)
+
+
+async def promotion_target(client,message):
+    """Parse title only for promotion; other consumers keep strict target syntax."""
+    parts=(getattr(message,'text','') or '').split(maxsplit=1)
+    tail=parts[1] if len(parts)==2 else ''
+    source=getattr(message,'reply_to_message',None)
+    if source is not None:
+        if getattr(getattr(source,'chat',None),'id',None)!=message.chat.id:
+            raise ValueError('Reply to a member from this group.')
+        target=getattr(source,'from_user',None)
+        if target is None:
+            raise ValueError('Reply to a personal member identity.')
+        title=tail
+        value=None
+    else:
+        args=tail.split(maxsplit=1)
+        if not args:
+            mentions=[getattr(entity,'user',None) for entity in getattr(message,'entities',None) or [] if getattr(entity,'user',None) is not None]
+            if mentions:
+                return mentions[0],''
+            raise ValueError('Usage: /promote @username|positive_ID [title], or reply /promote [title].')
+        value=args[0]
+        title=args[1] if len(args)==2 else ''
+        if value.isascii() and value.isdecimal() and len(value)<=19 and 0<int(value)<2**63:
+            value=int(value)
+        elif not re.fullmatch(r'@[A-Za-z0-9_]{1,32}',value):
+            # Preserve Telegram text-mention targeting without accepting arbitrary strings.
+            mentions=[getattr(entity,'user',None) for entity in getattr(message,'entities',None) or [] if getattr(entity,'user',None) is not None]
+            if mentions and not title:
+                return mentions[0],''
+            raise ValueError('Use a positive user ID or @username, or reply to a member.')
+        target=None
+    if len(title)>16 or any(unicodedata.category(char).startswith('C') for char in title):
+        raise ValueError('Administrator title must be 1–16 characters with no control/format characters. Omit it for no custom title. Telegram may reject emoji titles.')
+    if target is None:
+        target=await asyncio.wait_for(client.get_users(value),5)
+    return target,title
 
 
 def build(ctx):
@@ -155,18 +197,22 @@ def build(ctx):
                     f"Administrator snapshot refreshed: {len(members)} admins. Permission checks always use current Telegram rights, not this snapshot.",
                 )
                 return
-            target = await resolve(client, message)
+            title = ""
+            if command == "promote":
+                target, title = await promotion_target(client, message)
+            else:
+                target = await resolve(client, message)
             target_id = getattr(target, "id", None)
             if type(target_id) is not int or not 0 < target_id < 2**63:
                 raise ValueError("Invalid user identity.")
-            me = await client.get_me()
+            me = await asyncio.wait_for(client.get_me(),5)
             if target_id in (user.id, me.id):
                 raise ValueError(
                     "You cannot change your own or my administrator privileges here."
                 )
-            bot = await client.get_chat_member(chat.id, me.id)
-            caller = await client.get_chat_member(chat.id, user.id)
-            member = await client.get_chat_member(chat.id, target_id)
+            bot = await asyncio.wait_for(client.get_chat_member(chat.id, me.id),5)
+            caller = await asyncio.wait_for(client.get_chat_member(chat.id, user.id),5)
+            member = await asyncio.wait_for(client.get_chat_member(chat.id, target_id),5)
             if bot.status != ChatMemberStatus.ADMINISTRATOR or not getattr(
                 getattr(bot, "privileges", None), "can_promote_members", False
             ):
@@ -208,18 +254,39 @@ def build(ctx):
             privileges = ChatPrivileges(
                 **granted, can_promote_members=False, is_anonymous=False
             )
-            result = await client.promote_chat_member(
+            if not await asyncio.wait_for(is_moderator(client,message,need='can_promote_members'),5):
+                raise ValueError('Your Add administrators permission changed. No administrator change requested.')
+            result = await asyncio.wait_for(client.promote_chat_member(
                 chat.id, target_id, privileges=privileges
-            )
+            ),10)
             if result is not True:
                 raise ValueError(
                     "Telegram did not confirm the administrator change. Check current rights before retrying."
                 )
             snapshots.pop(chat.id, None)
-            ctx.chats.log(chat.id, command, actor_id=user.id, target_id=target_id)
+            try:
+                ctx.chats.log(chat.id, command, actor_id=user.id, target_id=target_id)
+                audit=''
+            except Exception:
+                logging.getLogger(__name__).warning('#Errors Administrator change local audit unconfirmed')
+                audit=' Local audit unconfirmed.'
+            if command=='promote' and title:
+                try:
+                    # Promotion is already confirmed: title failure must never suggest rollback.
+                    if not await asyncio.wait_for(is_moderator(client,message,need='can_promote_members'),5):
+                        raise RuntimeError('Caller authority changed')
+                    acknowledged=await asyncio.wait_for(client.set_administrator_title(chat.id,target_id,title),10)
+                    if acknowledged is not True:
+                        raise RuntimeError('Title acknowledgement unavailable')
+                except Exception as error:
+                    logging.getLogger(__name__).warning('#Errors Administrator title unconfirmed (%s)',type(error).__name__)
+                    await reply(message,'Promotion confirmed by Telegram; title unconfirmed. Inspect the administrator list before retrying; no automatic retry or rollback.'+audit)
+                    return
+                await reply(message,f'Promotion and title confirmed by Telegram for <code>{target_id}</code>.'+audit)
+                return
             await reply(
                 message,
-                f"User <code>{target_id}</code> {'promoted' if command == 'promote' else 'demoted'}.",
+                f"User <code>{target_id}</code> {'promoted' if command == 'promote' else 'demoted'}."+audit,
             )
         except (ValueError, AdminStateError) as error:
             await reply(message, html.escape(str(error)))

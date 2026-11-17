@@ -129,7 +129,7 @@ DESCRIPTIONS: dict[str, str] = {
     "setrules": "Publish this group's rules",
     "pin": "Pin the replied message",
     "unpin": "Unpin a message, or all of them",
-    "promote": "Promote a group member",
+    "promote": "Promote a group member with optional 1–16 character title",
     "demote": "Demote an editable administrator",
     "adminlist": "List current group administrators",
     "admincache": "Refresh the administrator snapshot",
