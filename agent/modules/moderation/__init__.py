@@ -16,6 +16,7 @@ import asyncio
 from .silent_purge import build as build_silent_purge
 import html
 import logging
+from ...platform.warning_policy import threshold as warning_threshold
 import re
 import time
 from functools import wraps
@@ -135,6 +136,8 @@ def duration_label(seconds: int) -> str:
 
 def warn_policy(chats, chat_id: int) -> tuple[int, str]:
     """(limit, action) for a group. A limit of 0 disables escalation."""
+    if getattr(chats,"_db",None) is not None:
+        raise RuntimeError("Awaited PostgreSQL warning policy read required.")
     limit = chats.get(chat_id, "warn_limit", DEFAULT_WARN_LIMIT)
     action = chats.get(chat_id, "warn_action", DEFAULT_WARN_ACTION)
     try:
@@ -451,13 +454,13 @@ def build(ctx):
         if await _protected(client, message, target_id):
             return
         reason = _reason(message, skip_target=True)
+        limit, action = await warning_threshold(ctx.chats, message.chat.id)
         count = await ctx.chats.aadd_warning(
             message.chat.id, target_id, moderator_id=message.from_user.id, reason=reason
         )
         ctx.chats.log(
             message.chat.id, "warn", actor_id=message.from_user.id, target_id=target_id, reason=reason
         )
-        limit, action = warn_policy(ctx.chats, message.chat.id)
         escalation = ""
         if limit and count >= limit:
             escalation = "\n" + await escalate_warning(client, ctx, message, target_id, action)
@@ -479,7 +482,7 @@ def build(ctx):
         except TrustError as error:
             await reply(message, str(error))
             return
-        limit, action = warn_policy(ctx.chats, message.chat.id)
+        limit, action = await warning_threshold(ctx.chats, message.chat.id)
         rows_out = tuple(
             (
                 str(index),
@@ -846,6 +849,15 @@ def build(ctx):
                 await reply(message, f"Telegram could not complete this action ({type(exc).__name__}). Check my administrator rights and the target member. The action was not confirmed.")
         return guarded
 
+    def policy_guard(callback):
+        async def guarded(client,message):
+            from ...platform.warning_policy import PolicyError
+            try:
+                return await callback(client,message)
+            except PolicyError as error:
+                await reply(message,str(error))
+        return guarded
+
     return MANIFEST, {
         **build_locks(ctx),
         **build_antiflood(ctx),
@@ -855,9 +867,9 @@ def build(ctx):
         **build_blocklists(ctx),
         **build_cleaning(ctx),
         **build_command_cleaning(ctx),
-        "warn": warn,
-        "warnings": warnings,
-        "warns": warnings,
+        "warn": policy_guard(warn),
+        "warnings": policy_guard(warnings),
+        "warns": policy_guard(warnings),
         "unwarn": unwarn,
         "mute": report_api_failure(mute),
         "unmute": report_api_failure(unmute),

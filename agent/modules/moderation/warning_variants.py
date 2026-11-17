@@ -1,5 +1,6 @@
 """Delete/silent warning variants with durable intent admission and no replay."""
 import logging
+from ...platform.warning_policy import threshold as warning_threshold
 from pyrogram.enums import ChatType, ChatMemberStatus
 from ...platform.restriction_cases import begin, finish, CaseError
 from ...platform.warnings import WarningStoreError
@@ -15,7 +16,7 @@ class WarningInputError(ValueError):
 
 
 def build(ctx):
-    from . import is_moderator, target_is_protected, warn_policy, escalate_warning
+    from . import is_moderator, target_is_protected, escalate_warning
 
     def handler(command):
         async def call(client, message):
@@ -55,10 +56,10 @@ def build(ctx):
                         raise WarningInputError('Both you and this bot need Delete messages permission.')
                 if not await is_moderator(client, message, need='can_restrict_members'):
                     raise WarningInputError('Your administrator permissions changed.')
+                limit, action = await warning_threshold(ctx.chats, chat.id)
                 identity = await begin(ctx, chat.id, message.id, user.id, target, command, 0, reason)
                 count = await ctx.chats.aadd_warning(chat.id, target, moderator_id=user.id, reason=reason or 'no reason given')
                 ctx.chats.log(chat.id, command, actor_id=user.id, target_id=target, reason=reason)
-                limit, action = warn_policy(ctx.chats, chat.id)
                 escalation = await escalate_warning(client, ctx, message, target, action, confirm=True) if limit and count >= limit else ''
                 # Escalation reports failure in text rather than raising; never hide it.
                 partial = bool(escalation and not escalation.startswith('Threshold reached:'))

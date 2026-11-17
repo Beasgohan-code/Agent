@@ -2,6 +2,7 @@
 
 import html
 import logging
+from ...platform.warning_policy import threshold as warning_threshold
 import re
 from datetime import datetime, timedelta, timezone
 from pyrogram.enums import ChatType, ChatMemberStatus
@@ -255,7 +256,6 @@ async def enforce(ctx, client, message):
         PartialKickError,
         escalate_warning,
     )
-    from . import warn_policy
 
     chat, user = getattr(message, "chat", None), getattr(message, "from_user", None)
     if (
@@ -309,10 +309,10 @@ async def enforce(ctx, client, message):
             )
             result = True
         elif mode == "warn":
+            limit, action = await warning_threshold(ctx.chats, chat.id)
             count = await ctx.chats.aadd_warning(
                 chat.id, user.id, moderator_id=0, reason=reason
             )
-            limit, action = warn_policy(ctx.chats, chat.id)
             if limit and count >= limit:
                 escalation = " " + await escalate_warning(
                     client, ctx, message, user.id, action

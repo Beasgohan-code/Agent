@@ -24,6 +24,7 @@ import asyncio
 import inspect
 import html
 import logging
+from ...platform.warning_policy import threshold as warning_threshold
 
 from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from pyrogram.types import ChatPermissions
@@ -33,6 +34,7 @@ from ...platform.admin_settings import denied
 from ...platform.blocklists import operate as read_blocklist
 from ...platform.service_cleaning import operate as read_cleaning
 from .topics import COMMANDS as TOPIC_COMMANDS, build as build_topics
+from .warning_settings import build as build_warning_settings, COMMANDS as WARNING_SETTINGS_COMMANDS
 from .fullpromote import build as build_fullpromote
 from .afk import build as build_afk, watch as watch_afk
 from .details import COMMANDS as DETAIL_COMMANDS, build as build_details
@@ -40,11 +42,9 @@ from .admin import COMMANDS as ADMIN_COMMANDS, build as build_admin
 from ...ui.tables import Table, kv_table, panel
 from ..moderation import (
     DENIED,
-    WARN_ACTIONS,
     is_moderator,
     parse_target,
     target_is_protected,
-    warn_policy,
 )
 from ...utils.rich import reply
 
@@ -59,7 +59,7 @@ MANIFEST = PluginManifest(
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
         "fullpromote", "afk", "settings", "rules", "setrules", "resetrules", "pin", "unpin",
-        "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS, *DETAIL_COMMANDS,
+        "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS, *DETAIL_COMMANDS, *WARNING_SETTINGS_COMMANDS,
     ),
     permissions=(
         "chats.read", "chats.restrict", "chats.pin", "messages.read", "messages.send",
@@ -124,9 +124,9 @@ def build(ctx):
         if not await _guard(client, message, need="can_change_info"):
             return
         chat_id = message.chat.id
-        limit, action = warn_policy(ctx.chats, chat_id)
         from ..welcome import read_greeting
         try:
+            limit, action = await warning_threshold(ctx.chats, chat_id)
             from ...platform.antispam import read_policy
             policy = await read_policy(ctx, chat_id)
             greeting = await read_greeting(ctx, chat_id, "welcome")
@@ -373,50 +373,6 @@ def build(ctx):
 
     # -- /warnlimit --------------------------------------------------------
 
-    async def warnlimit(client, message):
-        if not await _guard(client, message, need="can_change_info"):
-            return
-        chat_id = message.chat.id
-        args = [a.lower() for a in _args(message)[1:]]
-        if args:
-            if args[0] in ("off", "0"):
-                ctx.chats.put(chat_id, "warn_limit", 0)
-            elif args[0].isdigit():
-                ctx.chats.put(chat_id, "warn_limit", max(1, min(20, int(args[0]))))
-            else:
-                await reply(message, 
-                    "Usage: <code>/warnlimit 3 [mute|kick|ban]</code> or <code>/warnlimit off</code>"
-                )
-                return
-            if len(args) > 1:
-                if args[1] not in WARN_ACTIONS:
-                    await reply(message, 
-                        f"Unknown action <code>{args[1]}</code>. Use one of: "
-                        + ", ".join(WARN_ACTIONS)
-                        + "."
-                    )
-                    return
-                ctx.chats.put(chat_id, "warn_action", args[1])
-            ctx.chats.log(
-                chat_id, "warnlimit", actor_id=message.from_user.id, reason=" ".join(args)
-            )
-
-        limit, action = warn_policy(ctx.chats, chat_id)
-        # "kick" + "d" is not a word.
-        past = {"mute": "muted", "kick": "kicked", "ban": "banned"}.get(action, action)
-        if not limit:
-            body = (
-                f"{ctx.theme.emoji('warn')} <b>Warnings do not escalate</b> in this group.\n"
-                "Set a threshold with <code>/warnlimit 3</code>."
-            )
-        else:
-            body = (
-                f"{ctx.theme.emoji('warn')} At <b>{limit}</b> active warnings the member is "
-                f"<b>{past}</b> automatically.\n"
-                "Change it with <code>/warnlimit &lt;n&gt; [mute|kick|ban]</code>."
-            )
-        await reply(message, panel("Warn threshold", icon=ctx.theme.emoji("warn"), lines=[body]))
-
     # -- /resetwarns -------------------------------------------------------
 
     async def resetwarns(client, message):
@@ -523,6 +479,7 @@ def build(ctx):
     return MANIFEST, {
         **build_admin(ctx),
         **build_details(ctx),
+        **build_warning_settings(ctx),
         "afk": build_afk(ctx),
         "fullpromote": build_fullpromote(ctx),
         **build_topics(ctx),
@@ -533,7 +490,6 @@ def build(ctx):
         "pin": pin,
         "unpin": unpin,
         "admins": admins,
-        "warnlimit": warnlimit,
         "resetwarns": resetwarns,
         "lockdown": lockdown,
     }
