@@ -61,7 +61,7 @@ DESCRIPTIONS: dict[str, str] = {
     "warnings": "List a member's warnings",
     "warns": "Alias of /warnings",
     "unwarn": "Clear one warning",
-    "mute": "Temporarily restrict a member",
+    "mute": "Mute ID/username or reply; optional duration and reason",
     "unmute": "Restore a member's permissions",
     "kick": "Remove a member (they may return)",
     "tban": "Temporarily ban a member",

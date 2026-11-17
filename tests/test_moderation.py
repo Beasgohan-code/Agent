@@ -46,8 +46,11 @@ class FakeClient:
         self._rights = rights or {}
 
     async def get_chat_member(self, chat_id, user_id):
-        status = self._caller if int(user_id) == 11 else self._target
+        status = ADMIN if int(user_id)==99 else self._caller if int(user_id) == 11 else self._target
         return member(status, **self._rights)
+
+    async def get_me(self):
+        return SimpleNamespace(id=99)
 
     async def ban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("ban", int(user_id)))
@@ -57,6 +60,7 @@ class FakeClient:
 
     async def restrict_chat_member(self, chat_id, user_id, permissions, **kwargs):
         self.calls.append(("restrict", int(user_id), permissions, kwargs.get("until_date")))
+        return True
 
     async def delete_messages(self, chat_id, message_ids, **kwargs):
         self.calls.append(("delete", message_ids))
@@ -420,7 +424,7 @@ def test_restriction_commands_report_api_permission_failures(ctx, command):
     message = FakeMessage('/' + command, reply=True)
     run(handlers(ctx)[command], Refusing(), message)
     assert 'ChatAdminRequired' in message.replies[-1]
-    assert 'not confirmed' in message.replies[-1]
+    assert 'not confirmed' in message.replies[-1] or 'unconfirmed' in message.replies[-1]
     assert not ctx.chats.history(-100500)
 
 

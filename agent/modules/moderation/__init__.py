@@ -14,6 +14,7 @@ from ...platform.commands import command_name
 
 import asyncio
 from .silent_purge import build as build_silent_purge
+from .mute import build as build_mute
 import html
 import logging
 from ...platform.warning_policy import threshold as warning_threshold
@@ -537,30 +538,6 @@ def build(ctx):
         )
         await reply(message, f"<b>Warning cleared</b>\nMember: {mention}")
 
-    async def mute(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member: <code>/mute 10m reason</code>")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        seconds = parse_duration(_args(message))
-        await client.restrict_chat_member(
-            message.chat.id,
-            target_id,
-            MUTE_PERMISSIONS,
-            until_date=datetime.now(timezone.utc) + timedelta(seconds=seconds),
-        )
-        ctx.chats.log(
-            message.chat.id, "mute", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, 
-            f"<b>Member muted</b>\nMember: {mention}\nDuration: {duration_label(seconds)}"
-        )
-
     async def unmute(client, message):
         if not await _guard(client, message, need="can_restrict_members"):
             return
@@ -871,7 +848,7 @@ def build(ctx):
         "warnings": policy_guard(warnings),
         "warns": policy_guard(warnings),
         "unwarn": unwarn,
-        "mute": report_api_failure(mute),
+        "mute": build_mute(ctx),
         "unmute": report_api_failure(unmute),
         "kick": report_api_failure(kick),
         "ban": report_api_failure(ban),
