@@ -53,7 +53,7 @@ def build(ctx):
                     active=set(registry.active_commands()) if registry is not None else set()
                     sections=(('Inspect',('admincount','adminlist','rights','userstats','recentactivity')),
                               ('Chat info',('setchatname','setchatdescription','setchatphoto')),
-                              ('Moderate',('ban','unban','mute','unmute','warn','resetwarns','purge','pin','unpin')),
+                              ('Moderate',('ban','unban','mute','unmute','warn','resetwarns','purge','spurge','pin','unpin')),
                               ('Manage',('promote','demote','settings','rules','setrules','locks','warnings')))
                     lines=[]
                     for label,names in sections:

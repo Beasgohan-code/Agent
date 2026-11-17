@@ -491,3 +491,7 @@ Added /afk and group-only watcher under existing plugin gate; no duplicate comma
 ## Read-only group adminbox
 
 Added /adminbox with live caller/bot permission table and registry-intersected curated command families, native semantic icons/navigation, no mutate callbacks or unfinished commands advertised. Personal group administrator required; final caller permission recheck. Six regressions including denied-before-bot-fetch, args, registry absence, provider redaction and lost permission. Full working PG **2,162 passed in 21.70s**; exact selected `/tmp/agent-adminbox-exact` **2,083 passed in 25.21s**, no skips. Compile/Pyflakes/diff clean; no live Telegram calls, production writes, deployment or merge. Unrelated Music/runtime/clone dirty changes excluded.
+
+## Silent purge feature
+
+Added Moderation-owned /spurge [count] (1–100/default10), read-before-mutate live personal caller+bot Delete messages checks and final caller recheck. Explicit bounded deletion acknowledgement path, range/audit before command cleanup, no success reply; ambiguity/partial/audit failure explicit with no retry/raw provider exception. Upstream Wzgram delete_messages returns pts_count: never misrepresented as actual deletion count. Existing /purge unchanged, shares range limit only. 17 test-first cases, full working PG **2,179 passed in 21.55s**, exact selected `/tmp/agent-spurge-exact` **2,100 passed in 23.84s**, no skips. Compile/Pyflakes/diff clean. No live Telegram deletions/production writes/deploy/merge. Unrelated work excluded.

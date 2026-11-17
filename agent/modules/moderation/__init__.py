@@ -13,6 +13,7 @@ from __future__ import annotations
 from ...platform.commands import command_name
 
 import asyncio
+from .silent_purge import build as build_silent_purge
 import html
 import logging
 import re
@@ -58,7 +59,7 @@ MANIFEST = PluginManifest(
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *LOCK_COMMANDS, *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *WARNING_CONTROL_COMMANDS, *WARNING_VARIANT_COMMANDS, *BLOCKLIST_COMMANDS, "cleanservice", "cleancommand", "keepcommand",
+        "unban", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *LOCK_COMMANDS, *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *WARNING_CONTROL_COMMANDS, *WARNING_VARIANT_COMMANDS, *BLOCKLIST_COMMANDS, "cleanservice", "cleancommand", "keepcommand",
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -864,6 +865,7 @@ def build(ctx):
         "ban": report_api_failure(ban),
         "unban": report_api_failure(unban),
         "purge": purge,
+        "spurge": build_silent_purge(ctx,MAX_PURGE),
         "note": note,
         "approve": approve, "unapprove": unapprove, "approval": approval, "approved": approved,
         "antispam": antispam,
