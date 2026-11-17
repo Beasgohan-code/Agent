@@ -33,6 +33,7 @@ from ...platform.admin_settings import denied
 from ...platform.blocklists import operate as read_blocklist
 from ...platform.service_cleaning import operate as read_cleaning
 from .topics import COMMANDS as TOPIC_COMMANDS, build as build_topics
+from .details import COMMANDS as DETAIL_COMMANDS, build as build_details
 from .admin import COMMANDS as ADMIN_COMMANDS, build as build_admin
 from ...ui.tables import Table, kv_table, panel
 from ..moderation import (
@@ -56,7 +57,7 @@ MANIFEST = PluginManifest(
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
         "settings", "rules", "setrules", "resetrules", "pin", "unpin",
-        "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS,
+        "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS, *DETAIL_COMMANDS,
     ),
     permissions=(
         "chats.read", "chats.restrict", "chats.pin", "messages.read", "messages.send",
@@ -519,6 +520,7 @@ def build(ctx):
 
     return MANIFEST, {
         **build_admin(ctx),
+        **build_details(ctx),
         **build_topics(ctx),
         "settings": settings,
         "rules": rules,
