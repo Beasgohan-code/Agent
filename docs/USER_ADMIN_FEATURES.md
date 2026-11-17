@@ -133,3 +133,22 @@ refusal, permission serialization, changed restriction refusal, username unmute/
 ack and expiry (some cases combine assertions). No live Telegram test or blanket
 claim that every command has been converted. Deployed mute failure still requires
 sanitized user response/error and bot permission check. Other cards remain follow-up.
+
+## Base ban/unban rich-card review
+
+Replaced existing base /ban and /unban handler bodies, not additional registrations.
+Shared username/positive ID/text-mention/reply resolver, no unban extra arguments;
+reason escaped/bounded in ban card. Current personal caller+bot Restrict members,
+protected/self/bot target checks, final caller recheck,5s reads/10s mutations. Global
+configured Owner cannot bypass current Telegram group rights. Exact True required,
+audit only after confirmation, audit failure separate; confirmed mutation distinct
+from later result-card failure. Rich Panel/kv-table and semantic lock/unlock icons,
+HTML fallback via existing transport. Unban does not automatically re-add member.
+No one-tap Unban button in this phase; manual /unban shown, not fake control.
+
+Seven test-first cases (five initially failed) cover username/rich results, false
+ack/no audit for both commands, bot-right denial, timeout/no retry/redaction and
+final permission loss. Existing moderation fake returns explicit True to model
+actual Telegram acknowledgement; denial test checks permission/no side effect.
+Inventory and one-by-one review ordering in docs/COMMAND_INVENTORY.md. No live
+Telegram ban/unban/production data changes; full suite evidence in CODEBASE_AUDIT.

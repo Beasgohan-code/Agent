@@ -54,9 +54,11 @@ class FakeClient:
 
     async def ban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("ban", int(user_id)))
+        return True
 
     async def unban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("unban", int(user_id)))
+        return True
 
     async def restrict_chat_member(self, chat_id, user_id, permissions, **kwargs):
         self.calls.append(("restrict", int(user_id), permissions, kwargs.get("until_date")))
@@ -162,7 +164,7 @@ def test_an_admin_without_the_privilege_is_refused(ctx):
 
     run(handlers(ctx)["ban"], client, message)
 
-    assert message.replies == [moderation.DENIED]
+    assert "permission required" in str(message.replies[-1])
     assert client.calls == []
 
 

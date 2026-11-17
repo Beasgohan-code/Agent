@@ -15,6 +15,7 @@ from ...platform.commands import command_name
 import asyncio
 from .silent_purge import build as build_silent_purge
 from .mute import build as build_mute
+from .ban import build as build_ban
 import html
 import logging
 from ...platform.warning_policy import threshold as warning_threshold
@@ -608,41 +609,6 @@ def build(ctx):
         )
         await reply(message, f"<b>Member kicked</b>\nMember: {mention}")
 
-    async def ban(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member or pass an id to ban them.")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        reason = _reason(message, skip_target=True)
-        await client.ban_chat_member(message.chat.id, target_id)
-        ctx.chats.log(
-            message.chat.id, "ban", actor_id=message.from_user.id, target_id=target_id, reason=reason
-        )
-        await reply(message, 
-            f"<b>Member banned</b>\nMember: {mention}\nReason: {html.escape(reason)}"
-        )
-
-    async def unban(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Pass the user id to unban: <code>/unban 123456</code>")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        await client.unban_chat_member(message.chat.id, target_id)
-        ctx.chats.log(
-            message.chat.id, "unban", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Member unbanned</b>\nMember: {mention}")
-
     async def purge(client, message):
         if not await _guard(client, message, need="can_delete_messages"):
             return
@@ -881,8 +847,7 @@ def build(ctx):
         "mute": build_mute(ctx),
         "unmute": report_api_failure(unmute),
         "kick": report_api_failure(kick),
-        "ban": report_api_failure(ban),
-        "unban": report_api_failure(unban),
+        **build_ban(ctx),
         "purge": purge,
         "spurge": build_silent_purge(ctx,MAX_PURGE),
         "note": note,
