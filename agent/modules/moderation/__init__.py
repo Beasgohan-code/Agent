@@ -16,6 +16,7 @@ import asyncio
 from .silent_purge import build as build_silent_purge
 from .mute import build as build_mute
 from .ban import build as build_ban
+from .kick import build as build_kick
 import html
 import logging
 from ...platform.warning_policy import threshold as warning_threshold
@@ -232,23 +233,28 @@ class PartialKickError(RuntimeError):
 
 async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source="manual", confirm=False):
     """Use one recovery path for every kick; never retry the ban blindly."""
-    banned = await client.ban_chat_member(chat_id, target_id)
+    banned = await asyncio.wait_for(client.ban_chat_member(chat_id, target_id),10)
     if confirm and banned is not True:
         raise RuntimeError("Kick ban was not confirmed.")
     try:
-        unbanned = await client.unban_chat_member(chat_id, target_id)
+        unbanned = await asyncio.wait_for(client.unban_chat_member(chat_id, target_id),10)
         if confirm and unbanned is not True:
             raise RuntimeError("Kick unban was not confirmed.")
     except Exception as exc:
-        ctx.chats.log(
-            chat_id, "kick:incomplete", actor_id=actor_id, target_id=target_id,
-            reason=f"{source}: ban confirmed; unban unconfirmed ({type(exc).__name__})",
-        )
+        audit=''
+        try:
+            ctx.chats.log(
+                chat_id, "kick:incomplete", actor_id=actor_id, target_id=target_id,
+                reason=f"{source}: ban confirmed; unban unconfirmed ({type(exc).__name__})",
+            )
+        except Exception:
+            logger.warning('#Errors Partial kick local audit unconfirmed')
+            audit=' Local audit unconfirmed.'
         delay = f" Wait {int(exc.value)} seconds before retrying." if isinstance(exc, FloodWait) else ""
         raise PartialKickError(
             f"Kick incomplete: the ban succeeded, but unban was not confirmed "
             f"({type(exc).__name__}). Member {int(target_id)} may still be banned."
-            f"{delay} An administrator can check and use <code>/unban {int(target_id)}</code>."
+            f"{delay} An administrator can check and use <code>/unban {int(target_id)}</code>.{audit}"
         ) from exc
 
 
@@ -590,25 +596,6 @@ def build(ctx):
             audit=' Local audit unconfirmed.'
         await reply(message,panel('Member unmuted',icon=ctx.theme.emoji('unlock'),table=kv_table([('Member',str(target_id)),('Moderator',str(message.from_user.id)),('Status','Telegram confirmed')]),note='Current group permissions restored, not unrestricted rights.'+audit))
 
-    async def kick(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to kick them.")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        await kick_member(
-            client, ctx, message.chat.id, target_id,
-            actor_id=message.from_user.id, source="manual",
-        )
-        ctx.chats.log(
-            message.chat.id, "kick", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Member kicked</b>\nMember: {mention}")
-
     async def purge(client, message):
         if not await _guard(client, message, need="can_delete_messages"):
             return
@@ -846,7 +833,7 @@ def build(ctx):
         "unwarn": unwarn,
         "mute": build_mute(ctx),
         "unmute": report_api_failure(unmute),
-        "kick": report_api_failure(kick),
+        "kick": build_kick(ctx),
         **build_ban(ctx),
         "purge": purge,
         "spurge": build_silent_purge(ctx,MAX_PURGE),

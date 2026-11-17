@@ -106,7 +106,7 @@
 | `/joinfed` | federations | all | Join this chat to a federation (chat owner) | Needs individual UI/behavior review |
 | `/jump` | music | group | Start a selected upcoming music track | Needs individual UI/behavior review |
 | `/keepcommand` | moderation | group | Disable recognized-command cleanup (group) | Needs individual UI/behavior review |
-| `/kick` | moderation | group | Remove a member (they may return) | Needs individual UI/behavior review |
+| `/kick` | moderation | group | Remove a member (they may return) | Targeted review/tests |
 | `/kickme` | moderation | group | Leave this group by self-requested kick | Needs individual UI/behavior review |
 | `/leave` | music | group | Leave the voice chat | Needs individual UI/behavior review |
 | `/leavefed` | federations | all | Leave this chat federation (chat owner) | Needs individual UI/behavior review |
@@ -279,7 +279,7 @@
 
 1. Mute/unmute: rich cards, live rights, acknowledged actions and protected Unmute button implemented; live failure still needs runtime evidence.
 2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.
-3. Kick and warning family: unify cards, safe controls and current authority checks without duplicate handlers.
+3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Next: warning cards and safe controls.
 4. Timed promotion: durable expiry/recovery before registering /tpromote.
 5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.
 6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.

@@ -539,3 +539,15 @@ Addressed user's plain-card/no-unmute-control complaint: shared rich Panel/kv st
 ## Complete command inventory + ban/unban review phase
 
 Generated docs/COMMAND_INVENTORY.md from exact selected source:243 declared names incl shell aliases, module/default scope/descriptions and explicit reviewed-vs-needs-review state. Lists real missing requested tagging/timed-promotion names, selection/capability/policy caveats and ordered improvement sequence. Reproducible tool checks duplicate names; regression confirms full manifest/shell coverage. Does not claim runtime/provider/live availability or blanket polish. Existing base ban/unban replaced with shared targeting and rich cards, live personal caller/bot rights, final auth/True ack, no raw-error/retry/false-success audit; explicit partial presentation failures. Seven new behavior cases plus inventory test, existing safety tests maintained. Final realPG exact **2,187 passed in24.85s**, working **2,266 passed in22.81s**, no skips. Compile/Pyflakes/diff clean. No live Telegram/production/deploy/merge; unrelated dirty work excluded.
+
+## Kick one-by-one rich command review
+
+Existing /kick now rich shared-target builder with live personal caller+bot rights,
+final recheck and exact two-step acknowledgement, shared kick_member retained as
+sole ban→unban helper with10s/step deadline. Partial unban safe recovery remains
+visible even if audit fails; no fake re-add button/retry or raw provider text.
+Six regression cases, inventory regenerated from exact selected source and review
+order updated. Full realPG working **2,272 passed in24.63s**, exact **2,193 passed
+in23.43s**, no skips. Compile/Pyflakes/diff clean. Sandbox Git/venv refreshed safely
+against current remote without working-file overwrite; unrelated dirty work
+excluded. No live Telegram/production/deployment/merge. Warning cards next.

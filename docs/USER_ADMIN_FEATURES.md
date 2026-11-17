@@ -152,3 +152,27 @@ final permission loss. Existing moderation fake returns explicit True to model
 actual Telegram acknowledgement; denial test checks permission/no side effect.
 Inventory and one-by-one review ordering in docs/COMMAND_INVENTORY.md. No live
 Telegram ban/unban/production data changes; full suite evidence in CODEBASE_AUDIT.
+
+## Base /kick rich-card review
+
+Existing /kick now uses shared username/ID/text-mention/reply targeting and rich
+Panel/kv result cards. Current personal caller and bot Restrict members required,
+protected/self/bot targets rejected, final caller check, no configured-Owner bypass.
+Reason escaped by shared table and capped500 characters. Shared kick_member remains
+sole ban→unban implementation for all kick paths; each network step now10s bounded.
+Base /kick opts into exact True acknowledgement of BOTH steps; no false success
+when a step returns None/False. Existing auto/variant confirmation flags unchanged.
+
+False/ambiguous first ban never attempts unban or records success. After confirmed
+ban, failed/unconfirmed unban becomes rich Kick incomplete with safe type and
+/unban ID recovery, no retry; local audit failure cannot erase that recovery status.
+Successful kick means removed but not left banned, NOT automatically re-added.
+No fictional re-add/undo button. Confirmed result delivery/audit failure separately
+reported. Callback/Unmute behavior from prior phase unchanged.
+
+Six test-first regression cases (initial three failures, one existing safety pass)
+cover username/rich confirmed results, false ban no unban, timeout partial recovery,
+bot-right denial, audit-failed partial recovery and final caller rights loss. Full
+working PG **2,272 passed in24.63s**, no skips; exact source evidence in CODEBASE_AUDIT.
+No live Telegram kicks. Command inventory marks kick targeted review complete;
+warning family remains next, not a blanket claim all commands are polished.
