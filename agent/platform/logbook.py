@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
+from .log_safety import safe_fields, scrub_text
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -41,17 +43,23 @@ TAGS = {
 def tag_for(kind: str) -> str:
     if kind in TAGS:
         return TAGS[kind]
-    return "".join(part.capitalize() for part in kind.replace("-", "_").split("_")) or "Event"
+    clean=re.sub(r"[^A-Za-z0-9_-]", "_", scrub_text(str(kind)[:256]))
+    return ("".join(part.capitalize() for part in clean.replace("-", "_").split("_")) or "Event")[:48]
 
 
 def format_event(kind: str, fields: dict[str, Any], *, when: float | None = None) -> str:
     """Render one event as HTML for the log channel."""
-    stamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(when or time.time()))
-    lines = [f"<b>#{tag_for(kind)}</b>", f"<i>{stamp}</i>"]
-    for key, value in fields.items():
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(time.time() if when is None else when))
+    severity='ERROR' if kind=='error' else 'WARNING' if kind in ('watchdog','stop') else 'INFO'
+    lines = [f"<b>#{tag_for(kind)}</b>", f"<i>{stamp}</i>",f'Severity: <b>{severity}</b>']
+    for key, value in safe_fields(fields).items():
         if value is None or value == "":
             continue
-        lines.append(f"{html.escape(str(key))}: <code>{html.escape(str(value))}</code>")
+        line=f"{html.escape(str(key))}: <code>{html.escape(str(value))}</code>"
+        if sum(len(item)+1 for item in lines)+len(line)>3800:
+            lines.append('<i>Additional fields omitted (size limit).</i>')
+            break
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -172,12 +180,13 @@ class LogBook:
 
     async def post(self, kind: str, **fields: Any) -> bool:
         """Send one event. False when there is nowhere (or no client) to send it."""
+        fields = safe_fields(fields)
         target = self.destination()
         if not self._config_loaded:
             logger.warning("Log destination has not been loaded; event delivery is suppressed.")
             return False
         if self.client is None or target is None:
-            logger.info("#%s %s (no log destination)", tag_for(kind), fields)
+            logger.info("#%s %s (no log destination)", tag_for(kind), safe_fields(fields))
             return False
         text = format_event(kind, fields)
         try:
@@ -186,8 +195,8 @@ class LogBook:
                 timeout=10.0,
             )
             return True
-        except Exception:  # noqa: BLE001 - logging must never break the bot
-            logger.exception("Could not post #%s to the log channel", tag_for(kind))
+        except Exception as error:  # logging must never break or leak provider text
+            logger.warning("#Errors Log delivery failed event=#%s error_type=%s; no automatic retry", tag_for(kind), type(error).__name__)
             return False
 
     def publish(self, kind: str, fields: dict[str, Any]) -> None:
@@ -203,7 +212,7 @@ class LogBook:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # pragma: no cover - no loop outside a running bot
             return
-        task = loop.create_task(self.post(kind, **fields))
+        task = loop.create_task(self.post(kind, **safe_fields(fields)))
         # Keep a reference so the task is not garbage-collected mid-flight.
         self._pending.add(task)
         task.add_done_callback(self._pending.discard)
