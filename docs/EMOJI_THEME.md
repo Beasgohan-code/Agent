@@ -25,3 +25,11 @@ Converted main welcome, shared legacy home navigation, Help categories/paginatio
 Custom icons do not duplicate Unicode label prefixes. Unicode fallback retains callback/URL/copy fields and styles, remains idempotent, and does not mutate the original button. USE_PREMIUM_EMOJI=0 and existing unsupported-feature downgrade remain supported. Some literal text/icons elsewhere remain; this is not a repository-wide claim that every emoji has been migrated. No unsupported Telegram rendering/availability claim.
 
 Tests initially failed on missing add/support/download mappings and theme-aware keyboard arguments. Added three map/actions/fallback cases; updated old tests that assumed wave/trash had no supplied ID while retaining explicit unknown-icon coverage. Offline preview refreshed. No new commands, permission changes, worker/controller credit changes or production calls.
+
+## Security, consent and subscription controls
+
+Verification prompts now use the supplied check icon via Theme.button, keeping member/chat-bound callback and SUCCESS style. Federation recipient Accept/Decline use supplied check/cross icons and SUCCESS/DANGER styles, retaining exact invitation payload and consent flow. Required public-channel Join buttons use supplied add icon and PRIMARY style; existing verified channel-ID/type/username checks and private-channel behavior unchanged.
+
+Verification/federation prompt sends use existing rich.send compatibility wrapper: explicit custom-icon rejection downgrades once with Unicode; ambiguous delivery errors never trigger retry. Prompt failure/recovery and pending verification semantics remain unchanged. No new security permissions, federation actions, source subscriptions or credentials.
+
+Six new tests cover verification callback/style/native and disabled themes, exact federation bindings/styles, explicit icon-rejection fallback without mutation, no retry on ambiguous timeout, and required-channel URL preservation. Initial three cases failed before implementation. Synthetic Telegram controls, not live verification/consent/member access proof.

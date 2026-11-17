@@ -6,8 +6,9 @@ No upstream clients, database implementation or source are imported.
 import asyncio
 import html
 import re
-from pyrogram.enums import ChatMemberStatus, ChatType
-from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
+from pyrogram.enums import ChatMemberStatus, ChatType, ButtonStyle
+from pyrogram.types import InlineKeyboardMarkup as Keyboard
+from ...ui.theme import Theme
 from ...utils.rich import reply
 
 DOCUMENT = 'linkshare_subscription'
@@ -65,7 +66,8 @@ async def allowed(ctx, client, message):
                 username = getattr(chat, 'username', None)
                 if (getattr(chat, 'id', None) == channel and getattr(chat, 'type', None) == ChatType.CHANNEL
                         and isinstance(username, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{3,31}', username)):
-                    return Button('Join channel', url='https://t.me/' + username)
+                    theme = getattr(ctx, 'theme', None) or Theme()
+                    return theme.button('Join channel', icon='add', url='https://t.me/' + username, style=ButtonStyle.PRIMARY)
             except Exception:
                 pass  # Private/inaccessible channels require an Owner-supplied invite.
             return None
