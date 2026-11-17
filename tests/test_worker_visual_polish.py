@@ -36,8 +36,10 @@ def test_theme_button_respects_explicit_styles_and_unknown_icon():
     from pyrogram.enums import ButtonStyle
     b = Theme().button('Remove', icon='trash', callback_data='safe:confirm', style=ButtonStyle.DANGER)
     assert b.style == ButtonStyle.DANGER
-    assert b.icon_custom_emoji_id is None
+    assert b.icon_custom_emoji_id == '5879896690210639947'
     assert b.callback_data == 'safe:confirm'
+    unknown = Theme().button('Action', icon='not_supplied', callback_data='safe:unknown')
+    assert unknown.icon_custom_emoji_id is None and unknown.text == 'Action'
 
 
 @pytest.mark.parametrize('rich', [True, False])

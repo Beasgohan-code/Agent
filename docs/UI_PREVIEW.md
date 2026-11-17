@@ -39,7 +39,7 @@ Prefixes: / ! . # $ % & ? · Registration is not group activation. Optional plug
 
 Buttons (row order):
 - 💡 Help · 💬 Support
-- 📢 Updates · 👑 Owner
+- 📣 Updates · 👑 Owner
 
 ## /help
 
@@ -62,9 +62,9 @@ Tap a category below · /help play finds a command directly.
 ```
 
 Buttons (row order):
-- AI Agent · Essentials
-- Vault & downloads · Operations (owner)
-- ↩️ Back to menu
+- ✨ AI Agent · ⚡ Essentials
+- 📦 Vault & downloads · 🤖 Operations (owner)
+- ⬅️ Back to menu
 
 ## /help autochat
 
@@ -83,8 +83,8 @@ Tap AI Agent for the rest of its commands.
 ```
 
 Buttons (row order):
-- AI Agent
-- 📚 All sections · ↩️ Menu
+- 📁 AI Agent
+- 📁 All sections · 🏡 Menu
 
 ## Runtime behavior
 

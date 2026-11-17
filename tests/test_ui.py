@@ -221,8 +221,9 @@ def test_the_shipped_theme_carries_real_premium_ids():
 
     assert theme.custom_emoji_enabled is True
     assert 'emoji-id="5084979757905347540"' in theme.emoji("check")
-    # Glyphs without a vetted id stay unicode rather than render broken.
-    assert "<tg-emoji" not in theme.emoji("wave")
+    # The user supplied a wave document ID; unknown names still have no ID.
+    assert 'emoji-id="5040033797031070992"' in theme.emoji("wave")
+    assert theme.emoji_id("not_supplied") is None
 
 
 def test_premium_emoji_can_be_switched_off(monkeypatch):

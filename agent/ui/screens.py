@@ -129,7 +129,7 @@ def welcome_screen(user, theme: Theme, *, active: set[str] | None = None, bot_us
         + "\n" + rich_hr()
         + rich_footer("Prefixes: / ! . # $ % &amp; ? · Registration is not group activation. Optional plugins need Owner approval and group-admin activation.")
     )
-    return Screen(text, keyboards.start_keyboard(bot_username))
+    return Screen(text, keyboards.start_keyboard(bot_username, theme=theme))
 
 
 #: Command reference sections. Names come from the live registry, descriptions
@@ -273,22 +273,23 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
             "Tap a category below · <code>/help play</code> finds a command directly."
         )
     )
-    return Screen("\n".join(blocks), _help_keyboard(active))
+    return Screen("\n".join(blocks), _help_keyboard(active, theme=theme))
 
 
-def _help_keyboard(active: set[str] | None) -> InlineKeyboardMarkup:
+def _help_keyboard(active: set[str] | None, *, theme=None) -> InlineKeyboardMarkup:
+    theme = theme or Theme()
     rows: list[list[Button]] = []
     row: list[Button] = []
     for icon, title, commands in HELP_SECTIONS:
         if not help_visible(commands, active):
             continue
-        row.append(Button(title, callback_data=f"help:{section_slug(title)}"))
+        row.append(theme.button(title, icon=icon, callback_data=f"help:{section_slug(title)}"))
         if len(row) == 2:
             rows.append(row)
             row = []
     if row:
         rows.append(row)
-    rows.append([Button("\u21a9\ufe0f Back to menu", callback_data=keyboards.CB_HOME)])
+    rows.append([theme.button("Back to menu", icon="back", callback_data=keyboards.CB_HOME)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -348,29 +349,30 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
             f"Page {page + 1} of {pages} · All commands accept / ! . # $ % &amp; ? · Choose another category or return to your workspace."
         )
     )
-    return Screen("\n".join(blocks), _section_keyboard(title, page, pages))
+    return Screen("\n".join(blocks), _section_keyboard(title, page, pages, theme=theme))
 
 
-def _section_keyboard(title=None, page=0, pages=1) -> InlineKeyboardMarkup:
+def _section_keyboard(title=None, page=0, pages=1, *, theme=None) -> InlineKeyboardMarkup:
+    theme = theme or Theme()
     navigation = []
     if title and pages > 1:
         buttons = []
         slug = section_slug(title)
         if page > 0:
-            buttons.append(Button("‹ Previous", callback_data=f"help:{slug}:{page - 1}"))
+            buttons.append(theme.button("Previous", icon="back", callback_data=f"help:{slug}:{page - 1}"))
         if page + 1 < pages:
-            buttons.append(Button("Next ›", callback_data=f"help:{slug}:{page + 1}", style=ButtonStyle.PRIMARY))
+            buttons.append(theme.button("Next", icon="arrow", callback_data=f"help:{slug}:{page + 1}", style=ButtonStyle.PRIMARY))
         navigation.append(buttons)
     return InlineKeyboardMarkup(
         navigation + [
             [
-                Button(
-                    "\u2b05\ufe0f All sections",
+                theme.button(
+                    "All sections", icon="folder",
                     callback_data=f"help:{ALL_SECTIONS}",
                     style=ButtonStyle.PRIMARY,
                 )
             ],
-            [Button("\u21a9\ufe0f Back to menu", callback_data=keyboards.CB_HOME)],
+            [theme.button("Back to menu", icon="back", callback_data=keyboards.CB_HOME)],
         ]
     )
 
@@ -412,7 +414,7 @@ def info_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
         + rich_hr()
         + rich_footer("Telegram profile details are read live. Meiko Premium is separate; use /myplan to check your plan.")
     )
-    return Screen(text, keyboards.info_keyboard(user_id if isinstance(user_id, int) else None))
+    return Screen(text, keyboards.info_keyboard(user_id if isinstance(user_id, int) else None, theme=theme))
 
 
 def _section_of(command: str) -> str | None:
@@ -464,10 +466,10 @@ def help_lookup_screen(
                 )).block()
             )
             titles = list(dict.fromkeys(_section_of(name) for name in matches))
-            buttons = [[Button(title, callback_data=f"help:{section_slug(title)}")]
+            buttons = [[theme.button(title, icon="folder", callback_data=f"help:{section_slug(title)}")]
                        for title in titles if title]
-            buttons.append([Button("All categories", callback_data=f"help:{ALL_SECTIONS}"),
-                            Button("Menu", callback_data=keyboards.CB_HOME)])
+            buttons.append([theme.button("All categories", icon="folder", callback_data=f"help:{ALL_SECTIONS}"),
+                            theme.button("Menu", icon="home", callback_data=keyboards.CB_HOME)])
             return Screen(body, InlineKeyboardMarkup(buttons))
     if query not in DESCRIPTIONS:
         body = (
@@ -486,7 +488,7 @@ def help_lookup_screen(
                 "<code>/menu</code> has the buttons."
             )
         )
-        return Screen(body, _section_keyboard())
+        return Screen(body, _section_keyboard(theme=theme))
 
     available = bool(help_visible((query,), active))
     section = _section_of(query)
@@ -517,11 +519,11 @@ def help_lookup_screen(
     )
     rows: list[list[Button]] = []
     if section and available:
-        rows.append([Button(section, callback_data=f"help:{section_slug(section)}")])
+        rows.append([theme.button(section, icon="folder", callback_data=f"help:{section_slug(section)}")])
     rows.append(
         [
-            Button("\U0001f4da All sections", callback_data=f"help:{ALL_SECTIONS}"),
-            Button("\u21a9\ufe0f Menu", callback_data=keyboards.CB_HOME),
+            theme.button("All sections", icon="folder", callback_data=f"help:{ALL_SECTIONS}"),
+            theme.button("Menu", icon="home", callback_data=keyboards.CB_HOME),
         ]
     )
     return Screen(body, InlineKeyboardMarkup(rows))
@@ -549,7 +551,7 @@ def ping_screen(monitor, theme: Theme) -> Screen:
             rich_heading(f"{theme.emoji('bolt')} Ping", 2)
             + "\n"
             + rich_note("Health tracking is not running."),
-            keyboards.info_keyboard(),
+            keyboards.info_keyboard(theme=theme),
         )
 
     snapshot = monitor.snapshot()
@@ -583,4 +585,4 @@ def ping_screen(monitor, theme: Theme) -> Screen:
         + rich_hr()
         + rich_footer("The watchdog probes Telegram on a timer.")
     )
-    return Screen(text, keyboards.info_keyboard())
+    return Screen(text, keyboards.info_keyboard(theme=theme))

@@ -200,7 +200,8 @@ def build(ctx):
         await reply(
             message,
             panel(
-                "🔗 Your file link is ready",
+                "Your file link is ready",
+                icon=theme.emoji("link"),
                 table=kv_table(
                     [
                         ("Messages", str(len(ids))),
