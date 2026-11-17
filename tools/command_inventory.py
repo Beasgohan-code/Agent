@@ -5,7 +5,7 @@ from agent.modules import MODULES
 from agent.platform.menu import DESCRIPTIONS
 
 BASE={'start':'Open bot / route private deep links','restart_bot':'Alias of start, not a process restart','help':'Available command help','h':'Alias of help','ping':'Bot responsiveness'}
-POLISHED={'kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
+POLISHED={'warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
 MISSING=('tpromote','tagall','all','etagall','eall','tagabort','allsettings','tagstats')
 
 
@@ -50,7 +50,7 @@ def render():
             '## One-by-one improvement order', '',
             '1. Mute/unmute: rich cards, live rights, acknowledged actions and protected Unmute button implemented; live failure still needs runtime evidence.',
             '2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.',
-            '3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Next: warning cards and safe controls.',
+            '3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Next: remaining warning read/removal cards and safely bound removal controls.',
             '4. Timed promotion: durable expiry/recovery before registering /tpromote.',
             '5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.',
             '6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.', '']

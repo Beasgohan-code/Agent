@@ -248,7 +248,7 @@
 | `/volume` | music | group | View or set voice-chat volume | Needs individual UI/behavior review |
 | `/volumedown` | music | group | Decrease voice-chat volume by 20 percent | Needs individual UI/behavior review |
 | `/volumeup` | music | group | Increase voice-chat volume by 20 percent | Needs individual UI/behavior review |
-| `/warn` | moderation | group | Warn a member | Needs individual UI/behavior review |
+| `/warn` | moderation | group | Warn a member | Targeted review/tests |
 | `/warnings` | moderation | group | List a member's warnings | Needs individual UI/behavior review |
 | `/warnlimit` | group | group | Warnings needed to trigger an action | Needs individual UI/behavior review |
 | `/warnmode` | group | group | Set warning escalation mode: mute, kick or ban | Targeted review/tests |
@@ -279,7 +279,7 @@
 
 1. Mute/unmute: rich cards, live rights, acknowledged actions and protected Unmute button implemented; live failure still needs runtime evidence.
 2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.
-3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Next: warning cards and safe controls.
+3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Next: remaining warning read/removal cards and safely bound removal controls.
 4. Timed promotion: durable expiry/recovery before registering /tpromote.
 5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.
 6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.

@@ -17,6 +17,7 @@ from .silent_purge import build as build_silent_purge
 from .mute import build as build_mute
 from .ban import build as build_ban
 from .kick import build as build_kick
+from .warning_cards import build as build_warning_card
 import html
 import logging
 from ...platform.warning_policy import threshold as warning_threshold
@@ -457,32 +458,6 @@ def build(ctx):
             return True
         return False
 
-    async def warn(client, message):
-        if not await _guard(client, message):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member or pass their id: <code>/warn 123 [reason]</code>")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        reason = _reason(message, skip_target=True)
-        limit, action = await warning_threshold(ctx.chats, message.chat.id)
-        count = await ctx.chats.aadd_warning(
-            message.chat.id, target_id, moderator_id=message.from_user.id, reason=reason
-        )
-        ctx.chats.log(
-            message.chat.id, "warn", actor_id=message.from_user.id, target_id=target_id, reason=reason
-        )
-        escalation = ""
-        if limit and count >= limit:
-            escalation = "\n" + await escalate_warning(client, ctx, message, target_id, action)
-        await reply(message, 
-            f"<b>Warning issued</b>\nMember: {mention}\nWarnings: {count}\n"
-            f"Reason: {html.escape(reason)}{escalation}"
-        )
-
     async def warnings(client, message):
         target = parse_target(message)
         if target is None:
@@ -827,7 +802,7 @@ def build(ctx):
         **build_blocklists(ctx),
         **build_cleaning(ctx),
         **build_command_cleaning(ctx),
-        "warn": policy_guard(warn),
+        "warn": build_warning_card(ctx),
         "warnings": policy_guard(warnings),
         "warns": policy_guard(warnings),
         "unwarn": unwarn,

@@ -551,3 +551,17 @@ order updated. Full realPG working **2,272 passed in24.63s**, exact **2,193 pass
 in23.43s**, no skips. Compile/Pyflakes/diff clean. Sandbox Git/venv refreshed safely
 against current remote without working-file overwrite; unrelated dirty work
 excluded. No live Telegram/production/deployment/merge. Warning cards next.
+
+## Warning rich-card review and read-only control
+
+Existing /warn replaced by native rich-card builder with shared targets/current
+personal caller+bot Restrict rights/final write check. Canonical warning stores
+unchanged. Recorded/audit/escalation/card outcomes separated; confirm=True for
+escalation, no raw exceptions or automatic duplicate warning retry. Working View
+warnings callback validates group + current actor rights twice, latest3 bounded
+reason previews, no mutation/permission authority from payload. No fake clear or
+unmute control; removal UI remains pending. Seven new regressions; updated old
+fake bot and explicit Owner-bypass denial tests. Inventory regenerated from exact
+selected source. Full working realPG **2,279 passed in21.79s**, exact **2,200 passed
+in23.32s**, no skips. Compile/Pyflakes/diff clean. No live Telegram/production/
+deployment/merge; unrelated dirty work excluded.

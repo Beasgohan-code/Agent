@@ -139,7 +139,7 @@ def test_a_plain_member_cannot_warn(ctx):
 
     run(handlers(ctx)["warn"], client, message)
 
-    assert message.replies == [moderation.DENIED]
+    assert "permission required" in str(message.replies[-1])
     assert ctx.chats.active_warning_count(-100500, 22) == 0
 
 
@@ -168,7 +168,7 @@ def test_an_admin_without_the_privilege_is_refused(ctx):
     assert client.calls == []
 
 
-def test_the_bot_owner_acts_without_being_an_admin(tmp_path):
+def test_configured_owner_cannot_warn_without_current_group_admin_rights(tmp_path):
     settings = Settings.from_env({**ENV, "OWNER_ID": "11"})
     owner_ctx = ModuleContext(
         settings=settings,
@@ -184,7 +184,8 @@ def test_the_bot_owner_acts_without_being_an_admin(tmp_path):
 
     run(handlers(owner_ctx)["warn"], client, message)
 
-    assert owner_ctx.chats.active_warning_count(-100500, 22) == 1
+    assert owner_ctx.chats.active_warning_count(-100500, 22) == 0
+    assert "permission required" in str(message.replies[-1])
 
 
 # --- target safety ---------------------------------------------------------

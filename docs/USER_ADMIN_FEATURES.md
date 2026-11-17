@@ -176,3 +176,36 @@ bot-right denial, audit-failed partial recovery and final caller rights loss. Fu
 working PG **2,272 passed in24.63s**, no skips; exact source evidence in CODEBASE_AUDIT.
 No live Telegram kicks. Command inventory marks kick targeted review complete;
 warning family remains next, not a blanket claim all commands are polished.
+
+## Base /warn rich card and View warnings control
+
+Existing /warn now uses shared username/positive-ID/text-mention/reply resolver,
+rich Panel/kv card with member/moderator/active count/threshold/reason/status and
+separate escalation outcome. Canonical awaited warning/expiry/policy stores remain
+sole writers. Current personal caller AND bot Restrict members required, protected/
+self/bot targets denied, final caller check; no configured global Owner bypass.
+This is intentional even with escalation disabled, matching warning-variant admin
+policy. Reason trimmed/bounded500, escaped in table, not raw provider error text.
+
+Audit failure doesn't erase recorded warning or skip threshold handling; escalation
+uses confirm=True so False/None acknowledgement isn't claimed as mute/ban success.
+Caller rechecked before post-record escalation. Recording distinct from subsequent
+escalation/audit/result delivery uncertainty; no automatic retry/duplicate warning.
+There is not a new exactly-once command admission service in this phase.
+
+View warnings is a real read-only group callback routed under existing module gate.
+Callback IDs only select the target, never confer authorization; personal current
+Restrict members admin in matching callback group required, rechecked after store
+read before rendering. Shows latest3 active reasons with160-character previews and
+full active count, member scope only. Existing expiry can be lazily materialized by
+store read, no manual warning clear/restriction undo. No router => no fake button;
+manual /warns ID fallback shown. No Clear all or fake unmute button. Removal-card/
+specific-warning undo binding remain follow-up; existing /rmwarn,/resetwarn commands
+still explicit. Clearing warnings never claims to undo Telegram restrictions.
+
+Seven new regression cases (initial2 failures/1 preexisting safety pass) cover
+username/escaped rich card/actual callback, group/nonadmin denial, bot denial,
+audit-failure recorded status, final write authority, false escalation ack and
+post-read rights loss. Old group fake now models real bot identity/right/True ack;
+old configured-Owner bypass test now explicitly verifies denial. Working full PG
+**2,279 passed in21.79s**, no skips. Synthetic Telegram, no live warning/escalation.

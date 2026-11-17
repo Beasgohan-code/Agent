@@ -56,8 +56,11 @@ class FakeClient:
         self._fail_admins = fail_admins
 
     async def get_chat_member(self, chat_id, user_id):
-        status = self._caller if int(user_id) == 11 else self._target
+        status = ADMIN if int(user_id)==99 else self._caller if int(user_id) == 11 else self._target
         return member(status, **self._rights)
+
+    async def get_me(self):
+        return SimpleNamespace(id=99)
 
     async def pin_chat_message(self, chat_id, message_id, **kwargs):
         self.calls.append(("pin", int(message_id), kwargs))
@@ -70,6 +73,7 @@ class FakeClient:
 
     async def restrict_chat_member(self, chat_id, user_id, permissions, **kwargs):
         self.calls.append(("restrict", int(user_id)))
+        return True
 
     async def ban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("ban", int(user_id)))
@@ -509,7 +513,8 @@ def test_warn_does_not_escalate_before_the_threshold(ctx):
     message = FakeMessage("/warn 22 spam")
     run(warn, client, message)
 
-    assert "Threshold" not in message.replies[0]
+    assert "Threshold reached" not in message.replies[0]
+    assert ctx.chats.active_warning_count(CHAT,22)==1
     assert client.calls == []
 
 
