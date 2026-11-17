@@ -209,3 +209,31 @@ audit-failure recorded status, final write authority, false escalation ack and
 post-read rights loss. Old group fake now models real bot identity/right/True ack;
 old configured-Owner bypass test now explicitly verifies denial. Working full PG
 **2,279 passed in21.79s**, no skips. Synthetic Telegram, no live warning/escalation.
+
+## Warning-removal rich cards and consolidated /unwarn
+
+/unwarn and /rmwarn now share one strict latest-active-warning removal path;
+/resetwarn clears one target's active warnings; /resetallwarns retains explicit
+confirm syntax and durable group-reset request admission. All four use rich cards
+for success/no-op/confirmation/denial/failure, moderator/target/count/status fields,
+shared semantic icons and explicit History retained / no Telegram restriction undo.
+No duplicate handler registration or alternate warning store. Member removals use
+username/positive ID/text mention/reply, no extra arguments. Current personal
+Restrict members rights, protected target checks and final caller recheck;5s auth/
+resolve bounds. /resetallwarns now also rechecks rights just before store reset.
+No bot network rights required for purely local warning clears. No global Owner
+bypass, anonymous/bot sender mutation or other-group arguments.
+
+Committed warning clear stays reported as committed even if subsequent local audit
+or result delivery fails. Provider ValueError during target lookup becomes locally
+authored usage, never raw provider error text. No automatic retry. Expiry/history
+semantics and atomic tenant/member/group stores unchanged; no unban/unmute request.
+Existing retention cap unchanged. No new one-tap clearing controls: a safe specific-
+warning undo needs atomic identity binding, not removing whichever warning is
+newest when an old card is pressed. Existing View warnings control remains read-only.
+
+Seven test-first cases (initial five failures) cover each member-removal command's
+username/rich result/history, audit-failed committed result, group confirmation/
+final rights loss, provider redaction and member denial. Full working realPG
+**2,286 passed in21.36s**, no skips; exact staged suite in CODEBASE_AUDIT. Existing
+profile and warning-reset/expiry tests preserved. No live Telegram/production changes.

@@ -565,3 +565,15 @@ fake bot and explicit Owner-bypass denial tests. Inventory regenerated from exac
 selected source. Full working realPG **2,279 passed in21.79s**, exact **2,200 passed
 in23.32s**, no skips. Compile/Pyflakes/diff clean. No live Telegram/production/
 deployment/merge; unrelated dirty work excluded.
+
+## Warning-removal rich-card review
+
+Consolidated /unwarn with /rmwarn strict shared target/store path; /resetwarn and
+/resetallwarns rich committed/no-op/confirmation/denied/uncertain cards. Final
+mutation-time auth now includes group reset. Provider lookup errors redacted and
+post-commit audit failures explicitly distinguished. No new destructive one-tap
+control, duplicate handlers or warning storage; no implied Telegram restriction
+undo. Seven regressions and existing group-reset/profile/expiry coverage. Full
+realPG working **2,286 passed in21.36s**, exact staged **2,207 passed in23.29s**,
+no skips. Inventory regenerated from selected source, Compile/Pyflakes/diff clean.
+No live Telegram/production/deployment/merge; unrelated dirty work excluded.

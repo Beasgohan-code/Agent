@@ -168,11 +168,11 @@
 | `/repo` | utilities | all | Bot version and information | Needs individual UI/behavior review |
 | `/report` | reports | all | Report a message to the moderators | Needs individual UI/behavior review |
 | `/reports` | reports | all | Review reports: pages, closed, show or close number | Needs individual UI/behavior review |
-| `/resetallwarns` | moderation | group | Clear group active warnings with confirm; keep history (admin) | Needs individual UI/behavior review |
+| `/resetallwarns` | moderation | group | Clear group active warnings with confirm; keep history (admin) | Targeted review/tests |
 | `/resetblocklistreason` | moderation | group | Reset the default blocklist reason | Needs individual UI/behavior review |
 | `/resetplayer` | music | group | Reset this group's player and queue | Needs individual UI/behavior review |
 | `/resetrules` | group | group | Clear this group’s rules; retain revisions (admin) | Needs individual UI/behavior review |
-| `/resetwarn` | moderation | group | Clear a member’s active warnings; retain history (admin) | Needs individual UI/behavior review |
+| `/resetwarn` | moderation | group | Clear a member’s active warnings; retain history (admin) | Targeted review/tests |
 | `/resetwarns` | group | group | Clear all warnings for a member | Needs individual UI/behavior review |
 | `/restart` | ops | all | Restart the process (owner) | Needs individual UI/behavior review |
 | `/restart_bot` | shell | private | Alias of start, not a process restart | Needs individual UI/behavior review |
@@ -183,7 +183,7 @@
 | `/rmallowlistall` | moderation | group | Clear domain exemptions (group owner, confirmed) | Needs individual UI/behavior review |
 | `/rmblocklist` | moderation | group | Remove a blocklist trigger | Needs individual UI/behavior review |
 | `/rmblocklistall` | moderation | group | Alias for /unblocklistall | Needs individual UI/behavior review |
-| `/rmwarn` | moderation | group | Clear latest active warning; retain history (admin) | Needs individual UI/behavior review |
+| `/rmwarn` | moderation | group | Clear latest active warning; retain history (admin) | Targeted review/tests |
 | `/rules` | group | group | Show this group's rules | Needs individual UI/behavior review |
 | `/sample` | encoder | private | Cut a short clip from a replied video | Needs individual UI/behavior review |
 | `/saveplaylist` | music | group | Save queue; add upcoming to exclude current track | Needs individual UI/behavior review |
@@ -236,7 +236,7 @@
 | `/unlock` | moderation | group | Stop deleting selected content types | Needs individual UI/behavior review |
 | `/unmute` | moderation | group | Restore a member's permissions | Targeted review/tests |
 | `/unpin` | group | group | Unpin a message, or all of them | Needs individual UI/behavior review |
-| `/unwarn` | moderation | group | Clear one warning | Needs individual UI/behavior review |
+| `/unwarn` | moderation | group | Clear one warning | Targeted review/tests |
 | `/uptime` | core | all | Process uptime and Telegram probe health | Needs individual UI/behavior review |
 | `/userinfo` | utilities | all | Public user card by reply, username or ID | Needs individual UI/behavior review |
 | `/userstats` | group | group | Live group member count and bot uptime (admin) | Targeted review/tests |
@@ -279,7 +279,7 @@
 
 1. Mute/unmute: rich cards, live rights, acknowledged actions and protected Unmute button implemented; live failure still needs runtime evidence.
 2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.
-3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Next: remaining warning read/removal cards and safely bound removal controls.
+3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Warning-removal cards now share one strict live-authorized path. Next: safely bound specific-warning removal controls and remaining warning-read parity.
 4. Timed promotion: durable expiry/recovery before registering /tpromote.
 5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.
 6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.

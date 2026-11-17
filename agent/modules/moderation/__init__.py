@@ -510,22 +510,6 @@ def build(ctx):
             )
         )
 
-    async def unwarn(client, message):
-        if not await _guard(client, message):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to clear a warning.")
-            return
-        target_id, mention = target
-        if not await ctx.chats.aclear_warning(message.chat.id, target_id):
-            await reply(message, "That member has no active warnings.")
-            return
-        ctx.chats.log(
-            message.chat.id, "unwarn", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Warning cleared</b>\nMember: {mention}")
-
     async def unmute(client, message):
         from .restrictions import target_and_reason
         user=getattr(message,'from_user',None)
@@ -805,7 +789,6 @@ def build(ctx):
         "warn": build_warning_card(ctx),
         "warnings": policy_guard(warnings),
         "warns": policy_guard(warnings),
-        "unwarn": unwarn,
         "mute": build_mute(ctx),
         "unmute": report_api_failure(unmute),
         "kick": build_kick(ctx),
