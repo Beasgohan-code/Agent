@@ -33,6 +33,7 @@ from ...platform.admin_settings import denied
 from ...platform.blocklists import operate as read_blocklist
 from ...platform.service_cleaning import operate as read_cleaning
 from .topics import COMMANDS as TOPIC_COMMANDS, build as build_topics
+from .afk import build as build_afk, watch as watch_afk
 from .details import COMMANDS as DETAIL_COMMANDS, build as build_details
 from .admin import COMMANDS as ADMIN_COMMANDS, build as build_admin
 from ...ui.tables import Table, kv_table, panel
@@ -56,7 +57,7 @@ MANIFEST = PluginManifest(
     version="1.0.0",
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
-        "settings", "rules", "setrules", "resetrules", "pin", "unpin",
+        "afk", "settings", "rules", "setrules", "resetrules", "pin", "unpin",
         "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS, *DETAIL_COMMANDS,
     ),
     permissions=(
@@ -521,6 +522,7 @@ def build(ctx):
     return MANIFEST, {
         **build_admin(ctx),
         **build_details(ctx),
+        "afk": build_afk(ctx),
         **build_topics(ctx),
         "settings": settings,
         "rules": rules,
@@ -538,3 +540,9 @@ def build(ctx):
 def _escaped_block(text: str) -> str:
     """Rule text as HTML, preserving line breaks inside the quote."""
     return "<br/>".join(html.escape(line) for line in text.splitlines())
+
+
+def extra_handlers(ctx):
+    from pyrogram import filters
+    from pyrogram.handlers import MessageHandler
+    return [MessageHandler(watch_afk(ctx),filters.group)]

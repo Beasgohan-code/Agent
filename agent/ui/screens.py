@@ -177,7 +177,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (
             "warn", "warnings", "unwarn", "mute", "unmute", "kick", "ban", "unban",
             "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme",
-            "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto", "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
+            "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto", "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
         ),
     ),
     (
