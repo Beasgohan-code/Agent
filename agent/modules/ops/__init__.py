@@ -817,10 +817,20 @@ def build(ctx):
         logbook = getattr(ctx, "logbook", None)
         if logbook is None:  # pragma: no cover
             return
+        args=(getattr(message,'text','') or '').split()[1:]
+        if args not in ([],['test']):
+            await reply(message,'Usage: /log or /log test (sends one diagnostic event to the saved destination).')
+            return
         try:
             await logbook.hydrate()
         except LogSettingsError as exc:
             await reply(message, html.escape(str(exc)))
+            return
+        if args==['test']:
+            confirmed=await logbook.post('log_test',source='owner diagnostic',status='Telegram delivery test')
+            status=logbook.delivery_status()
+            detail=html.escape(str(status.get('error_type') or status['last_result']))
+            await reply(message,'Log test delivered to Telegram.' if confirmed else f'Log test NOT delivered ({detail}). Check saved destination, bot channel posting rights, and whether the owner started the bot in DM. No automatic retry.')
             return
         destination = logbook.destination()
         where = (
@@ -834,6 +844,13 @@ def build(ctx):
             f"Settings store: {logbook.backend}",
             f"Events recorded: {events.count() if events is not None else 0}",
         ]
+        status=logbook.delivery_status()
+        lines.extend([
+            f"Telegram posts this process: {status['sent']} sent / {status['failed']} failed",
+            f"Pending: {status['pending']} / dropped: {status['dropped']}",
+            f"Last delivery: {html.escape(status['last_result'])}" + (f" ({html.escape(status['error_type'])})" if status['error_type'] else ''),
+            'Recorded events are not delivery receipts. Run <code>/log test</code> to check posting now.',
+        ])
         if events is not None:
             recent = events.recent(5)
             if recent:

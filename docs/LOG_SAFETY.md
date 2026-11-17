@@ -45,3 +45,16 @@ epoch0, escaped-size bounds, ring/listener/console safety, failed-send redaction
 and no retry, deep-copy/reserved fields, error severity/incident preservation.
 Full working PostgreSQL suite before final API-key/queued-argument hardening:
 2,217 passed in22.10s, no skips. No live Telegram delivery/production writes.
+
+## Missing startup-post diagnosis
+
+`/log` now separates recorded events from process-local Telegram posts sent/failed,
+pending/dropped queue entries and last result/error type. `/log test` (existing
+Owner gate) awaits one diagnostic post to the hydrated saved destination, reports
+actual send success/failure and never retries. No destination change/fallback to
+an unrelated channel is attempted. Counters are process-local, not durable
+receipts or proof a human read a post. The most recent concurrent post can replace
+last-result diagnostics. A startup event is emitted only after required DB/log
+settings/lease/Telegram startup succeed; startup failing earlier cannot send a
+Telegram startup log. Use sanitized hosting `Startup failed` phase and
+`Log delivery failed ... error_type=...` lines to diagnose actual deployed failure.

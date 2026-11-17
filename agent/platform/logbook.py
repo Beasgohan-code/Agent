@@ -89,6 +89,7 @@ class LogBook:
         self._pending: set[asyncio.Task] = set()
         self._closing = False
         self.dropped = 0
+        self._delivery = dict(sent=0,failed=0,last_result="not attempted",error_type=None,at=None)
         if db is None:
             self._apply(read_json(self._path, {}))
 
@@ -178,14 +179,25 @@ class LogBook:
 
     # -- delivery ----------------------------------------------------------
 
+    def delivery_status(self):
+        """Process-local diagnostics, not durable delivery receipts or event counts."""
+        return {**self._delivery,'pending':len(self._pending),'dropped':self.dropped}
+
+    def _delivery_result(self,result,error_type=None):
+        self._delivery.update(last_result=result,error_type=error_type,at=time.time())
+        if result in ('sent','failed'):
+            self._delivery[result]+=1
+
     async def post(self, kind: str, **fields: Any) -> bool:
         """Send one event. False when there is nowhere (or no client) to send it."""
         fields = safe_fields(fields)
         target = self.destination()
         if not self._config_loaded:
-            logger.warning("Log destination has not been loaded; event delivery is suppressed.")
+            self._delivery_result("settings not loaded")
+            logger.warning("#Errors Log destination has not been loaded; event delivery is suppressed.")
             return False
         if self.client is None or target is None:
+            self._delivery_result("no destination" if target is None else "client unavailable")
             logger.info("#%s %s (no log destination)", tag_for(kind), safe_fields(fields))
             return False
         text = format_event(kind, fields)
@@ -194,8 +206,10 @@ class LogBook:
                 self.client.send_message(target, text, disable_web_page_preview=True),
                 timeout=10.0,
             )
+            self._delivery_result('sent')
             return True
         except Exception as error:  # logging must never break or leak provider text
+            self._delivery_result("failed",type(error).__name__)
             logger.warning("#Errors Log delivery failed event=#%s error_type=%s; no automatic retry", tag_for(kind), type(error).__name__)
             return False
 
