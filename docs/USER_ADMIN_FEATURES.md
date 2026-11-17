@@ -271,3 +271,35 @@ realPG run. Local exact-vs-newer/replay, PG concurrent exact clears/restart/grou
 tenant isolation, actual routed card button/replay, four wrong group/message/expired/
 nonadmin cases, expired/legacy no-fallback. Full suite results in CODEBASE_AUDIT.
 Synthetic callbacks/Telegram; no live moderation or production migration.
+
+## /warnings and /warns paged reader review
+
+Both aliases now share one handler, canonical active/expiry/policy reads and shared
+username/positive-ID/text-mention/reply resolver. `/warns` alone defaults to caller;
+explicit `/warns @user [page]` or reply `/warns [page]`, positive page1–999. Three
+newest-first warnings per page, complete canonical reason <=500 characters, moderator
+and UTC issue timestamp, active count and current threshold/action. Oversized legacy
+reasons explicitly labelled preview; cached admin note preview capped240 and labelled.
+No silent status/table clipping. Full retained canonical history is not deleted.
+
+Working Previous/Next page callbacks scoped to current group/target; IDs select data,
+never confer authority. Current actual membership required. Ordinary members may
+query own warnings; current Restrict members admin required for another member.
+Actor rights checked before reads AND after loading state before rendering. Notes/
+approval metadata fetched/shown only for current authorized admin, never self-service
+member view. No configured Owner/anonymous identity bypass. Read failures/redacted
+provider errors produce no fake empty count. Note replies remain in the invoking
+group and are visible to its members; this is request authorization, NOT private
+admin-only transport. Use care with moderation notes. No direct message privacy claim.
+
+Each page reloads current state (not frozen snapshot); new/cleared/expired records
+may shift pages. Out-of-range/forged/cross-group/unauthorized presses refuse safely;
+no fake button when router unavailable or only one page. Read can materialize expiry
+through existing store; no manual warning clear/ban/mute side effect. Native rich
+Panel/Table+existing fallback and semantic icons retained. No new registrations.
+
+Six test-first cases (initial three failed) cover username/live pages/real callback,
+other-member denial, self defaults/note privacy, final rights loss after reads,
+wrong-group page without store access, invalid pages/provider redaction. Existing
+moderation/profile/warning-expiry regressions pass. Final full-suite evidence in
+CODEBASE_AUDIT. No live Telegram/production data changes.

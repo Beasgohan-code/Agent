@@ -18,9 +18,9 @@ from .mute import build as build_mute
 from .ban import build as build_ban
 from .kick import build as build_kick
 from .warning_cards import build as build_warning_card
+from .warning_read import build as build_warning_read
 import html
 import logging
-from ...platform.warning_policy import threshold as warning_threshold
 import re
 import time
 from functools import wraps
@@ -458,58 +458,6 @@ def build(ctx):
             return True
         return False
 
-    async def warnings(client, message):
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to inspect their warnings.")
-            return
-        target_id, mention = target
-        rows = await ctx.chats.awarnings_of(message.chat.id, target_id)
-        note = ctx.chats.note_of(message.chat.id, target_id)
-        try:
-            trusted = target_id in await trusted_members(ctx, message.chat.id)
-        except TrustError as error:
-            await reply(message, str(error))
-            return
-        limit, action = await warning_threshold(ctx.chats, message.chat.id)
-        rows_out = tuple(
-            (
-                str(index),
-                warning.get("reason", "no reason"),
-                str(warning.get("by") or "-"),
-                time.strftime("%d %b %H:%M", time.gmtime(warning.get("at", 0))),
-            )
-            for index, warning in enumerate(reversed(rows[-10:]), 1)
-        )
-        lines = [f"Member: {mention} — <b>{len(rows)}</b> active warning(s)."]
-        if limit:
-            lines.append(
-                f"Escalates at <b>{limit}</b> warnings ({action})."
-            )
-        else:
-            lines.append("Warnings do not escalate in this group.")
-        if note:
-            lines.append(f"Note: {html.escape(note)}")
-        if trusted:
-            lines.append("Approved: yes")
-        table = Table(
-            headers=("#", "Reason", "By", "When"),
-            rows=rows_out,
-            aligns=("right", "left", "right", "left"),
-            total_width=52,
-        ) if rows_out else None
-        if table is None:
-            lines.append("No active warnings.")
-        await reply(message, 
-            panel(
-                "Warnings",
-                icon=ctx.theme.emoji("warn"),
-                lines=lines,
-                table=table,
-                footer="<code>/unwarn</code> clears one, <code>/resetwarns</code> clears all.",
-            )
-        )
-
     async def unmute(client, message):
         from .restrictions import target_and_reason
         user=getattr(message,'from_user',None)
@@ -768,15 +716,7 @@ def build(ctx):
                 await reply(message, f"Telegram could not complete this action ({type(exc).__name__}). Check my administrator rights and the target member. The action was not confirmed.")
         return guarded
 
-    def policy_guard(callback):
-        async def guarded(client,message):
-            from ...platform.warning_policy import PolicyError
-            try:
-                return await callback(client,message)
-            except PolicyError as error:
-                await reply(message,str(error))
-        return guarded
-
+    warning_reader=build_warning_read(ctx)
     return MANIFEST, {
         **build_locks(ctx),
         **build_antiflood(ctx),
@@ -787,8 +727,8 @@ def build(ctx):
         **build_cleaning(ctx),
         **build_command_cleaning(ctx),
         "warn": build_warning_card(ctx),
-        "warnings": policy_guard(warnings),
-        "warns": policy_guard(warnings),
+        "warnings": warning_reader,
+        "warns": warning_reader,
         "mute": build_mute(ctx),
         "unmute": report_api_failure(unmute),
         "kick": build_kick(ctx),

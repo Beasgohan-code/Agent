@@ -249,10 +249,10 @@
 | `/volumedown` | music | group | Decrease voice-chat volume by 20 percent | Needs individual UI/behavior review |
 | `/volumeup` | music | group | Increase voice-chat volume by 20 percent | Needs individual UI/behavior review |
 | `/warn` | moderation | group | Warn a member | Targeted review/tests |
-| `/warnings` | moderation | group | List a member's warnings | Needs individual UI/behavior review |
+| `/warnings` | moderation | group | List a member's warnings | Targeted review/tests |
 | `/warnlimit` | group | group | Warnings needed to trigger an action | Needs individual UI/behavior review |
 | `/warnmode` | group | group | Set warning escalation mode: mute, kick or ban | Targeted review/tests |
-| `/warns` | moderation | group | Alias of /warnings | Needs individual UI/behavior review |
+| `/warns` | moderation | group | Alias of /warnings | Targeted review/tests |
 | `/warntime` | group | group | Set expiry for new warnings: off or 1m–366d | Targeted review/tests |
 | `/watchdog` | ops | all | Runtime health; cleanup is Owner-only | Needs individual UI/behavior review |
 | `/welcome` | welcome | group | Show or toggle the welcome message | Needs individual UI/behavior review |
@@ -279,7 +279,7 @@
 
 1. Mute/unmute: rich cards, live rights, acknowledged actions and protected Unmute button implemented; live failure still needs runtime evidence.
 2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.
-3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Warning-removal cards now share one strict live-authorized path. New /warn cards now include exact-warning removal controls; remaining warning-read parity is next.
+3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Warning-removal cards now share one strict live-authorized path. New /warn cards include exact-warning removal controls; /warnings and /warns have self/admin access checks and live pagination.
 4. Timed promotion: durable expiry/recovery before registering /tpromote.
 5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.
 6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.

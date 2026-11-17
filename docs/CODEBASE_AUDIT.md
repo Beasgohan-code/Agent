@@ -592,3 +592,18 @@ working **2,294 passed in21.31s**, no skips. Inventory regenerated from selected
 source. Compile/Pyflakes/diff clean. No live Telegram/production/deploy/merge;
 unrelated dirty work excluded. Specific button is not general exactly-once warning
 command delivery; old/history-retention limits documented.
+
+## Warning read parity and pagination review
+
+/warnings and /warns share one new canonical rich-reader handler: self defaults,
+shared target forms, bounded page parsing,3 records/page and real group-scoped
+Previous/Next callbacks with fresh state. Current membership/self-vs-Restrict-admin
+access checked before and after reads; no other-member/notes disclosure on revoked
+or ordinary member requests. Cached note preview explicitly labelled admin-only
+request, replies still group-visible (not private admin transport). Expiry canonical
+semantics unchanged; no manual mutation/new command declaration. Six test-first
+regressions, full realPG exact **2,221 passed in22.25s**, working **2,300 passed
+in21.43s**, no skips. Inventory regenerated from exact selected source.
+Compile/Pyflakes/diff clean. No live Telegram/production/deployment/merge;
+unrelated dirty work excluded. Timed promotion/tagging and untouched inventory
+entries remain separate pending work, not claimed complete.
