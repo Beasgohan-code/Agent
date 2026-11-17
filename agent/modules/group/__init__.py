@@ -33,6 +33,7 @@ from ...platform.admin_settings import denied
 from ...platform.blocklists import operate as read_blocklist
 from ...platform.service_cleaning import operate as read_cleaning
 from .topics import COMMANDS as TOPIC_COMMANDS, build as build_topics
+from .fullpromote import build as build_fullpromote
 from .afk import build as build_afk, watch as watch_afk
 from .details import COMMANDS as DETAIL_COMMANDS, build as build_details
 from .admin import COMMANDS as ADMIN_COMMANDS, build as build_admin
@@ -57,7 +58,7 @@ MANIFEST = PluginManifest(
     version="1.0.0",
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
-        "afk", "settings", "rules", "setrules", "resetrules", "pin", "unpin",
+        "fullpromote", "afk", "settings", "rules", "setrules", "resetrules", "pin", "unpin",
         "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS, *DETAIL_COMMANDS,
     ),
     permissions=(
@@ -523,6 +524,7 @@ def build(ctx):
         **build_admin(ctx),
         **build_details(ctx),
         "afk": build_afk(ctx),
+        "fullpromote": build_fullpromote(ctx),
         **build_topics(ctx),
         "settings": settings,
         "rules": rules,

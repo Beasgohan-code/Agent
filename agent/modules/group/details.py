@@ -54,7 +54,7 @@ def build(ctx):
                     sections=(('Inspect',('admincount','adminlist','rights','userstats','recentactivity')),
                               ('Chat info',('setchatname','setchatdescription','setchatphoto')),
                               ('Moderate',('ban','unban','mute','unmute','warn','resetwarns','purge','spurge','pin','unpin')),
-                              ('Manage',('promote','demote','settings','rules','setrules','locks','warnings')))
+                              ('Manage',('promote','fullpromote','demote','settings','rules','setrules','locks','warnings')))
                     lines=[]
                     for label,names in sections:
                         available=[f'<code>/{name}</code>' for name in names if name in active]
