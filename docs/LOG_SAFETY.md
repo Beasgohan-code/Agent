@@ -58,3 +58,13 @@ last-result diagnostics. A startup event is emitted only after required DB/log
 settings/lease/Telegram startup succeed; startup failing earlier cannot send a
 Telegram startup log. Use sanitized hosting `Startup failed` phase and
 `Log delivery failed ... error_type=...` lines to diagnose actual deployed failure.
+
+Startup-post result is now retained separately from latest delivery: subsequent
+successful events cannot hide a failed startup post. /log shows that result and
+safe type-based hints for posting-right, inaccessible-peer/channel, blocked DM,
+rate-limit and network/acknowledgement failures. Unknown errors retain a generic
+hint, not guessed root cause/raw exception text. Successful send requires a
+positive integer Message.id; missing/bool/zero acknowledgement never increments
+sent. No automatic retry or startup lifecycle change. Tests bridge actual
+EventLog start emission through subscription and queue drain to one send; this
+is synthetic Telegram proof, not a deployed connectivity check.

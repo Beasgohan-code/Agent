@@ -830,7 +830,8 @@ def build(ctx):
             confirmed=await logbook.post('log_test',source='owner diagnostic',status='Telegram delivery test')
             status=logbook.delivery_status()
             detail=html.escape(str(status.get('error_type') or status['last_result']))
-            await reply(message,'Log test delivered to Telegram.' if confirmed else f'Log test NOT delivered ({detail}). Check saved destination, bot channel posting rights, and whether the owner started the bot in DM. No automatic retry.')
+            hint=html.escape(status.get('hint') or 'Check saved destination and bot posting permissions.')
+            await reply(message,'Log test delivered to Telegram.' if confirmed else f'Log test NOT delivered ({detail}). {hint}')
             return
         destination = logbook.destination()
         where = (
@@ -851,6 +852,12 @@ def build(ctx):
             f"Last delivery: {html.escape(status['last_result'])}" + (f" ({html.escape(status['error_type'])})" if status['error_type'] else ''),
             'Recorded events are not delivery receipts. Run <code>/log test</code> to check posting now.',
         ])
+        startup=status['startup']
+        lines.append('Startup post: '+html.escape(startup['last_result'])+(f" ({html.escape(startup['error_type'])})" if startup['error_type'] else ''))
+        if startup.get('hint'):
+            lines.append(html.escape(startup['hint']))
+        if status.get('hint'):
+            lines.append('Last delivery hint: '+html.escape(status['hint']))
         if events is not None:
             recent = events.recent(5)
             if recent:

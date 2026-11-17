@@ -25,6 +25,27 @@ from .db import read_json, write_json
 logger = logging.getLogger(__name__)
 MAX_PENDING = 200
 
+
+def delivery_hint(error_type):
+    if error_type in ('ChatWriteForbidden','ChatAdminRequired','ChatSendPlainForbidden'):
+        return 'Check bot channel membership and posting permissions.'
+    if error_type in ('ChannelPrivate','ChannelInvalid','PeerIdInvalid','ChatIdInvalid'):
+        return 'Destination unreachable: verify saved ID and bot membership; rerun /setlog verification.'
+    if error_type in ('UserIsBlocked','InputUserDeactivated'):
+        return 'Owner DM unavailable: unblock/start this bot or configure a reachable log channel.'
+    if error_type in ('FloodWait','SlowmodeWait'):
+        return 'Telegram rate limit; no automatic retry. Avoid repeated diagnostic sends.'
+    if error_type in ('TimeoutError','ConnectionError','OSError'):
+        return 'Network delivery unconfirmed; inspect the destination before retrying.'
+    if error_type=='LogAcknowledgementError':
+        return 'No valid Telegram message acknowledgement; inspect destination before retrying.'
+    return 'Inspect sanitized hosting error type and saved destination; no automatic retry.'
+
+
+class LogAcknowledgementError(RuntimeError):
+    """A message ID was not returned; delivery cannot be claimed."""
+
+
 #: Event kind → hashtag. Unknown kinds get a CamelCase tag of their own.
 TAGS = {
     "start": "BotStarted",
@@ -89,7 +110,8 @@ class LogBook:
         self._pending: set[asyncio.Task] = set()
         self._closing = False
         self.dropped = 0
-        self._delivery = dict(sent=0,failed=0,last_result="not attempted",error_type=None,at=None)
+        self._delivery = dict(sent=0,failed=0,last_result="not attempted",error_type=None,at=None,hint="")
+        self._startup_delivery = dict(last_result="not attempted",error_type=None,at=None,hint="No startup event observed in this process yet.")
         if db is None:
             self._apply(read_json(self._path, {}))
 
@@ -181,10 +203,13 @@ class LogBook:
 
     def delivery_status(self):
         """Process-local diagnostics, not durable delivery receipts or event counts."""
-        return {**self._delivery,'pending':len(self._pending),'dropped':self.dropped}
+        return {**self._delivery,'pending':len(self._pending),'dropped':self.dropped,'startup':dict(self._startup_delivery)}
 
-    def _delivery_result(self,result,error_type=None):
-        self._delivery.update(last_result=result,error_type=error_type,at=time.time())
+    def _delivery_result(self,result,error_type=None,*,kind=None):
+        detail=dict(last_result=result,error_type=error_type,at=time.time(),hint=delivery_hint(error_type) if error_type else '')
+        self._delivery.update(detail)
+        if kind=='start':
+            self._startup_delivery=detail
         if result in ('sent','failed'):
             self._delivery[result]+=1
 
@@ -193,23 +218,25 @@ class LogBook:
         fields = safe_fields(fields)
         target = self.destination()
         if not self._config_loaded:
-            self._delivery_result("settings not loaded")
+            self._delivery_result("settings not loaded",kind=kind)
             logger.warning("#Errors Log destination has not been loaded; event delivery is suppressed.")
             return False
         if self.client is None or target is None:
-            self._delivery_result("no destination" if target is None else "client unavailable")
+            self._delivery_result("no destination" if target is None else "client unavailable",kind=kind)
             logger.info("#%s %s (no log destination)", tag_for(kind), safe_fields(fields))
             return False
         text = format_event(kind, fields)
         try:
-            await asyncio.wait_for(
+            sent=await asyncio.wait_for(
                 self.client.send_message(target, text, disable_web_page_preview=True),
                 timeout=10.0,
             )
-            self._delivery_result('sent')
+            if type(getattr(sent,'id',None)) is not int or sent.id<=0:
+                raise LogAcknowledgementError()
+            self._delivery_result('sent',kind=kind)
             return True
         except Exception as error:  # logging must never break or leak provider text
-            self._delivery_result("failed",type(error).__name__)
+            self._delivery_result("failed",type(error).__name__,kind=kind)
             logger.warning("#Errors Log delivery failed event=#%s error_type=%s; no automatic retry", tag_for(kind), type(error).__name__)
             return False
 

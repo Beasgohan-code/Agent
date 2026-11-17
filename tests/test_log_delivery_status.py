@@ -46,3 +46,41 @@ async def test_owner_log_test_reports_actual_send_and_nonowner_cannot_send(tmp_p
     sent=len(client.sent)
     await handler(client,FakeMessage('/log test',uid=999))
     assert len(client.sent)==sent
+
+
+@pytest.mark.asyncio
+async def test_startup_failure_not_hidden_by_later_success(tmp_path):
+    from pyrogram.errors import ChatWriteForbidden
+    book=LogBook(tmp_path,owner_id=11)
+    book.client=NS(send_message=AsyncMock(side_effect=[ChatWriteForbidden(),NS(id=2)]))
+    assert not await book.post('start')
+    assert await book.post('new_user',uid=22)
+    status=book.delivery_status()
+    assert status['last_result']=='sent'
+    assert status['startup']['last_result']=='failed'
+    assert 'posting' in status['startup']['hint'].lower()
+
+
+@pytest.mark.asyncio
+async def test_real_start_event_bridge_posts_exactly_once(tmp_path):
+    from agent.platform.events import EventLog
+    from agent.platform.logbook import subscribe
+    book=LogBook(tmp_path,owner_id=11)
+    book.client=NS(send_message=AsyncMock(return_value=NS(id=123)))
+    client=book.client
+    events=EventLog()
+    subscribe(events,book)
+    events.emit('start',version='test')
+    await book.close(timeout=1)
+    client.send_message.assert_awaited_once()
+    assert '#BotStarted' in client.send_message.await_args.args[1]
+    assert book.delivery_status()['startup']['last_result']=='sent'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('result',[None,False,NS(id=0)])
+async def test_unacknowledged_log_not_reported_as_delivered(tmp_path,result):
+    book=LogBook(tmp_path,owner_id=11)
+    book.client=NS(send_message=AsyncMock(return_value=result))
+    assert not await book.post('start')
+    assert book.delivery_status()['sent']==0
