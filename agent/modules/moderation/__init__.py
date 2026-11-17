@@ -79,7 +79,13 @@ PURGE_CONFIRM_TTL = 4.0
 #: Nothing allowed: the restriction Telegram applies to a muted member.
 MUTE_PERMISSIONS = ChatPermissions(
     can_send_messages=False,
-    can_send_media_messages=False,
+    can_send_audios=False,
+    can_send_documents=False,
+    can_send_photos=False,
+    can_send_videos=False,
+    can_send_video_notes=False,
+    can_send_voice_notes=False,
+    can_send_polls=False,
     can_send_other_messages=False,
     can_add_web_page_previews=False,
 )
@@ -539,25 +545,49 @@ def build(ctx):
         await reply(message, f"<b>Warning cleared</b>\nMember: {mention}")
 
     async def unmute(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
+        from .restrictions import target_and_reason
+        user=getattr(message,'from_user',None)
+        if (getattr(getattr(message,'chat',None),'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                or type(getattr(user,'id',None)) is not int or user.id<=0
+                or getattr(message,'sender_chat',None) is not None):
+            await reply(message,panel('Unmute not applied',lines=['Use your personal administrator identity inside a group.']))
             return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to unmute them.")
+        if not await asyncio.wait_for(is_moderator(client,message,need='can_restrict_members'),5):
+            await reply(message,panel('Unmute not applied',lines=['Current Restrict members administrator permission required.']))
             return
-        target_id, mention = target
+        try:
+            target_id,extra=await asyncio.wait_for(target_and_reason(client,message),5)
+            if type(target_id) is not int or not 0<target_id<2**63 or extra:
+                raise ValueError()
+        except ValueError:
+            await reply(message,panel('Unmute usage',lines=['Use /unmute @username or positive ID, or reply without arguments.']))
+            return
         if await _protected(client, message, target_id):
             return
-        chat = await client.get_chat(message.chat.id)
+        me=await asyncio.wait_for(client.get_me(),5)
+        bot=await asyncio.wait_for(client.get_chat_member(message.chat.id,me.id),5)
+        if bot.status!=ChatMemberStatus.OWNER and not (bot.status==ChatMemberStatus.ADMINISTRATOR and getattr(getattr(bot,'privileges',None),'can_restrict_members',False)):
+            await reply(message,panel('Unmute not applied',lines=['This bot needs Restrict members permission.']))
+            return
+        chat = await asyncio.wait_for(client.get_chat(message.chat.id),5)
         permissions = getattr(chat, "permissions", None)
         if permissions is None:
             await reply(message, "Cannot read the group's current permissions; no member permissions were changed.")
             return
-        await client.restrict_chat_member(message.chat.id, target_id, permissions)
-        ctx.chats.log(
-            message.chat.id, "unmute", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Member unmuted</b>\nMember: {mention}")
+        if not await is_moderator(client,message,need='can_restrict_members'):
+            await reply(message,panel('Unmute not applied',lines=['Your Restrict members permission changed. No change requested.']))
+            return
+        result=await asyncio.wait_for(client.restrict_chat_member(message.chat.id, target_id, permissions),10)
+        if result is not True:
+            await reply(message,panel('Unmute unconfirmed',lines=['Telegram did not acknowledge the unmute. Inspect the member before retrying. No automatic retry.']))
+            return
+        try:
+            ctx.chats.log(message.chat.id, "unmute", actor_id=message.from_user.id, target_id=target_id)
+            audit=''
+        except Exception:
+            logger.warning('#Errors Unmute local audit unconfirmed')
+            audit=' Local audit unconfirmed.'
+        await reply(message,panel('Member unmuted',icon=ctx.theme.emoji('unlock'),table=kv_table([('Member',str(target_id)),('Moderator',str(message.from_user.id)),('Status','Telegram confirmed')]),note='Current group permissions restored, not unrestricted rights.'+audit))
 
     async def kick(client, message):
         if not await _guard(client, message, need="can_restrict_members"):

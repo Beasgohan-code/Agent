@@ -6,6 +6,8 @@ from datetime import datetime,timedelta,timezone
 from pyrogram.enums import ChatType,ChatMemberStatus
 from .restrictions import target_and_reason
 from ...utils.rich import reply
+from ...ui.tables import panel,kv_table
+from .mute_controls import setup,issue,bind
 
 logger=logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ def duration_and_reason(body):
 
 def build(ctx):
     from . import is_moderator,target_is_protected,MUTE_PERMISSIONS,duration_label
+    setup(ctx)
 
     async def mute(client,message):
         user,chat=getattr(message,'from_user',None),getattr(message,'chat',None)
@@ -41,6 +44,7 @@ def build(ctx):
             await reply(message,'Use your personal administrator identity in a group.')
             return
         attempted=False
+        confirmed=False
         try:
             if not await asyncio.wait_for(is_moderator(client,message,need='can_restrict_members'),5):
                 raise MuteInputError('Current Restrict members administrator permission is required.')
@@ -65,19 +69,26 @@ def build(ctx):
             if not await asyncio.wait_for(is_moderator(client,message,need='can_restrict_members'),5):
                 raise MuteInputError('Your Restrict members permission changed. No mute requested.')
             attempted=True
-            result=await asyncio.wait_for(client.restrict_chat_member(chat.id,uid,MUTE_PERMISSIONS,until_date=datetime.now(timezone.utc)+timedelta(seconds=seconds)),10)
+            until=datetime.now(timezone.utc)+timedelta(seconds=seconds)
+            result=await asyncio.wait_for(client.restrict_chat_member(chat.id,uid,MUTE_PERMISSIONS,until_date=until),10)
             if result is not True:
                 raise RuntimeError('Mute acknowledgement unavailable')
+            confirmed=True
             try:
                 ctx.chats.log(chat.id,'mute',actor_id=user.id,target_id=uid,reason=reason[:500])
                 audit=''
             except Exception:
                 logger.warning('#Errors Mute local audit unconfirmed')
                 audit=' Local audit unconfirmed.'
-            await reply(message,f'<b>Member muted</b>\nMember: <code>{uid}</code>\nDuration: {duration_label(seconds)}\nTelegram confirmed.'+audit)
+            token,keyboard=issue(ctx,chat.id,uid,until)
+            card=panel('Member muted',icon=ctx.theme.emoji('lock'),
+                table=kv_table([('Member',str(uid)),('Moderator',str(user.id)),('Duration',duration_label(seconds)),('Reason',reason[:500] or 'No reason supplied'),('Status','Telegram confirmed')]),
+                note='Unmute restores current group permissions. Button expires in 15 minutes or after a bot restart; current admin rights required. You can also use /unmute '+str(uid)+'.'+audit)
+            sent=await reply(message,card,reply_markup=keyboard)
+            bind(ctx,token,sent)
         except MuteInputError as error:
-            await reply(message,str(error))
+            await reply(message,panel('Mute not applied',icon=ctx.theme.emoji('warn'),lines=[str(error)],note='Use /mute @username or ID [duration] [reason], or reply with /mute 2m reason.'))
         except Exception as error:
             logger.warning('#Errors Mute unavailable (%s)',type(error).__name__)
-            await reply(message,f'Mute unconfirmed ({type(error).__name__}). Inspect Telegram before retrying; no automatic retry.' if attempted else 'Target or permissions unavailable. Action not attempted.')
+            await reply(message,panel('Mute status',icon=ctx.theme.emoji('warn'),lines=['Mute confirmed by Telegram; result card delivery failed. Inspect /rights or member state before any further action.' if confirmed else f'Mute unconfirmed ({type(error).__name__}). Inspect Telegram before retrying; no automatic retry.' if attempted else 'Target or permissions unavailable. Action not attempted.']))
     return mute

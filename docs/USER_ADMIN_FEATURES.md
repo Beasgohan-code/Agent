@@ -99,3 +99,37 @@ Replaced the existing registered /mute implementation (no extra/duplicate comman
 Current accountable group admin with Restrict members (no global Owner bypass), protected-target lookup, bot rights check and final caller recheck before mutation. Target lookup5s; membership/me checks5s; restrict10s, exact True acknowledgement only. Self/bot/channel/anonymous targets denied. API errors redacted to type-only; ambiguous mutation never retried or audited as success. Confirmed mute audit records bounded reason, audit failure separately reported. Other base moderation commands are not silently claimed to have target/duration parity yet. Telegram owns timed restriction expiry; no new sleeping scheduler/competing writer.
 
 Ten new test-first cases (eight failed before change), full existing moderation regression coverage maintained with fake client now exposing actual bot identity/current rights/True acknowledgement. Tests cover ID-vs-duration bug, username/reason default, five unsafe/malformed durations, false ack/no-success-audit, final permission loss and timeout/no retry/redaction. Full working PG **2,252 passed in23.24s**, no skips. No live Telegram restrictions. Timed promotion/tagging and remaining base-command parity still pending.
+
+## Mute/unmute rich cards and authorized undo
+
+Mute now uses shared rich Panel/kv-table (native rich transport when supported,
+existing HTML/custom-emoji fallback otherwise) for member/moderator/duration/reason/
+Telegram-confirmed status, plus real Unmute control when action router is available.
+Input/uncertain outcome cards use same renderer. No button when router unavailable;
+manual /unmute ID fallback always shown. Confirmed Telegram action is distinguished
+from a later result-card delivery failure. MUTE_PERMISSIONS now specifies all audio,
+document, photo, video, round-video, voice and poll sends explicitly false, replacing
+deprecated aggregate media flag. Raw permission serialization tested, not live proof.
+
+Opaque random undo tokens are per-context/bot, max200 retained,15min monotonic expiry,
+one-use consumed BEFORE network side effect. Bound to result message/chat/target and
+original restriction expiry; newer mute card invalidates older same-target controls.
+Current personal admin and bot Restrict members permissions, protected target and
+current baseline group permissions re-read before mutation; final caller recheck.
+Existing restricted status and expiry must match original (2s timestamp tolerance),
+else reject and ask explicit /unmute. Not durable across restart: old button says
+invalid/expired and manual command remains. No global Owner bypass or callback-supplied
+member/chat authority. No automatic retry or blanket all-True unmute grants. Parallel
+presses can only consume once in this process. Card button does not clear warnings or
+unban members. Same-expiry external restriction changes cannot be conclusively
+distinguished by Telegram snapshot; this is not a transactional Telegram undo history.
+
+/unmute now supports shared username/ID/reply resolver, live caller/bot checks, final
+caller check,10s mutation and exact True acknowledgement, rich success/false-ack cards.
+Original restriction isn't claimed restored: current group baseline is applied.
+No arbitrary additional recipient arguments; existing profile/group policy unchanged.
+Six new regression cases cover real callback route, one-use replay, wrong chat/admin
+refusal, permission serialization, changed restriction refusal, username unmute/false
+ack and expiry (some cases combine assertions). No live Telegram test or blanket
+claim that every command has been converted. Deployed mute failure still requires
+sanitized user response/error and bot permission check. Other cards remain follow-up.
