@@ -125,6 +125,7 @@ DESCRIPTIONS: dict[str, str] = {
     "chatfed": "Show this chat federation",
     # group management
     "settings": "This group's live settings panel",
+    "privaterules": "Send current group rules to your own DM",
     "rules": "Show this group's rules",
     "setrules": "Publish this group's rules",
     "pin": "Pin the replied message",
@@ -303,7 +304,7 @@ DESCRIPTIONS: dict[str, str] = {
 GROUP_ONLY = frozenset(
     {
         "fullpromote", "adminbox", "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto",
-        "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules",
+        "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "privaterules", "resetrules",
         "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "settings", "rules", "setrules", "pin", "unpin",

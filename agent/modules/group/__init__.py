@@ -34,6 +34,7 @@ from ...platform.admin_settings import denied
 from ...platform.blocklists import operate as read_blocklist
 from ...platform.service_cleaning import operate as read_cleaning
 from .topics import COMMANDS as TOPIC_COMMANDS, build as build_topics
+from .private_rules import build as build_private_rules, rule_cards
 from .warning_settings import build as build_warning_settings, COMMANDS as WARNING_SETTINGS_COMMANDS
 from .fullpromote import build as build_fullpromote
 from .afk import build as build_afk, watch as watch_afk
@@ -58,7 +59,7 @@ MANIFEST = PluginManifest(
     version="1.0.0",
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
-        "fullpromote", "afk", "settings", "rules", "setrules", "resetrules", "pin", "unpin",
+        "fullpromote", "afk", "settings", "privaterules", "rules", "setrules", "resetrules", "pin", "unpin",
         "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS, *DETAIL_COMMANDS, *WARNING_SETTINGS_COMMANDS,
     ),
     permissions=(
@@ -208,13 +209,8 @@ def build(ctx):
                 )
             )
             return
-        parts = list(rule_service.message_chunks(text))
-        for index, part in enumerate(parts):
-            await reply(message, panel(
-                "Rules", icon=ctx.theme.emoji("shield"), subtitle=f"<b>{title}</b>",
-                lines=[f"<blockquote>{_escaped_block(part)}</blockquote>"],
-                footer=f"Part {index+1} of {len(parts)}" if len(parts) > 1 else "Set by an administrator of this group.",
-            ))
+        for card in rule_cards(ctx.theme,getattr(message.chat,'title',None) or 'This group',text):
+            await reply(message,card)
 
     async def resetrules(client, message):
         if not await _guard(client, message, need="can_change_info"):
@@ -485,6 +481,7 @@ def build(ctx):
         **build_topics(ctx),
         "settings": settings,
         "rules": rules,
+        "privaterules": build_private_rules(ctx),
         "setrules": setrules,
         "resetrules": resetrules,
         "pin": pin,
