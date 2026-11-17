@@ -252,6 +252,7 @@ DESCRIPTIONS: dict[str, str] = {
     # ops (owner)
     "restart": "Restart the process (owner)",
     "afk": "Toggle your group away status; optional public reason",
+    "adminbox": "Live caller/bot permissions and registered admin tools",
     "userstats": "Live group member count and bot uptime (admin)",
     "recentactivity": "Recent cached group moderation actions (admin)",
     "admincount": "Live administrator count (group admin)",
@@ -297,7 +298,7 @@ DESCRIPTIONS: dict[str, str] = {
 #: Commands that only make sense inside a group.
 GROUP_ONLY = frozenset(
     {
-        "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto",
+        "adminbox", "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto",
         "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "resetrules",
         "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",

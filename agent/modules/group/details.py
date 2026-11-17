@@ -13,7 +13,7 @@ from ...utils.rich import reply
 from ..moderation import is_moderator
 from .admin import resolve, RIGHTS
 
-COMMANDS = ('userstats','recentactivity','admincount','rights','setchatname','setchatdescription','setchatphoto')
+COMMANDS = ('adminbox','userstats','recentactivity','admincount','rights','setchatname','setchatdescription','setchatphoto')
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +38,34 @@ def build(ctx):
                     raise DetailInputError('You do not have the current administrator permission required for this command.')
                 parts=(getattr(message,'text','') or '').split(maxsplit=1)
                 value=parts[1].strip() if len(parts)==2 else ''
+                if command=='adminbox':
+                    if value:
+                        raise DetailInputError('Usage: /adminbox without arguments, in the current group.')
+                    me=await asyncio.wait_for(client.get_me(),5)
+                    caller=await asyncio.wait_for(client.get_chat_member(chat.id,user.id),5)
+                    bot=await asyncio.wait_for(client.get_chat_member(chat.id,me.id),5)
+                    if caller.status!=ChatMemberStatus.OWNER and not (caller.status==ChatMemberStatus.ADMINISTRATOR and getattr(getattr(caller,'privileges',None),'can_manage_chat',False)):
+                        raise DetailInputError('Your administrator permissions changed. Dashboard not shown.')
+                    def granted(member,name):
+                        return member.status==ChatMemberStatus.OWNER or (member.status==ChatMemberStatus.ADMINISTRATOR and bool(getattr(getattr(member,'privileges',None),name,False)))
+                    rows=tuple((name,markup(ctx.theme.emoji('check' if granted(caller,name) else 'cross')),markup(ctx.theme.emoji('check' if granted(bot,name) else 'cross'))) for name in (*RIGHTS,'can_promote_members'))
+                    registry=getattr(ctx,'registry',None)
+                    active=set(registry.active_commands()) if registry is not None else set()
+                    sections=(('Inspect',('admincount','adminlist','rights','userstats','recentactivity')),
+                              ('Chat info',('setchatname','setchatdescription','setchatphoto')),
+                              ('Moderate',('ban','unban','mute','unmute','warn','resetwarns','purge','pin','unpin')),
+                              ('Manage',('promote','demote','settings','rules','setrules','locks','warnings')))
+                    lines=[]
+                    for label,names in sections:
+                        available=[f'<code>/{name}</code>' for name in names if name in active]
+                        if available:
+                            lines.append(label+': '+', '.join(available))
+                    if not lines:
+                        lines=['Registered command inventory unavailable. Use /help for available commands.']
+                    await reply(message,panel('Group admin dashboard',icon=ctx.theme.emoji('shield'),
+                        table=Table(headers=('Permission','Caller','Bot'),rows=rows),lines=lines,
+                        note='Read-only live Telegram permission snapshot. Command shortcuts reflect registered handlers, not a guarantee of enabled plugin access or sufficient permissions. Run commands explicitly; every action checks its own authority. No one-tap moderation changes.'),reply_markup=nav_keyboard(theme=ctx.theme))
+                    return
                 if command in ('userstats','recentactivity'):
                     if value:
                         raise DetailInputError(f'Usage: /{command} without arguments, in the current group.')
