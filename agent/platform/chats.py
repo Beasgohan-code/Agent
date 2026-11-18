@@ -210,10 +210,14 @@ class ChatStore:
     # -- member metadata ---------------------------------------------------
 
     def set_note(self, chat_id: int, user_id: int, note: str) -> None:
+        if self._db is not None:
+            raise RuntimeError("Awaited canonical note write required.")
         self._member(chat_id, user_id)["note"] = note[:2000]
         self._save()
 
     def note_of(self, chat_id: int, user_id: int) -> str:
+        if self._db is not None:
+            raise RuntimeError("Awaited canonical note read required.")
         member = self._chat(chat_id)["members"].get(str(int(user_id)), {})
         return member.get("note", "")
 

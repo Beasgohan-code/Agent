@@ -7,6 +7,7 @@ import re
 from datetime import datetime,timezone
 from pyrogram.enums import ChatType,ChatMemberStatus
 from pyrogram.types import InlineKeyboardMarkup
+from ...platform.member_notes import operate as read_note
 from ...platform.warning_policy import operate as read_policy
 from ...platform.group_trust import trusted_members
 from ...ui.tables import panel,kv_table,Table
@@ -44,7 +45,7 @@ def build(ctx):
         admin=await access(client,chat,actor,target)
         rows=await asyncio.wait_for(ctx.chats.awarnings_of(chat.id,target),10)
         policy=await read_policy(ctx.chats,chat.id)
-        note=ctx.chats.note_of(chat.id,target) if admin else ''
+        note=(await read_note(ctx.chats,chat.id,target))['body'] if admin else ''
         approved=target in await trusted_members(ctx,chat.id) if admin else False
         # A revoked admin may not leak another member's details after the reads.
         admin=await access(client,chat,actor,target)
@@ -63,7 +64,7 @@ def build(ctx):
         if not rows:
             lines.append('No active warnings.')
         if admin and note:
-            lines.append('Moderation note (cached preview, up to 240 characters): '+html.escape(note[:240]))
+            lines.append('Moderation note (preview, up to 240 characters): '+html.escape(note[:240]))
         if admin and approved:
             lines.append('Approved: yes')
         buttons=[]

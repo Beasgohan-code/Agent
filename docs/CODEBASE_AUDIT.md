@@ -607,3 +607,18 @@ in21.43s**, no skips. Inventory regenerated from exact selected source.
 Compile/Pyflakes/diff clean. No live Telegram/production/deployment/merge;
 unrelated dirty work excluded. Timed promotion/tagging and untouched inventory
 entries remain separate pending work, not claimed complete.
+
+## Member-note command and canonical storage review
+
+Fixed reply /note dropping first word, shared target resolution/live personal Manage
+chat rights/final write check, rich content-withheld commit card. Dedicated serialized
+tenant/group/member SQL notes with one-time authoritative legacy import, revisions
+and content-free change metadata; warning reader awaits canonical note. Sync PG
+note methods refuse stale access. Audit-after-commit failures explicit, no raw note
+body/provider logs/confirmation or DB-to-file fallback. Six regressions incl realPG
+legacy/concurrent revision+metadata/restart/member/group/tenant isolation/stale save,
+parser/rights/audit/DB-down. Full realPG exact selected **2,227 passed in22.36s**,
+working **2,306 passed in21.24s**, no skips. Inventory regenerated, Compile/Pyflakes/
+diff clean. Sandbox Git/venv refresh restored current branch tracking without file
+overwrite, richgram installed --no-deps. Quiesce old note writers for rollout;
+no live Telegram/production/deployment/merge; unrelated dirty work excluded.

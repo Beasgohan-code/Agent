@@ -133,7 +133,7 @@
 | `/myplan` | premium | all | Your tier and what is left, short form | Needs individual UI/behavior review |
 | `/newfed` | federations | all | Create your federation | Needs individual UI/behavior review |
 | `/newtopic` | group | group | Create a forum topic (Manage topics required) | Needs individual UI/behavior review |
-| `/note` | moderation | group | Attach a private note to a member | Needs individual UI/behavior review |
+| `/note` | moderation | group | Attach a private note to a member | Targeted review/tests |
 | `/nowplaying` | music | group | What this group is playing | Needs individual UI/behavior review |
 | `/owner` | core | all | Owner control panel | Needs individual UI/behavior review |
 | `/panel` | clone | private | All your clone bots in one controller | Needs individual UI/behavior review |

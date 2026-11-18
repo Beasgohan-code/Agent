@@ -303,3 +303,38 @@ other-member denial, self defaults/note privacy, final rights loss after reads,
 wrong-group page without store access, invalid pages/provider redaction. Existing
 moderation/profile/warning-expiry regressions pass. Final full-suite evidence in
 CODEBASE_AUDIT. No live Telegram/production data changes.
+
+## /note canonical storage and reply-parser review
+
+Existing /note now uses shared username/positive-ID/text-mention/reply resolution.
+Reply `/note first word...` no longer drops its first word. Explicit1–2000 character
+text, no silent oversized-input truncation; literal text is saved, no hidden clear
+keyword. Current personal Manage chat admin and final pre-save authority check,
+no configured-Owner/anonymous bypass. Notes may refer to positive personal IDs,
+including members no longer present; this is annotation, not Telegram moderation.
+Rich confirmation shows target/moderator/character count/revision/committed status,
+not note contents. No warning or restriction mutation.
+
+New canonical SQL member-note table with serialized tenant/group/member writes,
+revision and updating actor; one-time authoritative legacy-document import. Separate
+immutable change metadata records actor/revision/character count, not body history
+or raw note text. Current note body remains stored, not encrypted by this feature;
+operators should never store credentials in moderation notes. Latest complete
+committed write wins; concurrent writes don't corrupt metadata or cross scopes.
+Old chat saves cannot overwrite imported note. PG direct synchronous set_note/
+note_of refuse use, preventing accidental stale-store writers/readers. Local-file
+standalone compatibility retained, not cross-process transactional.
+
+/warnings admin preview now awaits canonical notes (no cached-note claim); member
+self-service notes remain hidden. Admin previews are still group replies visible
+to group participants, not private admin-only transport. Audit errors after commit
+explicitly report saved+audit unconfirmed; no note body in audit/error/confirmation.
+DB unavailability never falls back to file/cache or claims success. No retries.
+Quiesce older note writers before rollout; writes to legacy document after first
+canonical import intentionally ignored. No destructive migration/production access.
+
+Six test-first cases (initial3 failed) cover full reply text/rich ack, username and
+nonadmin denial, realPG legacy import/concurrent revisions/metadata/restart/group+
+member+tenant isolation/stale saves, audit-failed commit, oversized input/final
+rights loss and disconnected PG refusal. Full suites in CODEBASE_AUDIT. No live
+Telegram note/provider calls or blanket completion claim for untouched commands.

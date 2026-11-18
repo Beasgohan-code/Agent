@@ -19,6 +19,7 @@ from .ban import build as build_ban
 from .kick import build as build_kick
 from .warning_cards import build as build_warning_card
 from .warning_read import build as build_warning_read
+from .member_note import build as build_member_note
 import html
 import logging
 import re
@@ -530,25 +531,6 @@ def build(ctx):
             except Exception:  # noqa: BLE001
                 pass
 
-    async def note(client, message):
-        if not await _guard(client, message, need="can_manage_chat"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to attach a note.")
-            return
-        target_id, mention = target
-        args = _args(message)
-        text = " ".join(args[2:]).strip() if len(args) > 2 else ""
-        if not text:
-            await reply(message, "Provide the note text after the id.")
-            return
-        ctx.chats.set_note(message.chat.id, target_id, text)
-        ctx.chats.log(
-            message.chat.id, "note", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Note saved</b>\nMember: {mention}")
-
     async def approval_command(client, message, desired=None, listing=False):
         chat = getattr(message, "chat", None)
         user = getattr(message, "from_user", None)
@@ -735,7 +717,7 @@ def build(ctx):
         **build_ban(ctx),
         "purge": purge,
         "spurge": build_silent_purge(ctx,MAX_PURGE),
-        "note": note,
+        "note": build_member_note(ctx),
         "approve": approve, "unapprove": unapprove, "approval": approval, "approved": approved,
         "antispam": antispam,
         "modlog": modlog,
