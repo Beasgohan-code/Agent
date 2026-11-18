@@ -448,3 +448,25 @@ action mute, /flood) instead of the full grammar and audit caveat paragraph. A s
 permissions/watcher/exemption note remains. Saved-policy label, validation, storage,
 privacy and authorization unchanged; full command grammar still available on invalid
 input. Regression updated test-first to reject the old paragraph. Existing file edited.
+
+## Missing /tpromote: durable admission foundation (not registered)
+
+Started genuine missing-command work instead of registering a placeholder. New SQL
+intent store persists tenant/group/target/actor/bot, limited non-delegating rights,
+aware expiry and explicit prepared/active/review/closed/cancelled lifecycle. Partial
+unique index excludes simultaneous unresolved grants, including review state; stale
+state transitions refused atomically. No local-file fallback or Telegram calls.
+
+This is admission infrastructure only, not a usable temporary promotion feature.
+No /tpromote handler/menu registration until native grant/demotion reconciliation,
+shutdown/startup integration, current rights and changed-target safety are complete.
+Storage state labels do not prove Telegram state. No expired task is automatically
+claimed, executed or retried in this phase. No sleeping coroutine posing as durability.
+Ambiguous admission errors require durable inspection before retry. Terminal rows
+retained. Schema is additive; no migration/deployment/production access performed.
+
+Two test-first cases initially failed. Real PostgreSQL six-way admission race allows
+one unresolved intent, second connection reads restart state, group/tenant filters,
+stale transition refusal, review blocking/new admission after closure, validation and
+disconnected store refusal. Full test counts in CODEBASE_AUDIT. New module is required
+missing persistence infrastructure, not another implementation of an existing command.

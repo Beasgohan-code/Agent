@@ -684,3 +684,17 @@ watcher/exemption note; full validation grammar retained on invalid input. No ne
 modules/commands or policy/rights changes. Updated regression failed first. Full
 realPG exact2269 passed23.94s, working2348 passed21.72s, no skips. Pyflakes/diff
 checks clean. No deployment/merge/live production; unrelated dirty work excluded.
+
+## Missing timed-promotion durable admission foundation
+
+Started /tpromote infrastructure; no command registration or claimed feature parity.
+Additive SQL intent schema/persistence with one unresolved target per tenant/group,
+limited rights/deadline/identity validation, atomic expected-state transitions and
+no offline fallback. Review state blocks regrant. No Telegram executor/claim/retry,
+startup/shutdown hook or automated demotion yet; these are required before enabling.
+Two tests initially failed; realPG concurrent admission/restart/group+tenant filtering/
+stale state transitions/closure/regrant tested. Full exact2271 passed23.59s,
+working2350 passed22.40s, no skips. Pyflakes/diff checks clean;243-command inventory
+regenerated and missing command honestly retained. New persistence module only,
+no duplicate command handler. No production/live Telegram/deployment/merge; unrelated
+work excluded. Next required phase is native reconciliation, not more cosmetic cards.
