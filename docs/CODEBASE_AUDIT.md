@@ -808,3 +808,19 @@ simulated Telegram send/stop/timeout/redaction/final rights. Full exact2301 pass
 25.96s, working2383 passed24.32s, no skips. Inventory250 names, emoji variants still
 missing. Pyflakes/compile/diff clean. Paused localization/unrelated work preserved,
 only selected bot help/menu hunks staged. No deployment/merge/live Telegram/production.
+
+## Literal @all/@eall and persisted emoji mention variants
+
+Shared command parser gains narrow exact @all/@eall text aliases, not global @
+prefix, preserving original eight prefixes/scope/admin gates. Lexical command guard
+recognizes them too. Registered /etagall and /eall reuse existing dispatcher with
+persisted plain/emoji style; additive constrained SQL column/default for old runs,
+claim reads SQL style. No fake member lists, opt-in/manual5/30s unchanged. Telegram
+must deliver plain @ messages under privacy/admin settings; no live visibility claim.
+Two test-first regressions, initial literal filter failed; realPG emoji send/style
+with simulated Telegram and negative lexical cases. Existing store concurrency/style
+assertion expanded. Full exact2303 passed25.58s, working2385 passed23.65s, no skips.
+Inventory252 names regenerated; requested named gaps declared, no blanket upstream
+parity/completion claim. Pyflakes/compile/diff clean. Existing files edited; paused
+language and unrelated work selectively excluded. No deployment/merge/live provider/
+production changes.

@@ -185,7 +185,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Group management",
         (
             "settings", "rules", "setrules", "pin", "unpin", "admins",
-            "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
+            "etagall", "eall", "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
             "fedreason", "fednotif", "quietfed", "fedpromote", "feddemote", "feddemoteme", "fedtransfer", "newfed", "renamefed", "delfed", "myfeds", "fedinfo", "fedadmins", "joinfed", "leavefed", "chatfed",
             "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "warnlimit", "resetwarns", "lockdown",
             "filter", "filters", "stopfilter",

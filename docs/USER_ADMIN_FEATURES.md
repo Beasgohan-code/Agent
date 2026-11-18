@@ -637,3 +637,29 @@ Five test-first cases added (initial2 missing store methods failed; new command 
 failed KeyError before registration). RealPG concurrent claim/cooldown/withdrawal/
 wrong-group/failed-state replay/disable scrub plus simulated Telegram sends, Stop,
 timeout redaction and final permission loss. No production/live Telegram/deployment.
+
+## Literal @all/@eall and emoji variants
+
+Existing shared parser now recognizes literal @all and @eall text triggers, only
+for their registered all/eall handlers. Not a global ninth prefix: @ban/@tagall,
+@alligator, @@all, embedded text and @all@otherbot are not commands. Case-insensitive
+exact word boundary; command args remain subject to same no-extra validation. Eight
+original punctuation prefixes preserved. command_name marks these two aliases for
+passive watchers/cleanup to avoid consuming a recognized command as ordinary chat.
+Scope and plugin/admin gates unchanged; ordinary @all is not a Telegram built-in
+mention-everyone feature. Delivery depends on Telegram sending this bot the group
+message (privacy/admin visibility settings); sandbox filter tests aren't live proof.
+
+/etagall and /eall are genuine shared emoji-style run commands; /all and /tagall
+stay plain. Unicode emoji link labels point to the opted-in user IDs, not inferred
+random members. Persisted constrained style column with additive default-plain
+upgrade preserves existing runs; claim/Resume read style from SQL, never callback
+text. Same5-member/manual/30s limit, same current admin/member/consent and stop rules.
+No automatic loops or unbounded group scans. No duplication of consent or dispatch
+logic. All originally named gaps now declared, but upstream feature parity remains
+explicitly incomplete and untouched command UI isn't marked reviewed.
+
+Two regressions: exact/specific @ trigger parsing+negative cases (initial failure),
+emoji actual send with realPG style persistence (added parameter) using simulated
+Telegram; existing claim race test also asserts persisted emoji style. Full suite
+counts in CODEBASE_AUDIT. No deployment/merge/live Telegram/production calls.

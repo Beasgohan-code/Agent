@@ -33,6 +33,8 @@ SYNC_TIMEOUT = 10.0
 
 #: One line per command, kept short — this is menu text, not documentation.
 DESCRIPTIONS: dict[str, str] = {
+    "etagall": "Emoji mentions for opted-in members (admin)",
+    "eall": "Alias of etagall: opted-in emoji mentions",
     "tagall": "Mention opted-in members, 5 per manual batch (admin)",
     "all": "Alias of tagall: opted-in mentions only",
     "tagabort": "Stop an open mention run (admin)",
@@ -315,7 +317,7 @@ GROUP_ONLY = frozenset(
         "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "settings", "rules", "setrules", "pin", "unpin",
-        "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror", "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "admins", "warntime", "warnmode", "warnlimit", "resetwarns", "lockdown",
+        "etagall", "eall", "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror", "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "admins", "warntime", "warnmode", "warnlimit", "resetwarns", "lockdown",
         "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
         "voicehealth", "q", "end", "resetplayer", "playnext", "loop", "shuffle", "clear", "clearqueue",
         "remove", "move", "jump", "replay", "seek", "fw", "bw", "seekback", "volume", "volumeup", "volumedown", "history",

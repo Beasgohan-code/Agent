@@ -118,11 +118,12 @@ async def test_tag_run_claim_concurrency_rate_and_withdrawal():
         await operate(db,-100,enabled=True,actor=11)
         for uid in range(21,29):
             await operate(db,-100,join=True,user=uid)
-        run=await start_run(db,-100,actor=11)
+        run=await start_run(db,-100,actor=11,style="emoji")
         await operate(db,-100,join=False,user=21)
         results=await asyncio.gather(*(claim_batch(db,-100,run,actor=11) for _ in range(4)),return_exceptions=True)
         batches=[result for result in results if isinstance(result,dict)]
         assert len(batches)==1 and batches[0]['members']==[22,23,24,25]
+        assert batches[0]['style']=='emoji'
         with pytest.raises(TagError):
             await claim_batch(db,-200,run,actor=11)
         await settle_batch(db,-100,run,confirmed=True)
@@ -162,7 +163,7 @@ async def test_tag_batch_failure_no_replay_or_silent_restart():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('outcome',['normal','timeout','rights_lost'])
+@pytest.mark.parametrize('outcome',['normal','timeout','rights_lost','emoji'])
 async def test_tag_command_sends_only_opted_in_batch_and_real_stop(tmp_path,outcome):
     from test_mute_target_parity import setup
     from agent.platform.group_tagging import operate
@@ -173,7 +174,7 @@ async def test_tag_command_sends_only_opted_in_batch_and_real_stop(tmp_path,outc
         pytest.skip('PostgreSQL required')
     db=Database(url,scope='tagsend:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
-    ctx,client,message=setup(tmp_path,'/tagall')
+    ctx,client,message=setup(tmp_path,'@eall' if outcome=='emoji' else '/tagall')
     ctx.db=db
     ctx.actions=ActionRouter()
     client.send_message=AsyncMock(return_value=NS(id=500))
@@ -194,8 +195,8 @@ async def test_tag_command_sends_only_opted_in_batch_and_real_stop(tmp_path,outc
                 return NS(status=S.MEMBER)
             client.get_chat_member=AsyncMock(side_effect=member)
         commands=group.build(ctx)[1]
-        await commands['tagall'](client,message)
-        if outcome!='normal':
+        await commands['eall' if outcome=='emoji' else 'tagall'](client,message)
+        if outcome not in ('normal','emoji'):
             assert client.send_message.await_count==(1 if outcome=='timeout' else 0)
             async with db._pool.acquire() as conn:
                 assert await conn.fetchval('SELECT state FROM agent_tag_runs WHERE tenant=$1',db.scope)=='review'
@@ -204,6 +205,10 @@ async def test_tag_command_sends_only_opted_in_batch_and_real_stop(tmp_path,outc
         client.send_message.assert_awaited_once()
         body=client.send_message.call_args.kwargs['text']
         assert body.count('tg://user?id=')==5 and 'id=26' not in body
+        if outcome=='emoji':
+            assert '>Member ' not in body
+            async with db._pool.acquire() as conn:
+                assert await conn.fetchval('SELECT style FROM agent_tag_runs WHERE tenant=$1',db.scope)=='emoji'
         assert 'paused' in str(message.replies[-1])
         async with db._pool.acquire() as conn:
             request=await conn.fetchval('SELECT id FROM agent_tag_runs WHERE tenant=$1',db.scope)

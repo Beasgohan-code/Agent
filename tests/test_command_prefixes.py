@@ -187,3 +187,19 @@ def test_playlist_aliases_list_instead_of_loading(tmp_path, monkeypatch):
         assert listing.await_count == 8
 
     asyncio.run(scenario())
+
+
+def test_literal_at_all_and_eall_are_specific_aliases_not_global_prefixes():
+    async def scenario():
+        client=NS(me=NS(username='MeikoBot'))
+        for text,name in [('@all','all'),('@ALL','all'),('@eall','eall')]:
+            message=NS(text=text,caption=None)
+            assert await command_filter(name)(client,message)
+            assert message.command==[name]
+            assert command_name(text)==name
+        for text in ('@alligator','hello @all','@all@otherbot','@@all','@ban','@etagall'):
+            message=NS(text=text,caption=None)
+            assert not await command_filter(['all','eall','ban'])(client,message)
+            assert command_name(text) is None
+        assert not await command_filter('ban')(client,NS(text='@all',caption=None))
+    asyncio.run(scenario())

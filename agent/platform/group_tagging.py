@@ -16,6 +16,8 @@ SCHEMA=(
     state TEXT NOT NULL CHECK(state IN ('paused','sending','review','completed','stopped')),
     last_attempt_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY(tenant,id))""",
+    """ALTER TABLE agent_tag_runs ADD COLUMN IF NOT EXISTS style TEXT NOT NULL DEFAULT 'plain'
+    CHECK(style IN ('plain','emoji'))""",
     """CREATE UNIQUE INDEX IF NOT EXISTS agent_tag_runs_open ON agent_tag_runs(tenant,group_id)
     WHERE state IN ('paused','sending','review')""",
 
@@ -83,7 +85,9 @@ def _pool(db,group,actor):
     return db._pool
 
 
-async def start_run(db,group,*,actor):
+async def start_run(db,group,*,actor,style="plain"):
+    if style not in ('plain','emoji'):
+        raise TagError('Invalid mention style.')
     connection_pool=_pool(db,group,actor)
     try:
         async with connection_pool.acquire(timeout=5) as conn:
@@ -98,7 +102,7 @@ async def start_run(db,group,*,actor):
                 if await conn.fetchval("SELECT EXISTS(SELECT 1 FROM agent_tag_runs WHERE tenant=$1 AND group_id=$2 AND state IN ('paused','sending','review'))",db.scope,group,timeout=5):
                     raise TagError('A mention run is open. Use its Resume/Stop buttons or /tagabort.')
                 request=uuid.uuid4().hex
-                await conn.execute("INSERT INTO agent_tag_runs(tenant,id,group_id,actor_id,members,total,state) VALUES($1,$2,$3,$4,$5,$6,'paused')",db.scope,request,group,actor,[r['user_id'] for r in members],len(members),timeout=5)
+                await conn.execute("INSERT INTO agent_tag_runs(tenant,id,group_id,actor_id,members,total,state,style) VALUES($1,$2,$3,$4,$5,$6,'paused',$7)",db.scope,request,group,actor,[r['user_id'] for r in members],len(members),style,timeout=5)
         return request
     except TagError:
         raise
@@ -124,7 +128,7 @@ async def claim_batch(db,group,request,*,actor):
                 selected=row['members'][row['cursor']:next_cursor]
                 opted=await conn.fetch('SELECT user_id FROM agent_tag_members WHERE tenant=$1 AND group_id=$2 AND user_id=ANY($3::bigint[]) ORDER BY user_id',db.scope,group,selected,timeout=5)
                 await conn.execute("UPDATE agent_tag_runs SET state='sending',cursor=$3,last_attempt_at=now() WHERE tenant=$1 AND id=$2",db.scope,request,next_cursor,timeout=5)
-        return {'members':[r['user_id'] for r in opted],'cursor':next_cursor,'total':row['total']}
+        return {'members':[r['user_id'] for r in opted],'cursor':next_cursor,'total':row['total'],'style':row['style']}
     except TagError:
         raise
     except Exception:

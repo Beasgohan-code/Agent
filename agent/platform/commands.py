@@ -13,9 +13,26 @@ _COMMAND = re.compile(
 )
 
 
+_AT_MENTION = re.compile(r"^@(all|eall)(?=\s|$)", re.I | re.ASCII)
+
+
 def command_filter(commands):
     """Use the client's native parser for mentions, quoting and command args."""
-    return filters.command(commands, prefixes=list(COMMAND_PREFIXES))
+    native=filters.command(commands, prefixes=list(COMMAND_PREFIXES))
+    names={commands.lower()} if isinstance(commands,str) else {name.lower() for name in commands}
+    aliases=names & {'all','eall'}
+    if not aliases:
+        return native
+
+    async def literal_alias(_,client,message):
+        text=getattr(message,'text',None)
+        match=_AT_MENTION.match(text) if isinstance(text,str) else None
+        if match is None or match.group(1).lower() not in aliases:
+            return False
+        message.command=[match.group(1).lower(),*text[match.end():].split()]
+        return True
+
+    return native | filters.create(literal_alias,'OptInMentionAlias')
 
 
 def command_name(text):
@@ -24,5 +41,5 @@ def command_name(text):
     A different bot's mention is deliberately still command-shaped: passive
     features must not consume commands addressed to other bots either.
     """
-    match = _COMMAND.match(text) if isinstance(text, str) else None
+    match = (_COMMAND.match(text) or _AT_MENTION.match(text)) if isinstance(text, str) else None
     return match.group(1).lower() if match else None

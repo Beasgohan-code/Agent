@@ -12,7 +12,7 @@ from ...ui.tables import panel, Table
 from ...utils.rich import reply
 from ..moderation import is_moderator
 
-COMMANDS = ("tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror")
+COMMANDS = ("etagall", "eall", "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror")
 # Delegation never includes adding administrators or anonymous identity.
 RIGHTS = (
     "can_manage_chat",
@@ -302,7 +302,7 @@ def build(ctx):
 
         return call
 
-    return {**{command: handler(command) for command in COMMANDS if command not in ("tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort")}, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
+    return {**{command: handler(command) for command in COMMANDS if command not in ("tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort", "etagall", "eall")}, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
 
 
 class TemporaryPromotionInputError(ValueError):
@@ -532,7 +532,8 @@ def build_tag_runs(ctx):
             await authorized(client,message,user)
             members=await eligible(db,message.chat.id,request,members)
             if members:
-                body='Opt-in mentions\n'+' '.join(f'<a href="tg://user?id={uid}">Member {uid}</a>' for uid in members)
+                emojis=('🌟','🌸','🍀','🌻','🦋')
+                body='Opt-in mentions\n'+' '.join(f'<a href="tg://user?id={uid}">{emojis[uid%len(emojis)] if chunk["style"]=="emoji" else f"Member {uid}"}</a>' for uid in members)
                 result=await asyncio.wait_for(client.send_message(chat_id=message.chat.id,text=body,parse_mode=ParseMode.HTML),15)
                 if type(getattr(result,'id',None)) is not int or result.id<=0:
                     raise TagError('Mention delivery unconfirmed. No batch retried.')
@@ -560,7 +561,7 @@ def build_tag_runs(ctx):
                     count=await stop_run(getattr(ctx,'db',None),message.chat.id,actor=user.id)
                     await reply(message,'Mention run stopped. An in-flight message may still arrive.' if count else 'No open mention run.')
                     return
-                request=await start_run(getattr(ctx,'db',None),message.chat.id,actor=user.id)
+                request=await start_run(getattr(ctx,'db',None),message.chat.id,actor=user.id,style='emoji' if command in ('etagall','eall') else 'plain')
                 await batch(client,message,request,user)
             except TagError as error:
                 keys=None
@@ -605,4 +606,4 @@ def build_tag_runs(ctx):
     router=getattr(ctx,'actions',None)
     if router is not None and not router.handles('tagrun:x'):
         router.register('tagrun',press)
-    return {command:handler(command) for command in ('tagall','all','tagabort')}
+    return {command:handler(command) for command in ('tagall','all','tagabort','etagall','eall')}
