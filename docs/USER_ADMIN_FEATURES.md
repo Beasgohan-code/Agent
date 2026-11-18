@@ -366,3 +366,36 @@ pages, provider error redaction, bot/anonymous/cross-chat rejection, idempotency
 local partial audit failure. Existing realPG trust concurrency/import/tenant/group
 isolation/audit rollback and watcher-outage cases unchanged and rerun in full suite.
 No live Telegram/production calls, migration, deployment or merge in this phase.
+
+## /antispam command card and input review
+
+Existing command delegates to one native builder; canonical policy storage, atomic
+SQL audit and watcher semantics unchanged. Current personal Manage chat authority
+checked initially, immediately before writes and after reads/writes before disclosure.
+No anonymous/bot/global-Owner bypass. Commit followed by lost rights reports committed
+with details withheld, not rollback. Telegram authority and DB write not atomic.
+
+Strict command grammar: on/off/keyword-clear accept no extra text; single-valued
+settings reject extra values; ASCII numeric limits2–1000 and mute30–31622400 seconds
+inclusive, out-of-range rejected rather than silently clamped. Existing storage API
+retains its compatibility semantics for other callers. Keywords1–200 chars remain
+case-normalized literal phrases, canonical store's100-phrase cap retained. Card
+shows count/enabled state instead of raw phrases, bounding output even at cap.
+
+Rich card reports moderator/current saved or committed status, flood/duplicate
+settings, links/invites, action with mute duration only when applicable, and additional
+consecutive/timed flood-mode counts. /flood remains detailed flood settings command.
+Explicitly not live enforcement proof: watcher must run and bot needs action rights.
+Staff/approved exemptions apply to auto anti-spam, not manual moderation; /antispam
+off disables additional flood modes too. No buttons, aliases or fake commands added.
+Group-visible result. Redacted failures/no auto retries/no configured DB fallback.
+Standalone audit failure can follow policy mutation and remains unconfirmed, never
+fake success; inspect /antispam before retry. Existing PG transaction audit rollback
+remains authoritative.
+
+20 regressions (initial14 failed/1 passed before implementation) cover committed
+card/actor/status, final permissions, strict extras/ranges/ASCII input, phrase privacy,
+post-read authorization, impersonal callers, redacted single-attempt provider errors,
+inclusive numeric bounds and additional flood-mode/off visibility. Existing realPG
+policy import/concurrency/scope/audit-rollback and watcher tests rerun, not rewritten.
+No live Telegram/production/deployment/merge. Full suite evidence in CODEBASE_AUDIT.

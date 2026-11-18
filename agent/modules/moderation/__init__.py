@@ -19,6 +19,7 @@ from .ban import build as build_ban
 from .kick import build as build_kick
 from .warning_cards import build as build_warning_card
 from .warning_read import build as build_warning_read
+from .antispam_card import build as build_antispam_card
 from .approvals import build as build_approvals
 from .member_note import build as build_member_note
 import html
@@ -47,7 +48,7 @@ from ...platform.group_rules import rules_history, RulesError
 from ...platform.restriction_cases import history as restriction_history, CaseError
 from ...platform.admin_settings import options as admin_options, denied, AdminStateError
 from ...platform.group_trust import trusted_members, trust_history, TrustError
-from ...platform.antispam import read_policy, change_policy, policy_history, PolicyError
+from ...platform.antispam import read_policy, policy_history, PolicyError
 from ...platform.chats import SPAM_ACTIONS
 from ...platform.manifest import PluginManifest
 from ...ui.tables import Table, kv_table, panel
@@ -532,53 +533,6 @@ def build(ctx):
             except Exception:  # noqa: BLE001
                 pass
 
-    async def antispam(client, message):
-        chat = getattr(message, "chat", None)
-        if chat is None or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
-            await reply(message, "Anti-spam settings are per group.")
-            return
-        if not await is_moderator(client, message, need="can_manage_chat"):
-            await denied(ctx, message, DENIED)
-            return
-        args = _args(message)[1:]
-        try:
-            if args:
-                policy = await change_policy(ctx, chat.id, args[0].lower(),
-                    " ".join(args[1:]).lower() if len(args) > 1 else None,
-                    actor=message.from_user.id)
-            else:
-                policy = await read_policy(ctx, chat.id)
-        except PolicyError as error:
-            await reply(message, str(error))
-            return
-        keywords = policy.get("blocked_keywords") or []
-        table = kv_table(
-            [
-                ("Flood", f"{policy['flood_messages']} per {policy['flood_window_seconds']}s "
-                          f"({'on' if policy['flood_enabled'] else 'off'})"),
-                ("Duplicates", f"threshold {policy['duplicate_threshold']} "
-                               f"({'on' if policy['duplicate_enabled'] else 'off'})"),
-                ("Links", "blocked" if policy["links_enabled"] else "allowed"),
-                ("Invites", "blocked" if policy["invites_enabled"] else "allowed"),
-                ("Keywords", ", ".join(keywords) if keywords else "none"),
-                ("Action", f"{policy['action']} (mute {policy['mute_seconds']}s)"),
-            ]
-        )
-        await reply(message, 
-            panel(
-                "Anti-spam settings",
-                icon=ctx.theme.emoji("shield"),
-                subtitle="Enforced by the watcher that ships with this module.",
-                table=table,
-                note=(
-                    "<code>/antispam on|off</code> · <code>limit 7</code> · <code>action mute</code> · "
-                    "<code>links off</code> · <code>invites off</code> · <code>keyword word</code> · "
-                    "<code>keyword-clear</code>"
-                ),
-                footer="Staff and approved members are never auto-punished.",
-            )
-        )
-
     async def modlog(client, message):
         if not await _guard(client, message):
             return
@@ -661,6 +615,6 @@ def build(ctx):
         "spurge": build_silent_purge(ctx,MAX_PURGE),
         "note": build_member_note(ctx),
         **build_approvals(ctx),
-        "antispam": antispam,
+        "antispam": build_antispam_card(ctx),
         "modlog": modlog,
     }

@@ -635,3 +635,18 @@ redacted and partial local audit unconfirmed.11 regression tests (initial7 faile
 Full exact selected suite **2,238 passed in22.57s**, full working **2,317 passed
 in22.13s**, no skips. Inventory regenerated; Compile/Pyflakes/diff checks clean.
 No deployment/merge/live provider/production access; unrelated dirty work excluded.
+
+## /antispam strict UI and honest saved-policy card
+
+Native command builder replaces legacy nested handler; canonical policy service,
+SQL audit and watcher unchanged. Personal current Manage chat rights before write
+and before disclosure. Strict no-extra grammar/ASCII bounded numeric settings, no
+silent command clamping. Phrase counts, not raw keyword text. Rich committed/current
+policy card shows additional flood modes and explicitly distinguishes saved settings
+from live enforcement. Redacted provider failures/no retries; known post-commit rights
+loss reports committed/details withheld.20 new regressions, initial14 failed/1 passed.
+Existing realPG policy import/concurrency/tenant/group isolation/audit rollback plus
+watcher cases rerun. Full exact selected **2,258 passed in22.62s**, full working
+**2,337 passed in21.42s**, no skips. Inventory regenerated; Compile/Pyflakes/diff
+checks clean. No deployment/merge/live Telegram/production calls; unrelated dirty
+work preserved and excluded. Other command gaps remain explicitly unclaimed.

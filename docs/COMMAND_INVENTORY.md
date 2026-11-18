@@ -30,7 +30,7 @@
 | `/alive` | core | all | Live bot health and uptime | Needs individual UI/behavior review |
 | `/allowlist` | moderation | group | View/add URL-lock domain exemptions | Needs individual UI/behavior review |
 | `/anonadmin` | group | group | Allow anonymous group-admin checks (unsafe) | Needs individual UI/behavior review |
-| `/antispam` | moderation | group | Anti-spam policy for this group | Needs individual UI/behavior review |
+| `/antispam` | moderation | group | Anti-spam policy for this group | Targeted review/tests |
 | `/appeal` | reports | all | Appeal a moderation action | Needs individual UI/behavior review |
 | `/approval` | moderation | group | Check a member approval | Targeted review/tests |
 | `/approve` | moderation | group | Exempt a member from automatic anti-spam | Targeted review/tests |
