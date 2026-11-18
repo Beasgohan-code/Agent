@@ -49,7 +49,7 @@
 | `/cancel` | core | all | Stop your jobs, or /cancel job-id for one | Needs individual UI/behavior review |
 | `/chatfed` | federations | all | Show this chat federation | Needs individual UI/behavior review |
 | `/clean` | renamer | all | Tidy a filename | Needs individual UI/behavior review |
-| `/cleancommand` | moderation | group | Delete recognized commands after handling (group) | Needs individual UI/behavior review |
+| `/cleancommand` | moderation | group | Delete recognized commands after handling (group) | Targeted review/tests |
 | `/cleanservice` | moderation | group | Choose which group service notices to delete | Needs individual UI/behavior review |
 | `/clear` | music | group | Clear upcoming music without stopping playback | Needs individual UI/behavior review |
 | `/clearflood` | moderation | group | Toggle flood message cleanup | Needs individual UI/behavior review |
@@ -105,7 +105,7 @@
 | `/jobs` | core | all | Your jobs; optionally filter by module (private) | Needs individual UI/behavior review |
 | `/joinfed` | federations | all | Join this chat to a federation (chat owner) | Needs individual UI/behavior review |
 | `/jump` | music | group | Start a selected upcoming music track | Needs individual UI/behavior review |
-| `/keepcommand` | moderation | group | Disable recognized-command cleanup (group) | Needs individual UI/behavior review |
+| `/keepcommand` | moderation | group | Disable recognized-command cleanup (group) | Targeted review/tests |
 | `/kick` | moderation | group | Remove a member (they may return) | Targeted review/tests |
 | `/kickme` | moderation | group | Leave this group by self-requested kick | Needs individual UI/behavior review |
 | `/leave` | music | group | Leave the voice chat | Needs individual UI/behavior review |

@@ -428,3 +428,15 @@ without partial display/retry, empty/invalid pages, merge order and pending outc
 realPG committed-history group/tenant isolation. Existing local warn reason display
 retained. Full suite evidence in CODEBASE_AUDIT. No production/live provider/deploy/
 merge operations; this does not claim all command reviews complete.
+
+## Command cleaning controls: in-place review
+
+Edited existing command_cleaning.py, no new handler modules. /cleancommand and
+/keepcommand retain existing aliases/storage/deletion behavior. Simpler On/Off,
+moderator and Saved/Current setting card; all eight prefixes documented. Personal
+Delete messages admin checked again before saving and before disclosure; bot callers
+rejected. Errors redacted, no retry, no live deletion success claim. Post-save rights
+loss reports saved with details withheld. Read-only calls still require current admin.
+Existing realPG concurrency/audit/isolation tests rerun; two new regressions in existing
+test file cover final rights, simple card, bot denial and provider error safety.
+No production/live Telegram/deployment/merge. Command deletion wrapper unchanged.

@@ -171,3 +171,43 @@ def test_cleanup_never_hides_handler_exception_or_runs_without_bot_rights(tmp_pa
         client.delete_messages.assert_not_awaited()
 
     asyncio.run(scenario())
+
+
+def test_command_cleaning_final_authority_and_simple_status(tmp_path):
+    async def scenario():
+        from agent.modules import moderation
+        from agent.platform.command_cleaning import operate
+        ctx=fixtures.ctx.__wrapped__(tmp_path)
+        commands=moderation.build(ctx)[1]
+        client=fixtures.FakeClient()
+        client.get_chat_member=AsyncMock(side_effect=[fixtures.member(fixtures.ADMIN),fixtures.member(fixtures.MEMBER)])
+        message=fixtures.FakeMessage('/cleancommand on')
+        await commands['cleancommand'](client,message)
+        assert not await operate(ctx,message.chat.id)
+        assert 'changed' in str(message.replies[-1])
+        client=fixtures.FakeClient()
+        await commands['cleancommand'](client,message)
+        text=str(message.replies[-1])
+        assert 'Saved' in text and 'Moderator' in text
+        assert '/ ! . # $ % & ?' in text
+        assert len(text)<1800
+    asyncio.run(scenario())
+
+
+def test_command_cleaning_bot_and_provider_failure_are_safe(tmp_path):
+    async def scenario():
+        from agent.modules import moderation
+        from agent.platform.command_cleaning import operate
+        ctx=fixtures.ctx.__wrapped__(tmp_path)
+        call=moderation.build(ctx)[1]['cleancommand']
+        client=fixtures.FakeClient()
+        message=fixtures.FakeMessage('/cleancommand on')
+        message.from_user=NS(id=11,is_bot=True)
+        await call(client,message)
+        assert not await operate(ctx,message.chat.id)
+        message.from_user=NS(id=11)
+        client.get_chat_member=AsyncMock(side_effect=RuntimeError('PRIVATE_TOKEN'))
+        await call(client,message)
+        assert 'PRIVATE_TOKEN' not in str(message.replies)
+        assert not await operate(ctx,message.chat.id)
+    asyncio.run(scenario())

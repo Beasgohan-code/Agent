@@ -665,3 +665,13 @@ passed in22.48s**, full working **2,346 passed in22.03s**, no skips. Inventory
 regenerated; Compile/Pyflakes/diff checks clean. Unrelated dirty work preserved and
 excluded. No deployment/merge/live Telegram/production operations or broad command
 completion claim.
+
+## /cleancommand and /keepcommand in-place review
+
+Existing implementation and test file edited, no new modules. Simpler state/
+moderator/save-status card, complete eight-prefix help; personal bounded identity,
+bot denial, pre-save and post-read/save current Delete messages authority. Redacted
+unexpected errors/no retry, existing aliases/canonical store/cleanup wrapper unchanged.
+Two test-first regressions initially failed. Full realPG exact selected2269 passed
+in22.67s, working2348 passed in21.03s, no skips. Pyflakes/diff checks clean; inventory
+regenerated. No deployment/merge/live Telegram/production; unrelated work excluded.
