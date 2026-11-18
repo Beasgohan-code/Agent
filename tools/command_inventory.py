@@ -5,8 +5,8 @@ from agent.modules import MODULES
 from agent.platform.menu import DESCRIPTIONS
 
 BASE={'start':'Open bot / route private deep links','restart_bot':'Alias of start, not a process restart','help':'Available command help','h':'Alias of help','ping':'Bot responsiveness'}
-POLISHED={'allsettings','tagstats','tpromote','lang','cleancommand','keepcommand','modlog','antispam','approve','unapprove','approval','approved','note','warnings','warns','unwarn','rmwarn','resetwarn','resetallwarns','warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
-MISSING=('tagall','all','etagall','eall','tagabort')
+POLISHED={'tagall','all','tagabort','allsettings','tagstats','tpromote','lang','cleancommand','keepcommand','modlog','antispam','approve','unapprove','approval','approved','note','warnings','warns','unwarn','rmwarn','resetwarn','resetallwarns','warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
+MISSING=('etagall','eall')
 
 
 def inventory():
@@ -44,7 +44,7 @@ def render():
         if name not in names:
             lines.append(f'- `/{name}` — not implemented/registered.')
     lines+=['', '- Existing `/cancel` is not repurposed as mass-tag cancellation.',
-            '- Tagging needs an honest bounded opt-in registry, rate limits and real run state; no invented member/presence lists.',
+            '- Tagging now has an opt-in registry and durable manual batches of five/30 seconds with authorized Resume/Stop; emoji variants remain missing. No invented member/presence lists.',
             '- Temporary promotion: /tpromote now has owner-only grants, durable deadlines, status/review resolution and a native expiry worker. Uncertain results stop for review; no blind retries.',
             '- Translation/free-provider and broadcast pin/cleanup parity remain incomplete; an existing declaration is not full upstream parity.', '',
             '## One-by-one improvement order', '',

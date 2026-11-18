@@ -12,7 +12,7 @@ from ...ui.tables import panel, Table
 from ...utils.rich import reply
 from ..moderation import is_moderator
 
-COMMANDS = ("allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror")
+COMMANDS = ("tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror")
 # Delegation never includes adding administrators or anonymous identity.
 RIGHTS = (
     "can_manage_chat",
@@ -302,7 +302,7 @@ def build(ctx):
 
         return call
 
-    return {**{command: handler(command) for command in COMMANDS if command not in ("tpromote", "allsettings", "tagstats")}, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx)}
+    return {**{command: handler(command) for command in COMMANDS if command not in ("tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort")}, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
 
 
 class TemporaryPromotionInputError(ValueError):
@@ -459,7 +459,7 @@ def build_tagging_settings(ctx):
                 keyboard=Keyboard([[Button('Join mentions',callback_data=f'tagopt:{message.chat.id}:join'),Button('Leave mentions',callback_data=f'tagopt:{message.chat.id}:leave')]])
                 await reply(message,panel('Mention settings' if command=='allsettings' else 'Mention statistics',
                     table=kv_table([('Opt-in mentions','On' if state['enabled'] else 'Off'),('Joined members',str(state['count'])),('Status','Saved' if committed else 'Current')]),
-                    note='Members choose below. Turning off clears all opt-ins. Limit: 500. Sending mention batches is not available yet.'),reply_markup=keyboard)
+                    note='Members choose below. Turning off clears all opt-ins. Limit: 500. Start: /tagall. Manual batches of 5, at least 30s apart.'),reply_markup=keyboard)
             except TagError as error:
                 await reply(message,'Settings saved; details withheld.' if committed else str(error))
             except Exception as error:
@@ -497,3 +497,112 @@ def build_tagging_settings(ctx):
     if router is not None and not router.handles('tagopt:x'):
         router.register('tagopt',press)
     return {command:handler(command) for command in ('allsettings','tagstats')}
+
+
+def build_tag_runs(ctx):
+    """Bounded manual mention batches, durable cursor, authorized Resume/Stop."""
+    from ...platform.group_tagging import start_run,claim_batch,settle_batch,stop_run,eligible,TagError
+    from pyrogram.types import InlineKeyboardMarkup as Keyboard,InlineKeyboardButton as Button
+    from pyrogram.enums import ParseMode
+    from types import SimpleNamespace
+
+    async def authorized(client,message,user=None):
+        user=user or getattr(message,'from_user',None)
+        chat=getattr(message,'chat',None)
+        if (getattr(chat,'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None):
+            raise TagError('Use your personal group administrator account.')
+        if not await asyncio.wait_for(is_moderator(client,SimpleNamespace(chat=chat,from_user=user),need='can_manage_chat'),5):
+            raise TagError('Current Manage chat administrator permission required.')
+        return user
+
+    async def batch(client,message,request,user):
+        await authorized(client,message,user)
+        db=getattr(ctx,'db',None)
+        chunk=await claim_batch(db,message.chat.id,request,actor=user.id)
+        confirmed=False
+        sent=0
+        try:
+            members=[]
+            for uid in chunk['members']:
+                member=await asyncio.wait_for(client.get_chat_member(message.chat.id,uid),5)
+                if member.status in (ChatMemberStatus.OWNER,ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.MEMBER) or (member.status==ChatMemberStatus.RESTRICTED and getattr(member,'is_member',False) is True):
+                    members.append(uid)
+            await authorized(client,message,user)
+            members=await eligible(db,message.chat.id,request,members)
+            if members:
+                body='Opt-in mentions\n'+' '.join(f'<a href="tg://user?id={uid}">Member {uid}</a>' for uid in members)
+                result=await asyncio.wait_for(client.send_message(chat_id=message.chat.id,text=body,parse_mode=ParseMode.HTML),15)
+                if type(getattr(result,'id',None)) is not int or result.id<=0:
+                    raise TagError('Mention delivery unconfirmed. No batch retried.')
+                sent=len(members)
+            confirmed=True
+        finally:
+            state=await settle_batch(db,message.chat.id,request,confirmed=confirmed)
+        rows=[]
+        if state=='paused':
+            rows.append([Button('Resume · next 5',callback_data=f'tagrun:{request}:resume')])
+        if state in ('paused','review','sending'):
+            rows.append([Button('Stop',callback_data=f'tagrun:{request}:stop')])
+        await reply(message,panel('Mention run',lines=[f'{sent} mentions sent · {state}',f"Scanned {chunk['cursor']}/{chunk['total']} opted-in members"],
+            note='Manual batches · wait 30s before Resume. Stop blocks future batches; it cannot recall a message already sending.'),reply_markup=Keyboard(rows) if rows else None)
+
+    def handler(command):
+        async def call(client,message):
+            request=None
+            try:
+                user=await authorized(client,message)
+                if len((getattr(message,'text','') or '').split())!=1:
+                    raise TagError(f'Use /{command} without extra arguments.')
+                if command=='tagabort':
+                    await authorized(client,message)
+                    count=await stop_run(getattr(ctx,'db',None),message.chat.id,actor=user.id)
+                    await reply(message,'Mention run stopped. An in-flight message may still arrive.' if count else 'No open mention run.')
+                    return
+                request=await start_run(getattr(ctx,'db',None),message.chat.id,actor=user.id)
+                await batch(client,message,request,user)
+            except TagError as error:
+                keys=None
+                if request is not None:
+                    try:
+                        async with ctx.db._pool.acquire(timeout=5) as conn:
+                            state=await conn.fetchval('SELECT state FROM agent_tag_runs WHERE tenant=$1 AND group_id=$2 AND id=$3',ctx.db.scope,message.chat.id,request,timeout=5)
+                        rows=[]
+                        if state=='paused':
+                            rows.append([Button('Resume · next 5',callback_data=f'tagrun:{request}:resume')])
+                        if state in ('paused','review','sending'):
+                            rows.append([Button('Stop',callback_data=f'tagrun:{request}:stop')])
+                        keys=Keyboard(rows) if rows else None
+                    except Exception:
+                        logging.getLogger(__name__).warning('#Errors Mention controls unavailable')
+                await reply(message,str(error),reply_markup=keys)
+            except Exception as error:
+                logging.getLogger(__name__).warning('#Errors Mention run unavailable (%s)',type(error).__name__)
+                await reply(message,'Mention run or delivery unconfirmed. No automatic retry. Use /tagabort before starting another run.')
+        return call
+
+    async def press(client,query,rest):
+        try:
+            user=await authorized(client,query.message,query.from_user)
+            parts=rest.split(':')
+            if len(parts)!=2 or not re.fullmatch('[0-9a-f]{32}',parts[0]) or parts[1] not in ('resume','stop'):
+                raise TagError('Invalid mention control.')
+            request,action=parts
+            if action=='stop':
+                await authorized(client,query.message,user)
+                count=await stop_run(getattr(ctx,'db',None),query.message.chat.id,actor=user.id,request=request)
+                await query.answer('Stopped. An in-flight message may still arrive.' if count else 'Run already closed or unavailable.',show_alert=True)
+            else:
+                await batch(client,query.message,request,user)
+                await query.answer()
+        except TagError as error:
+            await query.answer(str(error),show_alert=True)
+        except Exception as error:
+            logging.getLogger(__name__).warning('#Errors Mention control unavailable (%s)',type(error).__name__)
+            await query.answer('Mention action unconfirmed. Use /tagabort; no automatic retry.',show_alert=True)
+
+    router=getattr(ctx,'actions',None)
+    if router is not None and not router.handles('tagrun:x'):
+        router.register('tagrun',press)
+    return {command:handler(command) for command in ('tagall','all','tagabort')}

@@ -792,3 +792,19 @@ ranks prefixes first; updated to check disjoint discoverable command pages, not 
 ordering assumption. Pyflakes/compile/diff clean. Inventory247 names regenerated.
 Paused localization and unrelated music/clone/premium work excluded with selective
 index edits; no deployment/merge/production/live Telegram calls.
+
+## Native manual /tagall (/all) and /tagabort
+
+Three missing commands registered in existing group/admin.py, existing SQL registry
+extended with durable one-open-run/snapshot cursor state. Opt-in1–500 only, slices5,
+group30s claim throttle, one winner across concurrent claims, live membership/final
+consent/admin checks. Positive message ID acknowledgement, uncertain claims/sends
+block retry; no background dispatch or fake full-group notification. Real Resume/
+Stop and tagabort, stop cannot recall in-flight send. Withdrawal scrubs snapshot IDs
+without shifting cursor; disable stops/scrubs runs. Explicit batch sent vs scanned
+progress. Five regressions added, initial2 missing APIs failed plus missing command
+failure; actual PostgreSQL concurrency/throttle/withdrawal/replay/scope/disable and
+simulated Telegram send/stop/timeout/redaction/final rights. Full exact2301 passed
+25.96s, working2383 passed24.32s, no skips. Inventory250 names, emoji variants still
+missing. Pyflakes/compile/diff clean. Paused localization/unrelated work preserved,
+only selected bot help/menu hunks staged. No deployment/merge/live Telegram/production.

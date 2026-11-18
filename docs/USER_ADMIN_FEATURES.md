@@ -604,3 +604,36 @@ sending unavailable. This is real settings/consent/stats, not mass-tag completio
 Four realPG tests (initial3 failed before implementation) cover scope/concurrent join/
 disable-reenable-reset/leave/500 cap/disable race, current authority/member controls,
 and DB-down/invalid personal IDs. No production/live Telegram/deployment/merge.
+
+## /tagall, /all and /tagabort: bounded manual mention runs
+
+Existing admin.py now registers real tagall/all alias and tagabort, backed by existing
+group_tagging store extended with durable runs. Personal current Manage chat admin,
+group-bound validated UUID Resume/Stop controls, reauthorized immediately before send.
+No arbitrary message text or scraped roster: snapshot of1–500 opted-in member IDs,
+manual5-member snapshot slices, group-wide30s minimum between claimed batches across
+runs. Commands take no extra arguments. First batch sent by command, further batches
+require Resume. No background loop/resume-on-restart or promise all users are notified.
+
+SQL group lock and single unresolved run admission; cursor advances durably before
+Telegram send, sending state cannot be replayed. Final current membership and fresh
+SQL consent/enable/run check; bounded current membership lookups. Confirm only positive
+message ID acknowledgement. Failed/timeout/permission-loss state becomes review;
+crash may retain sending, both block another batch/run until explicit Stop/tagabort.
+No retry of uncertain batch. Completed/stopped snapshots cleared; consent withdrawal
+replaces stored snapshot identity with0 sentinel without shifting cursors; disabling
+clears all runs' snapshots and stops them. Run metadata retained; no display-name or
+message-content storage. Current /tagstats remains aggregate opt-in count, not online
+or delivery statistics. Users joining mid-run need a subsequent new run.
+
+Stop cannot recall an already in-flight Telegram request. Consent/member changes can
+race the final check and Telegram send (not atomic); UI states limitation. A claimed
+slice may produce fewer/zero actual mentions due to leave/withdrawal. Controls show
+scanned snapshot progress separately from acknowledged recipient count. Rate-limited
+first batch retains Resume/Stop controls so it isn't stranded. /etagall and /eall
+remain missing; no fake emoji aliases. No admin commands send to unconsenting users.
+
+Five test-first cases added (initial2 missing store methods failed; new command then
+failed KeyError before registration). RealPG concurrent claim/cooldown/withdrawal/
+wrong-group/failed-state replay/disable scrub plus simulated Telegram sends, Stop,
+timeout redaction and final permission loss. No production/live Telegram/deployment.
