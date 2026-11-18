@@ -19,6 +19,7 @@ from .ban import build as build_ban
 from .kick import build as build_kick
 from .warning_cards import build as build_warning_card
 from .warning_read import build as build_warning_read
+from .modlog_card import build as build_modlog_card
 from .antispam_card import build as build_antispam_card
 from .approvals import build as build_approvals
 from .member_note import build as build_member_note
@@ -39,19 +40,16 @@ from pyrogram.types import ChatPermissions
 from .command_cleaning import build as build_command_cleaning
 from .cleaning import build as build_cleaning, clean as clean_service
 from .blocklists import COMMANDS as BLOCKLIST_COMMANDS, build as build_blocklists, enforce as enforce_blocklist
-from ...platform.blocklists import history as blocklist_history, BlocklistError
 from .warning_variants import COMMANDS as WARNING_VARIANT_COMMANDS, build as build_warning_variants
 from .warning_controls import COMMANDS as WARNING_CONTROL_COMMANDS, build as build_warning_controls
 from .restrictions import COMMANDS as RESTRICTION_COMMANDS, build as build_restrictions
 from .antiflood import COMMANDS as FLOOD_COMMANDS, build as build_antiflood, watch as watch_antiflood
-from ...platform.group_rules import rules_history, RulesError
-from ...platform.restriction_cases import history as restriction_history, CaseError
 from ...platform.admin_settings import options as admin_options, denied, AdminStateError
-from ...platform.group_trust import trusted_members, trust_history, TrustError
-from ...platform.antispam import read_policy, policy_history, PolicyError
+from ...platform.group_trust import trusted_members
+from ...platform.antispam import read_policy
 from ...platform.chats import SPAM_ACTIONS
 from ...platform.manifest import PluginManifest
-from ...ui.tables import Table, kv_table, panel
+from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
 
 from .locks import COMMANDS as LOCK_COMMANDS, build as build_locks, enforce as enforce_locks
@@ -533,53 +531,6 @@ def build(ctx):
             except Exception:  # noqa: BLE001
                 pass
 
-    async def modlog(client, message):
-        if not await _guard(client, message):
-            return
-        try:
-            committed = await policy_history(ctx, message.chat.id)
-            committed += await rules_history(ctx, message.chat.id)
-            committed += await trust_history(ctx, message.chat.id)
-            committed += await restriction_history(ctx, message.chat.id)
-            committed += await blocklist_history(ctx, message.chat.id)
-        except (PolicyError, RulesError, TrustError, CaseError, BlocklistError):
-            await reply(message, "Moderation history could not be loaded. Please try again shortly.")
-            return
-        history = sorted([*ctx.chats.history(message.chat.id, limit=10), *committed], key=lambda row: row.get("at", 0), reverse=True)[:10]
-        if not history:
-            await reply(message, 
-                panel(
-                    "Moderation log",
-                    icon=ctx.theme.emoji("stats"),
-                    lines=["No moderation actions recorded yet."],
-                    footer="Actions are appended when they happen.",
-                )
-            )
-            return
-        table = Table(
-            headers=("Action", "Target", "Reason", "When"),
-            rows=tuple(
-                (
-                    record.get("action", "?").upper(),
-                    str(record.get("target") or "-"),
-                    record.get("reason") or "no reason",
-                    time.strftime("%d %b %H:%M", time.gmtime(record.get("at", 0))),
-                )
-                for record in history
-            ),
-            aligns=("left", "right", "left", "left"),
-            total_width=56,
-        )
-        await reply(message, 
-            panel(
-                "Moderation log",
-                icon=ctx.theme.emoji("stats"),
-                subtitle="Newest first.",
-                table=table,
-                footer="Recent actions for this group · times in UTC. Protection changes are read from committed audit history.",
-            )
-        )
-
     def report_api_failure(handler):
         @wraps(handler)
         async def guarded(client, message):
@@ -616,5 +567,5 @@ def build(ctx):
         "note": build_member_note(ctx),
         **build_approvals(ctx),
         "antispam": build_antispam_card(ctx),
-        "modlog": modlog,
+        "modlog": build_modlog_card(ctx),
     }

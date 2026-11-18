@@ -650,3 +650,18 @@ watcher cases rerun. Full exact selected **2,258 passed in22.62s**, full working
 **2,337 passed in21.42s**, no skips. Inventory regenerated; Compile/Pyflakes/diff
 checks clean. No deployment/merge/live Telegram/production calls; unrelated dirty
 work preserved and excluded. Other command gaps remain explicitly unclaimed.
+
+## /modlog bounded paginated audit reader review
+
+Replaced nested legacy reader with personal current-admin guarded builder; reauth
+before disclosure, no nonadmin/bot/anonymous reads. Existing sources retained,
+up to10 merged rows/3 per live command page, explicit bounds and actor/source/UTC/
+outcome labels,160-char reason previews. No complete-ledger/dedup/current Telegram
+state claim; overlapping local/canonical records acknowledged. Fail closed on
+source/permission errors, no partial log/provider leak/retry. Nine regressions
+(initial8 failed) incl realPG committed history/group+tenant isolation, final rights
+loss/strict pages/bounded payload/source outcomes. Full exact selected **2,267
+passed in22.48s**, full working **2,346 passed in22.03s**, no skips. Inventory
+regenerated; Compile/Pyflakes/diff checks clean. Unrelated dirty work preserved and
+excluded. No deployment/merge/live Telegram/production operations or broad command
+completion claim.

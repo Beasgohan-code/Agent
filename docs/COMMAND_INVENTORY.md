@@ -123,7 +123,7 @@
 | `/mediainfo` | encoder | private | Probe a replied video | Needs individual UI/behavior review |
 | `/menu` | core | all | Open the inline control menu | Needs individual UI/behavior review |
 | `/mirror` | leech | all | Download a link and keep it in your vault | Needs individual UI/behavior review |
-| `/modlog` | moderation | group | Recent moderation actions | Needs individual UI/behavior review |
+| `/modlog` | moderation | group | Recent moderation actions | Targeted review/tests |
 | `/move` | music | group | Move an upcoming music track | Needs individual UI/behavior review |
 | `/mute` | moderation | group | Mute ID/username or reply; optional duration and reason | Targeted review/tests |
 | `/mybots` | clone | private | Your clones and their controls | Needs individual UI/behavior review |

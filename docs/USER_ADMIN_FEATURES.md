@@ -399,3 +399,32 @@ post-read authorization, impersonal callers, redacted single-attempt provider er
 inclusive numeric bounds and additional flood-mode/off visibility. Existing realPG
 policy import/concurrency/scope/audit-rollback and watcher tests rerun, not rewritten.
 No live Telegram/production/deployment/merge. Full suite evidence in CODEBASE_AUDIT.
+
+## /modlog bounded authorized reader review
+
+Existing /modlog [page] now uses a shared native builder; no fake audit store,
+callbacks or new aliases. Personal current group admin required, no Owner bypass,
+anonymous/bot invocation rejected; any current group admin remains eligible (no
+new Manage chat restriction). Authority checked before history access and again
+before disclosure. Strict ASCII page1–4, no extras. Most recent10 merged rows,
+3/page, live command pagination. No frozen snapshot guarantee.
+
+Preserves existing local audit plus canonical anti-spam/rules/trust/restriction/
+blocklist sources. Moderator IDs now shown, action outcomes retained verbatim up to
+64 chars, reason previews160 chars with visible ellipsis; no text omitted silently.
+Source labelled Local audit or Canonical audit (no false claim every canonical row
+is successful: pending/failed cases included). No dedup without shared event IDs;
+UI explicitly says overlapping records possible and window not complete audit export.
+Some features have separate canonical history and are not included; this is not a
+unified durable ledger. Reason previews are group-visible, not admin-only transport;
+do not store credentials in moderation reasons. Notes remain content-withheld in
+new note audit entries. Invalid stored timestamps/source errors fail closed with
+no partial result/provider details. No automatic retries or live Telegram-state
+claim. Per-source bounded timeouts/sequential reads avoid orphaned read tasks.
+
+Nine regressions (initial8 failed) cover bounded pages/reasons/actor/source, final
+authority loss, member/bot/anonymous denial before reads, provider failure redaction
+without partial display/retry, empty/invalid pages, merge order and pending outcomes,
+realPG committed-history group/tenant isolation. Existing local warn reason display
+retained. Full suite evidence in CODEBASE_AUDIT. No production/live provider/deploy/
+merge operations; this does not claim all command reviews complete.
