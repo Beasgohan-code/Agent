@@ -440,3 +440,11 @@ loss reports saved with details withheld. Read-only calls still require current 
 Existing realPG concurrency/audit/isolation tests rerun; two new regressions in existing
 test file cover final rights, simple card, bot denial and provider error safety.
 No production/live Telegram/deployment/merge. Command deletion wrapper unchanged.
+
+### Anti-spam usage copy follow-up
+
+Normal /antispam card now uses short line-separated examples (on/off, links off,
+action mute, /flood) instead of the full grammar and audit caveat paragraph. A short
+permissions/watcher/exemption note remains. Saved-policy label, validation, storage,
+privacy and authorization unchanged; full command grammar still available on invalid
+input. Regression updated test-first to reject the old paragraph. Existing file edited.

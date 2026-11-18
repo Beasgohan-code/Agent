@@ -14,7 +14,11 @@ async def test_saved_policy_card_shows_actor_status_and_no_live_claim(tmp_path):
     assert ctx.chats.antispam(message.chat.id)['links_enabled'] is False
     text=str(message.replies[-1])
     assert 'Committed' in text and 'Moderator' in text
-    assert 'not a live enforcement check' in text
+    assert 'Needs bot permissions' in text
+    assert 'Usage:' not in text
+    assert 'Group-visible reply' not in text
+    assert '/antispam on' in text and '/antispam links off' in text
+    assert 'Saved settings are not' not in text
 
 
 @pytest.mark.asyncio

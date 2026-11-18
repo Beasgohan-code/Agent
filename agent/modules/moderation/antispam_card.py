@@ -75,7 +75,7 @@ def build(ctx):
                 ('Keywords',f"{len(policy.get('blocked_keywords') or [])} configured ({'on' if policy['keywords_enabled'] else 'off'}); phrases withheld"),
                 ('Action',action),
                 ('Additional flood modes',f"consecutive {policy.get('consecutive_limit',0)}; timed {policy.get('timed_flood_count',0)} per {policy.get('timed_flood_seconds',0)}s (0 = off)")]),
-                note=USAGE+' · /flood for additional flood-mode details. Saved settings are not a live enforcement check; actions depend on the running watcher and bot permissions. Staff and approved members are exempt from automatic anti-spam, not manual moderation. /antispam off also disables additional flood modes. Group-visible reply.'))
+                note='/antispam on · /antispam off\n/antispam links off\n/antispam action mute\nMore flood settings: /flood\nNeeds bot permissions and an active watcher. Staff and approved members are exempt.'))
         except (AntispamInputError,PolicyError) as error:
             await reply(message,panel('Anti-spam request',icon=ctx.theme.emoji('warn'),lines=[str(error)]))
         except Exception as error:

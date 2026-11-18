@@ -675,3 +675,12 @@ unexpected errors/no retry, existing aliases/canonical store/cleanup wrapper unc
 Two test-first regressions initially failed. Full realPG exact selected2269 passed
 in22.67s, working2348 passed in21.03s, no skips. Pyflakes/diff checks clean; inventory
 regenerated. No deployment/merge/live Telegram/production; unrelated work excluded.
+
+## Anti-spam usage copy simplification
+
+User clarified long bot usage paragraphs, not only assistant explanations. Existing
+normal antispam card footer shortened to line-separated examples and one permissions/
+watcher/exemption note; full validation grammar retained on invalid input. No new
+modules/commands or policy/rights changes. Updated regression failed first. Full
+realPG exact2269 passed23.94s, working2348 passed21.72s, no skips. Pyflakes/diff
+checks clean. No deployment/merge/live production; unrelated dirty work excluded.
