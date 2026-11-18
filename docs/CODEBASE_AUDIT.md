@@ -714,3 +714,8 @@ Full exact2275 passed23.24s, working2354 passed22.03s, no skips. Inventory regen
 244 commands. Pyflakes/compile/diff checks clean. Existing unrelated music Help edit
 excluded via selective index update; no broad staging. No production/live Telegram/
 deployment/merge. Timed promotion executor and remaining command reviews unfinished.
+
+Language staging correction: menu.py also contained pre-existing music descriptions/
+playforce metadata. Removed those unrelated hunks from published tree in a follow-up,
+retaining them unchanged in working files. Clean selected full realPG suite rerun:
+2275 passed23.56s, no skips. Language menu entry retained. No force-push/history rewrite.
