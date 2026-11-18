@@ -12,7 +12,7 @@ from ...ui.tables import panel, Table
 from ...utils.rich import reply
 from ..moderation import is_moderator
 
-COMMANDS = ("promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror")
+COMMANDS = ("tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror")
 # Delegation never includes adding administrators or anonymous identity.
 RIGHTS = (
     "can_manage_chat",
@@ -302,4 +302,125 @@ def build(ctx):
 
         return call
 
-    return {command: handler(command) for command in COMMANDS}
+    return {**{command: handler(command) for command in COMMANDS if command != "tpromote"}, "tpromote": build_tpromote(ctx)}
+
+
+class TemporaryPromotionInputError(ValueError):
+    """Safe locally authored command validation."""
+
+
+def build_tpromote(ctx):
+    """Owner-authorized limited temporary promotion with durable expiry admission."""
+    from datetime import datetime,timedelta,timezone
+    import inspect
+    from ...platform.timed_promotions import reserve,finish,read,pool,PromotionError
+    from ..moderation.restrictions import target_and_reason
+    from ..moderation.antiflood import duration
+    from ...ui.tables import kv_table
+
+    async def tpromote(client,message):
+        chat,user=getattr(message,'chat',None),getattr(message,'from_user',None)
+        dispatched=False
+        request=None
+        try:
+            if (getattr(chat,'type',None)!=ChatType.SUPERGROUP
+                    or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                    or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None):
+                raise TemporaryPromotionInputError('Use your personal account in a supergroup.')
+            async def owner():
+                current=await asyncio.wait_for(client.get_chat_member(chat.id,user.id),5)
+                if current.status!=ChatMemberStatus.OWNER:
+                    raise TemporaryPromotionInputError('Only the current group owner can use /tpromote.')
+            await owner()
+            db=getattr(ctx,'db',None)
+            pool(db)
+            args=(getattr(message,'text','') or '').split()[1:]
+            if args==['status']:
+                async with db._pool.acquire(timeout=5) as conn:
+                    rows=await conn.fetch('''SELECT id,target_id,state,expires_at FROM agent_timed_promotions
+                        WHERE tenant=$1 AND group_id=$2 ORDER BY created_at DESC,id DESC LIMIT 10''',db.scope,chat.id,timeout=5)
+                await owner()
+                await reply(message,panel('Temporary promotions',lines=[f"{r['target_id']} · {r['state']} · {r['expires_at'].strftime('%d %b %H:%M UTC')} · {r['id']}" for r in rows] or ['No temporary promotions.'],note='Review means automatic action stopped. Check Telegram, then demote manually if needed.'))
+                return
+            if len(args)==2 and args[0]=='resolve':
+                identity=args[1]
+                if not re.fullmatch('[0-9a-f]{32}',identity):
+                    raise TemporaryPromotionInputError('Usage: /tpromote resolve request_ID')
+                row=await read(db,identity,group=chat.id)
+                if row is None or row['state']!='review':
+                    raise TemporaryPromotionInputError('No review-needed request in this group.')
+                member=await asyncio.wait_for(client.get_chat_member(chat.id,row['target_id']),5)
+                if member.status not in (ChatMemberStatus.MEMBER,ChatMemberStatus.RESTRICTED,ChatMemberStatus.LEFT,ChatMemberStatus.BANNED):
+                    raise TemporaryPromotionInputError('Demote this member manually in Telegram before resolving.')
+                await owner()
+                await finish(db,identity,'closed',expected='review')
+                await reply(message,'Review closed. No Telegram permissions changed.')
+                return
+            if not getattr(ctx,'timed_promotions_running',False):
+                raise TemporaryPromotionInputError('Temporary promotion recovery is not running. No promotion attempted.')
+            source=getattr(message,'reply_to_message',None)
+            if source is not None and getattr(getattr(source,'chat',None),'id',chat.id)!=chat.id:
+                raise TemporaryPromotionInputError('Reply to a member of this group.')
+            uid,rest=await asyncio.wait_for(target_and_reason(client,message),5)
+            if len(rest.split())!=1:
+                raise TemporaryPromotionInputError('Use /tpromote @user 5m or reply /tpromote 5m. Status: /tpromote status')
+            try:
+                seconds=duration(rest.strip())
+            except ValueError:
+                raise TemporaryPromotionInputError('Choose a duration from 1m to 365d, for example 5m or 2h.') from None
+            if seconds<60:
+                raise TemporaryPromotionInputError('Choose a duration from 1m to 365d.')
+            if type(uid) is not int or not 0<uid<2**63 or uid==user.id:
+                raise TemporaryPromotionInputError('Choose another personal member.')
+            me=await asyncio.wait_for(client.get_me(),5)
+            if uid==me.id:
+                raise TemporaryPromotionInputError('I cannot promote myself.')
+            async def check():
+                await owner()
+                bot=await asyncio.wait_for(client.get_chat_member(chat.id,me.id),5)
+                member=await asyncio.wait_for(client.get_chat_member(chat.id,uid),5)
+                if (bot.status!=ChatMemberStatus.ADMINISTRATOR or getattr(getattr(bot,'privileges',None),'can_promote_members',False) is not True):
+                    raise TemporaryPromotionInputError('I need Add administrators permission.')
+                if member.status!=ChatMemberStatus.MEMBER:
+                    raise TemporaryPromotionInputError('Target must be an unrestricted member, not an existing admin.')
+                return bot
+            bot=await check()
+            rights={key:bool(getattr(bot.privileges,key,False)) for key in RIGHTS}
+            if not rights.get('can_manage_chat'):
+                raise TemporaryPromotionInputError('Bot management rights could not be verified.')
+            expires=datetime.now(timezone.utc)+timedelta(seconds=seconds)
+            request=await reserve(db,chat.id,uid,actor=user.id,bot=me.id,expires=expires,rights=rights)
+            final=await check()
+            if any(bool(getattr(final.privileges,key,False))!=value for key,value in rights.items()):
+                raise TemporaryPromotionInputError('Bot rights changed. No promotion attempted.')
+            fields={key:False for key in inspect.signature(ChatPrivileges).parameters}
+            fields.update(rights)
+            dispatched=True
+            ack=await asyncio.wait_for(client.promote_chat_member(chat.id,uid,privileges=ChatPrivileges(**fields)),15)
+            if ack is not True:
+                raise PromotionError('Telegram promotion unconfirmed.')
+            await finish(db,request,'active',expected='prepared')
+            await reply(message,panel('Temporary promotion saved',table=kv_table([
+                ('Member',str(uid)),('Until',expires.strftime('%d %b %H:%M UTC')),('Request',request)]),
+                note='Limited rights only. Expiry needs the bot online with admin rights. Changed or uncertain state stops for review. /tpromote status'))
+        except (TemporaryPromotionInputError,PromotionError) as error:
+            if request is not None and dispatched:
+                try:
+                    await finish(ctx.db,request,'review',expected='prepared')
+                except Exception:
+                    logging.getLogger(__name__).warning('#Errors Temporary promotion outcome needs inspection')
+            if request is not None and not dispatched:
+                try:
+                    await finish(ctx.db,request,'cancelled',expected='prepared')
+                except Exception:
+                    logging.getLogger(__name__).warning('#Errors Temporary promotion cancellation unconfirmed')
+            await reply(message,html.escape(str(error)) if not dispatched else 'Promotion or tracking unconfirmed. Check Telegram and /tpromote status; no automatic retry.')
+        except Exception as error:
+            if request is not None:
+                try:
+                    await finish(ctx.db,request,'review' if dispatched else 'cancelled',expected='prepared')
+                except Exception:
+                    logging.getLogger(__name__).warning('#Errors Temporary promotion tracking needs inspection')
+            logging.getLogger(__name__).warning('#Errors Temporary promotion unavailable (%s)',type(error).__name__)
+            await reply(message,'Promotion or tracking unconfirmed. Check Telegram and /tpromote status before retrying.')
+    return tpromote

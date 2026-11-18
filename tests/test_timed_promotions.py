@@ -135,3 +135,95 @@ async def test_reconciler_db_outage_never_contacts_telegram():
     with pytest.raises(PromotionError):
         await reconcile_due(NS(connected=False),client)
     client.get_me.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('outcome',['normal','false_ack','rights_lost'])
+async def test_tpromote_command_to_expiry_with_real_pg(tmp_path,outcome):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatMemberStatus as S
+    from pyrogram.types import ChatPrivileges
+    from test_mute_target_parity import setup
+    from agent.modules import group
+    from agent.platform.timed_promotions import reconcile_due
+    url=os.environ.get('AGENT_TEST_DATABASE_URL')
+    if not url:
+        pytest.skip('PostgreSQL required')
+    db=Database(url,scope='tpcommand:'+uuid.uuid4().hex,required=True)
+    assert await db.connect()
+    ctx,client,message=setup(tmp_path,'/tpromote 22 5m')
+    ctx.db=db
+    ctx.timed_promotions_running=True
+    promoted=False
+    owner_checks=0
+    async def member(chat,uid):
+        nonlocal owner_checks
+        if uid==11:
+            owner_checks+=1
+            return NS(status=S.MEMBER if outcome=='rights_lost' and owner_checks==3 else S.OWNER)
+        if uid==99:
+            return NS(status=S.ADMINISTRATOR,privileges=ChatPrivileges(can_promote_members=True,can_delete_messages=True))
+        return NS(status=S.ADMINISTRATOR if promoted else S.MEMBER,privileges=ChatPrivileges(can_delete_messages=True),can_be_edited=True,promoted_by=NS(id=99))
+    client.get_chat_member=AsyncMock(side_effect=member)
+    async def promote(*args,**kwargs):
+        nonlocal promoted
+        if outcome=='false_ack':
+            return False
+        promoted=kwargs['privileges'].can_manage_chat
+        return True
+    client.promote_chat_member=AsyncMock(side_effect=promote)
+    try:
+        commands=group.build(ctx)[1]
+        await commands['tpromote'](client,message)
+        if outcome!='normal':
+            async with db._pool.acquire() as conn:
+                row=await conn.fetchrow('SELECT id,state FROM agent_timed_promotions WHERE tenant=$1',db.scope)
+            assert row['state']==('review' if outcome=='false_ack' else 'cancelled')
+            assert not promoted
+            assert client.promote_chat_member.await_count==(1 if outcome=='false_ack' else 0)
+            if outcome=='false_ack':
+                message.text='/tpromote resolve '+row['id']
+                await commands['tpromote'](client,message)
+                assert 'Review closed' in str(message.replies[-1])
+            return
+        assert promoted and 'Temporary promotion saved' in str(message.replies[-1])
+        async with db._pool.acquire() as conn:
+            assert await conn.fetchval("SELECT state FROM agent_timed_promotions WHERE tenant=$1",db.scope)=='active'
+            await conn.execute("UPDATE agent_timed_promotions SET expires_at=now()-interval '1 minute' WHERE tenant=$1",db.scope)
+        await reconcile_due(db,client)
+        assert not promoted
+        message.text='/tpromote status'
+        await commands['tpromote'](client,message)
+        assert 'closed' in str(message.replies[-1])
+        assert client.promote_chat_member.await_count==2
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_tpromote_requires_owner_db_and_running_recovery(tmp_path):
+    from test_mute_target_parity import setup
+    from unittest.mock import AsyncMock
+    from agent.modules import group
+    ctx,client,message=setup(tmp_path,'/tpromote 22 5m')
+    client.promote_chat_member=AsyncMock(return_value=True)
+    await group.build(ctx)[1]['tpromote'](client,message)
+    client.promote_chat_member.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_promotion_worker_stops_cleanly_without_telegram_when_db_offline():
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from agent.platform.timed_promotions import watch
+    stop=asyncio.Event()
+    ctx=NS(db=NS(connected=False))
+    client=NS(get_me=AsyncMock())
+    task=asyncio.create_task(watch(ctx,client,stop,interval=.01))
+    await asyncio.sleep(.03)
+    assert ctx.timed_promotions_running
+    stop.set()
+    await asyncio.wait_for(task,1)
+    assert not ctx.timed_promotions_running
+    client.get_me.assert_not_awaited()

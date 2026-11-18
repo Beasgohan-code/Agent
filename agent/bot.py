@@ -40,6 +40,7 @@ from .platform.startup_cooldown import StartupCooldown
 from .platform.voice import VoiceEngine, capability
 from .ui.theme import Theme
 from .utils.sender import ScreenSender
+from .platform.timed_promotions import watch as watch_promotions
 from .watchdog import build_watchdog
 
 
@@ -573,6 +574,7 @@ class AgentBot:
             )
             return
 
+        promotion_task = None
         heartbeat_task = self.lease.start_heartbeat(stop_event)
         watchdog_task = None
         try:
@@ -618,9 +620,13 @@ class AgentBot:
                 on_fatal=lambda: self._request_restart(stop_event),
             )
             watchdog_task = asyncio.create_task(watchdog.run(stop_event), name="agent-watchdog")
+            promotion_task = asyncio.create_task(watch_promotions(self.modules, client, stop_event), name="temporary-promotions")
 
             await stop_event.wait()
         finally:
+            if promotion_task is not None:
+                promotion_task.cancel()
+                await asyncio.gather(promotion_task, return_exceptions=True)
             if watchdog_task is not None:
                 watchdog_task.cancel()
             heartbeat_task.cancel()

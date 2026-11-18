@@ -33,6 +33,7 @@ SYNC_TIMEOUT = 10.0
 
 #: One line per command, kept short — this is menu text, not documentation.
 DESCRIPTIONS: dict[str, str] = {
+    "tpromote": "Temporarily promote a member (group owner)",
     "lang": "Choose a supported language",
     # core
     "start": "Open the main menu",
@@ -309,7 +310,7 @@ GROUP_ONLY = frozenset(
         "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
         "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "settings", "rules", "setrules", "pin", "unpin",
-        "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror", "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "admins", "warntime", "warnmode", "warnlimit", "resetwarns", "lockdown",
+        "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror", "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "admins", "warntime", "warnmode", "warnlimit", "resetwarns", "lockdown",
         "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
         "voicehealth", "q", "end", "resetplayer", "playnext", "loop", "shuffle", "clear", "clearqueue",
         "remove", "move", "jump", "replay", "seek", "fw", "bw", "seekback", "volume", "volumeup", "volumedown", "history",

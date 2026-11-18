@@ -176,3 +176,22 @@ async def reconcile_due(db,client,*,limit=20):
             logging.getLogger(__name__).warning('#Errors Temporary promotion recovery needs review (%s)',type(error).__name__)
         outcomes.append((request,outcome))
     return outcomes
+
+
+async def watch(ctx,client,stop_event,*,interval=30):
+    """Native lease-owned bot task: restart scans persisted deadlines, no per-user sleep."""
+    import asyncio
+    import logging
+    ctx.timed_promotions_running=True
+    try:
+        while not stop_event.is_set():
+            try:
+                await reconcile_due(getattr(ctx,'db',None),client)
+            except Exception as error:
+                logging.getLogger(__name__).warning('#Errors Temporary promotion scan unavailable (%s)',type(error).__name__)
+            try:
+                await asyncio.wait_for(stop_event.wait(),timeout=interval)
+            except asyncio.TimeoutError:
+                pass
+    finally:
+        ctx.timed_promotions_running=False

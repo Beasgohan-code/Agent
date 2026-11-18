@@ -755,3 +755,24 @@ working2369 passed25.40s, no skips. Working includes paused localization tests;
 selected exact tree excludes all paused localization and unrelated music work.
 Pyflakes/diff checks clean,244-command inventory updated. No deployment/merge/live
 Telegram/production changes. No claim automatic recovery is operational yet.
+
+## /tpromote native command and lifecycle integration
+
+Registered genuine missing /tpromote in existing group/admin command builder.
+Personal current supergroup Owner only, limited bot-capped rights, strict duration/
+target syntax, final live checks after durable reservation; no owner-ID bypass.
+Strict True ack activates durable record; uncertain dispatch enters review, known
+pre-dispatch failure cancels. New status/review-resolution subcommands current-owner
+and group/tenant scoped, no manual resolve while target remains admin. Bot-owned
+native scan task starts after connection under existing instance lease and is
+cancelled/awaited before teardown. RealPG full command->expiry->demotion exercised
+with simulated Telegram, false ack review/resolve and permission-loss cancel; worker
+stop/outage guard tested. Five new tests plus previous19? Current timed-promotion
+file19 total cases (previous14 + five); all rerun. Initial missing worker/command
+failures observed before implementation. Full exact2292 passed35.54s, working2374
+passed32.32s, no skips. Inventory245 names, remaining tagging commands still absent.
+Pyflakes/compile/diff checks clean. Bot/menu/help/docs index built selectively from
+HEAD plus this change, preserving paused localization and unrelated music/premium/
+clone edits unstaged. No deployment/merge/live Telegram/production calls. Expiry can
+be delayed by downtime/batches; uncertain or changed state intentionally blocks for
+manual review; Telegram/SQL not atomic, same-right external changes remain a race.

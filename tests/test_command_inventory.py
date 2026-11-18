@@ -11,5 +11,5 @@ def test_inventory_covers_all_declared_commands_and_shell_aliases():
         assert set(module.MANIFEST.commands)<=set(names)
     text=render()
     assert 'not proof of live' in text
-    assert '/tpromote' in text and 'not implemented/registered' in text
+    assert '/tpromote' in text and '/tagall' in text and 'not implemented/registered' in text
     assert 'One-tap Unban control remains' in text

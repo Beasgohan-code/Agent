@@ -5,8 +5,8 @@ from agent.modules import MODULES
 from agent.platform.menu import DESCRIPTIONS
 
 BASE={'start':'Open bot / route private deep links','restart_bot':'Alias of start, not a process restart','help':'Available command help','h':'Alias of help','ping':'Bot responsiveness'}
-POLISHED={'lang','cleancommand','keepcommand','modlog','antispam','approve','unapprove','approval','approved','note','warnings','warns','unwarn','rmwarn','resetwarn','resetallwarns','warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
-MISSING=('tpromote','tagall','all','etagall','eall','tagabort','allsettings','tagstats')
+POLISHED={'tpromote','lang','cleancommand','keepcommand','modlog','antispam','approve','unapprove','approval','approved','note','warnings','warns','unwarn','rmwarn','resetwarn','resetallwarns','warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
+MISSING=('tagall','all','etagall','eall','tagabort','allsettings','tagstats')
 
 
 def inventory():
@@ -45,13 +45,13 @@ def render():
             lines.append(f'- `/{name}` — not implemented/registered.')
     lines+=['', '- Existing `/cancel` is not repurposed as mass-tag cancellation.',
             '- Tagging needs an honest bounded opt-in registry, rate limits and real run state; no invented member/presence lists.',
-            '- Temporary promotion: durable intent storage and conservative expiry service are tested; grant command and worker lifecycle integration remain unfinished. No sleeping-task implementation.',
+            '- Temporary promotion: /tpromote now has owner-only grants, durable deadlines, status/review resolution and a native expiry worker. Uncertain results stop for review; no blind retries.',
             '- Translation/free-provider and broadcast pin/cleanup parity remain incomplete; an existing declaration is not full upstream parity.', '',
             '## One-by-one improvement order', '',
             '1. Mute/unmute: rich cards, live rights, acknowledged actions and protected Unmute button implemented; live failure still needs runtime evidence.',
             '2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.',
             '3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Warning-removal cards now share one strict live-authorized path. New /warn cards include exact-warning removal controls; /warnings and /warns have self/admin access checks and live pagination.',
-            '4. Timed promotion: durable expiry/recovery before registering /tpromote.',
+            '4. Timed promotion: owner-only /tpromote with durable admission, bounded expiry worker and status/manual-review resolution; no live-provider proof.',
             '5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.',
             '6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.', '']
     return '\n'.join(lines)

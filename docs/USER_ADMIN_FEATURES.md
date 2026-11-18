@@ -544,3 +544,37 @@ inspected: includes newer privilege flags, all covered rather than copying upstr
 older subset. Existing licenses unchanged. RealPG tests simulate Telegram only;
 concurrent claims/rights/promoter/editability/bot identity/false ack/timeouts/new flag/
 prepared/closed replay and DB outage tested. This is not live-provider proof.
+
+### /tpromote command and native worker delivered (supersedes unavailable notes)
+
+Existing group/admin.py now owns /tpromote, no duplicate command implementation.
+Supergroup/current personal Telegram owner only; no configured Owner or anonymous/bot
+bypass. `/tpromote @user|positive_ID 5m`, same-group reply `/tpromote 5m`, shared
+text mentions. Exactly one duration1m–365d, no titles or existing-admin changes.
+Bot Add administrators/current member checked before and after durable reservation;
+rights capped to normal limited group RIGHTS, no delegation/anonymous/story/channel/
+new rights. All installed privilege fields explicitly false except allowed grants.
+Durable intent before Telegram, strict True ack before active. Known pre-dispatch
+failure cancels; uncertain dispatched grant moves to review, no repeat promotion.
+
+Native task in lease-owned main/clone AgentBot lifecycle starts after connection,
+scans up to20 due intents every30s, cancellation awaited before client teardown;
+restart scans SQL, no per-user sleeping tasks. Offline/scan failure logs safe #Errors
+and retries only scan, never ambiguous Telegram mutation. Commands refuse grants
+without running recovery or PostgreSQL. Bot must remain online and retain rights;
+expiry is not Telegram-native and can be delayed by downtime/batches. No guarantee
+all expired users demoted: changed/uncertain state deliberately stops for review.
+
+`/tpromote status` shows newest10 group-scoped request IDs/state/deadlines to current
+owner, reauthorized before disclosure. `/tpromote resolve ID` closes review only after
+fresh target no longer admin + owner recheck, changes no Telegram rights. Group-visible
+status contains no note/credential content. Uncertain rows never silently released.
+No hidden retries. Recovery service's same-right external-change race limitation
+still applies. Fixed-point finite task shutdown; cancelled in-flight action leaves
+review. No production/deployment/live Telegram claims.
+
+Five new tests (initial2 missing command/worker tests failed; realPG grant test
+requires PostgreSQL): full grant/expiry/status, false ack + manual resolution,
+pre-write owner loss/cancel, owner/DB/worker denial, worker outage/stop lifecycle.
+Existing12 expiry regressions rerun. Real SQL with simulated Telegram, not live proof.
+Command inventory245 names; missing tagging family still explicitly absent.
