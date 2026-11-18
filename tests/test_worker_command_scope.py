@@ -23,7 +23,7 @@ def test_group_worker_registers_group_commands_and_navigation_only(tmp_path, plu
     bot = build_worker(tmp_path, plugins)
     group_commands = {command for module in MODULES if module.MANIFEST.slug in GROUP_CORE for command in module.MANIFEST.commands}
     registered = set(bot.registry.active_commands())
-    assert registered == group_commands | {'menu', 'about'}
+    assert registered == group_commands | {'menu', 'about', 'lang'}
     assert {m.slug for m in bot.registry.manifests()} == set(GROUP_CORE) | {'core'}
     assert not bot.actions.handles('plugin:home')
     for forbidden in ('restart', 'db', 'clone', 'premium', 'addpremium', 'play', 'ask', 'encode', 'jobs', 'cancel', 'owner'):
@@ -51,7 +51,7 @@ def test_legacy_worker_selection_cannot_import_controller_commands(tmp_path):
     bot = build_worker(tmp_path, ('moderation', 'clone', 'ops', 'premium'))
     assert set(bot.registry.active_commands()) == {
         command for module in MODULES if module.MANIFEST.slug in GROUP_CORE for command in module.MANIFEST.commands
-    } | {'menu', 'about'}
+    } | {'menu', 'about', 'lang'}
     assert not bot.actions.handles('clone:home')
     assert not bot.actions.handles('plugin:home')
 

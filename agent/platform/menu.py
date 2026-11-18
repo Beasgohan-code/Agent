@@ -33,6 +33,7 @@ SYNC_TIMEOUT = 10.0
 
 #: One line per command, kept short — this is menu text, not documentation.
 DESCRIPTIONS: dict[str, str] = {
+    "lang": "Choose a language (English fallback)",
     # core
     "start": "Open the main menu",
     "help": "Every command, one screen per section",
@@ -160,7 +161,7 @@ DESCRIPTIONS: dict[str, str] = {
     "mirror": "Download a link and keep it in your vault",
 
     # music (voice chat)
-    "play": "Stream audio into the voice chat",
+    "play": "Play a song name, media link or replied audio",
     "pause": "Pause playback",
     "resume": "Resume playback",
     "skip": "Play the next track",
@@ -173,7 +174,7 @@ DESCRIPTIONS: dict[str, str] = {
     "q": "Browse the music queue: /q [page]",
     "end": "Stop playback and clear the music queue",
     "resetplayer": "Reset this group's player and queue",
-    "playnext": "Queue a direct URL or replied media next",
+    "playnext": "Staff: queue a song name, link or replied media next",
     "loop": "Repeat off, current track or entire queue",
     "shuffle": "Shuffle upcoming music tracks",
     "clear": "Clear upcoming music without stopping playback",
@@ -220,6 +221,7 @@ DESCRIPTIONS: dict[str, str] = {
     "id": "Show chat and user ids",
     "info": "Details about a member",
     "time": "Current time here and in UTC",
+    "playforce": "Staff: play immediately; retain the previous track and queue",
     "repo": "Bot version and information",
     # encoder
     "encode": "Encode a replied video",
@@ -310,7 +312,7 @@ GROUP_ONLY = frozenset(
         "settings", "rules", "setrules", "pin", "unpin",
         "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror", "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "admins", "warntime", "warnmode", "warnlimit", "resetwarns", "lockdown",
         "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "leave",
-        "voicehealth", "q", "end", "resetplayer", "playnext", "loop", "shuffle", "clear", "clearqueue",
+        "voicehealth", "q", "end", "resetplayer", "playnext", "playforce", "loop", "shuffle", "clear", "clearqueue",
         "remove", "move", "jump", "replay", "seek", "fw", "bw", "seekback", "volume", "volumeup", "volumedown", "history",
         "saveplaylist", "playlist", "playlists", "deleteplaylist", "post", "verify",
         "addpremium", "delpremium", "premiumusers",

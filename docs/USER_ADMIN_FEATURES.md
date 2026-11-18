@@ -470,3 +470,28 @@ one unresolved intent, second connection reads restart state, group/tenant filte
 stale transition refusal, review blocking/new admission after closure, validation and
 disconnected store refusal. Full test counts in CODEBASE_AUDIT. New module is required
 missing persistence infrastructure, not another implementation of an existing command.
+
+## /lang language picker: initial delivery, not full translation coverage
+
+New /lang in existing core implementation, including worker navigation.100 native
+language-name buttons,2 columns/12 per page/9 pages, live Previous/Next. Personal
+private choice or current Manage chat admin group choice; initiating user bound
+buttons, chat binding and current mutation-time/final auth. Group prefs do not edit
+private prefs. Stateless authorized desired-state selection; replays by authorized
+user intentionally allowed. Unknown codes/forged scope/pages rejected. No raw provider
+errors, no DB fallback. Post-save rendering/authority failure identifies saved state.
+
+Dedicated canonical tenant/scope preference table, upsert actor/time and awaited reads;
+restart/group/user/tenant isolation tested. Local standalone ChatStore compatibility.
+No translation provider calls/credentials/dependencies. Picker headings/save messages
+translated for en/ml/hi/ta only.100 choices explicitly marked English fallback; all
+other command replies currently remain English. Selection is real durable preference,
+not a claim that the whole bot is localized. Next localization work must replace
+hardcoded command/menu/button text with keyed catalogs preserving markup/placeholders,
+then translate/review each language. No wholesale string replacement of user content,
+credentials or command names. No100-language completion claim.
+
+Tests first (initial3 failed) cover private selection/other-user denial, group rights
+loss and invalid payloads, realPG restart/scope/tenant/actor/offline guards, all100
+choices reachable via valid <=64-byte callbacks and explicit fallback. Menu/help and
+worker registration updated, other ongoing command/timed-promotion work retained.

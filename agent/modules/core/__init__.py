@@ -31,7 +31,7 @@ MANIFEST = PluginManifest(
     name="Core extras",
     version="1.0.0",
     description="Menu, about, runtime status, job cancellation and the owner panel.",
-    commands=("menu", "about", "status", "alive", "uptime", "cancel", "jobs", "owner"),
+    commands=("lang", "menu", "about", "status", "alive", "uptime", "cancel", "jobs", "owner"),
     permissions=("messages.read",),
     scope="all",
 )
@@ -269,7 +269,9 @@ def build(ctx):
             note="Latest 20 jobs in this bot only. Source links, local paths and raw error details are hidden. /cancel &lt;job-id&gt; stops one job; /cancel stops all your active jobs.",
             footer="Process memory only; history does not survive restart."))
 
+    language_handler = build_language_picker(ctx)
     handlers = {
+        "lang": language_handler,
         "menu": menu,
         "about": about,
         "status": status,
@@ -283,10 +285,108 @@ def build(ctx):
     from dataclasses import replace
     from ...platform.policy import is_worker, worker_job_tools
     if is_worker(ctx.settings):
-        allowed = {'menu', 'about'}
+        allowed = {'menu', 'about', 'lang'}
         if worker_job_tools(ctx.settings.plugins):
             allowed.update(('jobs', 'cancel'))
         handlers = {name: handler for name, handler in handlers.items() if name in allowed}
         return replace(MANIFEST, name='Worker navigation', clone_compatible=True,
                        commands=tuple(handlers)), handlers
     return MANIFEST, handlers
+
+
+def build_language_picker(ctx):
+    """Private self-service or current-admin group preference, not full-bot translation."""
+    import asyncio
+    from types import SimpleNamespace
+    from pyrogram.enums import ChatType
+    from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
+    from ...platform.languages import LANGUAGES, NAMES, PICKER, preference, LanguageError
+    from ...utils.rich import edit
+    from ..moderation import is_moderator
+
+    async def authorize(client, message, user):
+        chat = getattr(message, 'chat', None)
+        uid = getattr(user, 'id', None)
+        if (type(uid) is not int or not 0 < uid < 2**63 or getattr(user, 'is_bot', False)
+                or getattr(message, 'sender_chat', None) is not None):
+            raise LanguageError('Use your personal account.')
+        if getattr(chat, 'type', None) == ChatType.PRIVATE and chat.id == uid:
+            return chat.id
+        if getattr(chat, 'type', None) in (ChatType.GROUP, ChatType.SUPERGROUP):
+            request = SimpleNamespace(chat=chat, from_user=user)
+            if await asyncio.wait_for(is_moderator(client, request, need='can_manage_chat'), 5):
+                return chat.id
+        raise LanguageError('Group language: Manage chat permission required. Use /lang in private for yourself.')
+
+    def card(uid, scope, code, page=0, saved=False):
+        if type(page) is not int or not 0 <= page < (len(LANGUAGES)+11)//12:
+            raise LanguageError('Invalid language page. Open /lang again.')
+        rows = []
+        choices = LANGUAGES[page*12:(page+1)*12]
+        for index in range(0, len(choices), 2):
+            rows.append([Button(('✓ ' if key == code else '')+name,
+                callback_data=f'lang:{uid}:{scope}:set:{key}') for key, name in choices[index:index+2]])
+        nav = []
+        if page:
+            nav.append(Button('‹', callback_data=f'lang:{uid}:{scope}:page:{page-1}'))
+        if (page+1)*12 < len(LANGUAGES):
+            nav.append(Button('›', callback_data=f'lang:{uid}:{scope}:page:{page+1}'))
+        if nav:
+            rows.append(nav)
+        title = PICKER.get(code, PICKER['en'])[1 if saved else 0]
+        return panel(title, lines=[NAMES[code]], footer=f'Page {page+1}/9',
+            note='100 choices · English fallback. Only this picker has partial translations; other bot replies are still English.'), Keyboard(rows)
+
+    async def lang(client, message):
+        try:
+            uid = getattr(getattr(message, 'from_user', None), 'id', None)
+            scope = await authorize(client, message, getattr(message, 'from_user', None))
+            if len((getattr(message, 'text', '') or '').split()) != 1:
+                raise LanguageError('Use /lang, then choose a language.')
+            code = await preference(ctx, scope)
+            await authorize(client, message, message.from_user)
+            text, keyboard = card(uid, scope, code)
+            await reply(message, text, reply_markup=keyboard)
+        except LanguageError as error:
+            await reply(message, str(error))
+        except Exception as error:
+            logger.warning('#Errors Language picker unavailable (%s)', type(error).__name__)
+            await reply(message, 'Language settings unavailable. Try /lang again later.')
+
+    async def press(client, query, rest):
+        saved = False
+        try:
+            parts = rest.split(':')
+            if len(parts) != 4:
+                raise LanguageError('Invalid language control.')
+            owner, scope, action, value = parts
+            if owner != str(getattr(getattr(query, 'from_user', None), 'id', None)):
+                raise LanguageError('Open your own picker with /lang.')
+            actual = await authorize(client, query.message, query.from_user)
+            if str(actual) != scope:
+                raise LanguageError('This picker belongs to another chat.')
+            page = 0
+            if action == 'set' and value in NAMES:
+                await authorize(client, query.message, query.from_user)
+                code = await preference(ctx, actual, code=value, actor=query.from_user.id)
+                saved = True
+                page = next(i for i, row in enumerate(LANGUAGES) if row[0] == code)//12
+            elif action == 'page' and value.isascii() and value.isdecimal() and len(value) <= 2 and int(value) < 9:
+                page = int(value)
+                code = await preference(ctx, actual)
+            else:
+                raise LanguageError('Invalid language choice or page.')
+            await authorize(client, query.message, query.from_user)
+            text, keyboard = card(query.from_user.id, actual, code, page, saved)
+            await edit(query, text, reply_markup=keyboard)
+            await query.answer()
+        except LanguageError as error:
+            await query.answer(('Language saved; details unavailable.' if saved else str(error)), show_alert=True)
+        except Exception as error:
+            logger.warning('#Errors Language selection unavailable (%s)', type(error).__name__)
+            await query.answer('Language saved; display unconfirmed.' if saved else 'Language change unconfirmed. Open /lang again.', show_alert=True)
+
+    router = getattr(ctx, 'actions', None)
+    if router is not None and not router.handles('lang:x'):
+        router.register('lang', press)
+    return lang

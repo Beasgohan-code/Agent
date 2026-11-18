@@ -89,10 +89,10 @@ def test_build_creates_client_and_registers_handlers():
     assert isinstance(client, Client)
     # Music registers nothing without SESSION_STRING. Count command handlers,
     # callback/error routing and isolated background watchers separately.
-    assert bot.handler_count == 217
+    assert bot.handler_count == 218
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 206
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 207
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -123,7 +123,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 206
+    assert len(messages) == 207
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}

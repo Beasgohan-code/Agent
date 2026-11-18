@@ -143,7 +143,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "bolt",
         "Essentials",
-        ("start", "help", "menu", "about", "status", "alive", "uptime", "ping", "cancel", "jobs", "owner",
+        ("start", "help", "lang", "menu", "about", "status", "alive", "uptime", "ping", "cancel", "jobs", "owner",
          "id", "info", "myinfo", "userinfo", "time", "repo", "gu", "tiktok", "x", "yt", "ig"),
     ),
     (

@@ -698,3 +698,19 @@ working2350 passed22.40s, no skips. Pyflakes/diff checks clean;243-command inven
 regenerated and missing command honestly retained. New persistence module only,
 no duplicate command handler. No production/live Telegram/deployment/merge; unrelated
 work excluded. Next required phase is native reconciliation, not more cosmetic cards.
+
+## /lang initial picker and durable preferences
+
+Existing core file gains real /lang handler/callback,100 native names/9 pages,
+private self-service/current Manage chat group admin, owner+chat-bound buttons,
+pre-write and post-read/write authority. Worker allowlist/menu/help updated. New
+canonical language preference store, no plaintext provider credentials/external calls
+or offline PG fallback. Selection is not full translation: only picker headings/save
+copy en/ml/hi/ta; other messages remain English, explicit fallback label on all pages.
+No full50/100-language completion claim. Four regressions incl realPG restart/user/
+group/tenant scope and offline actor guard,100 reachable options, callback byte bound,
+forged controls and revoked rights. Initial3 tests failed before implementation.
+Full exact2275 passed23.24s, working2354 passed22.03s, no skips. Inventory regenerated
+244 commands. Pyflakes/compile/diff checks clean. Existing unrelated music Help edit
+excluded via selective index update; no broad staging. No production/live Telegram/
+deployment/merge. Timed promotion executor and remaining command reviews unfinished.
