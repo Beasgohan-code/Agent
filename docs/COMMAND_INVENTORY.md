@@ -108,7 +108,7 @@
 | `/keepcommand` | moderation | group | Disable recognized-command cleanup (group) | Targeted review/tests |
 | `/kick` | moderation | group | Remove a member (they may return) | Targeted review/tests |
 | `/kickme` | moderation | group | Leave this group by self-requested kick | Needs individual UI/behavior review |
-| `/lang` | core | all | Choose a language (English fallback) | Targeted review/tests |
+| `/lang` | core | all | Choose a supported language | Targeted review/tests |
 | `/leave` | music | group | Leave the voice chat | Needs individual UI/behavior review |
 | `/leavefed` | federations | all | Leave this chat federation (chat owner) | Needs individual UI/behavior review |
 | `/leech` | leech | all | Download an http(s) link and send it here | Needs individual UI/behavior review |
@@ -142,10 +142,10 @@
 | `/pin` | group | group | Pin the replied message | Needs individual UI/behavior review |
 | `/ping` | shell | private | Bot responsiveness | Needs individual UI/behavior review |
 | `/plans` | premium | all | Compare the free and premium tiers | Needs individual UI/behavior review |
-| `/play` | music | group | Play a song name, media link or replied audio | Needs individual UI/behavior review |
+| `/play` | music | group | Stream audio into the voice chat | Needs individual UI/behavior review |
 | `/playlist` | music | group | Append saved playlist; add preview to inspect titles | Needs individual UI/behavior review |
 | `/playlists` | music | group | List your saved playlists in this group | Needs individual UI/behavior review |
-| `/playnext` | music | group | Staff: queue a song name, link or replied media next | Needs individual UI/behavior review |
+| `/playnext` | music | group | Queue a direct URL or replied media next | Needs individual UI/behavior review |
 | `/plugin` | ops | all | Enable or disable a plugin (owner) | Needs individual UI/behavior review |
 | `/plugins` | ops | all | Group controls or authorized plugin inspection | Needs individual UI/behavior review |
 | `/post` | postmaker | group | Publish a formatted post | Needs individual UI/behavior review |

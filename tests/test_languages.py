@@ -13,7 +13,7 @@ from pyrogram.enums import ChatType
 @pytest.mark.asyncio
 async def test_language_list_and_private_selection(tmp_path):
     from agent.platform.languages import LANGUAGES,preference
-    assert len(LANGUAGES)==100 and len(dict(LANGUAGES))==100
+    assert dict(LANGUAGES)=={'en':'English'}
     ctx,client,message=setup(tmp_path,'/lang')
     ctx.actions=ActionRouter()
     message.chat=NS(id=message.from_user.id,type=ChatType.PRIVATE)
@@ -21,16 +21,16 @@ async def test_language_list_and_private_selection(tmp_path):
     commands=core.build(ctx)[1]
     await commands['lang'](client,message)
     keyboard=message.reply.call_args.kwargs['reply_markup']
-    assert 1<len(keyboard.inline_keyboard)<=9
-    query=NS(from_user=message.from_user,message=message,data=f'lang:{message.from_user.id}:{message.chat.id}:set:ml',answer=AsyncMock())
+    assert len(keyboard.inline_keyboard)==1
+    query=NS(from_user=message.from_user,message=message,data=f'lang:{message.from_user.id}:{message.chat.id}:set:en',answer=AsyncMock())
     message.edit_text=AsyncMock()
     assert await ctx.actions.dispatch(client,query)
-    assert await preference(ctx,message.chat.id)=='ml'
-    assert 'മലയാളം' in str(message.edit_text.call_args)
+    assert await preference(ctx,message.chat.id)=='en'
+    assert 'English' in str(message.edit_text.call_args)
     query.from_user=NS(id=999)
     query.data=f'lang:{message.from_user.id}:{message.chat.id}:set:ta'
     await ctx.actions.dispatch(client,query)
-    assert await preference(ctx,message.chat.id)=='ml'
+    assert await preference(ctx,message.chat.id)=='en'
 
 
 @pytest.mark.asyncio
@@ -65,13 +65,13 @@ async def test_pg_language_preferences_restart_isolation_and_no_fallback(tmp_pat
     ctx=NS(db=db)
     try:
         assert await preference(ctx,11)=='en'
-        await preference(ctx,11,code='ta',actor=11)
-        await preference(ctx,-100,code='ml',actor=11)
+        await preference(ctx,11,code='en',actor=11)
+        await preference(ctx,-100,code='en',actor=11)
         second=Database(url,scope=scope,required=True)
         assert await second.connect()
         try:
-            assert await preference(NS(db=second),11)=='ta'
-            assert await preference(NS(db=second),-100)=='ml'
+            assert await preference(NS(db=second),11)=='en'
+            assert await preference(NS(db=second),-100)=='en'
             assert await preference(NS(db=second),-200)=='en'
         finally:
             await second.close()
@@ -83,6 +83,14 @@ async def test_pg_language_preferences_restart_isolation_and_no_fallback(tmp_pat
             await other.close()
         with pytest.raises(LanguageError):
             await preference(ctx,11,code='hi',actor=22)
+        async with db._pool.acquire() as conn:
+            await conn.execute("UPDATE agent_language_preferences SET language='ml' WHERE tenant=$1 AND scope_id=11",db.scope)
+        with pytest.raises(LanguageError,match='Previous language'):
+            await preference(ctx,11)
+        async with db._pool.acquire() as conn:
+            assert await conn.fetchval('SELECT language FROM agent_language_preferences WHERE tenant=$1 AND scope_id=11',db.scope)=='ml'
+        await preference(ctx,11,code='en',actor=11)
+        assert await preference(ctx,11)=='en'
     finally:
         await db.close()
     with pytest.raises(LanguageError):
@@ -90,26 +98,32 @@ async def test_pg_language_preferences_restart_isolation_and_no_fallback(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_all_100_language_buttons_are_reachable_and_fallback_is_explicit(tmp_path):
-    from agent.platform.languages import LANGUAGES,preference
+async def test_only_complete_languages_selectable_no_english_fallback(tmp_path):
+    from agent.platform.languages import preference,LanguageError
     ctx,client,message=setup(tmp_path,'/lang')
     ctx.actions=ActionRouter()
     message.chat=NS(id=11,type=ChatType.PRIVATE)
     message.edit_text=AsyncMock()
     core.build(ctx)
-    seen=set()
-    query=NS(from_user=message.from_user,message=message,answer=AsyncMock())
-    for page in range(9):
-        query.data=f'lang:11:11:page:{page}'
-        await ctx.actions.dispatch(client,query)
-        keyboard=message.edit_text.call_args.kwargs['reply_markup']
-        for row in keyboard.inline_keyboard:
-            for button in row:
-                if ':set:' in button.callback_data:
-                    seen.add(button.callback_data.rsplit(':',1)[1])
-                assert len(button.callback_data.encode())<=64
-    assert seen=={code for code,_ in LANGUAGES}
-    query.data='lang:11:11:set:fr'
+    query=NS(from_user=message.from_user,message=message,answer=AsyncMock(),data='lang:11:11:page:0')
     await ctx.actions.dispatch(client,query)
-    assert await preference(ctx,11)=='fr'
-    assert 'English fallback' in str(message.edit_text.call_args)
+    keyboard=message.edit_text.call_args.kwargs['reply_markup']
+    assert [button.text for row in keyboard.inline_keyboard for button in row]==['✓ English']
+    assert 'fallback' not in str(message.edit_text.call_args).lower()
+    for code in ('ml','hi','ta','fr'):
+        with pytest.raises(LanguageError):
+            await preference(ctx,11,code=code,actor=11)
+        query.data='lang:11:11:set:'+code
+        await ctx.actions.dispatch(client,query)
+        assert await preference(ctx,11)=='en'
+    # Preserve old preferences, but never pretend they are supported or silently return en.
+    ctx.chats.put(11,'language','ml')
+    with pytest.raises(LanguageError):
+        await preference(ctx,11)
+    query.data='lang:11:11:page:0'
+    await ctx.actions.dispatch(client,query)
+    assert 'Previous language is unavailable' in str(message.edit_text.call_args)
+    assert ctx.chats.get(11,'language')=='ml'
+    query.data='lang:11:11:set:en'
+    await ctx.actions.dispatch(client,query)
+    assert await preference(ctx,11)=='en'

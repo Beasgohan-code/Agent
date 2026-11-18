@@ -33,7 +33,7 @@ SYNC_TIMEOUT = 10.0
 
 #: One line per command, kept short — this is menu text, not documentation.
 DESCRIPTIONS: dict[str, str] = {
-    "lang": "Choose a language (English fallback)",
+    "lang": "Choose a supported language",
     # core
     "start": "Open the main menu",
     "help": "Every command, one screen per section",

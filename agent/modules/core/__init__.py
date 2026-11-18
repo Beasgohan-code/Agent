@@ -300,7 +300,7 @@ def build_language_picker(ctx):
     from types import SimpleNamespace
     from pyrogram.enums import ChatType
     from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
-    from ...platform.languages import LANGUAGES, NAMES, PICKER, preference, LanguageError
+    from ...platform.languages import LANGUAGES, NAMES, PICKER, preference, LanguageError, UnsupportedLanguage
     from ...utils.rich import edit
     from ..moderation import is_moderator
 
@@ -333,9 +333,10 @@ def build_language_picker(ctx):
             nav.append(Button('›', callback_data=f'lang:{uid}:{scope}:page:{page+1}'))
         if nav:
             rows.append(nav)
-        title = PICKER.get(code, PICKER['en'])[1 if saved else 0]
-        return panel(title, lines=[NAMES[code]], footer=f'Page {page+1}/9',
-            note='100 choices · English fallback. Only this picker has partial translations; other bot replies are still English.'), Keyboard(rows)
+        title = PICKER[code][1 if saved else 0] if code is not None else 'Choose language'
+        return panel(title, lines=[NAMES[code]] if code is not None else ['Previous language is unavailable. Choose a supported language.'],
+            footer=f'Page {page+1}/{(len(LANGUAGES)+11)//12}',
+            note='Only complete languages are listed. More languages will appear after full translation and checks.'), Keyboard(rows)
 
     async def lang(client, message):
         try:
@@ -343,7 +344,10 @@ def build_language_picker(ctx):
             scope = await authorize(client, message, getattr(message, 'from_user', None))
             if len((getattr(message, 'text', '') or '').split()) != 1:
                 raise LanguageError('Use /lang, then choose a language.')
-            code = await preference(ctx, scope)
+            try:
+                code = await preference(ctx, scope)
+            except UnsupportedLanguage:
+                code = None
             await authorize(client, message, message.from_user)
             text, keyboard = card(uid, scope, code)
             await reply(message, text, reply_markup=keyboard)
@@ -371,9 +375,12 @@ def build_language_picker(ctx):
                 code = await preference(ctx, actual, code=value, actor=query.from_user.id)
                 saved = True
                 page = next(i for i, row in enumerate(LANGUAGES) if row[0] == code)//12
-            elif action == 'page' and value.isascii() and value.isdecimal() and len(value) <= 2 and int(value) < 9:
+            elif action == 'page' and value.isascii() and value.isdecimal() and len(value) <= 2 and int(value) < (len(LANGUAGES)+11)//12:
                 page = int(value)
-                code = await preference(ctx, actual)
+                try:
+                    code = await preference(ctx, actual)
+                except UnsupportedLanguage:
+                    code = None
             else:
                 raise LanguageError('Invalid language choice or page.')
             await authorize(client, query.message, query.from_user)

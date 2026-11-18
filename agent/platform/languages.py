@@ -1,112 +1,9 @@
 """Language catalog and durable preferences. Catalog presence is NOT translation coverage."""
-LANGUAGES=tuple(tuple(line.split('|',1)) for line in '''en|English
-ml|മലയാളം
-hi|हिन्दी
-ta|தமிழ்
-te|తెలుగు
-kn|ಕನ್ನಡ
-bn|বাংলা
-mr|मराठी
-gu|ગુજરાતી
-pa|ਪੰਜਾਬੀ
-ur|اردو
-ar|العربية
-fr|Français
-de|Deutsch
-es|Español
-pt|Português
-ru|Русский
-zh|中文
-ja|日本語
-ko|한국어
-it|Italiano
-nl|Nederlands
-pl|Polski
-uk|Українська
-tr|Türkçe
-fa|فارسی
-id|Bahasa Indonesia
-ms|Bahasa Melayu
-vi|Tiếng Việt
-th|ไทย
-ne|नेपाली
-si|සිංහල
-my|မြန်မာ
-km|ខ្មែរ
-lo|ລາວ
-bo|བོད་སྐད་
-dz|རྫོང་ཁ
-or|ଓଡ଼ିଆ
-as|অসমীয়া
-sa|संस्कृतम्
-sd|سنڌي
-ps|پښتو
-ku|Kurdî
-he|עברית
-el|Ελληνικά
-ro|Română
-hu|Magyar
-cs|Čeština
-sk|Slovenčina
-sl|Slovenščina
-hr|Hrvatski
-sr|Српски
-bs|Bosanski
-bg|Български
-mk|Македонски
-sq|Shqip
-sv|Svenska
-da|Dansk
-no|Norsk
-fi|Suomi
-is|Íslenska
-et|Eesti
-lv|Latviešu
-lt|Lietuvių
-mt|Malti
-ga|Gaeilge
-cy|Cymraeg
-gd|Gàidhlig
-br|Brezhoneg
-eu|Euskara
-ca|Català
-gl|Galego
-af|Afrikaans
-sw|Kiswahili
-am|አማርኛ
-so|Soomaali
-ha|Hausa
-yo|Yorùbá
-ig|Igbo
-zu|isiZulu
-xh|isiXhosa
-st|Sesotho
-sn|chiShona
-rw|Kinyarwanda
-mg|Malagasy
-ny|Chichewa
-om|Afaan Oromoo
-ti|ትግርኛ
-az|Azərbaycanca
-hy|Հայերեն
-ka|ქართული
-kk|Қазақша
-ky|Кыргызча
-uz|Oʻzbekcha
-tg|Тоҷикӣ
-tk|Türkmençe
-mn|Монгол
-fil|Filipino
-jv|Basa Jawa
-su|Basa Sunda'''.splitlines())
+# Release gate: only fully implemented UI languages may appear or be saved.
+# English is the source language. No other full-bot translation is complete yet.
+LANGUAGES=(('en','English'),)
 NAMES=dict(LANGUAGES)
-# Only language-picker copy is translated so far. Other commands stay English.
-PICKER={
-    'en':('Choose language','Language saved'),
-    'ml':('ഭാഷ തിരഞ്ഞെടുക്കുക','ഭാഷ സേവ് ചെയ്തു'),
-    'hi':('भाषा चुनें','भाषा सहेजी गई'),
-    'ta':('மொழியைத் தேர்ந்தெடுக்கவும்','மொழி சேமிக்கப்பட்டது'),
-}
+PICKER={'en':('Choose language','Language saved')}
 SCHEMA=("""CREATE TABLE IF NOT EXISTS agent_language_preferences (
     tenant TEXT NOT NULL, scope_id BIGINT NOT NULL CHECK(scope_id<>0),
     language TEXT NOT NULL, actor_id BIGINT NOT NULL CHECK(actor_id>0),
@@ -115,6 +12,17 @@ SCHEMA=("""CREATE TABLE IF NOT EXISTS agent_language_preferences (
 
 class LanguageError(RuntimeError):
     """Safe preference validation/storage failure."""
+
+
+class UnsupportedLanguage(LanguageError):
+    """Previously saved locale no longer meets the release gate."""
+
+
+def supported(saved):
+    if not isinstance(saved,str) or saved not in NAMES:
+        raise UnsupportedLanguage('Previous language is unavailable. Choose a supported language with /lang.')
+    return saved
+
 
 
 async def preference(ctx,scope,*,code=None,actor=None):
@@ -127,7 +35,7 @@ async def preference(ctx,scope,*,code=None,actor=None):
         if code is not None:
             ctx.chats.put(scope,'language',code)
         saved=ctx.chats.get(scope,'language','en')
-        return saved if saved in NAMES else 'en'
+        return supported(saved)
     if not db.connected or getattr(db,'_pool',None) is None:
         raise LanguageError('Language storage unavailable. No change confirmed.')
     try:
@@ -138,6 +46,8 @@ async def preference(ctx,scope,*,code=None,actor=None):
                     SET language=EXCLUDED.language,actor_id=EXCLUDED.actor_id,updated_at=now()''',db.scope,scope,code,actor,timeout=5)
                 return code
             saved=await conn.fetchval('SELECT language FROM agent_language_preferences WHERE tenant=$1 AND scope_id=$2',db.scope,scope,timeout=5)
-        return saved if saved in NAMES else 'en'
+        return supported('en' if saved is None else saved)
+    except LanguageError:
+        raise
     except Exception:
         raise LanguageError('Language read or save unconfirmed. Open /lang before retrying.') from None

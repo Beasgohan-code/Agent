@@ -495,3 +495,24 @@ Tests first (initial3 failed) cover private selection/other-user denial, group r
 loss and invalid payloads, realPG restart/scope/tenant/actor/offline guards, all100
 choices reachable via valid <=64-byte callbacks and explicit fallback. Menu/help and
 worker registration updated, other ongoing command/timed-promotion work retained.
+
+### Language policy correction: complete languages only (supersedes initial picker)
+
+User rejected partial-language choices and English fallback. Removed99 incomplete
+choices and partial picker-only catalogs; /lang now lists English only (the sole
+full-bot source language). Unsupported codes are refused at storage admission as
+well as callback validation, including old buttons. Pagination derives from actual
+supported catalog length. No fallback messaging or false100-language availability.
+
+Existing unsupported saved preferences are preserved, never rewritten to en on a
+read. Preference read raises UnsupportedLanguage; picker explicitly reports the old
+choice unavailable and permits explicit selection of English. No implicit selection
+checkmark for old language. Missing preference defaults to source-language English;
+this is not a promise to translate a previously selected language. Other bot commands
+remain source English: full-bot localization infrastructure/catalog migration is still
+unfinished. Future languages require full command/menu/button/error translation and
+verification before entering LANGUAGES. No non-English locale claimed complete.
+
+Updated existing four tests test-first (two initially failed), incl realPG retained
+legacy unsupported preference/refusal/explicit recovery and old button rejection.
+No new handler/module/provider/dependency; no deployment/production calls.

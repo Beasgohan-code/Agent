@@ -719,3 +719,19 @@ Language staging correction: menu.py also contained pre-existing music descripti
 playforce metadata. Removed those unrelated hunks from published tree in a follow-up,
 retaining them unchanged in working files. Clean selected full realPG suite rerun:
 2275 passed23.56s, no skips. Language menu entry retained. No force-push/history rewrite.
+
+## Complete-only /lang correction (supersedes100-choice fallback design)
+
+User requires full translations, rejects English fallback/partial-language selector.
+Removed99 incomplete choices and picker-only translations from supported catalog.
+English remains sole complete source locale. Storage and callbacks reject non-enabled
+codes; stale buttons cannot save them. Reads of previously saved unsupported choices
+raise explicit UnsupportedLanguage, never silently replace with en; picker provides
+an explicit recovery selection without changing old record. No full non-English
+coverage claimed. Full-bot localization remains unfinished and required before adding
+languages. Dynamic page bounds, no100-language/fallback menu claims. Four existing
+tests updated first (two failed), realPG retained legacy/explicit recovery tested.
+Full realPG working2354 passed27.84s, exact2275 passed27.70s, no skips. Removed
+unused test import after full run; focused tests/Pyflakes/compile/diff clean. Unrelated
+music menu edits selectively excluded and retained locally. Ref/venv restored after
+sandbox refresh without overwriting files. No production/live Telegram/deploy/merge.
