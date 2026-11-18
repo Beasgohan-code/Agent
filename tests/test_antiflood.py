@@ -155,3 +155,61 @@ def test_all_actions_and_cleanup_off(tmp_path):
             assert client.unban_chat_member.await_count == (1 if mode == "kick" else 0)
 
     asyncio.run(scenario())
+
+
+def test_flood_cards_recheck_permissions_and_show_real_saved_state(tmp_path):
+    from unittest.mock import AsyncMock
+    from test_mute_target_parity import setup
+    async def scenario():
+        ctx,client,message=setup(tmp_path,'/setflood 7')
+        client.get_chat_member=AsyncMock(side_effect=[fixtures.member(fixtures.ADMIN),fixtures.member(fixtures.MEMBER)])
+        commands=moderation.build(ctx)[1]
+        await commands['setflood'](client,message)
+        assert not ctx.chats.antispam(message.chat.id).get('consecutive_limit')
+        assert 'changed' in str(message.replies[-1])
+        client=fixtures.FakeClient()
+        message.text='/flood'
+        await commands['flood'](client,message)
+        text=str(message.replies[-1])
+        assert 'Off' in text and 'Current saved settings' in text
+        assert 'Burst limiter' in text and len(text)<2200
+        message.text='/floodmode tmute 5m'
+        await commands['floodmode'](client,message)
+        assert 'Saved' in str(message.replies[-1]) and '5m' in str(message.replies[-1])
+    asyncio.run(scenario())
+
+
+def test_flood_read_revocation_and_provider_errors_do_not_leak(tmp_path):
+    from unittest.mock import AsyncMock,patch
+    from test_mute_target_parity import setup
+    async def scenario():
+        ctx,client,message=setup(tmp_path,'/flood')
+        client.get_chat_member=AsyncMock(side_effect=[fixtures.member(fixtures.ADMIN),fixtures.member(fixtures.MEMBER)])
+        commands=moderation.build(ctx)[1]
+        await commands['flood'](client,message)
+        assert 'changed' in str(message.replies[-1]) and 'Burst limiter' not in str(message.replies[-1])
+        client=fixtures.FakeClient()
+        message.text='/setflood 7'
+        with patch('agent.modules.moderation.antiflood.change_policy',AsyncMock(side_effect=ValueError('PRIVATE_TOKEN'))):
+            await commands['setflood'](client,message)
+        assert 'PRIVATE_TOKEN' not in str(message.replies)
+        assert 'unconfirmed' in str(message.replies[-1])
+    asyncio.run(scenario())
+
+
+def test_flood_invalid_personal_identity_and_grammar_do_not_change_policy(tmp_path):
+    from types import SimpleNamespace as NS
+    from test_mute_target_parity import setup
+    async def scenario():
+        ctx,client,message=setup(tmp_path,'/setflood 7')
+        commands=moderation.build(ctx)[1]
+        message.from_user=NS(id=11,is_bot=True)
+        await commands['setflood'](client,message)
+        assert not ctx.chats.antispam(message.chat.id).get('consecutive_limit')
+        message.from_user=NS(id=11)
+        before=dict(ctx.chats.antispam(message.chat.id))
+        for command,text in [('setflood','/setflood １００'),('setfloodtimer','/setfloodtimer 2 2d'),('clearflood','/clearflood on extra'),('floodmode','/floodmode ban 5m')]:
+            message.text=text
+            await commands[command](client,message)
+            assert ctx.chats.antispam(message.chat.id)==before
+    asyncio.run(scenario())

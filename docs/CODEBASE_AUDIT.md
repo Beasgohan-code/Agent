@@ -824,3 +824,15 @@ Inventory252 names regenerated; requested named gaps declared, no blanket upstre
 parity/completion claim. Pyflakes/compile/diff clean. Existing files edited; paused
 language and unrelated work selectively excluded. No deployment/merge/live provider/
 production changes.
+
+## Existing antiflood family in-place review
+
+No new module/aliases: existing five handlers share strict parser, personal current
+Manage chat checks before mutation and disclosure, safe input vs provider exception
+distinction. Simplified Off/readable durations/Saved vs read-only/moderator card,
+independent burst limiter action displayed, short examples, counters/watcher caveat.
+Canonical policy/audit/watcher unchanged. Three test-first regressions, initial2
+failed. Full realPG exact2306 passed25.92s, working2388 passed23.95s, no skips.
+Pyflakes/compile/diff clean,252-name inventory review states regenerated. Paused
+localization and unrelated dirty work retained/excluded via selected documentation
+index. No deployment/merge/live Telegram/production changes.

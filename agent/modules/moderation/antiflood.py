@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from pyrogram.enums import ChatType
 from ...platform.antispam import read_policy, change_policy, PolicyError
 from ...platform.group_trust import trusted_members
-from ...platform.admin_settings import denied
 from ...ui.tables import panel, kv_table
 from ...utils.rich import reply
 
@@ -25,136 +24,98 @@ def duration(text):
     return seconds
 
 
+class FloodInputError(ValueError):
+    """Locally authored input/authorization error, safe to display."""
+
+
+def setting(command,args):
+    hints={
+        'flood':'Use /flood without arguments.',
+        'setflood':'Use /setflood 7 or /setflood off. Count: 2–1000.',
+        'setfloodtimer':'Use /setfloodtimer 10 30s or /setfloodtimer off. Count: 2–1000; window: 30s–1d.',
+        'floodmode':'Use /floodmode ban|mute|kick or /floodmode tmute 5m (also tban).',
+        'clearflood':'Use /clearflood on or /clearflood off.',
+    }
+    args=[arg.lower() for arg in args]
+    def count(value):
+        return int(value) if value.isascii() and value.isdecimal() and len(value)<=4 else -1
+    if command=='flood' and not args:
+        return None,None
+    if command=='setflood' and len(args)==1:
+        value=0 if args[0] in ('off','no','0') else count(args[0])
+        if value==0 or 2<=value<=1000:
+            return 'consecutive',value
+    if command=='setfloodtimer':
+        if len(args)==1 and args[0] in ('off','no'):
+            return 'floodtimer',(0,0)
+        if len(args)==2 and 2<=count(args[0])<=1000:
+            try:
+                seconds=duration(args[1])
+            except ValueError:
+                raise FloodInputError(hints[command]) from None
+            if seconds<=86400:
+                return 'floodtimer',(count(args[0]),seconds)
+    if command=='floodmode':
+        if len(args)==1 and args[0] in ('ban','mute','kick'):
+            return 'floodmode',(args[0],0)
+        if len(args)==2 and args[0] in ('tban','tmute'):
+            try:
+                return 'floodmode',(args[0],duration(args[1]))
+            except ValueError:
+                raise FloodInputError('Timed actions: 30s–365d. Example: /floodmode tmute 5m') from None
+    if command=='clearflood' and len(args)==1 and args[0] in ('yes','no','on','off'):
+        return 'clearflood',args[0] in ('yes','on')
+    raise FloodInputError(hints[command])
+
+
 def build(ctx):
-    from . import is_moderator
+    from . import is_moderator,duration_label
+    import logging
+    logger=logging.getLogger(__name__)
 
     def handler(command):
-        async def call(client, message):
-            user = getattr(message, "from_user", None)
-            if (
-                getattr(getattr(message, "chat", None), "type", None)
-                not in (ChatType.GROUP, ChatType.SUPERGROUP)
-                or type(getattr(user, "id", None)) is not int
-                or user.id <= 0
-                or getattr(message, "sender_chat", None) is not None
-            ):
-                await reply(
-                    message, "Use antiflood commands as yourself inside the group."
-                )
-                return
-            if not await is_moderator(client, message, need="can_manage_chat"):
-                await denied(
-                    ctx,
-                    message,
-                    "You need Manage chat permission to configure antiflood.",
-                )
-                return
-            args = (message.text or "").split()[1:]
+        async def call(client,message):
+            user=getattr(message,'from_user',None)
+            committed=False
+            async def authorized():
+                return await asyncio.wait_for(is_moderator(client,message,need='can_manage_chat'),5)
             try:
-                if command == "flood" and not args:
-                    policy = await read_policy(ctx, message.chat.id)
-                elif command == "setflood" and len(args) == 1:
-                    value = (
-                        0
-                        if args[0].lower() in ("off", "no", "0")
-                        else int(args[0])
-                        if args[0].isascii()
-                        and args[0].isdecimal()
-                        and len(args[0]) <= 4
-                        else -1
-                    )
-                    policy = await change_policy(
-                        ctx, message.chat.id, "consecutive", value, actor=user.id
-                    )
-                elif (
-                    command == "setfloodtimer"
-                    and len(args) == 1
-                    and args[0].lower() in ("off", "no")
-                ):
-                    policy = await change_policy(
-                        ctx, message.chat.id, "floodtimer", (0, 0), actor=user.id
-                    )
-                elif (
-                    command == "setfloodtimer"
-                    and len(args) == 2
-                    and args[0].isascii()
-                    and args[0].isdecimal()
-                    and len(args[0]) <= 4
-                ):
-                    policy = await change_policy(
-                        ctx,
-                        message.chat.id,
-                        "floodtimer",
-                        (int(args[0]), duration(args[1])),
-                        actor=user.id,
-                    )
-                elif command == "floodmode" and 1 <= len(args) <= 2:
-                    mode = args[0].lower()
-                    if (mode in ("tban", "tmute")) != (len(args) == 2):
-                        raise ValueError(
-                            "Timed modes require a duration; permanent modes do not."
-                        )
-                    policy = await change_policy(
-                        ctx,
-                        message.chat.id,
-                        "floodmode",
-                        (mode, duration(args[1]) if len(args) == 2 else 0),
-                        actor=user.id,
-                    )
-                elif (
-                    command == "clearflood"
-                    and len(args) == 1
-                    and args[0].lower() in ("yes", "no", "on", "off")
-                ):
-                    policy = await change_policy(
-                        ctx,
-                        message.chat.id,
-                        "clearflood",
-                        args[0].lower() in ("yes", "on"),
-                        actor=user.id,
-                    )
+                if (getattr(getattr(message,'chat',None),'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                        or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                        or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None):
+                    raise FloodInputError('Use your personal administrator account in a group.')
+                if not await authorized():
+                    raise FloodInputError('Current Manage chat permission required.')
+                operation,value=setting(command,(getattr(message,'text','') or '').split()[1:])
+                if operation is None:
+                    policy=await read_policy(ctx,message.chat.id)
                 else:
-                    raise ValueError(
-                        "Usage: /flood · /setflood number|off · /setfloodtimer count duration|off · /floodmode ban|mute|kick|tban duration|tmute duration · /clearflood on|off"
-                    )
-                await reply(
-                    message,
-                    panel(
-                        "Antiflood",
-                        table=kv_table(
-                            [
-                                (
-                                    "Consecutive messages",
-                                    str(policy.get("consecutive_limit", 0)) or "off",
-                                ),
-                                (
-                                    "Timed messages",
-                                    str(policy.get("timed_flood_count", 0)),
-                                ),
-                                (
-                                    "Time window",
-                                    f"{policy.get('timed_flood_seconds', 0)}s",
-                                ),
-                                ("Action", policy.get("flood_action", "mute")),
-                                (
-                                    "Action duration",
-                                    f"{policy.get('flood_action_seconds', 0)}s",
-                                ),
-                                (
-                                    "Delete triggering messages",
-                                    "on" if policy.get("clear_flood", True) else "off",
-                                ),
-                            ]
-                        ),
-                        note="0 disables a limit. Triggers at the configured count. Counters are process-local and reset on restart; settings are shared through PostgreSQL. Other anti-spam protections remain independent.",
-                    ),
-                )
-            except (ValueError, PolicyError) as error:
-                await reply(message, str(error))
-
+                    if not await authorized():
+                        raise FloodInputError('Administrator permissions changed. No settings changed.')
+                    policy=await change_policy(ctx,message.chat.id,operation,value,actor=user.id)
+                    committed=True
+                if not await authorized():
+                    raise FloodInputError('Settings saved; permissions changed. Details withheld.' if committed else 'Administrator permissions changed. Settings withheld.')
+                consecutive=policy.get('consecutive_limit',0)
+                count=policy.get('timed_flood_count',0)
+                action=policy.get('flood_action','mute')
+                if action in ('tmute','tban'):
+                    action+=' · '+duration_label(policy.get('flood_action_seconds',0))
+                burst=f"{policy['flood_messages']} per {duration_label(policy['flood_window_seconds'])} · {policy['action']}" if policy['flood_enabled'] else 'Off'
+                await reply(message,panel('Antiflood',icon=ctx.theme.emoji('shield'),table=kv_table([
+                    ('Moderator',str(user.id)),('Status','Saved' if committed else 'Current saved settings'),
+                    ('Consecutive messages',str(consecutive) if consecutive else 'Off'),
+                    ('Timed messages',f"{count} per {duration_label(policy.get('timed_flood_seconds',0))}" if count else 'Off'),
+                    ('Burst limiter',burst),('Consecutive/timed action',action),
+                    ('Delete triggering messages','On' if policy.get('clear_flood',True) else 'Off')]),
+                    note='/setflood 7 · /setfloodtimer 10 30s\n/floodmode tmute 5m · /clearflood on\nCounts reset on restart. Saved settings need a running watcher and bot permissions.'))
+            except (FloodInputError,PolicyError) as error:
+                await reply(message,str(error))
+            except Exception as error:
+                logger.warning('#Errors Antiflood settings unavailable (%s)',type(error).__name__)
+                await reply(message,'Settings saved; display or permissions unconfirmed. Check /flood.' if committed else 'Settings or permissions unconfirmed. Check /flood before retrying.')
         return call
-
-    return {command: handler(command) for command in COMMANDS}
+    return {command:handler(command) for command in COMMANDS}
 
 
 class Counter:

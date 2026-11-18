@@ -54,7 +54,7 @@
 | `/cleancommand` | moderation | group | Delete recognized commands after handling (group) | Targeted review/tests |
 | `/cleanservice` | moderation | group | Choose which group service notices to delete | Needs individual UI/behavior review |
 | `/clear` | music | group | Clear upcoming music without stopping playback | Needs individual UI/behavior review |
-| `/clearflood` | moderation | group | Toggle flood message cleanup | Needs individual UI/behavior review |
+| `/clearflood` | moderation | group | Toggle flood message cleanup | Targeted review/tests |
 | `/clearqueue` | music | group | Clear upcoming music tracks | Needs individual UI/behavior review |
 | `/clone` | clone | private | Clone this bot onto another token | Needs individual UI/behavior review |
 | `/clonestats` | clone | private | Clone counts (owner) | Needs individual UI/behavior review |
@@ -92,8 +92,8 @@
 | `/fedtransfer` | federations | all | Invite a new federation owner | Needs individual UI/behavior review |
 | `/filter` | filters | group | Add a keyword auto-reply | Needs individual UI/behavior review |
 | `/filters` | filters | group | List this group's filters | Needs individual UI/behavior review |
-| `/flood` | moderation | group | Show antiflood settings | Needs individual UI/behavior review |
-| `/floodmode` | moderation | group | Set the antiflood action | Needs individual UI/behavior review |
+| `/flood` | moderation | group | Show antiflood settings | Targeted review/tests |
+| `/floodmode` | moderation | group | Set the antiflood action | Targeted review/tests |
 | `/fullpromote` | group | group | Group owner: delegate bot-held group rights; confirm required | Targeted review/tests |
 | `/fw` | music | group | Fast-forward playback by seconds, minutes or hours | Needs individual UI/behavior review |
 | `/genlink` | linkshare | private | Create a signed link for a file | Needs individual UI/behavior review |
@@ -208,8 +208,8 @@
 | `/setchatdescription` | group | group | Set description, or clear (Change info permission) | Targeted review/tests |
 | `/setchatname` | group | group | Set this group’s title (Change info permission) | Targeted review/tests |
 | `/setchatphoto` | group | group | Reply to a photo to set group photo (Change info permission) | Targeted review/tests |
-| `/setflood` | moderation | group | Set the consecutive-message flood limit | Needs individual UI/behavior review |
-| `/setfloodtimer` | moderation | group | Set the timed flood limit | Needs individual UI/behavior review |
+| `/setflood` | moderation | group | Set the consecutive-message flood limit | Targeted review/tests |
+| `/setfloodtimer` | moderation | group | Set the timed flood limit | Targeted review/tests |
 | `/setlog` | ops | all | Set the log channel (owner) | Needs individual UI/behavior review |
 | `/setrules` | group | group | Publish this group's rules | Needs individual UI/behavior review |
 | `/setthumb` | renamer | all | Use a replied image as this chat's thumbnail | Needs individual UI/behavior review |

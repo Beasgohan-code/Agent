@@ -663,3 +663,25 @@ Two regressions: exact/specific @ trigger parsing+negative cases (initial failur
 emoji actual send with realPG style persistence (added parameter) using simulated
 Telegram; existing claim race test also asserts persisted emoji style. Full suite
 counts in CODEBASE_AUDIT. No deployment/merge/live Telegram/production calls.
+
+## Antiflood command family in-place review
+
+Existing antiflood.py handles flood/setflood/setfloodtimer/floodmode/clearflood with
+strict locally validated grammar and current personal Manage chat authority. Bot/
+anonymous/invalid IDs refused; no configured Owner bypass. Recheck before changes
+and before disclosure, saved state explicitly distinguished from read-only state.
+Provider ValueError/other unexpected failures no longer displayed as raw local input
+errors. Safe #Errors type-only logs, no retries, committed changes stay saved if
+subsequent delivery/rights fail. Backend PolicyError text remains safe authored input/
+storage status. Canonical policy/audit/watcher/counters unchanged.
+
+Simpler Off limits, combined count/window, readable action durations, moderator and
+Saved/Current saved settings. Independent /antispam burst limiter shown with its own
+action so all limits Off does not falsely imply every flood protection is disabled.
+Consecutive/timed action separately labelled. Short examples, explicit counters
+reset on restart and watcher/permission dependency; not live enforcement proof.
+
+Three test-first regressions added (initial2 failed), final pre-write/read authority,
+safe provider ValueError redaction, readable saved state/duration, bot/invalid grammar
+no mutations. Existing realPG policy concurrency/tenant/audit rollback and watcher
+cases rerun. No new module/command aliases, paused language work remains excluded.
