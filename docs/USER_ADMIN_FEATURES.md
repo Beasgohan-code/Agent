@@ -685,3 +685,25 @@ Three test-first regressions added (initial2 failed), final pre-write/read autho
 safe provider ValueError redaction, readable saved state/duration, bot/invalid grammar
 no mutations. Existing realPG policy concurrency/tenant/audit rollback and watcher
 cases rerun. No new module/command aliases, paused language work remains excluded.
+
+## Tagging always available: group switch removed (supersedes on/off setup)
+
+User requested no enable/disable prerequisite. Enrollment, start, claim and final
+eligible checks no longer consult legacy enabled bits. /allsettings is read-only
+mention info plus existing personal Join/Leave buttons; no on/off settings writes,
+no implicit membership deletion. Retired on/off arguments return short always-
+available guidance and do not change consent/run state. Fresh groups can enroll
+immediately, existing disabled rows cannot block them. Legacy columns retained and
+ignored (no destructive migration); previously deleted consent is NOT resurrected.
+A fresh run still requires opted-in members; empty-list guidance points to Join/Leave,
+not enabling. Group controls no longer return an enabled flag in internal API.
+
+Personal consent, current administrator checks, final current membership/consent,
+500-person snapshot cap,5-member manual batches/group30s limit and Stop/tagabort
+remain unchanged. Stop stops a run, not the group's feature. No roster scraping or
+automatic enrollment of previously nonconsenting members. Existing10 realPG tagging
+cases updated test-first (9 initially failed); disabled legacy bit, fresh use,
+concurrent withdrawal/cap/scope, retired off preserving consent, run cancellation,
+send acknowledgement/replay/permissions and persisted emoji style covered. No
+production/live Telegram/deployment/merge. Interrupted /cleanservice phase retained
+but excluded from this commit, along with paused localization/unrelated work.

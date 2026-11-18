@@ -38,7 +38,7 @@ DESCRIPTIONS: dict[str, str] = {
     "tagall": "Mention opted-in members, 5 per manual batch (admin)",
     "all": "Alias of tagall: opted-in mentions only",
     "tagabort": "Stop an open mention run (admin)",
-    "allsettings": "Configure opt-in mentions (admin)",
+    "allsettings": "View mention info and Join/Leave buttons (admin)",
     "tagstats": "Show opt-in mention counts (admin)",
     "tpromote": "Temporarily promote a member (group owner)",
     "lang": "Choose a supported language",

@@ -836,3 +836,17 @@ failed. Full realPG exact2306 passed25.92s, working2388 passed23.95s, no skips.
 Pyflakes/compile/diff clean,252-name inventory review states regenerated. Paused
 localization and unrelated dirty work retained/excluded via selected documentation
 index. No deployment/merge/live Telegram/production changes.
+
+## Remove tagging enable/disable prerequisite
+
+User requested always-available tagging. Removed group enabled gates from consent,
+run admission/claim and final delivery eligibility; fresh and legacy-disabled groups
+work without setup. Retained legacy DB column ignored, no destructive migration or
+restored/automatic consent. /allsettings info/Join/Leave only, retired on/off rejects
+without clearing consent. Personal consent/admin/member checks, manual5/30s, Stop/
+tagabort unchanged. Existing10 tagging regressions updated first (9 failed), realPG
+legacy disabled/consent preservation/scope/races/cap/uncertainty tests rerun. Full
+exact2306 passed21.34s, working2391 passed19.94s, no skips (working includes paused
+cleanservice/localization tests). Pyflakes/compile/diff clean;252-name inventory
+metadata updated. Interrupted cleanservice remains uncommitted/excluded, no broad
+staging. No live Telegram/production/deployment/merge operations.

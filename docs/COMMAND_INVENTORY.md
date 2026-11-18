@@ -30,7 +30,7 @@
 | `/alive` | core | all | Live bot health and uptime | Needs individual UI/behavior review |
 | `/all` | group | group | Alias of tagall: opted-in mentions only | Targeted review/tests |
 | `/allowlist` | moderation | group | View/add URL-lock domain exemptions | Needs individual UI/behavior review |
-| `/allsettings` | group | group | Configure opt-in mentions (admin) | Targeted review/tests |
+| `/allsettings` | group | group | View mention info and Join/Leave buttons (admin) | Targeted review/tests |
 | `/anonadmin` | group | group | Allow anonymous group-admin checks (unsafe) | Needs individual UI/behavior review |
 | `/antispam` | moderation | group | Anti-spam policy for this group | Targeted review/tests |
 | `/appeal` | reports | all | Appeal a moderation action | Needs individual UI/behavior review |

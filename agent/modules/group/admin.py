@@ -445,26 +445,23 @@ def build_tagging_settings(ctx):
 
     def handler(command):
         async def call(client,message):
-            committed=False
             try:
                 await authority(client,message)
                 args=(getattr(message,'text','') or '').lower().split()[1:]
-                if (command=='tagstats' and args) or (command=='allsettings' and args not in ([],['on'],['off'])):
-                    raise TagError('Use /allsettings on|off or /tagstats.')
-                enabled=None if not args else args[0]=='on'
+                if args:
+                    raise TagError('Mentions are always available. Use /allsettings without on/off.')
                 await authority(client,message)
-                state=await operate(getattr(ctx,'db',None),message.chat.id,enabled=enabled,actor=message.from_user.id if enabled is not None else None)
-                committed=enabled is not None
+                state=await operate(getattr(ctx,'db',None),message.chat.id)
                 await authority(client,message)
                 keyboard=Keyboard([[Button('Join mentions',callback_data=f'tagopt:{message.chat.id}:join'),Button('Leave mentions',callback_data=f'tagopt:{message.chat.id}:leave')]])
                 await reply(message,panel('Mention settings' if command=='allsettings' else 'Mention statistics',
-                    table=kv_table([('Opt-in mentions','On' if state['enabled'] else 'Off'),('Joined members',str(state['count'])),('Status','Saved' if committed else 'Current')]),
-                    note='Members choose below. Turning off clears all opt-ins. Limit: 500. Start: /tagall. Manual batches of 5, at least 30s apart.'),reply_markup=keyboard)
+                    table=kv_table([('Mentions','Always available'),('Joined members',str(state['count']))]),
+                    note='Members can join or leave below. Limit: 500. Start: /tagall. Manual batches of 5, at least 30s apart.'),reply_markup=keyboard)
             except TagError as error:
-                await reply(message,'Settings saved; details withheld.' if committed else str(error))
+                await reply(message,str(error))
             except Exception as error:
                 logging.getLogger(__name__).warning('#Errors Mention settings unavailable (%s)',type(error).__name__)
-                await reply(message,'Settings saved; display unconfirmed.' if committed else 'Mention settings unconfirmed. Try /allsettings before retrying.')
+                await reply(message,'Mention settings unconfirmed. Try /allsettings before retrying.')
         return call
 
     async def press(client,query,rest):
