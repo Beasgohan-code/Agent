@@ -5,8 +5,8 @@ from agent.modules import MODULES
 from agent.platform.menu import DESCRIPTIONS
 
 BASE={'start':'Open bot / route private deep links','restart_bot':'Alias of start, not a process restart','help':'Available command help','h':'Alias of help','ping':'Bot responsiveness'}
-POLISHED={'tpromote','lang','cleancommand','keepcommand','modlog','antispam','approve','unapprove','approval','approved','note','warnings','warns','unwarn','rmwarn','resetwarn','resetallwarns','warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
-MISSING=('tagall','all','etagall','eall','tagabort','allsettings','tagstats')
+POLISHED={'allsettings','tagstats','tpromote','lang','cleancommand','keepcommand','modlog','antispam','approve','unapprove','approval','approved','note','warnings','warns','unwarn','rmwarn','resetwarn','resetallwarns','warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
+MISSING=('tagall','all','etagall','eall','tagabort')
 
 
 def inventory():

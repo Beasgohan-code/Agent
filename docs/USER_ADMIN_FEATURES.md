@@ -578,3 +578,29 @@ requires PostgreSQL): full grant/expiry/status, false ack + manual resolution,
 pre-write owner loss/cancel, owner/DB/worker denial, worker outage/stop lifecycle.
 Existing12 expiry regressions rerun. Real SQL with simulated Telegram, not live proof.
 Command inventory245 names; missing tagging family still explicitly absent.
+
+## Opt-in tagging settings/statistics foundation
+
+Added genuine /allsettings [on|off] and /tagstats in existing group/admin.py.
+Current personal Manage chat admin required before write/read and before disclosure,
+no bot/anonymous/configured-Owner bypass. Rich simple count/state card and real
+Join mentions/Leave mentions buttons. Callback always acts on pressing person's own
+ID, group-bound, personal nonbot and current membership checked twice for joining.
+Withdrawal allowed even after leaving group, no administrator can enroll another user.
+No member roster scraping, inferred consent, presence/online/activity claims or name
+storage. Admin output is aggregate count, no consent roster export.
+
+Dedicated tenant/group canonical SQL settings and consent table; serialized group
+operations, idempotent join/leave, max500 members, disable atomically clears all
+consent so reenabling never restores old opt-ins. Last configuration actor/time kept.
+PostgreSQL required; errors redact provider content, no local fallback/retries/fake
+success. Late authority loss after write reports saved/details withheld. Member can
+race leave/rejoin Telegram across checks; future send worker must revalidate consent
+and current membership immediately before sending. No message sends in this phase.
+
+Existing requested /tagall,/all,/etagall,/eall,/tagabort still unregistered until
+bounded rate-limited runs and working stop/resume controls exist. UI explicitly says
+sending unavailable. This is real settings/consent/stats, not mass-tag completion.
+Four realPG tests (initial3 failed before implementation) cover scope/concurrent join/
+disable-reenable-reset/leave/500 cap/disable race, current authority/member controls,
+and DB-down/invalid personal IDs. No production/live Telegram/deployment/merge.

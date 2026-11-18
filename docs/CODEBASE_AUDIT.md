@@ -776,3 +776,19 @@ HEAD plus this change, preserving paused localization and unrelated music/premiu
 clone edits unstaged. No deployment/merge/live Telegram/production calls. Expiry can
 be delayed by downtime/batches; uncertain or changed state intentionally blocks for
 manual review; Telegram/SQL not atomic, same-right external changes remain a race.
+
+## /allsettings and /tagstats with canonical self-service consent
+
+Registered2 genuine missing commands in existing admin builder; no duplicate module/
+handler. SQL settings+consent serialized per tenant/group,500 cap, idempotent personal
+join/leave, disable clears consent. Current personal Manage chat for configuration/
+stats and final disclosure; group-bound self-service callback, final current member
+join check, withdraw allowed for former members. No roster scraping/online claims/
+mass mention sends yet. Existing missing tagging send/abort aliases unregistered.
+Four realPG tests, initial3 failed; actual consent/scope/disable race/cap/storage and
+simulated Telegram authority. Full exact2296 passed31.08s, working2378 passed32.99s,
+no skips. Existing worker-search test assumed lexical page order although production
+ranks prefixes first; updated to check disjoint discoverable command pages, not false
+ordering assumption. Pyflakes/compile/diff clean. Inventory247 names regenerated.
+Paused localization and unrelated music/clone/premium work excluded with selective
+index edits; no deployment/merge/production/live Telegram calls.

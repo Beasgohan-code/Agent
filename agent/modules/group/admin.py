@@ -12,7 +12,7 @@ from ...ui.tables import panel, Table
 from ...utils.rich import reply
 from ..moderation import is_moderator
 
-COMMANDS = ("tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror")
+COMMANDS = ("allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror")
 # Delegation never includes adding administrators or anonymous identity.
 RIGHTS = (
     "can_manage_chat",
@@ -302,7 +302,7 @@ def build(ctx):
 
         return call
 
-    return {**{command: handler(command) for command in COMMANDS if command != "tpromote"}, "tpromote": build_tpromote(ctx)}
+    return {**{command: handler(command) for command in COMMANDS if command not in ("tpromote", "allsettings", "tagstats")}, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx)}
 
 
 class TemporaryPromotionInputError(ValueError):
@@ -424,3 +424,76 @@ def build_tpromote(ctx):
             logging.getLogger(__name__).warning('#Errors Temporary promotion unavailable (%s)',type(error).__name__)
             await reply(message,'Promotion or tracking unconfirmed. Check Telegram and /tpromote status before retrying.')
     return tpromote
+
+
+def build_tagging_settings(ctx):
+    """Settings/statistics and self-service consent, not a mass-mention sender."""
+    from pyrogram.types import InlineKeyboardButton as Button,InlineKeyboardMarkup as Keyboard
+    from ...platform.group_tagging import operate,TagError
+    from ...ui.tables import kv_table
+
+    def identity(user):
+        uid=getattr(user,'id',None)
+        return type(uid) is int and 0<uid<2**63 and not getattr(user,'is_bot',False)
+
+    async def authority(client,message):
+        if (getattr(getattr(message,'chat',None),'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                or not identity(getattr(message,'from_user',None)) or getattr(message,'sender_chat',None) is not None):
+            raise TagError('Use your personal administrator account in a group.')
+        if not await asyncio.wait_for(is_moderator(client,message,need='can_manage_chat'),5):
+            raise TagError('Current Manage chat permission required.')
+
+    def handler(command):
+        async def call(client,message):
+            committed=False
+            try:
+                await authority(client,message)
+                args=(getattr(message,'text','') or '').lower().split()[1:]
+                if (command=='tagstats' and args) or (command=='allsettings' and args not in ([],['on'],['off'])):
+                    raise TagError('Use /allsettings on|off or /tagstats.')
+                enabled=None if not args else args[0]=='on'
+                await authority(client,message)
+                state=await operate(getattr(ctx,'db',None),message.chat.id,enabled=enabled,actor=message.from_user.id if enabled is not None else None)
+                committed=enabled is not None
+                await authority(client,message)
+                keyboard=Keyboard([[Button('Join mentions',callback_data=f'tagopt:{message.chat.id}:join'),Button('Leave mentions',callback_data=f'tagopt:{message.chat.id}:leave')]])
+                await reply(message,panel('Mention settings' if command=='allsettings' else 'Mention statistics',
+                    table=kv_table([('Opt-in mentions','On' if state['enabled'] else 'Off'),('Joined members',str(state['count'])),('Status','Saved' if committed else 'Current')]),
+                    note='Members choose below. Turning off clears all opt-ins. Limit: 500. Sending mention batches is not available yet.'),reply_markup=keyboard)
+            except TagError as error:
+                await reply(message,'Settings saved; details withheld.' if committed else str(error))
+            except Exception as error:
+                logging.getLogger(__name__).warning('#Errors Mention settings unavailable (%s)',type(error).__name__)
+                await reply(message,'Settings saved; display unconfirmed.' if committed else 'Mention settings unconfirmed. Try /allsettings before retrying.')
+        return call
+
+    async def press(client,query,rest):
+        saved=False
+        try:
+            user=getattr(query,'from_user',None)
+            chat=getattr(getattr(query,'message',None),'chat',None)
+            parts=rest.split(':')
+            if (len(parts)!=2 or getattr(chat,'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                    or not identity(user) or parts[0]!=str(chat.id) or parts[1] not in ('join','leave')):
+                raise TagError('Invalid mention control.')
+            joining=parts[1]=='join'
+            if joining:
+                async def member():
+                    current=await asyncio.wait_for(client.get_chat_member(chat.id,user.id),5)
+                    return current.status in (ChatMemberStatus.OWNER,ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.MEMBER) or (current.status==ChatMemberStatus.RESTRICTED and getattr(current,'is_member',False) is True)
+                if not await member() or not await member():
+                    raise TagError('Current group membership required to join mentions.')
+            # Leaving withdraws consent even if the caller has already left the group.
+            await operate(getattr(ctx,'db',None),chat.id,join=joining,user=user.id)
+            saved=True
+            await query.answer('You joined mentions.' if joining else 'You left mentions.',show_alert=True)
+        except TagError as error:
+            await query.answer(str(error),show_alert=True)
+        except Exception as error:
+            logging.getLogger(__name__).warning('#Errors Mention opt-in unavailable (%s)',type(error).__name__)
+            await query.answer('Choice saved; display unconfirmed.' if saved else 'Choice unconfirmed. No automatic retry.',show_alert=True)
+
+    router=getattr(ctx,'actions',None)
+    if router is not None and not router.handles('tagopt:x'):
+        router.register('tagopt',press)
+    return {command:handler(command) for command in ('allsettings','tagstats')}
