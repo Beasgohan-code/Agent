@@ -143,7 +143,7 @@
 | `/owner` | core | all | Owner control panel | Needs individual UI/behavior review |
 | `/panel` | clone | private | All your clone bots in one controller | Needs individual UI/behavior review |
 | `/pause` | music | group | Pause playback | Needs individual UI/behavior review |
-| `/pin` | group | group | Pin the replied message | Needs individual UI/behavior review |
+| `/pin` | group | group | Pin the replied message | Targeted review/tests |
 | `/ping` | shell | private | Bot responsiveness | Needs individual UI/behavior review |
 | `/plans` | premium | all | Compare the free and premium tiers | Needs individual UI/behavior review |
 | `/play` | music | group | Stream audio into the voice chat | Needs individual UI/behavior review |
@@ -244,7 +244,7 @@
 | `/unblocklistall` | moderation | group | Clear triggers with chat-owner confirmation | Needs individual UI/behavior review |
 | `/unlock` | moderation | group | Stop deleting selected content types | Needs individual UI/behavior review |
 | `/unmute` | moderation | group | Restore a member's permissions | Targeted review/tests |
-| `/unpin` | group | group | Unpin a message, or all of them | Needs individual UI/behavior review |
+| `/unpin` | group | group | Unpin a message, or all of them | Targeted review/tests |
 | `/unwarn` | moderation | group | Clear one warning | Targeted review/tests |
 | `/uptime` | core | all | Process uptime and Telegram probe health | Needs individual UI/behavior review |
 | `/userinfo` | utilities | all | Public user card by reply, username or ID | Needs individual UI/behavior review |

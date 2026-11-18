@@ -64,12 +64,15 @@ class FakeClient:
 
     async def pin_chat_message(self, chat_id, message_id, **kwargs):
         self.calls.append(("pin", int(message_id), kwargs))
+        return SimpleNamespace(id=901,chat=SimpleNamespace(id=chat_id),pinned_message=SimpleNamespace(id=message_id))
 
     async def unpin_chat_message(self, chat_id, message_id=0, **kwargs):
         self.calls.append(("unpin", int(message_id)))
+        return True
 
     async def unpin_all_chat_messages(self, chat_id, **kwargs):
         self.calls.append(("unpin_all", None))
+        return True
 
     async def restrict_chat_member(self, chat_id, user_id, permissions, **kwargs):
         self.calls.append(("restrict", int(user_id)))
@@ -308,7 +311,7 @@ def test_pin_silent_disables_the_notification(ctx):
     run(handlers(ctx)["pin"], client, message)
 
     assert client.calls[0][2]["disable_notification"] is True
-    assert "No notification" in message.replies[0]
+    assert "Silent pin requested" in message.replies[0]
 
 
 def test_pin_reports_a_refusal_instead_of_claiming_success(ctx):
@@ -617,3 +620,77 @@ def test_lockdown_typo_does_not_lock_group(ctx):
     client = FakeClient()
     run(handlers(ctx)['lockdown'], client, FakeMessage('/lockdown of'))
     assert not client.calls
+
+
+def test_pin_unconfirmed_ack_never_claims_success_or_logs(ctx):
+    from unittest.mock import AsyncMock
+    client=FakeClient()
+    client.pin_chat_message=AsyncMock(return_value=None)
+    client.get_messages=AsyncMock(return_value=SimpleNamespace(id=42,chat=SimpleNamespace(id=CHAT),pinned=False))
+    message=FakeMessage('/pin',reply=True,reply_id=42)
+    run(handlers(ctx)['pin'],client,message)
+    assert 'unconfirmed' in str(message.replies[-1])
+    assert not ctx.chats.history(CHAT)
+    client.pin_chat_message.assert_awaited_once()
+
+
+def test_pin_invalid_syntax_and_cross_group_reply_never_mutates(ctx):
+    from unittest.mock import AsyncMock
+    for text in ('/pin extra','/unpin all extra'):
+        client=FakeClient()
+        client.pin_chat_message=AsyncMock()
+        client.unpin_all_chat_messages=AsyncMock()
+        message=FakeMessage(text,reply=True)
+        run(handlers(ctx)['unpin' if text.startswith('/unpin') else 'pin'],client,message)
+        client.pin_chat_message.assert_not_awaited()
+        client.unpin_all_chat_messages.assert_not_awaited()
+    client=FakeClient()
+    client.pin_chat_message=AsyncMock()
+    message=FakeMessage('/pin',reply=True)
+    message.reply_to_message.chat=SimpleNamespace(id=-999)
+    run(handlers(ctx)['pin'],client,message)
+    client.pin_chat_message.assert_not_awaited()
+
+
+def test_unpin_final_rights_loss_and_false_ack_are_truthful(ctx):
+    from unittest.mock import AsyncMock
+    client=FakeClient()
+    client.get_chat_member=AsyncMock(side_effect=[member(ADMIN),member(ADMIN),member(MEMBER)])
+    client.unpin_chat_message=AsyncMock(return_value=True)
+    message=FakeMessage('/unpin')
+    run(handlers(ctx)['unpin'],client,message)
+    client.unpin_chat_message.assert_not_awaited()
+    client=FakeClient()
+    client.unpin_chat_message=AsyncMock(return_value=False)
+    run(handlers(ctx)['unpin'],client,message)
+    assert 'unconfirmed' in str(message.replies[-1])
+    assert not ctx.chats.history(CHAT)
+
+
+def test_pin_readback_confirmation_and_audit_failure_preserve_committed_status(ctx):
+    from unittest.mock import AsyncMock,Mock
+    client=FakeClient()
+    client.pin_chat_message=AsyncMock(return_value=None)
+    client.get_messages=AsyncMock(return_value=SimpleNamespace(id=42,chat=SimpleNamespace(id=CHAT),pinned=True))
+    ctx.chats.log=Mock(side_effect=RuntimeError('PRIVATE_AUDIT'))
+    message=FakeMessage('/pin silent',reply=True,reply_id=42)
+    run(handlers(ctx)['pin'],client,message)
+    text=str(message.replies[-1])
+    assert 'Pinned state confirmed' in text and 'Local audit unconfirmed' in text
+    assert 'PRIVATE_AUDIT' not in text
+    client.pin_chat_message.assert_awaited_once()
+    client.get_messages.assert_awaited_once_with(CHAT,42)
+
+
+def test_pin_refuses_bot_caller_and_missing_bot_pin_right(ctx):
+    from unittest.mock import AsyncMock
+    client=FakeClient(rights={'can_pin_messages':False})
+    client.pin_chat_message=AsyncMock()
+    message=FakeMessage('/pin',reply=True)
+    run(handlers(ctx)['pin'],client,message)
+    client.pin_chat_message.assert_not_awaited()
+    client=FakeClient()
+    client.pin_chat_message=AsyncMock()
+    message.from_user=SimpleNamespace(id=11,is_bot=True)
+    run(handlers(ctx)['pin'],client,message)
+    client.pin_chat_message.assert_not_awaited()

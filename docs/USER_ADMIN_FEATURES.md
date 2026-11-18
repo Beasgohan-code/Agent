@@ -732,3 +732,30 @@ no mutation. Existing realPG config sharing/group+tenant/audit rollback and watc
 failure/allowlist cases rerun. No live Telegram/production/deployment/merge.
 
 Additional committed-write test covers final rights loss and standalone audit failure without a false rollback claim.
+
+## /pin and /unpin in-place review
+
+Shared helper inside existing group/__init__.py, no new modules/registrations. Personal
+current Pin messages admin in current group, bot Pin right checked initially and
+again immediately before mutation. No configured Owner/anonymous/bot bypass. Strict
+/pin [silent] reply; /unpin reply or latest; /unpin all unchanged direct authorized
+operation. Reject extras and mismatched reply chat/invalid ID before mutation.
+
+Actual installed Wzgram method source inspected: pin returns service Message when
+available (may return None), unpin methods return True. Pin success now requires
+matching notice chat/pinned-message ID plus positive notice ID, otherwise readback
+of exact group/target with pinned=True. No repeat pin request; None alone never
+success. Readback establishes current pinned state, not exactly-once causal proof.
+Unpin requires strict True; no fake deletion counts/all-pin counts. Explicit15s API
+and5s membership/readback bounds. Provider exceptions type-only #Errors, no raw body
+or automatic retries. Rich short moderator/message/status confirmation. Silent pin
+requested, not promise no notification delivered. Post-commit local audit failure
+reported separately; history appended only after verified acknowledgement/state.
+No promise pin cannot change again after current-state read; Telegram and audit not
+atomic. No full-delete/history removal/unrelated content changes.
+
+Five regressions added (initial3 failed), unconfirmed pin/false unpin, invalid extras/
+cross-group reply, final authority loss, verified readback+audit failure truth, bot
+identity/no-right refusal. Old fake client pin/unpin returns corrected to actual API
+shapes rather than letting None stand for success. Existing realPG full suite rerun,
+Telegram simulated only; no production/live pin/deploy/merge. Tagging unchanged.

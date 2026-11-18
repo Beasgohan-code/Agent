@@ -26,7 +26,7 @@ import html
 import logging
 from ...platform.warning_policy import threshold as warning_threshold
 
-from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
+from pyrogram.enums import ChatMemberStatus, ChatMembersFilter, ChatType
 from pyrogram.types import ChatPermissions
 
 from ...platform.manifest import PluginManifest
@@ -264,53 +264,80 @@ def build(ctx):
 
     # -- /pin and /unpin ---------------------------------------------------
 
-    async def pin(client, message):
-        if not await _guard(client, message, need="can_pin_messages"):
-            return
-        replied = getattr(message, "reply_to_message", None)
-        if replied is None:
-            await reply(message, "Reply to the message you want pinned with <code>/pin</code>.")
-            return
-        silent = "silent" in [a.lower() for a in _args(message)[1:]]
-        try:
-            await client.pin_chat_message(
-                message.chat.id,
-                replied.id,
-                disable_notification=silent,
-                both_sides=True,
-            )
-        except Exception as exc:  # noqa: BLE001 - Telegram's refusal reaches the user
-            logger.exception("pin failed")
-            await reply(message, f"Could not pin: {type(exc).__name__}. Check my pin rights.")
-            return
-        ctx.chats.log(
-            message.chat.id, "pin", actor_id=message.from_user.id,
-            reason=f"message {replied.id}",
-        )
-        await reply(message, 
-            "Message pinned." + (" No notification was sent." if silent else "")
-        )
+    class PinInputError(ValueError):
+        """Safe locally authored pin validation."""
 
-    async def unpin(client, message):
-        if not await _guard(client, message, need="can_pin_messages"):
-            return
-        args = [a.lower() for a in _args(message)[1:]]
+    async def pin_action(client,message,*,unpin=False):
+        user,chat=getattr(message,'from_user',None),getattr(message,'chat',None)
+        committed=False
+        command='unpin' if unpin else 'pin'
+        async def authority():
+            if not await asyncio.wait_for(is_moderator(client,message,need='can_pin_messages'),5):
+                raise PinInputError('Pin messages permission missing or changed. No action attempted.')
+            me=await asyncio.wait_for(client.get_me(),5)
+            bot=await asyncio.wait_for(client.get_chat_member(chat.id,me.id),5)
+            if bot.status!=ChatMemberStatus.OWNER and not (bot.status==ChatMemberStatus.ADMINISTRATOR and getattr(getattr(bot,'privileges',None),'can_pin_messages',False) is True):
+                raise PinInputError('I need Pin messages permission. No action attempted.')
         try:
-            if args and args[0] == "all":
-                await client.unpin_all_chat_messages(message.chat.id)
-                ctx.chats.log(message.chat.id, "unpin:all", actor_id=message.from_user.id)
-                await reply(message, "All pinned messages were unpinned.")
+            if (getattr(chat,'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                    or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                    or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None
+                    or type(getattr(chat,'id',None)) is not int or not -(2**63)<chat.id<0):
+                raise PinInputError('Use your personal administrator account in a group.')
+            await authority()
+            args=[a.lower() for a in _args(message)[1:]]
+            if args not in (([],['all']) if unpin else ([],['silent'])):
+                raise PinInputError('Use /unpin or /unpin all.' if unpin else 'Reply to the message with /pin or /pin silent.')
+            all_pins=unpin and args==['all']
+            silent=not unpin and args==['silent']
+            replied=getattr(message,'reply_to_message',None)
+            if not unpin and replied is None:
+                raise PinInputError('Reply to the message you want pinned with /pin.')
+            mid=getattr(replied,'id',0) if replied is not None else 0
+            if replied is not None and not all_pins:
+                if (type(mid) is not int or not 0<mid<2**31
+                        or getattr(getattr(replied,'chat',None),'id',chat.id)!=chat.id):
+                    raise PinInputError('Reply to a valid message in this group.')
+            await authority()
+            if all_pins:
+                ack=await asyncio.wait_for(client.unpin_all_chat_messages(chat.id),15)
+                confirmed=ack is True
+            elif unpin:
+                ack=await asyncio.wait_for(client.unpin_chat_message(chat.id,mid),15)
+                confirmed=ack is True
+            else:
+                notice=await asyncio.wait_for(client.pin_chat_message(chat.id,mid,disable_notification=silent,both_sides=True),15)
+                pinned=getattr(notice,'pinned_message',None)
+                confirmed=(type(getattr(notice,'id',None)) is int and notice.id>0
+                    and getattr(getattr(notice,'chat',None),'id',None)==chat.id
+                    and type(getattr(pinned,'id',None)) is int and pinned.id==mid)
+                if not confirmed:
+                    target=await asyncio.wait_for(client.get_messages(chat.id,mid),5)
+                    confirmed=(type(getattr(target,'id',None)) is int and target.id==mid and getattr(getattr(target,'chat',None),'id',None)==chat.id and getattr(target,'pinned',None) is True)
+            if not confirmed:
+                await reply(message,f'{command.capitalize()} outcome unconfirmed. Check Telegram before retrying.')
                 return
-            replied = getattr(message, "reply_to_message", None)
-            await client.unpin_chat_message(
-                message.chat.id, replied.id if replied is not None else 0
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("unpin failed")
-            await reply(message, f"Could not unpin: {type(exc).__name__}. Check my pin rights.")
-            return
-        ctx.chats.log(message.chat.id, "unpin", actor_id=message.from_user.id)
-        await reply(message, "Message unpinned.")
+            committed=True
+            audit=''
+            try:
+                ctx.chats.log(chat.id,'unpin:all' if all_pins else command,actor_id=user.id,reason='all pinned messages' if all_pins else f'message {mid}' if mid else 'latest pinned message')
+            except Exception:
+                logger.warning('#Errors Pin operation local audit unconfirmed')
+                audit='Local audit unconfirmed.'
+            await reply(message,panel('All messages unpinned' if all_pins else 'Message unpinned' if unpin else 'Message pinned',
+                table=kv_table([('Moderator',str(user.id)),('Message','All pins' if all_pins else str(mid) if mid else 'Latest pinned message'),('Status','Telegram acknowledged' if unpin else 'Pinned state confirmed')]),
+                note=('Silent pin requested. ' if silent else '')+audit))
+        except PinInputError as error:
+            await reply(message,str(error))
+        except Exception as error:
+            logger.warning('#Errors Pin operation unavailable (%s)',type(error).__name__)
+            await reply(message,f'{command.capitalize()} confirmed; result delivery unconfirmed. Check Telegram.' if committed else f'Could not {command}; outcome unconfirmed. Check Telegram before retrying. No automatic retry.')
+
+    async def pin(client,message):
+        await pin_action(client,message)
+
+    async def unpin(client,message):
+        await pin_action(client,message,unpin=True)
 
     # -- /admins -----------------------------------------------------------
 

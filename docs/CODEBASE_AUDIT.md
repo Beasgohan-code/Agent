@@ -864,3 +864,17 @@ passed21.94s, working2392 passed20.50s, no skips. Pyflakes/compile/diff clean.
 252-name inventory review state regenerated. Always-available tagging untouched;
 paused localization/other dirty work excluded via selective documentation staging.
 No production/live Telegram/deployment/merge. Sandbox tests not live deletion proof.
+
+## /pin and /unpin verified-state in-place review
+
+Existing group helper now personal current Pin permission + bot Pin permission,
+strict args/same-group reply validation, final authority before API, bounded calls.
+Actual installed Wzgram inspected: pin service Message or None, unpin True. Pin
+matching notice or exact pinned=True readback; unpin strict True, never assume None
+success. Rich short state/status, silent requested not delivered guarantee, separate
+post-commit local audit failure. No repeated action/provider body exposure. Five
+regressions, initial3 failed; test fakes updated to real method result shapes.
+Full realPG exact2315 passed21.63s, working2397 passed20.36s, no skips. Pyflakes/
+compile/diff clean;252-name inventory updated. No new module/commands; paused
+localization and unrelated dirty work excluded via selective docs index. Tagging
+always available unchanged. No deployment/merge/live Telegram/production changes.
