@@ -1,10 +1,10 @@
 """Explicit allowlist of group service events; never delete user content."""
 
 import html
+import asyncio
 import logging
 from pyrogram.enums import ChatType, ChatMemberStatus
 from ...platform.service_cleaning import operate, KINDS, CleaningError
-from ...platform.admin_settings import denied
 from ...utils.rich import reply
 from ...ui.tables import panel, kv_table
 
@@ -28,51 +28,51 @@ GROUPS = (ChatType.GROUP, ChatType.SUPERGROUP)
 def build(ctx):
     from . import is_moderator
 
-    async def cleanservice(client, message):
-        user = getattr(message, "from_user", None)
-        if (
-            getattr(getattr(message, "chat", None), "type", None) not in GROUPS
-            or type(getattr(user, "id", None)) is not int
-            or user.id <= 0
-            or getattr(message, "sender_chat", None) is not None
-        ):
-            await reply(message, "Use /cleanservice as yourself inside a group.")
-            return
-        if not await is_moderator(client, message, need="can_delete_messages"):
-            await denied(
-                ctx,
-                message,
-                "You need Delete messages permission to manage service cleaning.",
-            )
-            return
-        args = (getattr(message, "text", "") or "").lower().split()[1:]
+    async def cleanservice(client,message):
+        user=getattr(message,'from_user',None)
+        committed=False
+        async def authorized():
+            return await asyncio.wait_for(is_moderator(client,message,need='can_delete_messages'),5)
         try:
+            if (getattr(getattr(message,'chat',None),'type',None) not in GROUPS
+                    or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                    or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None):
+                await reply(message,'Use your personal administrator account in a group.')
+                return
+            if not await authorized():
+                await reply(message,'Current Delete messages permission required.')
+                return
+            args=(getattr(message,'text','') or '').lower().split()[1:]
             if not args:
-                kinds = None
-            elif args in (["on"], ["yes"], ["all"]):
-                kinds = list(KINDS)
-            elif args in (["off"], ["no"], ["none"]):
-                kinds = []
+                kinds=None
+            elif args in (['on'],['yes'],['all']):
+                kinds=list(KINDS)
+            elif args in (['off'],['no'],['none']):
+                kinds=[]
+            elif len(args)<=len(KINDS) and all(arg in KINDS for arg in args):
+                kinds=args
             else:
-                kinds = args
-            state = await operate(
-                ctx,
-                message.chat.id,
-                kinds,
-                actor=user.id if kinds is not None else None,
-            )
-            await reply(
-                message,
-                panel(
-                    "Service-message cleaning",
-                    table=kv_table(
-                        [(kind, "On" if kind in state else "Off") for kind in KINDS]
-                    ),
-                    note="Use /cleanservice on|off, or replace the selection with /cleanservice joins leaves pins title photo videochat. Ordinary messages, payments, migration and topic events are never selected. Requires my Delete messages right. Deleting a pin notice does not unpin the message. Other join/leave automation still runs.",
-                ),
-            )
+                await reply(message,'Use /cleanservice on|off or /cleanservice joins leaves pins title photo videochat.')
+                return
+            if kinds is not None and not await authorized():
+                await reply(message,'Administrator permissions changed. No settings changed.')
+                return
+            state=await operate(ctx,message.chat.id,kinds,actor=user.id if kinds is not None else None)
+            committed=kinds is not None
+            if not await authorized():
+                await reply(message,'Settings saved; permissions changed. Details withheld.' if committed else 'Administrator permissions changed. Settings withheld.')
+                return
+            labels={'joins':'Join notices','leaves':'Leave notices','pins':'Pin notices',
+                'title':'Title changes','photo':'Photo changes','videochat':'Voice chat notices'}
+            await reply(message,panel('Service-message cleaning',table=kv_table([
+                ('Moderator',str(user.id)),('Status','Saved' if committed else 'Current saved settings'),
+                *[(labels[kind],'On' if kind in state else 'Off') for kind in KINDS]]),
+                note='/cleanservice on · /cleanservice off\n/cleanservice joins leaves\nReplaces selection. Notices only; pins stay pinned. Needs my Delete messages right.'))
         except CleaningError as error:
-            await reply(message, html.escape(str(error)))
+            await reply(message,html.escape(str(error)))
+        except Exception as error:
+            logger.warning('#Errors Service-cleaning settings unavailable (%s)',type(error).__name__)
+            await reply(message,'Settings saved; display or permissions unconfirmed. Check /cleanservice.' if committed else 'Settings or permissions unconfirmed. Check /cleanservice before retrying.')
 
     return {"cleanservice": cleanservice}
 

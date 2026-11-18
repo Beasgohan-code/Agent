@@ -707,3 +707,28 @@ concurrent withdrawal/cap/scope, retired off preserving consent, run cancellatio
 send acknowledgement/replay/permissions and persisted emoji style covered. No
 production/live Telegram/deployment/merge. Interrupted /cleanservice phase retained
 but excluded from this commit, along with paused localization/unrelated work.
+
+## /cleanservice settings in-place review
+
+Existing cleaning.py handler now enforces bounded personal nonbot identity, current
+Delete messages authority before read/write and after completion before disclosure.
+No anonymous/configured Owner bypass. Strict enable/disable aliases preserved; typed
+selection replaces previous selection, not an additive toggle. Unknown types or
+on/off mixed with extras rejected before store call. Saved vs current saved status,
+moderator, readable notice labels, short command examples. No new handlers/buttons/
+modules. User help explicitly states replacement semantics and pins stay pinned.
+
+Canonical service_cleaning SQL config/revision audit and service-event watcher are
+unchanged. Ordinary content, payments/migrations/topics remain unselected. No pin
+state mutation. Requires bot rights for actual notice deletion; saved settings not
+live deletion proof. Late rights/delivery failure after successful mutation identifies
+saved state; unexpected provider bodies redacted/type-only #Errors/no auto retries.
+Local-file audit errors after mutation can be unconfirmed; inspect settings before
+retry. Configured PostgreSQL never falls back to local state.
+
+Four regressions (initial three failed before implementation): pre-write/post-read rights loss,
+simple saved status/readable labels, provider ValueError redaction, bot/invalid-extra
+no mutation. Existing realPG config sharing/group+tenant/audit rollback and watcher
+failure/allowlist cases rerun. No live Telegram/production/deployment/merge.
+
+Additional committed-write test covers final rights loss and standalone audit failure without a false rollback claim.

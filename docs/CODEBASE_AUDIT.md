@@ -850,3 +850,17 @@ exact2306 passed21.34s, working2391 passed19.94s, no skips (working includes pau
 cleanservice/localization tests). Pyflakes/compile/diff clean;252-name inventory
 metadata updated. Interrupted cleanservice remains uncommitted/excluded, no broad
 staging. No live Telegram/production/deployment/merge operations.
+
+## Interrupted /cleanservice phase completed
+
+Existing cleaning.py now uses current personal Delete messages permission checks
+before read/write and before disclosure, strict notice allowlist grammar, readable
+labels/Saved vs current state/moderator and short usage. Provider exceptions redacted,
+known committed writes never reported rolled back; local audit failure unconfirmed.
+Watcher/SQL revision and delete semantics unchanged (no ordinary user-content/pin
+state changes). Four regressions, original3 failed before implementation; added
+post-save rights and standalone audit failure truth case. Full realPG exact2310
+passed21.94s, working2392 passed20.50s, no skips. Pyflakes/compile/diff clean.
+252-name inventory review state regenerated. Always-available tagging untouched;
+paused localization/other dirty work excluded via selective documentation staging.
+No production/live Telegram/deployment/merge. Sandbox tests not live deletion proof.

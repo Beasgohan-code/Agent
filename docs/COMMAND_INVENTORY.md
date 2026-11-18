@@ -52,7 +52,7 @@
 | `/chatfed` | federations | all | Show this chat federation | Needs individual UI/behavior review |
 | `/clean` | renamer | all | Tidy a filename | Needs individual UI/behavior review |
 | `/cleancommand` | moderation | group | Delete recognized commands after handling (group) | Targeted review/tests |
-| `/cleanservice` | moderation | group | Choose which group service notices to delete | Needs individual UI/behavior review |
+| `/cleanservice` | moderation | group | Choose which group service notices to delete | Targeted review/tests |
 | `/clear` | music | group | Clear upcoming music without stopping playback | Needs individual UI/behavior review |
 | `/clearflood` | moderation | group | Toggle flood message cleanup | Targeted review/tests |
 | `/clearqueue` | music | group | Clear upcoming music tracks | Needs individual UI/behavior review |

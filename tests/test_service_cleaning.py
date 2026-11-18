@@ -140,3 +140,80 @@ def test_pg_cleaning_shared_settings_isolation_and_audit_rollback(tmp_path):
                 await db.close()
 
     asyncio.run(scenario())
+
+
+def test_cleanservice_final_rights_and_simple_saved_card(tmp_path):
+    from agent.modules import moderation
+    from agent.platform.service_cleaning import operate
+    async def scenario():
+        ctx=fixtures.ctx.__wrapped__(tmp_path)
+        call=moderation.build(ctx)[1]['cleanservice']
+        client=fixtures.FakeClient()
+        client.get_chat_member=AsyncMock(side_effect=[fixtures.member(fixtures.ADMIN),fixtures.member(fixtures.MEMBER)])
+        message=fixtures.FakeMessage('/cleanservice joins')
+        await call(client,message)
+        assert await operate(ctx,message.chat.id)==[]
+        assert 'changed' in str(message.replies[-1])
+        await call(fixtures.FakeClient(),message)
+        text=str(message.replies[-1])
+        assert 'Saved' in text and 'Moderator' in text and 'Join notices' in text
+        assert len(text)<1800 and 'Replaces selection' in text
+    asyncio.run(scenario())
+
+
+def test_cleanservice_read_revocation_and_raw_error_redaction(tmp_path):
+    from agent.modules import moderation
+    from unittest.mock import patch
+    async def scenario():
+        ctx=fixtures.ctx.__wrapped__(tmp_path)
+        call=moderation.build(ctx)[1]['cleanservice']
+        client=fixtures.FakeClient()
+        client.get_chat_member=AsyncMock(side_effect=[fixtures.member(fixtures.ADMIN),fixtures.member(fixtures.MEMBER)])
+        message=fixtures.FakeMessage('/cleanservice')
+        await call(client,message)
+        assert 'changed' in str(message.replies[-1]) and 'Join notices' not in str(message.replies[-1])
+        message.text='/cleanservice on'
+        with patch('agent.modules.moderation.cleaning.operate',AsyncMock(side_effect=ValueError('PRIVATE_TOKEN'))):
+            await call(fixtures.FakeClient(),message)
+        assert 'PRIVATE_TOKEN' not in str(message.replies)
+        assert 'unconfirmed' in str(message.replies[-1])
+    asyncio.run(scenario())
+
+
+def test_cleanservice_bot_identity_and_extras_never_change_settings(tmp_path):
+    from agent.modules import moderation
+    from agent.platform.service_cleaning import operate
+    async def scenario():
+        ctx=fixtures.ctx.__wrapped__(tmp_path)
+        call=moderation.build(ctx)[1]['cleanservice']
+        message=fixtures.FakeMessage('/cleanservice on')
+        message.from_user=NS(id=11,is_bot=True)
+        await call(fixtures.FakeClient(),message)
+        assert await operate(ctx,message.chat.id)==[]
+        message.from_user=NS(id=11)
+        message.text='/cleanservice on invalid'
+        await call(fixtures.FakeClient(),message)
+        assert await operate(ctx,message.chat.id)==[]
+    asyncio.run(scenario())
+
+
+def test_cleanservice_committed_write_not_misreported_after_rights_or_audit_failure(tmp_path):
+    from agent.modules import moderation
+    from agent.platform.service_cleaning import operate
+    from unittest.mock import Mock
+    async def scenario():
+        ctx=fixtures.ctx.__wrapped__(tmp_path)
+        call=moderation.build(ctx)[1]['cleanservice']
+        client=fixtures.FakeClient()
+        client.get_chat_member=AsyncMock(side_effect=[fixtures.member(fixtures.ADMIN),fixtures.member(fixtures.ADMIN),fixtures.member(fixtures.MEMBER)])
+        message=fixtures.FakeMessage('/cleanservice joins')
+        await call(client,message)
+        assert await operate(ctx,message.chat.id)==['joins']
+        assert 'Settings saved' in str(message.replies[-1]) and 'Details withheld' in str(message.replies[-1])
+        ctx.chats.log=Mock(side_effect=RuntimeError('PRIVATE_AUDIT'))
+        message.text='/cleanservice pins'
+        await call(fixtures.FakeClient(),message)
+        assert await operate(ctx,message.chat.id)==['pins']
+        assert 'unconfirmed' in str(message.replies[-1])
+        assert 'PRIVATE_AUDIT' not in str(message.replies)
+    asyncio.run(scenario())
