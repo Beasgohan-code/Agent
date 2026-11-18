@@ -32,9 +32,9 @@
 | `/anonadmin` | group | group | Allow anonymous group-admin checks (unsafe) | Needs individual UI/behavior review |
 | `/antispam` | moderation | group | Anti-spam policy for this group | Needs individual UI/behavior review |
 | `/appeal` | reports | all | Appeal a moderation action | Needs individual UI/behavior review |
-| `/approval` | moderation | group | Check a member approval | Needs individual UI/behavior review |
-| `/approve` | moderation | group | Exempt a member from automatic anti-spam | Needs individual UI/behavior review |
-| `/approved` | moderation | group | List approved members | Needs individual UI/behavior review |
+| `/approval` | moderation | group | Check a member approval | Targeted review/tests |
+| `/approve` | moderation | group | Exempt a member from automatic anti-spam | Targeted review/tests |
+| `/approved` | moderation | group | List approved members | Targeted review/tests |
 | `/ask` | ai_agent | all | Ask AI Agent; question goes to an external provider | Needs individual UI/behavior review |
 | `/autochat` | ai_agent | all | Opt-in private chat and group mention/reply AI mode | Needs individual UI/behavior review |
 | `/autorename` | renamer | all | Set the filename template | Needs individual UI/behavior review |
@@ -230,7 +230,7 @@
 | `/time` | utilities | all | Current time here and in UTC | Needs individual UI/behavior review |
 | `/tmute` | moderation | group | Temporarily mute a member | Needs individual UI/behavior review |
 | `/toaudio` | encoder | private | Extract audio as MP3, M4A or FLAC | Needs individual UI/behavior review |
-| `/unapprove` | moderation | group | Remove a member approval | Needs individual UI/behavior review |
+| `/unapprove` | moderation | group | Remove a member approval | Targeted review/tests |
 | `/unban` | moderation | group | Lift a ban | Targeted review/tests |
 | `/unblocklistall` | moderation | group | Clear triggers with chat-owner confirmation | Needs individual UI/behavior review |
 | `/unlock` | moderation | group | Stop deleting selected content types | Needs individual UI/behavior review |

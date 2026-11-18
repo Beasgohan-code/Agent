@@ -338,3 +338,31 @@ nonadmin denial, realPG legacy import/concurrent revisions/metadata/restart/grou
 member+tenant isolation/stale saves, audit-failed commit, oversized input/final
 rights loss and disconnected PG refusal. Full suites in CODEBASE_AUDIT. No live
 Telegram note/provider calls or blanket completion claim for untouched commands.
+
+## Approval command targeting and rich-card review
+
+/approve, /unapprove, /approval, /approved now share one native command builder,
+retaining canonical group_trust storage and atomic PG audit. Positive personal ID,
+username, text mention or same-group personal reply; exactly one target, no silently
+ignored trailing arguments. Personal current Manage chat authority before reads,
+again immediately before writes and after reads/writes before returning details.
+No global Owner override/anonymous or bot caller. No member-presence requirement:
+approval records may refer to personal IDs no longer in group. No Telegram rights
+change. Desired-state approve/unapprove remains idempotent, never a toggle.
+
+Rich target/moderator/state/commit cards and bounded20-ID list pages. /approved
+[page] is explicit live pagination, no inert buttons; no callback registered. No
+new command aliases. Pages remain group-visible, current snapshots not frozen lists.
+Approval only exempts automatic anti-spam, never manual moderation. Provider errors
+are redacted, no automatic retries or fallback on configured DB failures. PG trust
+revision/audit writes remain one transaction. Standalone file-mode audit errors may
+occur after mutation and are truthfully unconfirmed; inspect /approval before retry.
+Rights revoked after a successful write report committed with details withheld,
+not a rollback. No claim of atomic authorization across Telegram and PostgreSQL.
+
+Eleven regressions (initial7 failed/2 passed before implementation) cover target
+parity, strict extras, final rights loss, post-read authorization, valid/invalid live
+pages, provider error redaction, bot/anonymous/cross-chat rejection, idempotency and
+local partial audit failure. Existing realPG trust concurrency/import/tenant/group
+isolation/audit rollback and watcher-outage cases unchanged and rerun in full suite.
+No live Telegram/production calls, migration, deployment or merge in this phase.

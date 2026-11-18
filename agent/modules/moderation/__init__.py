@@ -19,6 +19,7 @@ from .ban import build as build_ban
 from .kick import build as build_kick
 from .warning_cards import build as build_warning_card
 from .warning_read import build as build_warning_read
+from .approvals import build as build_approvals
 from .member_note import build as build_member_note
 import html
 import logging
@@ -531,65 +532,6 @@ def build(ctx):
             except Exception:  # noqa: BLE001
                 pass
 
-    async def approval_command(client, message, desired=None, listing=False):
-        chat = getattr(message, "chat", None)
-        user = getattr(message, "from_user", None)
-        if (getattr(chat, "type", None) not in (ChatType.GROUP, ChatType.SUPERGROUP)
-                or getattr(message, "sender_chat", None) is not None
-                or type(getattr(user, "id", None)) is not int or user.id <= 0):
-            await reply(message, "Use approval commands as yourself inside a group.")
-            return
-        if not await is_moderator(client, message, need="can_manage_chat"):
-            await denied(ctx, message, DENIED)
-            return
-        args = _args(message)
-        try:
-            if listing:
-                if len(args) > 2 or (len(args) == 2 and (not args[1].isascii() or not args[1].isdecimal() or len(args[1]) > 8 or int(args[1]) < 1)):
-                    await reply(message, "Usage: <code>/approved [page]</code>")
-                    return
-                members = sorted(await trusted_members(ctx, chat.id))
-                page = int(args[1]) if len(args) == 2 else 1
-                pages = max(1, (len(members) + 19) // 20)
-                if page > pages:
-                    await reply(message, f"Choose an approvals page from 1 to {pages}.")
-                    return
-                await reply(message, panel("Approved members", table=Table(
-                    headers=("Member ID",), rows=tuple((str(uid),) for uid in members[(page-1)*20:page*20])),
-                    lines=[] if members else ["No approved members in this group."],
-                    footer=f"Page {page}/{pages} · /approved [page]",
-                    note="Approved members are exempt from automatic anti-spam actions, not manual moderation."))
-                return
-            if len(args) > 2:
-                await reply(message, "Reply to a member or provide one numeric member ID.")
-                return
-            target = parse_target(message)
-            if target is None:
-                await reply(message, "Reply to a member or provide their numeric ID.")
-                return
-            target_id, mention = target
-            if not 0 < target_id < 2**63:
-                await reply(message, "Provide a valid personal member ID.")
-                return
-            members = await trusted_members(ctx, chat.id, toggle=target_id if desired is not None else None,
-                                           actor=user.id, approved=desired)
-            state = "approved" if target_id in members else "not approved"
-            await reply(message, f"<b>Member {state}</b>\nMember: {mention}")
-        except TrustError as error:
-            await reply(message, str(error))
-
-    async def approve(client, message):
-        await approval_command(client, message, desired=True)
-
-    async def unapprove(client, message):
-        await approval_command(client, message, desired=False)
-
-    async def approval(client, message):
-        await approval_command(client, message)
-
-    async def approved(client, message):
-        await approval_command(client, message, listing=True)
-
     async def antispam(client, message):
         chat = getattr(message, "chat", None)
         if chat is None or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
@@ -718,7 +660,7 @@ def build(ctx):
         "purge": purge,
         "spurge": build_silent_purge(ctx,MAX_PURGE),
         "note": build_member_note(ctx),
-        "approve": approve, "unapprove": unapprove, "approval": approval, "approved": approved,
+        **build_approvals(ctx),
         "antispam": antispam,
         "modlog": modlog,
     }

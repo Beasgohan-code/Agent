@@ -622,3 +622,16 @@ working **2,306 passed in21.24s**, no skips. Inventory regenerated, Compile/Pyfl
 diff clean. Sandbox Git/venv refresh restored current branch tracking without file
 overwrite, richgram installed --no-deps. Quiesce old note writers for rollout;
 no live Telegram/production/deployment/merge; unrelated dirty work excluded.
+
+## Approval command rich-card and target-parity review
+
+Unified approve/unapprove/approval/approved builder, existing canonical trust store
+and PG atomic audit unchanged. Shared ID/username/text-mention/same-chat-reply
+resolution, strict no extras, current personal Manage chat admin before changes
+and reauthorized disclosure. Rich desired-state confirmations and20-ID live command
+pages; idempotent changes, no callbacks/dead controls/new aliases. Provider failures
+redacted and partial local audit unconfirmed.11 regression tests (initial7 failed,
+2 already passed), existing realPG trust lock/import/isolation/rollback tests rerun.
+Full exact selected suite **2,238 passed in22.57s**, full working **2,317 passed
+in22.13s**, no skips. Inventory regenerated; Compile/Pyflakes/diff checks clean.
+No deployment/merge/live provider/production access; unrelated dirty work excluded.
