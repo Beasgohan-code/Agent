@@ -273,7 +273,7 @@
 
 - Existing `/cancel` is not repurposed as mass-tag cancellation.
 - Tagging needs an honest bounded opt-in registry, rate limits and real run state; no invented member/presence lists.
-- Temporary promotion: durable intent storage is tested; grant/demotion reconciliation and command registration remain unfinished. No sleeping-task implementation.
+- Temporary promotion: durable intent storage and conservative expiry service are tested; grant command and worker lifecycle integration remain unfinished. No sleeping-task implementation.
 - Translation/free-provider and broadcast pin/cleanup parity remain incomplete; an existing declaration is not full upstream parity.
 
 ## One-by-one improvement order

@@ -93,3 +93,86 @@ async def finish(db,request,state,*,expected):
         raise
     except Exception:
         raise PromotionError('Promotion intent update unconfirmed. Inspect durable state before retrying.') from None
+
+
+async def reconcile_due(db,client,*,limit=20):
+    """Claim expired intents once; uncertain outcomes remain blocked for review.
+
+    Durable review state is committed BEFORE Telegram calls. A crash, timeout or
+    ambiguous result therefore never leads to a blind retry after restart. This
+    service is not yet wired to a worker: no /tpromote registration until then.
+    """
+    import asyncio
+    import inspect
+    import logging
+    from pyrogram.enums import ChatMemberStatus as Status
+    from pyrogram.types import ChatPrivileges
+    if type(limit) is not int or not 1<=limit<=100:
+        raise PromotionError('Invalid promotion recovery batch limit.')
+    connection_pool=pool(db)
+    try:
+        async with connection_pool.acquire(timeout=5) as conn:
+            candidates=await conn.fetch('''SELECT id FROM agent_timed_promotions
+                WHERE tenant=$1 AND state IN ('prepared','active') AND expires_at<=now()
+                ORDER BY expires_at,id LIMIT $2''',db.scope,limit,timeout=5)
+    except Exception:
+        raise PromotionError('Promotion recovery scan unavailable.') from None
+    outcomes=[]
+    for candidate in candidates:
+        try:
+            async with connection_pool.acquire(timeout=5) as conn:
+                # Atomic claim records the original state without holding a SQL
+                # transaction across external requests. Only one caller wins.
+                row=await conn.fetchrow('''UPDATE agent_timed_promotions AS intent
+                    SET state='review',updated_at=now() FROM
+                    (SELECT id,state FROM agent_timed_promotions WHERE tenant=$1 AND id=$2
+                     AND state IN ('prepared','active') AND expires_at<=now() FOR UPDATE) AS pending
+                    WHERE intent.tenant=$1 AND intent.id=pending.id
+                    RETURNING intent.*,pending.state AS previous_state''',db.scope,candidate['id'],timeout=5)
+        except Exception:
+            raise PromotionError('Promotion recovery admission unconfirmed; no action attempted.') from None
+        if row is None:
+            continue
+        request=row['id']
+        outcome='review'
+        try:
+            if row['previous_state']!='active':
+                # We cannot prove a prepared grant ever reached Telegram.
+                outcomes.append((request,outcome))
+                continue
+            me=await asyncio.wait_for(client.get_me(),10)
+            if getattr(me,'id',None)!=row['bot_id']:
+                outcomes.append((request,outcome))
+                continue
+            target=await asyncio.wait_for(client.get_chat_member(row['group_id'],row['target_id']),10)
+            inactive=(Status.MEMBER,Status.RESTRICTED,Status.LEFT,Status.BANNED)
+            if target.status in inactive:
+                await finish(db,request,'closed',expected='review')
+                outcomes.append((request,'closed'))
+                continue
+            bot=await asyncio.wait_for(client.get_chat_member(row['group_id'],row['bot_id']),10)
+            allowed=bot.status==Status.OWNER or (bot.status==Status.ADMINISTRATOR and getattr(getattr(bot,'privileges',None),'can_promote_members',False) is True)
+            # Final fresh target check after the bot-rights lookup.
+            target=await asyncio.wait_for(client.get_chat_member(row['group_id'],row['target_id']),10)
+            rights=json.loads(row['rights']) if isinstance(row['rights'],str) else row['rights']
+            fields=tuple(inspect.signature(ChatPrivileges).parameters)
+            actual=getattr(target,'privileges',None)
+            valid=(isinstance(rights,dict) and bool(rights) and set(rights)<=RIGHTS
+                   and all(type(value) is bool for value in rights.values()) and any(rights.values()))
+            matches=valid and actual is not None and all(
+                (getattr(actual,key,None) is None or type(getattr(actual,key,None)) is bool)
+                and bool(getattr(actual,key,None))==rights.get(key,False) for key in fields)
+            if (allowed and target.status==Status.ADMINISTRATOR and matches
+                    and getattr(target,'can_be_edited',False) is True
+                    and getattr(getattr(target,'promoted_by',None),'id',None)==row['bot_id']):
+                privileges=ChatPrivileges(**{key:False for key in fields})
+                ack=await asyncio.wait_for(client.promote_chat_member(row['group_id'],row['target_id'],privileges=privileges),15)
+                if ack is True:
+                    await finish(db,request,'closed',expected='review')
+                    outcome='closed'
+        except asyncio.CancelledError:
+            raise  # Durable review state blocks duplicate action on restart.
+        except Exception as error:
+            logging.getLogger(__name__).warning('#Errors Temporary promotion recovery needs review (%s)',type(error).__name__)
+        outcomes.append((request,outcome))
+    return outcomes

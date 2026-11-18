@@ -735,3 +735,23 @@ Full realPG working2354 passed27.84s, exact2275 passed27.70s, no skips. Removed
 unused test import after full run; focused tests/Pyflakes/compile/diff clean. Unrelated
 music menu edits selectively excluded and retained locally. Ref/venv restored after
 sandbox refresh without overwriting files. No production/live Telegram/deploy/merge.
+
+## /tpromote conservative expiry reconciliation service
+
+Commands-first request honored: paused translation work unstaged, retained in files;
+existing timed_promotions.py extended, no competing handler or fake registration.
+Bounded due scan and atomic durable review-before-API claim: one action maximum per
+intent across concurrent callers/restarts. Current bot Promote/admin rights, matching
+bot/promoter/editability and every current privilege flag; final target recheck.
+Already-nonadmin closes without Telegram mutation. Changed/unknown/false/timeout/
+prepared/cancellation outcomes remain blocked in review, no blind retries. Strict
+all-False demotion/True ack then closed. Provider failures redacted. Review UI, grant
+command and runtime lifecycle still unfinished; this service is not registered/running.
+External Pyrogram pinned30de1e2 promote_chat_member source reviewed only (no execution),
+actual Wzgram ChatPrivileges signature inspected for modern fields.12 new regressions
+(initial9 failed before implementation; added bot-revoked/new-flag/timeout branches),
+realPG races and storage with simulated Telegram. Full exact2287 passed26.22s,
+working2369 passed25.40s, no skips. Working includes paused localization tests;
+selected exact tree excludes all paused localization and unrelated music work.
+Pyflakes/diff checks clean,244-command inventory updated. No deployment/merge/live
+Telegram/production changes. No claim automatic recovery is operational yet.

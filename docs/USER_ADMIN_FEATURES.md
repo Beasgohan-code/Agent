@@ -516,3 +516,31 @@ verification before entering LANGUAGES. No non-English locale claimed complete.
 Updated existing four tests test-first (two initially failed), incl realPG retained
 legacy unsupported preference/refusal/explicit recovery and old button rejection.
 No new handler/module/provider/dependency; no deployment/production calls.
+
+### /tpromote expiry service: tested, command still unavailable
+
+Added reconcile_due to existing timed_promotions store; bounded tenant-local scan
+and atomic one-winner claim. Durable review state is committed BEFORE external calls,
+so cancellation/crash/ambiguous outcomes do not cause blind retries after restart.
+Expired prepared intents go to review, not guessed successful. Active records require
+same bot identity, current bot Promote right, editable admin promoted by this bot,
+and exact match across every installed ChatPrivileges flag. Final fresh target check
+before action. Already nonadmins close without mutation; changed/unknown/owner/promoter
+mismatch remains blocked in review. All-false privilege object, strict True ack, only
+then closed. False/timeout/error or DB-close failure remains review, no repeat action.
+No DB means no Telegram call. Review blocks further grants until explicitly resolved.
+
+Conservative tradeoff: provider/read outages after claim require manual review; there
+is no automatic retry for uncertain outcomes. Same-right external changes between
+inspection and mutation cannot be conclusively detected; Telegram+DB are not atomic.
+No claim of full expiry recovery: periodic worker lifecycle, grant command, safe review
+UI and startup diagnostics still required before /tpromote is registered. This phase
+has no Telegram production access, deployment or handler pretending feature complete.
+
+External source reviewed as text, never executed: Pyrogram promote_chat_member at
+https://github.com/pyrogram/pyrogram/blob/30de1e21e3e8b5949971ba0bba56bb818ba43b71/pyrogram/methods/chats/promote_chat_member.py
+specifies all-False demotion and bool success. Actual installed Wzgram constructor
+inspected: includes newer privilege flags, all covered rather than copying upstream's
+older subset. Existing licenses unchanged. RealPG tests simulate Telegram only;
+concurrent claims/rights/promoter/editability/bot identity/false ack/timeouts/new flag/
+prepared/closed replay and DB outage tested. This is not live-provider proof.
