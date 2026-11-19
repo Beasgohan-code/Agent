@@ -100,8 +100,8 @@
 | `/get` | filestore | all | Re-send a file from your vault | Needs individual UI/behavior review |
 | `/goodbye` | welcome | group | Set or toggle the goodbye message | Needs individual UI/behavior review |
 | `/gu` | utilities | all | Live card demo; /gu fail previews failure (group admin) | Needs individual UI/behavior review |
-| `/h` | shell | private | Alias of help | Needs individual UI/behavior review |
-| `/help` | shell | private | Available command help | Needs individual UI/behavior review |
+| `/h` | shell | all | Alias of help | Needs individual UI/behavior review |
+| `/help` | shell | all | Available command help | Needs individual UI/behavior review |
 | `/history` | music | group | Recent acknowledged music titles this session | Needs individual UI/behavior review |
 | `/id` | utilities | all | Show chat and user ids | Needs individual UI/behavior review |
 | `/ig` | utilities | all | Instagram profile-link card; no live account lookup | Needs individual UI/behavior review |
@@ -180,7 +180,7 @@
 | `/resetwarn` | moderation | group | Clear a member’s active warnings; retain history (admin) | Targeted review/tests |
 | `/resetwarns` | group | group | Clear all warnings for a member | Targeted review/tests |
 | `/restart` | ops | all | Restart the process (owner) | Needs individual UI/behavior review |
-| `/restart_bot` | shell | private | Alias of start, not a process restart | Needs individual UI/behavior review |
+| `/restart_bot` | shell | all | Alias of start, not a process restart | Needs individual UI/behavior review |
 | `/resume` | music | group | Resume playback | Needs individual UI/behavior review |
 | `/revoke` | linkshare | private | Revoke one of your links | Needs individual UI/behavior review |
 | `/rights` | group | group | Read-only current Telegram admin-rights card (admin) | Targeted review/tests |
@@ -221,7 +221,7 @@
 | `/skip` | music | group | Play the next track | Needs individual UI/behavior review |
 | `/smute` | moderation | group | Mute silently; delete related messages | Needs individual UI/behavior review |
 | `/spurge` | moderation | group | Silently delete 1–100 preceding message IDs (admin) | Targeted review/tests |
-| `/start` | shell | private | Open bot / route private deep links | Needs individual UI/behavior review |
+| `/start` | shell | all | Open bot / route private deep links | Needs individual UI/behavior review |
 | `/status` | core | all | Live runtime status | Needs individual UI/behavior review |
 | `/stop` | music | group | Stop and clear the queue | Needs individual UI/behavior review |
 | `/stopfilter` | filters | group | Remove a keyword auto-reply | Needs individual UI/behavior review |

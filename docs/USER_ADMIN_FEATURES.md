@@ -891,3 +891,23 @@ Cancel. `/fullpromote ID` or @username also previews; explicit `confirm` forms
 continue working. Confirmation is bound to requesting Owner, group and card,
 expires after2 minutes/restart and is single-use. All authority/target/bot rights
 are rechecked before mutation; full promotion is not made an unconfirmed action.
+
+
+## Group /start, /help and temporary navigation
+
+/start (also restart_bot) and /help (also h) now accept group/supergroup commands
+as well as private commands; bot mentions and existing punctuation aliases remain
+supported. Group command menus publish start/help too. Group start payloads do not
+redeem private file/share links. Personal identity required for group navigation.
+
+Group /start, /help and /menu use recipient-only native ephemeral menus: only the
+caller sees them and they are absent from group history. This is not timed deletion
+of ordinary chat messages. Native ephemeral navigation/format fallback keeps the
+recipient; unsupported/unconfirmed delivery does not publish a public copy. Telegram
+support and delivery to offline users are not guaranteed. Open DM on failure.
+
+For responsiveness, group menus skip the hero image and optional identity lookup.
+Private starts retain the requested hero and reuse an acknowledged media ID from a
+bounded per-bot cache. Ambiguous sends do not trigger duplicate upload/retry. These
+changes do not relax moderation rights, expose private deeplinks, delete receipts
+or alter saved files. Live response-time measurements remain outstanding.

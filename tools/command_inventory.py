@@ -10,7 +10,7 @@ MISSING=()
 
 
 def inventory():
-    rows=[(name,'shell','private',description) for name,description in BASE.items()]
+    rows=[(name,'shell','all' if name in ('start','restart_bot','help','h') else 'private',description) for name,description in BASE.items()]
     for module in MODULES:
         manifest=module.MANIFEST
         for name in manifest.commands:

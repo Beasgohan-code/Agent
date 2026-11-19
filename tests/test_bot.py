@@ -371,3 +371,15 @@ def test_the_watchdog_command_sees_the_lease(tmp_path):
     # The lease is wired, so the panel either reports it or says it is not held;
     # it must not silently drop the row.
     assert "Instance" in message.replies[0]
+
+
+def test_group_start_and_help_filters_accept_actual_group_commands():
+    from pyrogram.enums import ChatType
+    async def scenario():
+        bot=AgentBot(make_settings())
+        bot.build()
+        client=SimpleNamespace(me=SimpleNamespace(username='ExampleBot'))
+        for handler,text in ((bot._handlers[0],'/start@ExampleBot'),(bot._handlers[1],'/help@ExampleBot')):
+            message=SimpleNamespace(text=text,caption=None,chat=SimpleNamespace(type=ChatType.SUPERGROUP))
+            assert await handler.filters(client,message)
+    asyncio.run(scenario())

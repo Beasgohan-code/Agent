@@ -87,3 +87,21 @@ def test_uneditable_message_can_send_replacement():
         client.send_rich_message.assert_awaited_once()
 
     asyncio.run(scenario())
+
+
+def test_ephemeral_replacement_keeps_recipient_and_rejects_foreign_press():
+    async def scenario():
+        client=SimpleNamespace()
+        sender=SimpleNamespace(edit=AsyncMock(return_value=False),send=AsyncMock())
+        message=SimpleNamespace(chat=SimpleNamespace(id=-100),receiver_user=SimpleNamespace(id=22),ephemeral_message_id=7)
+        query=SimpleNamespace(data='menu:help',from_user=SimpleNamespace(id=22),message=message,answer=AsyncMock())
+        handler=CallbackHandlers(sender,Theme())
+        await handler.on_callback(client,query)
+        assert sender.send.await_args.kwargs['receiver_user_id']==22
+        sender.send.reset_mock()
+        sender.edit.reset_mock()
+        query.from_user.id=33
+        await handler.on_callback(client,query)
+        sender.edit.assert_not_awaited()
+        sender.send.assert_not_awaited()
+    asyncio.run(scenario())

@@ -187,3 +187,13 @@ reference source paths and licenses must remain technically correct.
    fully translated/optimized locales with no English fallback. English only now.
 6. Preserve licenses and unrelated work; verify isolated patches and working tree,
    publish only on this branch. No merge/deploy/production changes.
+
+
+## Group navigation, responsiveness and ephemeral messages
+
+User reports slow responses and group start/help not working; asks for broader
+polish and ephemeral messages. Keep group navigation available, improve measured
+work/round trips without bypassing rights or server flood limits, and preserve
+moderation receipts/files. Current slice uses recipient-only native temporary
+group menus, not bulk timed deletion. Never silently turn a temporary/private
+response into a public copy. No unsupported fastest-ever or live latency claim.

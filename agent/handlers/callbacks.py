@@ -29,6 +29,13 @@ class CallbackHandlers:
     async def on_callback(self, client, callback_query) -> None:
         data = callback_query.data or ""
         user = callback_query.from_user
+        origin=getattr(callback_query,'message',None)
+        receiver=getattr(getattr(origin,'receiver_user',None),'id',None)
+        ephemeral_id=getattr(origin,'ephemeral_message_id',None)
+        if receiver is not None or ephemeral_id is not None:
+            if type(receiver) is not int or getattr(user,'id',None)!=receiver:
+                await self._answer(callback_query,'This temporary menu belongs to its recipient.',show_alert=True)
+                return
         if self._monitor is not None:
             self._monitor.record_activity("callback")
         logger.info("Callback received from user %s", getattr(user, "id", None))
@@ -66,7 +73,7 @@ class CallbackHandlers:
         options = {}
         if builder is welcome_screen and self._theme.worker_plugins is None:
             from ..ui.bot_identity import bot_username
-            options['bot_username'] = await bot_username(client)
+            options['bot_username'] = await bot_username(client,cached_only=getattr(getattr(message,'chat',None),'id',0)<0)
         screen = worker_screen if worker_screen is not None else builder(user, self._theme, active=active, **options)
         outcome = await self._sender.edit(callback_query, screen)
         if outcome is None:
@@ -75,7 +82,7 @@ class CallbackHandlers:
         if outcome is False:
             chat_id = getattr(getattr(message, "chat", None), "id", None)
             try:
-                await self._sender.send(chat_id, screen)
+                await self._sender.send(chat_id, screen,**({"receiver_user_id":receiver} if receiver is not None else {}))
             except Exception as error:
                 logger.warning("Could not re-send callback screen (%s)", type(error).__name__)
 

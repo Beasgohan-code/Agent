@@ -1089,3 +1089,43 @@ no skips, disposable database. Changed-source/test pyflakes, compile and staged
 whitespace checks clean. Existing rights/scope/target/title/moderation regressions
 retained. No new command registration or unrelated dirty changes staged. No
 production, merge or deployment; user-facing storage wording remains neutral.
+
+## Group navigation, native temporary menus and reduced delivery overhead
+
+Actual /start (+restart_bot) and /help (+h) filters now accept private/groups,
+not channels. Published start/help group scope and source inventory aligned;
+ping retains private scope. Group start payloads never redeem private deep links.
+Group navigation requires personal nonbot identity. Group /start,/help,/menu use
+native recipient-only ephemeral parameters: absent from chat history, not an
+application-managed timer/delete loop. Library support inspected in installed
+send/edit implementations; delivery still depends on Telegram/client/online state.
+Unsupported/unconfirmed ephemeral delivery never retries a public copy; shell
+failure guidance points to DM. Moderation receipts and files unchanged.
+
+Sender preserves receiver on explicit rich/emoji format downgrade. Ephemeral
+callbacks require the receiver and use native ephemeral edits; explicit uneditable
+replacement retains receiver, no public downgrade. Missing send acknowledgement,
+transport/FloodWait/permission failures never justify resend. Existing public/private
+navigation retains normal edit semantics. No credentials or source payloads retained.
+
+Group welcome skips remote hero media and uses only already-loaded bot identity,
+including Home callbacks, eliminating image work/optional5s get_me wait there.
+Private welcome retains requested hero: per-sender bounded16-source acknowledgement
+cache reuses Telegram media ID; explicit stale-photo rejection drops cache before
+one original-source attempt, ambiguous timeout never reuploads. No permission,
+plugin-gate, moderation or tagging pacing bypass; no new dependency/lifecycle task.
+These are source-confirmed round-trip/media-work reductions, not live latency proof
+or an “everything fastest” claim. No global cache shared across bot tenants.
+
+Five initial tests failed before implementation. Added receiver-preserving format
+fallback/edit/replacement, foreign press refusal, missing-ack/no-retry, actual group
+filters/menu scopes, group deep-link refusal/no-hero/no-identity lookup and repeated
+private hero/no-reupload regressions. Existing menu-scope expectation updated to
+requested group behavior. No live Telegram, production, deploy or merge operation.
+Validation: exact selective suite2371 passed29.08s; working2453 passed26.03s,
+no skips, disposable database and simulated Telegram. Targeted pyflakes, compile
+and staged whitespace checks clean.252-name inventory retains aliases and reflects
+group navigation scope; unrelated Premium/Music/localization/bot-init edits excluded
+by selective staging. Hero cache applies only when a photo file ID is returned;
+cache clears on process restart. No measured live speed multiplier or universal
+UI/ephemeral compatibility claim. No deployment/merge/production operations.

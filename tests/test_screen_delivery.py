@@ -97,3 +97,46 @@ def test_caption_budget_counts_astral_characters_as_utf16():
     asyncio.run(ScreenSender(c, Theme()).send_photo(1, Screen('😁' * 513), 'image'))
     c.send_photo.assert_not_awaited()
     c.send_message.assert_awaited_once()
+
+
+@pytest.mark.parametrize('rich_rejected',[False,True])
+def test_ephemeral_screen_keeps_receiver_through_format_fallback(rich_rejected):
+    c=client()
+    if rich_rejected:c.send_rich_message.side_effect=RuntimeError('RICH_MESSAGE_UNSUPPORTED')
+    screen=Screen('<h2>Private navigation</h2>',object())
+    asyncio.run(ScreenSender(c,Theme()).send(-100,screen,receiver_user_id=22))
+    call=c.send_message.await_args if rich_rejected else c.send_rich_message.await_args
+    assert call.kwargs['ephemeral_message_parameters'].receiver_user_id==22
+
+
+def test_ephemeral_navigation_uses_private_edit_and_never_public_replacement():
+    c=client()
+    c.edit_ephemeral_message_text=AsyncMock(return_value=SimpleNamespace(id=7))
+    query=SimpleNamespace(_client=c,from_user=SimpleNamespace(id=22),
+        message=SimpleNamespace(chat=SimpleNamespace(id=-100),receiver_user=SimpleNamespace(id=22),ephemeral_message_id=7),
+        edit_message_text=AsyncMock())
+    sender=ScreenSender(c,Theme())
+    assert asyncio.run(sender.edit(query,Screen('<h2>Help</h2>',object()))) is True
+    c.edit_ephemeral_message_text.assert_awaited_once()
+    query.edit_message_text.assert_not_awaited()
+    assert c.edit_ephemeral_message_text.await_args.kwargs['receiver_id']==22
+    query.from_user.id=33
+    assert asyncio.run(sender.edit(query,Screen('<h2>Help</h2>',object()))) is None
+    assert c.edit_ephemeral_message_text.await_count==1
+
+
+def test_failed_ephemeral_send_never_retries_as_public():
+    c=client()
+    c.send_rich_message.side_effect=TimeoutError()
+    with pytest.raises(TimeoutError):
+        asyncio.run(ScreenSender(c,Theme()).send(-100,Screen('<h2>Private</h2>',object()),receiver_user_id=22))
+    c.send_message.assert_not_awaited()
+    c.send_photo.assert_not_awaited()
+
+
+def test_missing_ephemeral_acknowledgement_does_not_resend():
+    c=client()
+    c.send_rich_message.return_value=None
+    with pytest.raises(RuntimeError,match='unconfirmed'):
+        asyncio.run(ScreenSender(c,Theme()).send(-100,Screen('<h2>Private</h2>',object()),receiver_user_id=22))
+    c.send_message.assert_not_awaited()

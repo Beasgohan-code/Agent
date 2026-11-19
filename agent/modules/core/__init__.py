@@ -64,7 +64,16 @@ def build(ctx):
             set(ctx.registry.active_commands()) if ctx.registry is not None else None
         )
         from ...ui.bot_identity import bot_username
-        username = await bot_username(_client) if ctx.theme.worker_plugins is None else None
+        from ...handlers.commands import group_receiver
+        try:
+            receiver=group_receiver(message)
+        except ValueError:
+            await reply(message,"Use your personal account for group navigation.")
+            return
+        username = await bot_username(_client,cached_only=receiver is not None) if ctx.theme.worker_plugins is None else None
+        if receiver is not None:
+            await ctx.sender.send(message.chat.id,welcome_screen(user,ctx.theme,active=active,bot_username=username),receiver_user_id=receiver)
+            return
         await ctx.sender.send_hero(
             message.chat.id, welcome_screen(user, ctx.theme, active=active, bot_username=username), ctx.settings.start_image
         )

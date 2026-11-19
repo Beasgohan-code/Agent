@@ -4,9 +4,11 @@ import logging
 import re
 
 
-async def bot_username(client):
+async def bot_username(client,*,cached_only=False):
     name = getattr(getattr(client, 'me', None), 'username', None)
     if not isinstance(name, str):
+        if cached_only:
+            return None
         try:
             name = getattr(await asyncio.wait_for(client.get_me(), timeout=5), 'username', None)
         except Exception as error:

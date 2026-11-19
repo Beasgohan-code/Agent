@@ -40,3 +40,23 @@ async def test_runtime_identity_cached_and_fallback():
     assert await bot_username(client) == 'FallbackBot'
     client.get_me.side_effect = RuntimeError('SECRET')
     assert await bot_username(client) is None
+
+
+@pytest.mark.asyncio
+async def test_group_navigation_skips_remote_hero_and_identity_lookup():
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType
+    from agent.handlers.commands import CommandHandlers
+    sender=NS(send=AsyncMock(),send_hero=AsyncMock())
+    client=NS(me=NS(username='ExampleBot'),get_me=AsyncMock(side_effect=AssertionError('No identity request needed')))
+    links=NS(handles=lambda _:True,dispatch=AsyncMock())
+    handler=CommandHandlers(sender,Theme(),start_image='https://slow.invalid/image',deeplinks=links)
+    message=NS(text='/start private_payload',from_user=NS(id=22,first_name='Member'),chat=NS(id=-100,type=ChatType.SUPERGROUP))
+    await handler.start(client,message)
+    message.text='/help'
+    await handler.help(client,message)
+    assert sender.send.await_count==2
+    assert all(call.kwargs['receiver_user_id']==22 for call in sender.send.await_args_list)
+    sender.send_hero.assert_not_awaited()
+    client.get_me.assert_not_awaited()
+    links.dispatch.assert_not_awaited()

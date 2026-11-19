@@ -207,8 +207,8 @@ class AgentBot:
         )
 
         self._handlers = [
-            MessageHandler(commands.start, command_filter(["start", "restart_bot"]) & filters.private),
-            MessageHandler(commands.help, command_filter(["help", "h"]) & filters.private),
+            MessageHandler(commands.start, command_filter(["start", "restart_bot"]) & (filters.private | filters.group)),
+            MessageHandler(commands.help, command_filter(["help", "h"]) & (filters.private | filters.group)),
             MessageHandler(commands.ping, command_filter("ping") & filters.private),
             CallbackQueryHandler(callbacks.on_callback),
             ErrorHandler(self._on_error),
@@ -677,7 +677,8 @@ class AgentBot:
             try:
                 scopes = {command: manifest.scope for manifest in self.registry.manifests()
                           for command in manifest.commands}
-                scopes.update({command: "private" for command in ("start", "help", "ping")})
+                scopes.update({command: "all" for command in ("start", "help")})
+                scopes["ping"]="private"
                 await publish_menu(client, ["start", "help", "ping", *self.registry.active_commands()],
                                    command_scopes=scopes)
             except Exception:

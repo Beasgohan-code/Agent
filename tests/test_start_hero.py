@@ -72,3 +72,29 @@ def test_welcome_only_suggests_available_tools_and_real_callbacks():
         for button in row:
             if button.callback_data:
                 assert button.callback_data in SCREENS
+
+
+def test_repeated_private_hero_uses_acknowledged_media_id():
+    c=client()
+    c.send_rich_message.return_value=SimpleNamespace(photo=SimpleNamespace(file_id='cached-hero-id'))
+    sender=ScreenSender(c,Theme())
+    screen=welcome_screen(None,Theme())
+    async def scenario():
+        await sender.send_hero(1,screen,'https://example.com/hero.jpg')
+        await sender.send_hero(1,screen,'https://example.com/hero.jpg')
+    asyncio.run(scenario())
+    media=[call.kwargs['rich_text'].media[0].media.media for call in c.send_rich_message.await_args_list]
+    assert media==['https://example.com/hero.jpg','cached-hero-id']
+
+
+def test_cached_hero_timeout_never_retries_upload():
+    c=client()
+    c.send_rich_message.side_effect=[SimpleNamespace(photo=SimpleNamespace(file_id='cached-hero-id')),TimeoutError()]
+    sender=ScreenSender(c,Theme())
+    async def scenario():
+        await sender.send_hero(1,welcome_screen(None,Theme()),'https://example.com/hero.jpg')
+        with pytest.raises(TimeoutError):
+            await sender.send_hero(1,welcome_screen(None,Theme()),'https://example.com/hero.jpg')
+    asyncio.run(scenario())
+    assert c.send_rich_message.await_count==2
+    c.send_photo.assert_not_awaited()

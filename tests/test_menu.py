@@ -327,7 +327,7 @@ def test_overflow_menu_keeps_cross_feature_entry_points():
     assert len(names_of(commands)) == len(set(names_of(commands)))
 
 
-def test_actual_builtin_menu_scopes_match_private_handlers_and_home_catalogue(tmp_path):
+def test_actual_builtin_menu_scopes_match_group_navigation_and_home_catalogue(tmp_path):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
     async def scenario():
@@ -340,5 +340,6 @@ def test_actual_builtin_menu_scopes_match_private_handlers_and_home_catalogue(tm
                  for call in client.set_bot_commands.await_args_list}
         from pyrogram.types import BotCommandScopeDefault, BotCommandScopeAllGroupChats
         assert {'start', 'help', 'ping'} <= lists[BotCommandScopeDefault]
-        assert not {'start', 'help', 'ping'} & lists[BotCommandScopeAllGroupChats]
+        assert {'start','help'} <= lists[BotCommandScopeAllGroupChats]
+        assert 'ping' not in lists[BotCommandScopeAllGroupChats]
     asyncio.run(scenario())
