@@ -93,6 +93,51 @@ class CloneSetup:
         rows.append([Button('Cancel setup', callback_data=f'csetup:{state.nonce}:cancel')])
         return Keyboard(rows)
 
+    def token_options(self):
+        # Read Telegram's cached capability; never add a startup/network lookup.
+        me = getattr(getattr(self.ctx, 'client', None), 'me', None)
+        return ([('Create a bot with Telegram', 'managed_create')]
+                if getattr(me, 'can_manage_bots', None) is True else [])
+
+    async def managed_creation(self, client, query, state):
+        """Show a native creation request, never a token export or clone start."""
+        from pyrogram.types import KeyboardButton, KeyboardButtonRequestManagedBot, ReplyKeyboardMarkup
+
+        lock = self._locks.setdefault(state.user_id, asyncio.Lock())
+        async with lock:
+            allowed = await self.entitled(state.user_id)
+            if (not allowed or self.active(state.user_id) is not state or state.step != 'token'
+                    or getattr(getattr(client, 'me', None), 'can_manage_bots', None) is not True
+                    or not self.store.encrypted() or self.store.count() >= self.ctx.settings.clone_limit
+                    or len(self.store.by_owner(state.user_id)) >= self.quota(state.user_id)):
+                await query.answer('Native bot creation is unavailable. Use /clone for private manual setup.', show_alert=True)
+                return
+            await query.answer('Open Telegram’s creation form below. Import still requires your consent.')
+            # Acknowledgement yields; do not send a creation request after access changes.
+            allowed = await self.entitled(state.user_id)
+            if (not allowed or self.active(state.user_id) is not state or state.step != 'token'
+                    or getattr(getattr(client, 'me', None), 'can_manage_bots', None) is not True
+                    or not self.store.encrypted() or self.store.count() >= self.ctx.settings.clone_limit
+                    or len(self.store.by_owner(state.user_id)) >= self.quota(state.user_id)):
+                return
+            await client.send_message(
+                state.user_id,
+                'Tap Create bot below to open Telegram’s native form. After creation, wait for the '
+                'private managed-bot notice and use its /clone managed instruction to consent to '
+                'credential import. Creating a Telegram bot alone does not create or start a clone. '
+                'You can instead send a BotFather token privately, or /cancel this draft. '
+                'Some Telegram clients may not support this button.',
+                parse_mode=None,
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton('Create bot', request_managed_bot=KeyboardButtonRequestManagedBot(
+                        button_id=secrets.randbelow(2**31 - 1) + 1,
+                        suggested_name='My Assistant',
+                        suggested_username='Assistant' + secrets.token_hex(6) + 'Bot',
+                    ))]],
+                    resize_keyboard=True, one_time_keyboard=True,
+                ),
+            )
+
     def plugins(self, state):
         return state.selected_plugins if state.selected_plugins is not None else TEMPLATE_PLUGINS[state.template]
 
@@ -147,7 +192,9 @@ class CloneSetup:
             'storage': 'Send the FileStore archive channel ID. You and the clone must administer it.',
         }
         options = []
-        if state.step == 'plugin':
+        if state.step == 'token':
+            options = self.token_options()
+        elif state.step == 'plugin':
             options = [(value[1], key) for key, value in TEMPLATES.items()]
         elif state.step == 'music_consent':
             options = [('I consent · continue', 'music_consent')]
@@ -206,7 +253,7 @@ class CloneSetup:
                     if managed_import else 'Send the token from @BotFather. I will verify the bot before asking for configuration.'),
                    'Setup expires in 10 minutes. Send /cancel to discard it.'],
             footer='The authenticated person completing setup becomes the clone owner.'),
-            reply_markup=self.keyboard(state, []))
+            reply_markup=self.keyboard(state, self.token_options() if not managed_import else []))
 
     def offer_managed(self, user_id, bot_id):
         """Remember only Telegram-attested identities, never tokens, for ten minutes."""
@@ -423,6 +470,9 @@ class CloneSetup:
         if not await self.entitled(user_id):
             self.cancel(user_id)
             await query.answer('Clone access is no longer available.', show_alert=True)
+            return
+        if action == 'managed_create':
+            await self.managed_creation(client, query, state)
             return
         if action == 'cancel':
             if state.step == 'starting':

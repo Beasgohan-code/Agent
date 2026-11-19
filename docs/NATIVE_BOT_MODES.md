@@ -20,8 +20,16 @@ they do not authorize privileged commands, credential replacement, or admission.
   are inherited. Existing bot IDs and the controller are never import targets:
   token-change events cannot replace saved credentials or transfer a clone.
   Offers are memory-only, bounded to 100 entries, and lost on restart. Ordinary
-  manual private setup remains available. Managed-bot creation buttons are not
-  implemented. Private notification delivery can fail if Telegram disallows it;
+  manual private setup remains available. When the cached Telegram bot identity
+  explicitly allows bot management, new and resumed token-step drafts offer
+  **Create a bot with Telegram**. Its private, nonce-bound callback rechecks
+  entitlement, capacity, encryption, draft state and capability before sending
+  a one-time native creation keyboard. No extra identity lookup is required.
+  Opening the native form neither attests bot ownership nor imports credentials;
+  only the later managed-bot event can enable the explicit import instruction.
+  Unknown/disabled capabilities leave manual setup available. Telegram client
+  support and username availability still vary; suggestions are not reservations.
+  Private notification delivery can fail if Telegram disallows it;
   there is no group fallback or secret-bearing error text added here.
 - **Guard:** native join-request queries receive `QUEUE` (administrator review),
   never automatic approval or denial. An eight-second local timeout bounds the
@@ -56,3 +64,13 @@ creator/chat binding, expiry, capacity, encryption, existing/busy draft refusal,
 post-network cancellation/revocation/capacity changes, identity mismatch and
 export failure without credential disclosure. Targeted static and whitespace
 checks passed. No live Telegram verification or deployment was performed.
+
+Native creation UI phase: exact selective patch **2,425 passed** in 31.96 seconds;
+full working tree **2,507 passed** in 28.13 seconds, no skips. Both runs used
+disposable real database storage. Added coverage includes capability-gated new
+and resumed drafts, wire serialization through the installed native library,
+private/creator/nonce checks, unknown capability without network lookup,
+advanced-draft refusal, cancellation, and post-acknowledgement premium/capacity/
+encryption/capability changes. Targeted static and staged whitespace checks
+passed. Telegram UI rendering and actual creation were not tested live; nothing
+was deployed or changed in production.

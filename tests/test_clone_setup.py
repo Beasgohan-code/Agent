@@ -735,3 +735,136 @@ def test_managed_import_rechecks_after_identity_verification(tmp_path, case):
         state = wizard.active(MEMBER)
         assert state is None or not state.token
     asyncio.run(scenario())
+
+
+def test_managed_creation_is_capability_gated_and_draft_only(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        client = SimpleNamespace(me=SimpleNamespace(can_manage_bots=True), send_message=AsyncMock())
+        ctx.client = client
+        msg = FakeMessage('/clone')
+        await wizard.begin(msg)
+        state = wizard.active(MEMBER)
+        buttons = [button for row in msg.markups[-1].inline_keyboard for button in row]
+        assert any(button.callback_data.endswith(':managed_create') for button in buttons)
+        press = query(state)
+        await wizard.press(client, press, state.nonce + ':managed_create')
+        args = client.send_message.await_args
+        assert args.args[0] == MEMBER
+        keyboard = args.kwargs['reply_markup']
+        assert keyboard.one_time_keyboard and keyboard.resize_keyboard
+        request = keyboard.keyboard[0][0].request_managed_bot
+        assert request.button_id > 0
+        assert request.suggested_username.endswith('Bot')
+        from pyrogram import raw
+        encoded = await keyboard.write(None)
+        assert isinstance(encoded.rows[0].buttons[0].type.peer_type, raw.types.RequestPeerTypeCreateBot)
+        assert encoded.write()  # native wire serialization, not just a mocked send
+        assert state.step == 'token' and state.token == ''
+        assert not ctx.clones.current()
+        assert not wizard._managed_offers  # only Telegram events can attest creator ownership
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('case', ['unsupported', 'unknown', 'foreign', 'group', 'stale', 'capacity', 'encryption', 'advanced'])
+def test_managed_creation_refuses_unavailable_or_untrusted_callbacks(tmp_path, case):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        client = SimpleNamespace(me=SimpleNamespace(can_manage_bots=True), send_message=AsyncMock())
+        ctx.client = client
+        await wizard.begin(FakeMessage('/clone'))
+        state = wizard.active(MEMBER)
+        press = query(state)
+        nonce = state.nonce
+        if case == 'unsupported':
+            client.me.can_manage_bots = False
+        elif case == 'unknown':
+            client.me = None
+        elif case == 'foreign':
+            press.from_user.id = 999
+        elif case == 'group':
+            press.message.chat.id = -123
+        elif case == 'stale':
+            nonce = 'invalid'
+        elif case == 'capacity':
+            wizard.quota = lambda uid: 0
+        elif case == 'encryption':
+            wizard.store.encrypted = lambda: False
+        elif case == 'advanced':
+            state.step = 'plugin'
+        await wizard.press(client, press, nonce + ':managed_create')
+        client.send_message.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_unknown_capability_keeps_manual_setup_without_lookup(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        ctx.client = SimpleNamespace(get_me=AsyncMock())
+        msg = FakeMessage('/clone')
+        await ctx.clone_setup.begin(msg)
+        buttons = [button for row in msg.markups[-1].inline_keyboard for button in row]
+        assert not any(button.callback_data.endswith(':managed_create') for button in buttons)
+        assert 'Send the token' in msg.replies[-1]
+        ctx.client.get_me.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_managed_creation_rechecks_cancellation_after_acknowledgement(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        client = SimpleNamespace(me=SimpleNamespace(can_manage_bots=True), send_message=AsyncMock())
+        ctx.client = client
+        await wizard.begin(FakeMessage('/clone'))
+        state = wizard.active(MEMBER)
+        press = query(state)
+        async def cancel(*args, **kwargs):
+            wizard.cancel(MEMBER)
+        press.answer.side_effect = cancel
+        await wizard.press(client, press, state.nonce + ':managed_create')
+        client.send_message.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_resume_restores_native_option_without_extending_expiry(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        await wizard.begin(FakeMessage('/clone'))
+        state = wizard.active(MEMBER)
+        expiry = state.expires
+        ctx.client = SimpleNamespace(me=SimpleNamespace(can_manage_bots=True))
+        msg = FakeMessage('/clone')
+        await wizard.begin(msg)
+        assert any(button.callback_data.endswith(':managed_create')
+                   for row in msg.markups[-1].inline_keyboard for button in row)
+        assert state.expires == expiry
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('change', ['premium', 'capacity', 'encryption', 'capability'])
+def test_managed_creation_rechecks_access_after_acknowledgement(tmp_path, change):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        client = SimpleNamespace(me=SimpleNamespace(can_manage_bots=True), send_message=AsyncMock())
+        ctx.client = client
+        await wizard.begin(FakeMessage('/clone'))
+        state = wizard.active(MEMBER)
+        press = query(state)
+        async def change_access(*args, **kwargs):
+            if change == 'premium':
+                wizard.entitled = AsyncMock(return_value=False)
+            elif change == 'capacity':
+                wizard.quota = lambda uid: 0
+            elif change == 'encryption':
+                wizard.store.encrypted = lambda: False
+            elif change == 'capability':
+                client.me.can_manage_bots = False
+        press.answer.side_effect = change_access
+        await wizard.press(client, press, state.nonce + ':managed_create')
+        client.send_message.assert_not_awaited()
+    asyncio.run(scenario())
