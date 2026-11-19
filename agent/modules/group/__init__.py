@@ -333,58 +333,65 @@ def build(ctx):
 
     # -- /admins -----------------------------------------------------------
 
-    async def admins(client, message):
-        rows: list[tuple[str, str, str]] = []
-        extra = 0
+    class AdminListInputError(ValueError):
+        """Safe group-member reader validation."""
+
+    async def admins(client,message):
+        user,chat=getattr(message,'from_user',None),getattr(message,'chat',None)
+        async def membership():
+            current=await asyncio.wait_for(client.get_chat_member(chat.id,user.id),5)
+            if current.status not in (ChatMemberStatus.OWNER,ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.MEMBER) and not (current.status==ChatMemberStatus.RESTRICTED and getattr(current,'is_member',False) is True):
+                raise AdminListInputError('Current group membership required. Administrator list withheld.')
         try:
-            async for member in client.get_chat_members(
-                message.chat.id, filter=ChatMembersFilter.ADMINISTRATORS
-            ):
-                user = getattr(member, "user", None)
-                if user is None or getattr(getattr(member, "privileges", None), "is_anonymous", False):
-                    continue
-                if len(rows) >= MAX_ADMIN_ROWS:
-                    extra += 1
-                    continue
-                role = (
-                    "creator"
-                    if getattr(member, "status", None) is ChatMemberStatus.OWNER
-                    else "admin"
-                )
-                name = " ".join(
-                    part
-                    for part in (
-                        getattr(user, "first_name", "") or "",
-                        getattr(user, "last_name", "") or "",
-                    )
-                    if part
-                ) or (getattr(user, "username", "") or "member")
-                rows.append((role, name, str(user.id)))
-        except Exception as exc:  # noqa: BLE001 - honest failure, not an empty list
-            logger.exception("could not list administrators")
-            await reply(message, 
-                f"Could not read the administrator list: {type(exc).__name__}. "
-                "I need to be an administrator to see it."
-            )
-            return
-        if not rows:
-            await reply(message, "No administrators were returned for this group.")
-            return
-        table = Table(
-            headers=("Role", "Name", "ID"),
-            rows=tuple(rows),
-            aligns=("left", "left", "right"),
-        )
-        lines = [f"Plus {extra} more."] if extra else []
-        await reply(message, 
-            panel(
-                "Administrators",
-                icon=ctx.theme.emoji("shield"),
-                table=table,
-                lines=lines,
-                footer="Read live from Telegram — nobody is cached.",
-            )
-        )
+            if (getattr(chat,'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                    or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                    or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None):
+                raise AdminListInputError('Use your personal account inside the group.')
+            args=(getattr(message,'text','') or '').split()[1:]
+            if len(args)>1 or args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0])>2 or not 1<=int(args[0])<=14):
+                raise AdminListInputError('Use /admins [page], for example /admins 2.')
+            page=int(args[0]) if args else 1
+            await membership()
+            rows=[]
+            truncated=False
+            async def load():
+                nonlocal truncated
+                count=0
+                async for record in client.get_chat_members(chat.id,filter=ChatMembersFilter.ADMINISTRATORS,limit=201):
+                    count+=1
+                    if count>200:
+                        truncated=True
+                        break
+                    person=getattr(record,'user',None)
+                    uid=getattr(person,'id',None)
+                    if (type(uid) is not int or not 0<uid<2**63 or record.status not in (ChatMemberStatus.OWNER,ChatMemberStatus.ADMINISTRATOR)
+                            or getattr(getattr(record,'privileges',None),'is_anonymous',False)):
+                        continue
+                    name=' '.join(part for part in (getattr(person,'first_name','') or '',getattr(person,'last_name','') or '') if part) or getattr(person,'username',None) or 'member'
+                    name=' '.join(name.split())
+                    if len(name)>64:
+                        name=name[:64]+'…'
+                    rows.append(('creator' if record.status==ChatMemberStatus.OWNER else 'admin',name,str(uid)))
+            await asyncio.wait_for(load(),15)
+            await membership()
+            pages=max(1,(len(rows)+MAX_ADMIN_ROWS-1)//MAX_ADMIN_ROWS)
+            if page>pages:
+                raise AdminListInputError(f'Choose an administrator page from 1 to {pages}.')
+            current=rows[(page-1)*MAX_ADMIN_ROWS:page*MAX_ADMIN_ROWS]
+            extra=max(0,len(rows)-page*MAX_ADMIN_ROWS)
+            lines=[f'Plus {extra} more. /admins {page+1}'] if extra else []
+            if truncated:
+                lines.append('Showing a bounded snapshot from the first 200 returned records.')
+            if not current:
+                lines.append('No visible administrators were returned for this group.')
+            await reply(message,panel('Administrators',icon=ctx.theme.emoji('shield'),
+                table=Table(headers=('Role','Name','ID'),rows=tuple(current),aligns=('left','left','right')) if current else None,
+                lines=lines,footer=f'Page {page}/{pages} · /admins [page]',note='Live Telegram list. Anonymous admins hidden. Pages reload current state.'))
+        except AdminListInputError as error:
+            await reply(message,str(error))
+        except Exception as error:
+            logger.warning('#Errors Administrator list unavailable (%s)',type(error).__name__)
+            await reply(message,'Could not read the administrator list: service or membership unavailable. No partial list displayed.')
 
     # Reuse canonical warning-removal behavior; retain group command ownership
     # and the resetwarns audit/usage name without a second clearing implementation.

@@ -781,3 +781,26 @@ post-commit audit failure), existing empty/protected/all-clear group tests retai
 legacy wording expectations updated to richer shared card. Existing realPG warning
 concurrency/tenant/history/removal tests rerun in full suites. No production/live
 Telegram/deploy/merge. Tagging and paused localization unchanged.
+
+## /admins bounded live pagination
+
+Edited existing group/__init__.py reader, no new module/command. /admins [page]
+keeps ordinary current-member access (not an admin-only list), requires personal
+nonbot identity and group context. Current membership checked before Telegram list
+access and again before disclosure. Anonymous senders and left/banned/unverified
+callers refused, no Owner-ID bypass. Strict ASCII positive page1–14/no extra args.
+
+Fifteen visible admins/page, fresh command reads, anonymous administrator records
+still excluded. Only returned current admin/owner identities displayed; malformed
+identity skipped, long names64 characters plus visible ellipsis. Read bounded to201
+raw records/15s, at most200 considered; explicit cap notice if more returned, not a
+claim all group admins were counted. Membership checks5s. No frozen snapshots across
+pages; provider/membership failures withhold partial data, type-only #Errors logs and
+redacted user errors. No presence, historical rank, cached-rights or live-startup
+proof implied. No mutation/store changes, public group-visible output.
+
+Three test-first regressions initially failed: second page/strict args before list
+access, membership revoked before disclosure, anonymous exclusion/provider ValueError
+redaction. Existing list/role/overflow/failure tests retained. Full suites include
+realPG other feature tests; administrator Telegram list simulated, not live proof.
+Live bot startup cause remains unconfirmed without sanitized hosting traceback.

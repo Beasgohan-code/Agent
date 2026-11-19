@@ -694,3 +694,47 @@ def test_pin_refuses_bot_caller_and_missing_bot_pin_right(ctx):
     message.from_user=SimpleNamespace(id=11,is_bot=True)
     run(handlers(ctx)['pin'],client,message)
     client.pin_chat_message.assert_not_awaited()
+
+
+def test_admins_live_page_two_and_strict_page_syntax(ctx):
+    from unittest.mock import Mock
+    admins=[(ADMIN,100+i,f'Admin{i}',None) for i in range(20)]
+    message=FakeMessage('/admins 2')
+    run(handlers(ctx)['admins'],FakeClient(admins=admins),message)
+    text=str(message.replies[-1])
+    assert 'Page 2/2' in text and 'Admin19' in text and 'Admin0<' not in text
+    for arg in ('0','-1','９','2 extra','99'):
+        client=FakeClient(admins=admins)
+        client.get_chat_members=Mock(side_effect=AssertionError('Unexpected list read'))
+        message=FakeMessage('/admins '+arg)
+        run(handlers(ctx)['admins'],client,message)
+        client.get_chat_members.assert_not_called()
+
+
+def test_admins_rechecks_group_membership_before_disclosure(ctx):
+    from unittest.mock import AsyncMock
+    client=FakeClient()
+    client.get_chat_member=AsyncMock(side_effect=[member(MEMBER),member(ChatMemberStatus.LEFT)])
+    message=FakeMessage('/admins')
+    run(handlers(ctx)['admins'],client,message)
+    text=str(message.replies[-1])
+    assert 'membership' in text and 'Owner' not in text
+
+
+def test_admins_hides_anonymous_admins_and_redacts_provider_error(ctx):
+    class Anonymous(FakeClient):
+        def get_chat_members(self,*args,**kwargs):
+            async def stream():
+                yield SimpleNamespace(status=ADMIN,user=SimpleNamespace(id=22,first_name='SECRET_ANON'),privileges=SimpleNamespace(is_anonymous=True))
+                yield SimpleNamespace(status=ADMIN,user=SimpleNamespace(id=33,first_name='Visible'),privileges=SimpleNamespace(is_anonymous=False))
+            return stream()
+    message=FakeMessage('/admins')
+    run(handlers(ctx)['admins'],Anonymous(),message)
+    assert 'SECRET_ANON' not in str(message.replies[-1]) and 'Visible' in str(message.replies[-1])
+    class Failing(FakeClient):
+        def get_chat_members(self,*args,**kwargs):
+            raise ValueError('PRIVATE_TOKEN')
+    message=FakeMessage('/admins')
+    run(handlers(ctx)['admins'],Failing(),message)
+    assert 'PRIVATE_TOKEN' not in str(message.replies)
+    assert 'unavailable' in str(message.replies[-1])

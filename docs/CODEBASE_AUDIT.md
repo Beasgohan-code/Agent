@@ -892,3 +892,17 @@ Full realPG exact2317 passed27.26s, working2399 passed26.83s, no skips. Pyflakes
 compile/diff clean;252-name inventory review state updated. Paused localization and
 unrelated work excluded by selective docs staging. Tagging always available unchanged.
 No production/live Telegram/deployment/merge or full-command completion claim.
+
+## /admins live pages and member-authorized disclosure
+
+Existing reader now strict /admins [page],15 visible rows/page, bounded201 raw
+records/200 considered/15s, explicit cap notice, anonymous records hidden. Preserves
+ordinary current group-member access with personal identity and final membership
+recheck. No storage/mutation changes. No partial list/provider body exposure; long
+names visibly capped64 chars. Three regressions initially failed, existing list/
+overflow/role/failure tests retained. Full exact2320 passed26.69s, working2402
+passed25.23s, no skips; realPG enabled, Telegram listing simulated. Pyflakes/compile/
+diff clean;252-name inventory review state updated. Selective documentation stage
+excludes paused localization/unrelated work. No deployment/merge/production calls.
+Reported live startup failure remains unconfirmed: preflight and52 lifecycle tests
+previously passed, hosting traceback still required; this phase is not a startup fix.
