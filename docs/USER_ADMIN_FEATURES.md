@@ -859,3 +859,17 @@ details. If the writer already confirmed, reply says saved rather than suggestin
 rollback. Provider failures use safe generic text/type-only logs. Existing silent
 initial denial behavior and anonymous-permission risk warning retained. Storage
 and transaction history unchanged; no permission cache or new commands.
+
+
+## /promote and /demote safer shared targeting
+
+Both require bounded personal nonbot caller identity and live Add administrators
+rights. Demotion/shared rights lookup accepts strict positive ID/@username or a
+same-group personal reply, not a cross-group or sender-chat reply or an ambiguous
+reply plus explicit target. Lookup5s. Promotion retains optional16-character title
+and text-mention support. Final bot/caller/target snapshots cap delegated rights
+after the moderator probe, with no further read before the mutation. Existing
+limited whitelist, protected target checks, strict acknowledgement and partial
+title/audit reporting retained. Local validation distinguished from provider
+ValueError; no raw service messages. Acknowledged changes are not labelled failed
+just because reply delivery fails. No automatic retries or transactional-API claim.

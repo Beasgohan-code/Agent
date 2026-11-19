@@ -72,7 +72,7 @@
 | `/delpremium` | premium | all | Take premium away (owner) | Needs individual UI/behavior review |
 | `/delsudo` | ops | all | Revoke a scoped capability (owner) | Needs individual UI/behavior review |
 | `/delthumb` | renamer | all | Stop attaching a thumbnail | Needs individual UI/behavior review |
-| `/demote` | group | group | Demote an editable administrator | Needs individual UI/behavior review |
+| `/demote` | group | group | Demote an editable administrator | Targeted review/tests |
 | `/dkick` | moderation | group | Kick and delete the replied message | Needs individual UI/behavior review |
 | `/dmute` | moderation | group | Mute and delete the replied message | Needs individual UI/behavior review |
 | `/dwarn` | moderation | group | Warn and delete the replied message (admin) | Needs individual UI/behavior review |
@@ -156,7 +156,7 @@
 | `/premium` | premium | all | Your tier, its limits and what is left today | Needs individual UI/behavior review |
 | `/premiumusers` | premium | all | Everyone with premium (owner) | Needs individual UI/behavior review |
 | `/privaterules` | group | group | Send current group rules to your own DM | Targeted review/tests |
-| `/promote` | group | group | Promote a group member with optional 1–16 character title | Needs individual UI/behavior review |
+| `/promote` | group | group | Promote a group member with optional 1–16 character title | Targeted review/tests |
 | `/purge` | moderation | group | Delete the last N messages | Needs individual UI/behavior review |
 | `/q` | music | group | Browse the music queue: /q [page] | Needs individual UI/behavior review |
 | `/queue` | music | group | Browse the playback queue: /queue [page] | Needs individual UI/behavior review |

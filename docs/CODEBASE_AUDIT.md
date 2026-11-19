@@ -1029,3 +1029,30 @@ Validation: exact selective suite2340 passed31.45s; working2422 passed28.21s,
 no skips. Changed-handler/test pyflakes, compile and staged whitespace checks
 clean.252-name inventory updated only for the reviewed options. Unrelated dirty
 Music/clone/premium/localization edits preserved. No deployment/merge/live calls.
+
+## /promote and /demote target and outcome review
+
+Existing implementations edited in place. Shared resolver now validates strict
+positive64-bit IDs/usernames, bounds lookup5s, rejects cross-chat/sender-chat
+reply identities and ambiguous reply plus explicit target. /rights inherits safer
+target parsing. Promotion optional titles/entity compatibility retained. Personal
+nonbot bounded caller required. Initial rights check now bounded5s. After final
+moderator probe, bot/caller/target records are refreshed together with5s deadlines;
+explicit grant whitelist uses those final ceilings, without another stale-rights
+read between constructing privileges and mutation. Exact True acknowledgement,
+10s mutation bound, no Add administrators/anonymous grants remain unchanged.
+
+Authored AdminInputError is distinct from provider ValueError, so lookup/mutation
+failures never echo raw service bodies; type-only #Errors. Confirmed changes stay
+reported confirmed if result delivery fails; audit/title partial outcomes retained.
+External rights and Telegram effects are not transactional; no automatic retries.
+Eight regressions initially failed (provider errors, cross-group/invalid targeting,
+bot/oversized callers and final granular-right ceiling). Added post-ack reply-failure
+regression; existing title, false ack, protected target, rights and audit tests kept.
+No schema, persistence writer, module or command addition. No live Telegram calls.
+Validation: exact selective suite2349 passed26.95s; working2431 passed25.57s,
+no skips, disposable database. Telegram simulated; final granular-right regression
+and post-ack delivery regression included. Pyflakes/compile/staged whitespace clean.
+252-name inventory flags updated only for promote/demote. Recalled continuation
+order saved in existing requirements ledger; languages still deferred. Unrelated
+dirty work retained. No production/deployment/merge or full-completion claim.

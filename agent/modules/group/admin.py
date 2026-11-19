@@ -25,25 +25,35 @@ RIGHTS = (
 )
 
 
+class AdminInputError(ValueError):
+    """Safe locally authored input/permission failure, never provider text."""
+
+
 async def resolve(client, message):
-    replied = getattr(getattr(message, "reply_to_message", None), "from_user", None)
-    args = (getattr(message, "text", "") or "").split()
-    if len(args) > 2:
-        raise ValueError("Reply to a user or provide one username, mention or user ID.")
-    if replied is not None:
-        return replied
-    for entity in getattr(message, "entities", None) or []:
-        user = getattr(entity, "user", None)
-        if user is not None:
-            return user
-    if len(args) != 2:
-        raise ValueError("Reply to a user or provide a username, mention or user ID.")
-    value = args[1]
-    if value.isascii() and value.isdecimal() and len(value) < 20:
-        value = int(value)
-    elif not value.startswith("@"):
-        raise ValueError("Use a positive user ID or @username.")
-    return await client.get_users(value)
+    source=getattr(message,'reply_to_message',None)
+    args=(getattr(message,'text','') or '').split()
+    if len(args)>2:
+        raise AdminInputError('Reply to a user or provide one username, mention or user ID.')
+    if source is not None:
+        if (getattr(getattr(source,'chat',None),'id',None)!=message.chat.id
+                or getattr(source,'sender_chat',None) is not None):
+            raise AdminInputError('Reply to a personal member from this group.')
+        target=getattr(source,'from_user',None)
+        if target is None or len(args)!=1:
+            raise AdminInputError('Reply to a personal member without an additional target.')
+        return target
+    for entity in getattr(message,'entities',None) or []:
+        target=getattr(entity,'user',None)
+        if target is not None:
+            return target
+    if len(args)!=2:
+        raise AdminInputError('Reply to a user or provide a username, mention or user ID.')
+    value=args[1]
+    if value.isascii() and value.isdecimal() and len(value)<=19 and 0<int(value)<2**63:
+        value=int(value)
+    elif not re.fullmatch(r'@[A-Za-z0-9_]{1,32}',value):
+        raise AdminInputError('Use a positive user ID or @username.')
+    return await asyncio.wait_for(client.get_users(value),5)
 
 
 async def promotion_target(client,message):
@@ -53,10 +63,10 @@ async def promotion_target(client,message):
     source=getattr(message,'reply_to_message',None)
     if source is not None:
         if getattr(getattr(source,'chat',None),'id',None)!=message.chat.id:
-            raise ValueError('Reply to a member from this group.')
+            raise AdminInputError('Reply to a member from this group.')
         target=getattr(source,'from_user',None)
-        if target is None:
-            raise ValueError('Reply to a personal member identity.')
+        if target is None or getattr(source,'sender_chat',None) is not None:
+            raise AdminInputError('Reply to a personal member identity.')
         title=tail
         value=None
     else:
@@ -65,7 +75,7 @@ async def promotion_target(client,message):
             mentions=[getattr(entity,'user',None) for entity in getattr(message,'entities',None) or [] if getattr(entity,'user',None) is not None]
             if mentions:
                 return mentions[0],''
-            raise ValueError('Usage: /promote @username|positive_ID [title], or reply /promote [title].')
+            raise AdminInputError('Usage: /promote @username|positive_ID [title], or reply /promote [title].')
         value=args[0]
         title=args[1] if len(args)==2 else ''
         if value.isascii() and value.isdecimal() and len(value)<=19 and 0<int(value)<2**63:
@@ -75,10 +85,10 @@ async def promotion_target(client,message):
             mentions=[getattr(entity,'user',None) for entity in getattr(message,'entities',None) or [] if getattr(entity,'user',None) is not None]
             if mentions and not title:
                 return mentions[0],''
-            raise ValueError('Use a positive user ID or @username, or reply to a member.')
+            raise AdminInputError('Use a positive user ID or @username, or reply to a member.')
         target=None
     if len(title)>16 or any(unicodedata.category(char).startswith('C') for char in title):
-        raise ValueError('Administrator title must be 1–16 characters with no control/format characters. Omit it for no custom title. Telegram may reject emoji titles.')
+        raise AdminInputError('Administrator title must be 1–16 characters with no control/format characters. Omit it for no custom title. Telegram may reject emoji titles.')
     if target is None:
         target=await asyncio.wait_for(client.get_users(value),5)
     return target,title
@@ -171,15 +181,17 @@ def build(ctx):
         if getattr(chat, "type", None) not in (ChatType.GROUP, ChatType.SUPERGROUP):
             await reply(message, "Use administrator commands inside a group.")
             return
+        confirmed=False
         try:
             user = getattr(message, "from_user", None)
             # Settings and privilege changes require accountable personal identity.
             if (
                 type(getattr(user, "id", None)) is not int
-                or user.id <= 0
+                or not 0<user.id<2**63
+                or getattr(user,"is_bot",False)
                 or getattr(message, "sender_chat", None) is not None
             ):
-                raise ValueError(
+                raise AdminInputError(
                     "Use your personal identity for administrator changes."
                 )
             need = (
@@ -187,7 +199,7 @@ def build(ctx):
                 if command in ("promote", "demote")
                 else "can_manage_chat"
             )
-            if not await is_moderator(client, message, need=need):
+            if not await asyncio.wait_for(is_moderator(client, message, need=need),5):
                 await denied(
                     ctx, message, "You do not have the required group-admin permission."
                 )
@@ -199,42 +211,47 @@ def build(ctx):
                 target = await resolve(client, message)
             target_id = getattr(target, "id", None)
             if type(target_id) is not int or not 0 < target_id < 2**63:
-                raise ValueError("Invalid user identity.")
+                raise AdminInputError("Invalid user identity.")
             me = await asyncio.wait_for(client.get_me(),5)
             if target_id in (user.id, me.id):
-                raise ValueError(
+                raise AdminInputError(
                     "You cannot change your own or my administrator privileges here."
                 )
-            bot = await asyncio.wait_for(client.get_chat_member(chat.id, me.id),5)
-            caller = await asyncio.wait_for(client.get_chat_member(chat.id, user.id),5)
-            member = await asyncio.wait_for(client.get_chat_member(chat.id, target_id),5)
+            if not await asyncio.wait_for(is_moderator(client,message,need='can_promote_members'),5):
+                raise AdminInputError('Your Add administrators permission changed. No administrator change requested.')
+            # The final grant ceiling and protected-target checks use fresh records,
+            # after the final moderator probe, with no further reads before mutation.
+            bot,caller,member=await asyncio.gather(*(
+                asyncio.wait_for(client.get_chat_member(chat.id,uid),5)
+                for uid in (me.id,user.id,target_id)
+            ))
             if bot.status != ChatMemberStatus.ADMINISTRATOR or not getattr(
                 getattr(bot, "privileges", None), "can_promote_members", False
             ):
-                raise ValueError("I need the Add administrators permission.")
+                raise AdminInputError("I need the Add administrators permission.")
             if caller.status != ChatMemberStatus.OWNER and (
                 caller.status != ChatMemberStatus.ADMINISTRATOR
                 or not getattr(
                     getattr(caller, "privileges", None), "can_promote_members", False
                 )
             ):
-                raise ValueError(
+                raise AdminInputError(
                     "Your Add administrators permission is no longer available."
                 )
             if member.status == ChatMemberStatus.OWNER:
-                raise ValueError("The group owner cannot be changed here.")
+                raise AdminInputError("The group owner cannot be changed here.")
             if command == "promote" and member.status == ChatMemberStatus.ADMINISTRATOR:
-                raise ValueError(
+                raise AdminInputError(
                     "This user is already an administrator; no privileges changed."
                 )
             if command == "promote" and member.status != ChatMemberStatus.MEMBER:
-                raise ValueError(
+                raise AdminInputError(
                     "The user must be an unrestricted member of this group first."
                 )
             if command == "demote" and member.status != ChatMemberStatus.ADMINISTRATOR:
-                raise ValueError("This user is not an administrator.")
+                raise AdminInputError("This user is not an administrator.")
             if command == "demote" and not getattr(member, "can_be_edited", False):
-                raise ValueError(
+                raise AdminInputError(
                     "Telegram does not allow me to edit this administrator."
                 )
             granted = {
@@ -249,15 +266,14 @@ def build(ctx):
             privileges = ChatPrivileges(
                 **granted, can_promote_members=False, is_anonymous=False
             )
-            if not await asyncio.wait_for(is_moderator(client,message,need='can_promote_members'),5):
-                raise ValueError('Your Add administrators permission changed. No administrator change requested.')
             result = await asyncio.wait_for(client.promote_chat_member(
                 chat.id, target_id, privileges=privileges
             ),10)
             if result is not True:
-                raise ValueError(
+                raise AdminInputError(
                     "Telegram did not confirm the administrator change. Check current rights before retrying."
                 )
+            confirmed=True
             try:
                 ctx.chats.log(chat.id, command, actor_id=user.id, target_id=target_id)
                 audit=''
@@ -282,13 +298,12 @@ def build(ctx):
                 message,
                 f"User <code>{target_id}</code> {'promoted' if command == 'promote' else 'demoted'}."+audit,
             )
-        except (ValueError, AdminStateError) as error:
+        except (AdminInputError, AdminStateError) as error:
             await reply(message, html.escape(str(error)))
-        except Exception:
-            await reply(
-                message,
-                "Telegram administrator operation could not be confirmed. Check current rights before retrying.",
-            )
+        except Exception as error:
+            logging.getLogger(__name__).warning('#Errors Administrator change unavailable (%s)',type(error).__name__)
+            await reply(message,'Administrator change confirmed; response details unavailable. Inspect current rights before retrying.' if confirmed else
+                'Telegram administrator operation could not be confirmed. Check current rights before retrying.')
 
     def handler(command):
         async def call(client, message):

@@ -167,3 +167,23 @@ updates. Describe availability, persistence and failure honestly using generic
 storage wording; never imply a storage migration or remove failure warnings.
 Internal connection protocols, capability identifiers, driver imports, SQL,
 reference source paths and licenses must remain technically correct.
+
+
+## Continuation order (recalled scope, not a completion claim)
+
+1. Continue command-by-command behavior, authorization, rich UI and regression
+   review from COMMAND_INVENTORY; declarations alone do not finish a command.
+2. Preserve and finish the existing eight-tool feature work, FileStore clone
+   parity and main/clone UI separation, clone control/reconciliation, Music
+   source/session/recovery work and remaining moderation/general behavior. Use
+   the linked ledgers; validate pending dirty slices separately, never bulk-stage.
+3. Preserve premium/Owner limits, encrypted sender-owned credentials, isolation,
+   mandatory safety and three-slot optional approval. No duplicate implementations
+   or fake commands/providers; retain native rich tables and Plugin runtime.
+4. Keep the requested mention output/pacing and neutral implementation wording.
+   Test reliability/startup/logging without claiming an unresolved live failure
+   fixed; sanitized hosting evidence is still needed for the reported startup issue.
+5. Only after command work: inspect actual Videl1 language approach; release only
+   fully translated/optimized locales with no English fallback. English only now.
+6. Preserve licenses and unrelated work; verify isolated patches and working tree,
+   publish only on this branch. No merge/deploy/production changes.

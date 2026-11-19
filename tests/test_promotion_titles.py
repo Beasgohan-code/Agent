@@ -100,3 +100,74 @@ async def test_promotion_without_args_keeps_text_mention_target(tmp_path):
     await group.build(ctx)[1]['promote'](client,message)
     client.promote_chat_member.assert_awaited_once()
     client.get_users.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('command',['promote','demote'])
+@pytest.mark.parametrize('failure',['lookup','mutation'])
+async def test_admin_change_provider_valueerror_never_reaches_reply(tmp_path,command,failure):
+    ctx,client,message=setup(tmp_path,f'/{command} @target')
+    original=client.get_chat_member.side_effect
+    async def member(chat,uid):
+        record=await original(chat,uid)
+        if uid==22 and command=='demote':record.status=fixtures.ADMIN
+        return record
+    client.get_chat_member=AsyncMock(side_effect=member)
+    if failure=='lookup':client.get_users.side_effect=ValueError('PRIVATE_PROVIDER_DATA')
+    else:client.promote_chat_member.side_effect=ValueError('PRIVATE_PROVIDER_DATA')
+    await group.build(ctx)[1][command](client,message)
+    assert 'PRIVATE_PROVIDER_DATA' not in str(message.replies)
+    assert 'unconfirmed' in str(message.replies[-1]).lower() or 'could not be confirmed' in str(message.replies[-1]).lower()
+
+
+@pytest.mark.asyncio
+async def test_demote_rejects_cross_chat_reply_and_invalid_targets(tmp_path):
+    ctx,client,message=setup(tmp_path,'/demote')
+    message.reply_to_message=NS(chat=NS(id=-999),from_user=NS(id=22))
+    await group.build(ctx)[1]['demote'](client,message)
+    client.promote_chat_member.assert_not_awaited()
+    client.get_users.assert_not_awaited()
+    for target in ('0',str(2**63),'@bad!','@'):
+        ctx,client,message=setup(tmp_path,'/demote '+target)
+        await group.build(ctx)[1]['demote'](client,message)
+        client.get_users.assert_not_awaited()
+        client.promote_chat_member.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('command',['promote','demote'])
+async def test_admin_changes_refuse_bot_or_oversized_caller(tmp_path,command):
+    for user in (NS(id=11,is_bot=True),NS(id=2**63)):
+        ctx,client,message=setup(tmp_path,f'/{command} @target')
+        message.from_user=user
+        await group.build(ctx)[1][command](client,message)
+        client.get_users.assert_not_awaited()
+        client.promote_chat_member.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_promotion_caps_rights_using_final_caller_snapshot(tmp_path):
+    ctx,client,message=setup(tmp_path,'/promote @target')
+    checks=0
+    async def member(chat,uid):
+        nonlocal checks
+        if uid==11:checks+=1
+        rights=NS(can_promote_members=True,can_manage_chat=True,
+                  can_delete_messages=not(uid==11 and checks>=3))
+        return NS(status=fixtures.MEMBER if uid==22 else fixtures.ADMIN,privileges=rights,can_be_edited=True)
+    client.get_chat_member=AsyncMock(side_effect=member)
+    await group.build(ctx)[1]['promote'](client,message)
+    client.promote_chat_member.assert_awaited_once()
+    assert client.promote_chat_member.call_args.kwargs['privileges'].can_delete_messages is False
+
+
+@pytest.mark.asyncio
+async def test_acknowledged_promotion_is_not_reported_failed_when_reply_fails(tmp_path,monkeypatch):
+    import agent.modules.group.admin as implementation
+    ctx,client,message=setup(tmp_path,'/promote @target')
+    replies=AsyncMock(side_effect=[TimeoutError('PRIVATE_REPLY_DATA'),None])
+    monkeypatch.setattr(implementation,'reply',replies)
+    await group.build(ctx)[1]['promote'](client,message)
+    client.promote_chat_member.assert_awaited_once()
+    assert 'Administrator change confirmed' in replies.await_args_list[-1].args[1]
+    assert 'PRIVATE_REPLY_DATA' not in str(replies.await_args_list[-1])
