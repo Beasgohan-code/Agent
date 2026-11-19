@@ -1,4 +1,4 @@
-"""Real PostgreSQL opt-in tagging foundation; no scraped member lists."""
+"""Real PostgreSQL retrieved-member jobs and legacy registry compatibility."""
 import asyncio
 import os
 import uuid
@@ -60,16 +60,16 @@ async def test_tag_controls_current_authority_and_membership(tmp_path):
         query=NS(message=message,from_user=NS(id=22),data=f'tagopt:{message.chat.id}:join',answer=AsyncMock())
         client.get_chat_member=AsyncMock(return_value=NS(status=S.MEMBER))
         await ctx.actions.dispatch(client,query)
-        assert (await operate(db,message.chat.id,user=22))['joined']
+        assert not (await operate(db,message.chat.id,user=22))['joined']
         client.get_chat_member=AsyncMock(return_value=NS(status=S.LEFT))
         query.from_user=NS(id=33)
         await ctx.actions.dispatch(client,query)
-        assert (await operate(db,message.chat.id))['count']==1
+        assert (await operate(db,message.chat.id))['count']==0
         message.text='/allsettings off'
         from test_moderation import FakeClient
         await commands['allsettings'](FakeClient(),message)
         assert 'always available' in str(message.replies[-1])
-        assert (await operate(db,message.chat.id))['count']==1
+        assert (await operate(db,message.chat.id))['count']==0
     finally:
         await db.close()
 
@@ -163,8 +163,8 @@ async def test_tag_batch_failure_no_replay_or_silent_restart():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('outcome',['normal','timeout','rights_lost','emoji'])
-async def test_tag_command_sends_only_opted_in_batch_and_real_stop(tmp_path,outcome):
+@pytest.mark.parametrize('outcome',['normal','timeout','rights_lost','emoji','floodwait'])
+async def test_tag_command_sends_retrieved_members_and_real_stop(tmp_path,outcome):
     from test_mute_target_parity import setup
     from agent.platform.group_tagging import operate
     from agent.modules import group
@@ -178,12 +178,20 @@ async def test_tag_command_sends_only_opted_in_batch_and_real_stop(tmp_path,outc
     ctx.db=db
     ctx.actions=ActionRouter()
     client.send_message=AsyncMock(return_value=NS(id=500))
+    from pyrogram.enums import ChatMemberStatus as Status
+    def listing(*args,**kwargs):
+        async def stream():
+            for uid in range(21,29):
+                yield NS(user=NS(id=uid,is_bot=False,is_deleted=False),status=Status.MEMBER)
+        return stream()
+    client.get_chat_members=listing
     try:
         await operate(db,message.chat.id)
-        for uid in range(21,29):
-            await operate(db,message.chat.id,join=True,user=uid)
         if outcome=='timeout':
             client.send_message.side_effect=TimeoutError('PRIVATE_TOKEN')
+        if outcome=='floodwait':
+            from pyrogram.errors import FloodWait
+            client.send_message.side_effect=FloodWait(9)
         if outcome=='rights_lost':
             from pyrogram.enums import ChatMemberStatus as S
             checks=0
@@ -196,20 +204,26 @@ async def test_tag_command_sends_only_opted_in_batch_and_real_stop(tmp_path,outc
             client.get_chat_member=AsyncMock(side_effect=member)
         commands=group.build(ctx)[1]
         await commands['eall' if outcome=='emoji' else 'tagall'](client,message)
+        for job in ctx.jobs.for_owner(message.from_user.id):
+            await job.task
         if outcome not in ('normal','emoji'):
-            assert client.send_message.await_count==(1 if outcome=='timeout' else 0)
+            assert client.send_message.await_count==(1 if outcome in ('timeout','floodwait') else 0)
             async with db._pool.acquire() as conn:
-                assert await conn.fetchval('SELECT state FROM agent_tag_runs WHERE tenant=$1',db.scope)=='review'
+                assert await conn.fetchval('SELECT state FROM agent_tag_runs WHERE tenant=$1',db.scope)==('paused' if outcome=='rights_lost' else 'review')
             assert 'PRIVATE_TOKEN' not in str(message.replies)
+            if outcome=='floodwait':
+                async with db._pool.acquire() as conn:
+                    assert await conn.fetchval('SELECT last_attempt_at>now() FROM agent_tag_runs WHERE tenant=$1',db.scope)
+                assert '9s' in str(message.replies[-1])
             return
         client.send_message.assert_awaited_once()
         body=client.send_message.call_args.kwargs['text']
-        assert body.count('tg://user?id=')==5 and 'id=26' not in body
+        assert body.count('tg://user?id=')==8 and 'id=28' in body
         if outcome=='emoji':
             assert '>Member ' not in body
             async with db._pool.acquire() as conn:
                 assert await conn.fetchval('SELECT style FROM agent_tag_runs WHERE tenant=$1',db.scope)=='emoji'
-        assert 'paused' in str(message.replies[-1])
+        assert 'completed' in str(message.replies[-1])
         async with db._pool.acquire() as conn:
             request=await conn.fetchval('SELECT id FROM agent_tag_runs WHERE tenant=$1',db.scope)
         query=NS(message=message,from_user=message.from_user,data=f'tagrun:{request}:stop',answer=AsyncMock())
@@ -218,4 +232,62 @@ async def test_tag_command_sends_only_opted_in_batch_and_real_stop(tmp_path,outc
         await ctx.actions.dispatch(client,query)
         assert client.send_message.await_count==1
     finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stop_after_first',[False,True])
+async def test_retrieved_member_job_20_per_message_auto_pause_and_stop(tmp_path,monkeypatch,stop_after_first):
+    from test_mute_target_parity import setup
+    from agent.modules import group
+    from agent.platform.actions import ActionRouter
+    from pyrogram.enums import ChatMemberStatus as S
+    url=os.environ.get('AGENT_TEST_DATABASE_URL')
+    if not url:
+        pytest.skip('PostgreSQL required')
+    db=Database(url,scope='tagauto:'+uuid.uuid4().hex,required=True)
+    assert await db.connect()
+    ctx,client,message=setup(tmp_path,'@all')
+    ctx.db=db
+    ctx.actions=ActionRouter()
+    client.send_message=AsyncMock(return_value=NS(id=500))
+    def listing(*args,**kwargs):
+        async def stream():
+            for uid in range(21,46):
+                yield NS(user=NS(id=uid,is_bot=uid==44,is_deleted=uid==45),status=S.MEMBER)
+        return stream()
+    client.get_chat_members=listing
+    commands=group.build(ctx)[1]
+    pauses=[]
+    original_sleep=asyncio.sleep
+    async def simulated_pause(seconds):
+        if seconds!=5:
+            return await original_sleep(seconds)
+        pauses.append(seconds)
+        if stop_after_first:
+            message.text='/tagabort'
+            await commands['tagabort'](client,message)
+        else:
+            async with db._pool.acquire() as conn:
+                await conn.execute("UPDATE agent_tag_runs SET last_attempt_at=now()-interval '6 seconds' WHERE tenant=$1",db.scope)
+    monkeypatch.setattr(asyncio,'sleep',simulated_pause)
+    try:
+        await commands['all'](client,message)
+        tasks=[job.task for job in ctx.jobs.for_owner(message.from_user.id)]
+        await asyncio.gather(*tasks,return_exceptions=True)
+        bodies=[call.kwargs['text'] for call in client.send_message.await_args_list]
+        assert len(bodies)==(1 if stop_after_first else 2)
+        assert bodies[0].count('tg://user?id=')==20
+        if not stop_after_first:
+            assert bodies[1].count('tg://user?id=')==3
+        assert pauses==[5]
+        assert 'id=44' not in ''.join(bodies) and 'id=45' not in ''.join(bodies)
+        async with db._pool.acquire() as conn:
+            row=await conn.fetchrow('SELECT source,state,total,members FROM agent_tag_runs WHERE tenant=$1',db.scope)
+            assert await conn.fetchval('SELECT count(*) FROM agent_tag_members WHERE tenant=$1',db.scope)==0
+        assert row['source']=='group' and row['total']==23
+        assert row['state']==('stopped' if stop_after_first else 'completed')
+        assert not row['members']
+    finally:
+        await ctx.jobs.shutdown()
         await db.close()

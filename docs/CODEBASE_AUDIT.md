@@ -906,3 +906,21 @@ diff clean;252-name inventory review state updated. Selective documentation stag
 excludes paused localization/unrelated work. No deployment/merge/production calls.
 Reported live startup failure remains unconfirmed: preflight and52 lifecycle tests
 previously passed, hosting traceback still required; this phase is not a startup fix.
+
+## Retrieved-member automatic mentions (supersedes opt-in UI)
+
+User-directed replacement: @all and /all /tagall retrieve Telegram group members;
+@eall /eall /etagall use randomized emoji labels. No joining or enable switch.
+Bounded 2001 raw reads/2000 considered/60s; excludes bots, deleted/noncurrent IDs,
+deduplicates, discloses incomplete roster. Native JobQueue advances durable group
+snapshots 20/message with 5s pauses, current admin/member checks before each send,
+Stop cancels local jobs plus durable state. FloodWait persists a future cooldown,
+leaves review, reports seconds; uncertain delivery never retries automatically.
+Legacy source migration additive/default optin; old runs require abort/restart.
+Settings/stats now information only; old Join/Leave buttons retire without writes.
+Real PostgreSQL suites and simulated Telegram tests recorded in this phase's commit;
+no live Telegram, deployment, merge, localization release or startup-fix claim.
+Validation: exact staged code2323 passed26.32s; working tree2405 passed24.62s,
+no skips, disposable realPG. Telegram provider mocked; pacing simulated in focused
+jobs tests (13 passed). Pyflakes and staged whitespace checks clean. Selective
+staging preserves unrelated localization/music/premium and other dirty work.

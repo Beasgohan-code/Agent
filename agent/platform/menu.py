@@ -33,13 +33,13 @@ SYNC_TIMEOUT = 10.0
 
 #: One line per command, kept short — this is menu text, not documentation.
 DESCRIPTIONS: dict[str, str] = {
-    "etagall": "Emoji mentions for opted-in members (admin)",
-    "eall": "Alias of etagall: opted-in emoji mentions",
-    "tagall": "Mention opted-in members, 5 per manual batch (admin)",
-    "all": "Alias of tagall: opted-in mentions only",
+    "etagall": "Emoji mentions for retrieved group members (admin)",
+    "eall": "Alias of etagall; also @eall",
+    "tagall": "Mention retrieved group members, 20 per message (admin)",
+    "all": "Alias of tagall; also @all",
     "tagabort": "Stop an open mention run (admin)",
-    "allsettings": "View mention info and Join/Leave buttons (admin)",
-    "tagstats": "Show opt-in mention counts (admin)",
+    "allsettings": "View group mention limits and latest run (admin)",
+    "tagstats": "Show latest group mention snapshot and progress (admin)",
     "tpromote": "Temporarily promote a member (group owner)",
     "lang": "Choose a supported language",
     # core

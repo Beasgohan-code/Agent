@@ -804,3 +804,15 @@ access, membership revoked before disclosure, anonymous exclusion/provider Value
 redaction. Existing list/role/overflow/failure tests retained. Full suites include
 realPG other feature tests; administrator Telegram list simulated, not live proof.
 Live bot startup cause remains unconfirmed without sanitized hosting traceback.
+
+
+## Automatic group mentions (supersedes personal enrollment)
+
+Admins can use @all, /all or /tagall to mention members returned by Telegram;
+@eall, /eall and /etagall use random emoji mention labels. No joining or group
+on/off step. Sends up to20 mentions/message, automatically waits5 seconds between
+batches. Snapshot capped at2000 returned records; Telegram may expose only part
+of the group. Bots/deleted users excluded; current membership/authority rechecked.
+Use Stop or /tagabort to stop future batches (cannot recall an in-flight message).
+FloodWait and uncertain delivery stop for review, without automatic retry.
+/allsettings and /tagstats show limits and last-run progress, not Join/Leave.

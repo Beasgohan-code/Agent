@@ -46,7 +46,7 @@ def render():
         if name not in names:
             lines.append(f'- `/{name}` — not implemented/registered.')
     lines+=['', '- Existing `/cancel` is not repurposed as mass-tag cancellation.',
-            '- Tagging now has an opt-in registry and durable manual batches of five/30 seconds with authorized Resume/Stop; emoji variants and literal @all/@eall triggers share the same consent/rate limits. No invented member/presence lists.',
+            '- Tagging now retrieves up to 2000 returned group-member records and runs native jobs,20 mentions/message with5-second pauses and authorized Stop. No joining required; incomplete Telegram lists are disclosed.',
             '- Temporary promotion: /tpromote now has owner-only grants, durable deadlines, status/review resolution and a native expiry worker. Uncertain results stop for review; no blind retries.',
             '- Translation/free-provider and broadcast pin/cleanup parity remain incomplete; an existing declaration is not full upstream parity.', '',
             '## One-by-one improvement order', '',
@@ -54,7 +54,7 @@ def render():
             '2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.',
             '3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Warning-removal cards now share one strict live-authorized path. New /warn cards include exact-warning removal controls; /warnings and /warns have self/admin access checks and live pagination.',
             '4. Timed promotion: owner-only /tpromote with durable admission, bounded expiry worker and status/manual-review resolution; no live-provider proof.',
-            '5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.',
+            '5. Tagging family: retrieved-member snapshots, native jobs,20/5s batches, real Stop/Resume; no guarantee Telegram exposes everyone.',
             '6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.', '']
     return '\n'.join(lines)
 

@@ -28,9 +28,9 @@
 | `/admins` | group | group | List this group's administrators | Targeted review/tests |
 | `/afk` | group | group | Toggle your group away status; optional public reason | Targeted review/tests |
 | `/alive` | core | all | Live bot health and uptime | Needs individual UI/behavior review |
-| `/all` | group | group | Alias of tagall: opted-in mentions only | Targeted review/tests |
+| `/all` | group | group | Alias of tagall; also @all | Targeted review/tests |
 | `/allowlist` | moderation | group | View/add URL-lock domain exemptions | Needs individual UI/behavior review |
-| `/allsettings` | group | group | View mention info and Join/Leave buttons (admin) | Targeted review/tests |
+| `/allsettings` | group | group | View group mention limits and latest run (admin) | Targeted review/tests |
 | `/anonadmin` | group | group | Allow anonymous group-admin checks (unsafe) | Needs individual UI/behavior review |
 | `/antispam` | moderation | group | Anti-spam policy for this group | Targeted review/tests |
 | `/appeal` | reports | all | Appeal a moderation action | Needs individual UI/behavior review |
@@ -76,11 +76,11 @@
 | `/dkick` | moderation | group | Kick and delete the replied message | Needs individual UI/behavior review |
 | `/dmute` | moderation | group | Mute and delete the replied message | Needs individual UI/behavior review |
 | `/dwarn` | moderation | group | Warn and delete the replied message (admin) | Needs individual UI/behavior review |
-| `/eall` | group | group | Alias of etagall: opted-in emoji mentions | Targeted review/tests |
+| `/eall` | group | group | Alias of etagall; also @eall | Targeted review/tests |
 | `/encode` | encoder | private | Encode a replied video | Needs individual UI/behavior review |
 | `/end` | music | group | Stop playback and clear the music queue | Needs individual UI/behavior review |
 | `/errors` | ops | all | Private error incident history (owner) | Needs individual UI/behavior review |
-| `/etagall` | group | group | Emoji mentions for opted-in members (admin) | Targeted review/tests |
+| `/etagall` | group | group | Emoji mentions for retrieved group members (admin) | Targeted review/tests |
 | `/events` | ops | all | Recent operational events (owner) | Needs individual UI/behavior review |
 | `/fedadmins` | federations | all | List federation administrators | Needs individual UI/behavior review |
 | `/feddemote` | federations | all | Remove a federation administrator | Needs individual UI/behavior review |
@@ -230,8 +230,8 @@
 | `/sudoperms` | ops | all | Capability catalog or user grants (owner) | Needs individual UI/behavior review |
 | `/swarn` | moderation | group | Warn without public success confirmation (admin) | Needs individual UI/behavior review |
 | `/tagabort` | group | group | Stop an open mention run (admin) | Targeted review/tests |
-| `/tagall` | group | group | Mention opted-in members, 5 per manual batch (admin) | Targeted review/tests |
-| `/tagstats` | group | group | Show opt-in mention counts (admin) | Targeted review/tests |
+| `/tagall` | group | group | Mention retrieved group members, 20 per message (admin) | Targeted review/tests |
+| `/tagstats` | group | group | Show latest group mention snapshot and progress (admin) | Targeted review/tests |
 | `/tban` | moderation | group | Temporarily ban a member | Needs individual UI/behavior review |
 | `/testrename` | renamer | all | Preview a rename | Needs individual UI/behavior review |
 | `/tiktok` | utilities | all | TikTok profile-link card; no live account lookup | Needs individual UI/behavior review |
@@ -273,7 +273,7 @@
 - All originally requested command names are declared. This is not full feature parity or live verification.
 
 - Existing `/cancel` is not repurposed as mass-tag cancellation.
-- Tagging now has an opt-in registry and durable manual batches of five/30 seconds with authorized Resume/Stop; emoji variants and literal @all/@eall triggers share the same consent/rate limits. No invented member/presence lists.
+- Tagging now retrieves up to 2000 returned group-member records and runs native jobs,20 mentions/message with5-second pauses and authorized Stop. No joining required; incomplete Telegram lists are disclosed.
 - Temporary promotion: /tpromote now has owner-only grants, durable deadlines, status/review resolution and a native expiry worker. Uncertain results stop for review; no blind retries.
 - Translation/free-provider and broadcast pin/cleanup parity remain incomplete; an existing declaration is not full upstream parity.
 
@@ -283,5 +283,5 @@
 2. Ban/unban: shared target parsing, rich cards and exact acknowledgement in this phase. One-tap Unban control remains separate work.
 3. Kick: rich cards/shared targeting/live checks and acknowledged two-step recovery implemented. Base /warn now has a rich card and authorized View warnings control. Warning-removal cards now share one strict live-authorized path. New /warn cards include exact-warning removal controls; /warnings and /warns have self/admin access checks and live pagination.
 4. Timed promotion: owner-only /tpromote with durable admission, bounded expiry worker and status/manual-review resolution; no live-provider proof.
-5. Tagging family: registry, settings, rate-limited real batches and bound Resume/Stop controls.
+5. Tagging family: retrieved-member snapshots, native jobs,20/5s batches, real Stop/Resume; no guarantee Telegram exposes everyone.
 6. Remaining declared commands: review module by module using this inventory; do not label untouched commands polished.
