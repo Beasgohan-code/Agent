@@ -150,7 +150,7 @@ def extra_handlers(ctx):
 
 
 def build(ctx):
-    persistence = ('PostgreSQL confirmed the write.' if getattr(ctx, 'db', None) is not None
+    persistence = ('Database confirmed the write.' if getattr(ctx, 'db', None) is not None
                    else 'Standalone settings compatibility mode.')
     async def _guard(client, message) -> bool:
         from ..moderation import is_moderator

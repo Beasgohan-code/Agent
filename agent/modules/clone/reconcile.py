@@ -110,7 +110,7 @@ class CloneReconciler:
             config, pending, state = await self._configuration(bot_id, revision, generation)
             worker = await apply(config)
             if not getattr(worker, 'owner', None):
-                raise ReconciliationError('Worker PostgreSQL ownership unavailable')
+                raise ReconciliationError('Worker Database ownership unavailable')
             if pending:
                 return await self.acknowledge(bot_id, revision=revision, attempt=attempt, worker_owner=worker.owner, generation=config.lifecycle_generation)
             # Restart of an acknowledged revision must still verify ownership

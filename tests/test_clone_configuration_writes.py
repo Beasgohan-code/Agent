@@ -13,7 +13,7 @@ from agent.platform.secrets import SecretBox
 from test_atomic_clones import KEY
 from test_clone import build, TOKEN_A, MEMBER
 
-pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 
 
 def test_canonical_writes_cas_duplicates_restart_and_redaction(tmp_path):

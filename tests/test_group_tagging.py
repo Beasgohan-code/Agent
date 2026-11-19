@@ -13,7 +13,7 @@ async def test_tag_registry_always_available_scope_and_consent():
     from agent.platform.group_tagging import operate
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='tags:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:
@@ -47,7 +47,7 @@ async def test_tag_controls_current_authority_and_membership(tmp_path):
     from pyrogram.enums import ChatMemberStatus as S
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='tagui:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     ctx,client,message=setup(tmp_path,'/allsettings')
@@ -89,7 +89,7 @@ async def test_tag_registry_capacity_and_concurrent_withdrawal():
     from agent.platform.group_tagging import operate,TagError
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='tagcap:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:
@@ -111,7 +111,7 @@ async def test_tag_run_claim_concurrency_rate_and_withdrawal():
     from agent.platform.group_tagging import operate,start_run,claim_batch,settle_batch,stop_run,TagError
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='tagrun:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:
@@ -141,7 +141,7 @@ async def test_tag_batch_failure_no_replay_or_silent_restart():
     from agent.platform.group_tagging import operate,start_run,claim_batch,settle_batch,stop_run,TagError
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='taguncertain:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:
@@ -171,7 +171,7 @@ async def test_tag_command_sends_retrieved_members_and_real_stop(tmp_path,outcom
     from agent.platform.actions import ActionRouter
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='tagsend:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     ctx,client,message=setup(tmp_path,'@eall' if outcome=='emoji' else '/tagall Hello <team>' if outcome=='custom' else '/tagall')
@@ -257,7 +257,7 @@ async def test_retrieved_member_job_20_per_message_auto_pause_and_stop(tmp_path,
     from pyrogram.enums import ChatMemberStatus as S
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='tagauto:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     ctx,client,message=setup(tmp_path,'@all Hello everyone')

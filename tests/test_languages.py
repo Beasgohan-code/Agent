@@ -58,7 +58,7 @@ async def test_pg_language_preferences_restart_isolation_and_no_fallback(tmp_pat
     from agent.platform.db import Database
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     scope='language:'+uuid.uuid4().hex
     db=Database(url,scope=scope,required=True)
     assert await db.connect()

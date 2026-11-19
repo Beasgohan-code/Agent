@@ -13,7 +13,7 @@ async def test_warning_policy_pg_atomic_fields_isolation_and_restart(tmp_path):
     from agent.platform.db import Database
     from agent.platform.chats import ChatStore
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='warnpolicy:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     store=ChatStore(tmp_path,db=db)

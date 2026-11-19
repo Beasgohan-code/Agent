@@ -120,7 +120,7 @@ class PremiumBook:
         """Give premium for *days* (0 = lifetime). Returns the new expiry."""
         if self._db is not None:
             from .entitlements import EntitlementError
-            raise EntitlementError("Awaited PostgreSQL entitlement grant required.")
+            raise EntitlementError("Awaited Database entitlement grant required.")
         moment = time.time() if now is None else now
         current = self.record(user_id) or {}
         if days <= 0:
@@ -141,7 +141,7 @@ class PremiumBook:
     def revoke(self, user_id: int) -> bool:
         if self._db is not None:
             from .entitlements import EntitlementError
-            raise EntitlementError("Awaited PostgreSQL entitlement revocation required.")
+            raise EntitlementError("Awaited Database entitlement revocation required.")
         removed = self._data["users"].pop(str(int(user_id)), None)
         if removed is not None:
             self._save()

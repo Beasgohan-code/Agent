@@ -15,7 +15,7 @@ class Greetings:
         if kind not in ('welcome', 'goodbye'):
             raise ValueError('Unknown greeting kind')
         if not self.db.connected or self.db._pool is None:
-            raise RuntimeError('PostgreSQL greetings unavailable')
+            raise RuntimeError('Database greetings unavailable')
         return self.db._pool
 
     async def get(self, group_id, kind, legacy):

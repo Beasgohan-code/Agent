@@ -310,7 +310,7 @@ def command_screen(user, theme, name, *, active=None):
                      ('Permissions', ', '.join(manifest.permissions) or 'None declared'),
                      ('Dependencies', ', '.join(manifest.dependencies) or 'None declared'),
                      ('Required credential names', ', '.join(manifest.required_credentials) or 'None declared'),
-                     ('Required capabilities', ', '.join(manifest.required_capabilities) or 'None declared')])
+                     ('Required capabilities', ', '.join('persistent storage' if item=='postgresql' else item for item in manifest.required_capabilities) or 'None declared')])
     else:
         rows.append(('Tool', 'Built-in navigation · no feature requirements declared here'))
     body = panel(f'/{name}', icon=theme.emoji(PROFILES[owner][1] if owner else 'question'),

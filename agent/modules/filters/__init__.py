@@ -109,7 +109,7 @@ def build(ctx):
         await operate(ctx, message.chat.id, name=name, body=body, actor=message.from_user.id)
         await reply(message, panel('Filter updated', icon=ctx.theme.emoji('check'),
             lines=[f"Filter <code>{html.escape(name)}</code> saved."],
-            note='Saved. Configured PostgreSQL writes are committed before confirmation.', footer='/filters · /filters show name'))
+            note='Saved. Configured Database writes are committed before confirmation.', footer='/filters · /filters show name'))
 
     async def listing(client, message):
         if not await _guard(client, message):

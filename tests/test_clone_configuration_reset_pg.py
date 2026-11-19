@@ -13,7 +13,7 @@ from test_atomic_clones import KEY
 from test_clone import build, MEMBER, OWNER, TOKEN_A, TOKEN_B
 from test_clone_control_centre import private_query
 
-pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 
 @pytest.mark.parametrize('field', ['log_channel', 'storage_channel'])
 def test_reset_preview_save_isolated_and_stale_rejected(tmp_path, field):

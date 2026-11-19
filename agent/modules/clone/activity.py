@@ -18,7 +18,7 @@ async def read_activity(store, bot_id, actor_id, page=0):
         raise ControlConflict('Invalid activity request.')
     db = store._db
     if db is None or not db.connected or db._pool is None:
-        raise ControlConflict('Durable activity requires available PostgreSQL storage.')
+        raise ControlConflict('Durable activity requires available storage.')
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

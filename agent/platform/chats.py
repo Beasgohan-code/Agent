@@ -114,7 +114,7 @@ class ChatStore:
 
     def _require_local_warnings(self):
         if self._db is not None:
-            raise RuntimeError("Awaited PostgreSQL warning operation required.")
+            raise RuntimeError("Awaited Database warning operation required.")
 
     async def aadd_warning(self, chat_id, user_id, *, moderator_id, reason, warning_id=None):
         from .warnings import operate
@@ -225,7 +225,7 @@ class ChatStore:
         """Flip the trusted flag and return its new value."""
         if self._db is not None:
             from .group_trust import TrustError
-            raise TrustError("Awaited PostgreSQL trust update required.")
+            raise TrustError("Awaited Database trust update required.")
         member = self._member(chat_id, user_id)
         member["trusted"] = not member.get("trusted", False)
         self._save()
@@ -244,7 +244,7 @@ class ChatStore:
     def save_antispam(self, chat_id: int, policy: dict) -> dict:
         if self._db is not None:
             from .antispam import PolicyError
-            raise PolicyError("Awaited PostgreSQL protection update required.")
+            raise PolicyError("Awaited Database protection update required.")
         self._chat(chat_id)["settings"]["antispam"] = policy
         self._save()
         return self.antispam(chat_id)
@@ -260,7 +260,7 @@ class ChatStore:
     def set_filter(self, chat_id: int, name: str, reply: str, *, by: int) -> None:
         if self._db is not None:
             from .group_filters import FilterError
-            raise FilterError("Awaited PostgreSQL filter update required.")
+            raise FilterError("Awaited Database filter update required.")
         settings = self._chat(chat_id)["settings"]
         filters = settings.setdefault("filters", {})
         filters[name.strip().lower()[:64]] = reply[:2000]
@@ -270,7 +270,7 @@ class ChatStore:
     def remove_filter(self, chat_id: int, name: str) -> bool:
         if self._db is not None:
             from .group_filters import FilterError
-            raise FilterError("Awaited PostgreSQL filter update required.")
+            raise FilterError("Awaited Database filter update required.")
         settings = self._chat(chat_id)["settings"]
         filters = settings.setdefault("filters", {})
         removed = filters.pop(name.strip().lower()[:64], None) is not None

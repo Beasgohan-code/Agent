@@ -26,7 +26,7 @@ def test_configured_database_failure_does_not_fall_back(tmp_path):
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.getenv('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.getenv('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_real_postgres_restart_scope_and_authoritative_reads():
     async def scenario():
         scope = 'post-template-test:' + uuid.uuid4().hex

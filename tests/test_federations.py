@@ -58,7 +58,7 @@ def test_pg_federation_uniqueness_isolation_permissions_and_rollback(tmp_path):
         return await service_operate(*args, client=owner_client, **kwargs)
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "federations-test:" + uuid.uuid4().hex

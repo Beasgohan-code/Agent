@@ -53,7 +53,7 @@ async def operate(store,group,*,actor=None,changes=None):
             store.log(group,'warnpolicy',actor_id=actor,reason=f"{current['limit']}:{current['action']}")
         return current
     if not db.connected or getattr(db,'_pool',None) is None:
-        raise PolicyError('PostgreSQL warning policy unavailable. No policy change confirmed.')
+        raise PolicyError('Database warning policy unavailable. No policy change confirmed.')
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

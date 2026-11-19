@@ -109,7 +109,7 @@ def test_playlist_never_starts_playback_from_idle(monkeypatch):
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_real_pg_playlist_quota_is_atomic_and_data_is_scoped(monkeypatch):
     async def scenario():
         monkeypatch.setattr(music_lists, 'check_target', AsyncMock())

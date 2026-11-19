@@ -12,7 +12,7 @@ class PostTemplates:
 
     def pool(self):
         if not self.db.connected or self.db._pool is None:
-            raise RuntimeError('PostgreSQL template settings unavailable')
+            raise RuntimeError('Database template settings unavailable')
         return self.db._pool
 
     async def get(self, group_id, legacy):

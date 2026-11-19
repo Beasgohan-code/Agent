@@ -37,7 +37,7 @@ async def change(
     db = getattr(ctx, "db", None)
     if db is None or not db.connected or getattr(db, "_pool", None) is None:
         raise FederationError(
-            "PostgreSQL federation roles unavailable. No changes confirmed."
+            "Database federation roles unavailable. No changes confirmed."
         )
     try:
         async with db._pool.acquire(timeout=5) as conn:

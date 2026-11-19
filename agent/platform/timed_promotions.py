@@ -34,7 +34,7 @@ class PromotionError(RuntimeError):
 
 def pool(db):
     if db is None or not db.connected or getattr(db,'_pool',None) is None:
-        raise PromotionError('Temporary promotions require available PostgreSQL.')
+        raise PromotionError('Temporary promotions require available storage.')
     return db._pool
 
 

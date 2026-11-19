@@ -63,7 +63,7 @@ def test_pg_archive_link_creation_redemption_scope_replay_and_partial_delivery()
     from agent.platform.db import Database
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "archive-links:" + uuid.uuid4().hex
@@ -196,7 +196,7 @@ def test_pg_archive_revoke_authority_and_mid_delivery_stop():
     from agent.platform.db import Database
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         db = Database(
@@ -271,7 +271,7 @@ def test_pg_custom_selection_persists_and_delivers_only_selected_messages():
     from agent.platform.db import Database
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         db = Database(
@@ -366,7 +366,7 @@ def test_pg_archive_item_ledger_retains_confirmed_and_uncertain_copies():
     from agent.platform.db import Database
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         db = Database(
@@ -430,7 +430,7 @@ def test_pg_archive_use_limit_is_atomic_for_concurrent_requests():
     from agent.platform.db import Database
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         db = Database(

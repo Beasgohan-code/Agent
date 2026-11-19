@@ -231,7 +231,7 @@ def test_pg_shared_policy_limits_audit_rollback_and_action_replay(tmp_path):
     from agent.platform.blocklists import operate, event, history, BlocklistError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "blocklist-test:" + uuid.uuid4().hex
@@ -471,7 +471,7 @@ def test_pg_bulk_edits_are_single_revision_and_concurrent_quota_atomic(tmp_path)
     from agent.platform.blocklists import operate, BlocklistError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         db = Database(

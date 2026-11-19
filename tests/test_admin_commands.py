@@ -106,7 +106,7 @@ def test_pg_admin_settings_shared_and_audit_rollback(tmp_path):
     from agent.platform.admin_settings import options, AdminStateError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "admin-test:" + uuid.uuid4().hex
@@ -198,4 +198,61 @@ def test_adminlist_and_refresh_are_live_and_group_scoped(tmp_path):
             assert message.replies
         assert calls == [fixtures.CHAT] * 3
 
+    asyncio.run(scenario())
+
+
+def test_admincache_bounded_snapshot_and_no_permission_cache(tmp_path):
+    async def scenario():
+        _,commands=group.build(fixtures.ctx.__wrapped__(tmp_path))
+        client=fixtures.FakeClient()
+        seen=[]
+        async def members(chat,**kwargs):
+            assert kwargs['limit']==201
+            for uid in range(1000,1300):
+                seen.append(uid)
+                yield SimpleNamespace(user=SimpleNamespace(id=uid),status=fixtures.ADMIN)
+        client.get_chat_members=members
+        request=fixtures.FakeMessage('/admincache')
+        await commands['admincache'](client,request)
+        text=str(request.replies[-1])
+        assert len(seen)==201 and '200' in text and 'bounded' in text.lower()
+        assert 'not cached' in text.lower()
+    asyncio.run(scenario())
+
+
+def test_admincache_withholds_after_rights_loss_and_redacts_provider_errors(tmp_path):
+    async def scenario():
+        _,commands=group.build(fixtures.ctx.__wrapped__(tmp_path))
+        client=fixtures.FakeClient()
+        client.get_chat_member=AsyncMock(side_effect=[fixtures.member(fixtures.ADMIN),fixtures.member(fixtures.MEMBER)])
+        async def members(*args,**kwargs):
+            yield SimpleNamespace(user=SimpleNamespace(id=22),status=fixtures.ADMIN)
+        client.get_chat_members=members
+        request=fixtures.FakeMessage('/admincache')
+        await commands['admincache'](client,request)
+        assert 'snapshot checked' not in str(request.replies[-1]).lower()
+        class Failing(fixtures.FakeClient):
+            def get_chat_members(self,*args,**kwargs):
+                raise ValueError('PRIVATE_PROVIDER_DATA')
+        request=fixtures.FakeMessage('/admincache')
+        await commands['admincache'](Failing(),request)
+        assert 'PRIVATE_PROVIDER_DATA' not in str(request.replies)
+        assert 'unavailable' in str(request.replies[-1]).lower()
+    asyncio.run(scenario())
+
+
+def test_admincache_refuses_bad_input_and_unaccountable_callers_before_read(tmp_path):
+    from unittest.mock import Mock
+    async def scenario():
+        _,commands=group.build(fixtures.ctx.__wrapped__(tmp_path))
+        for kind in ('extra','bot','anonymous','outsider','member'):
+            client=fixtures.FakeClient(caller=fixtures.MEMBER if kind=='member' else fixtures.ADMIN)
+            client.get_chat_members=Mock(side_effect=AssertionError('Unexpected list read'))
+            request=fixtures.FakeMessage('/admincache extra' if kind=='extra' else '/admincache')
+            if kind=='bot':request.from_user.is_bot=True
+            if kind=='anonymous':request.sender_chat=SimpleNamespace(id=request.chat.id)
+            if kind=='outsider':request.from_user.id=2**63
+            await commands['admincache'](client,request)
+            client.get_chat_members.assert_not_called()
+            assert request.replies
     asyncio.run(scenario())

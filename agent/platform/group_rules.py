@@ -39,7 +39,7 @@ async def _operate(ctx, group_id, body=None, actor=None):
             )
         return {"body": ctx.chats.get(group_id, "rules", "") or "", "version": 0}
     if not db.connected or getattr(db, "_pool", None) is None:
-        raise RulesError("PostgreSQL rules are unavailable. No changes confirmed.")
+        raise RulesError("Database rules are unavailable. No changes confirmed.")
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

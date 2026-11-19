@@ -61,7 +61,7 @@ def test_emoji_rules_split_without_data_loss():
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="PostgreSQL required"
+    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="Database required"
 )
 def test_pg_rules_concurrent_revisions_clear_and_import(tmp_path):
     async def scenario():

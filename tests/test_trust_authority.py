@@ -27,7 +27,7 @@ def test_pg_trust_concurrency_import_isolation_and_audit_rollback(tmp_path):
     from agent.platform.group_trust import trusted_members, trust_history, TrustError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "trust-test:" + uuid.uuid4().hex

@@ -14,7 +14,7 @@ from agent.platform.secrets import SecretBox
 from test_atomic_clones import KEY
 from test_clone import build, MEMBER, TOKEN_A
 
-pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 
 
 @pytest.mark.parametrize('recovery', [False, True])

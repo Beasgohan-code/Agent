@@ -639,5 +639,5 @@ def build(ctx):
         manifest = MANIFEST
     else:
         manifest = replace(MANIFEST, commands=tuple(name for name in MANIFEST.commands if name not in PLAYLIST_COMMANDS),
-                           description=MANIFEST.description + " Saved playlists unavailable without PostgreSQL.")
+                           description=MANIFEST.description + " Saved playlists unavailable without Database.")
     return manifest, {name: serialized(handler) for name, handler in handlers.items()}

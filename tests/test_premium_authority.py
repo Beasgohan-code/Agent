@@ -21,7 +21,7 @@ def test_entitlement_outage_denies_cached_premium(tmp_path):
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="PostgreSQL required"
+    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="Database required"
 )
 def test_authoritative_grants_revocations_isolation_and_legacy_import(tmp_path):
     async def scenario():

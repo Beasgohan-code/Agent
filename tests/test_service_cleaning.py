@@ -78,7 +78,7 @@ def test_pg_cleaning_shared_settings_isolation_and_audit_rollback(tmp_path):
     from agent.platform.service_cleaning import operate, CleaningError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "cleaning:" + uuid.uuid4().hex

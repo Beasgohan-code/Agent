@@ -14,7 +14,7 @@ def test_bstats_owner_private_and_live_rows(ctx):
     message.chat.id = 11
     run(handler, message)
     text = str(message.replies[-1])
-    assert 'PostgreSQL' in text and '125' not in text  # formatted uptime
+    assert 'Database' in text and '125' not in text  # formatted uptime
     assert '2m' in text and 'SECRET' not in text
     assert 'held' in text and 'Queued writes' in text
 
@@ -37,3 +37,17 @@ def test_extended_prefixes_use_real_dispatch():
             assert item.command == ['help']
             assert command_name(prefix+' help') is None
     asyncio.run(scenario())
+
+
+def test_diagnostic_cards_do_not_name_storage_engine(ctx):
+    from agent.platform.selection import SelectionError
+    commands=handlers(ctx)
+    ctx.db=NS(connected=True,url=None,_pending={},_docs={},error=None)
+    ctx.lease=NS(backend='postgres',held=True,degraded=False)
+    for command in ('bstats','db'):
+        message=FakeMessage('/'+command)
+        message.chat.id=11
+        run(commands[command],message)
+        text=str(message.replies[-1]).lower()
+        assert 'postgres' not in text and 'psql' not in text
+    assert 'postgres' not in str(SelectionError('missing_capabilities',fields=('postgresql',)))

@@ -403,7 +403,7 @@ def test_setlog_does_not_report_success_when_database_is_offline(tmp_path):
     request = FakeMessage('/setlog -100777')
     asyncio.run(ops.build(ctx)[1]['setlog'](client, request))
     assert ctx.logbook.channel_id == -1001
-    assert 'PostgreSQL is unavailable' in request.replies[0]
+    assert 'Database is unavailable' in request.replies[0]
     assert not (tmp_path / 'logbook.json').exists()
 
 

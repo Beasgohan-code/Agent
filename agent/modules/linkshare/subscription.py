@@ -87,7 +87,7 @@ def build(ctx):
             return
         db = getattr(ctx, 'db', None)
         if db is None or not db.connected:
-            await reply(message, 'PostgreSQL is unavailable. No subscription change confirmed.')
+            await reply(message, 'Database is unavailable. No subscription change confirmed.')
             return
         args = (getattr(message, 'text', None) or '').split()[1:]
         if not args:

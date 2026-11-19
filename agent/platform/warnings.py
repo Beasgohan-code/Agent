@@ -43,7 +43,7 @@ async def operate(store, chat_id, user_id, operation, **fields):
     if db is None:
         return getattr(store, operation)(chat_id, user_id, **fields)
     if not db.connected or db._pool is None:
-        raise WarningStoreError('PostgreSQL warning state unavailable. No changes confirmed.')
+        raise WarningStoreError('Database warning state unavailable. No changes confirmed.')
     try:
         if operation=='add_warning':
             from .warning_policy import operate as read_policy
@@ -98,7 +98,7 @@ async def reset_group(store, chat_id, *, actor, request_id):
         raise WarningStoreError('Valid group, personal administrator and request identities required.')
     db = store._db
     if db is None or not db.connected or getattr(db, '_pool', None) is None:
-        raise WarningStoreError('PostgreSQL is required for a group-wide warning reset. No changes confirmed.')
+        raise WarningStoreError('Database is required for a group-wide warning reset. No changes confirmed.')
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

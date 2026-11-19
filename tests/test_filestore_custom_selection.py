@@ -76,7 +76,7 @@ async def test_custom_selection_persists_only_exact_ids_in_postgresql():
     import uuid
     from agent.platform.db import Database
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     scope = 'custom-selection:' + uuid.uuid4().hex
     db = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=scope, required=True)
     assert await db.connect()

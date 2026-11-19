@@ -171,7 +171,7 @@ class InstanceLease:
             if state in ("taken", "renewed"):
                 self.held = True
                 self.other = None
-                logger.info("Instance lease held in PostgreSQL.")
+                logger.info("Instance lease held in Database.")
                 return True
             if state == "unavailable":
                 # Never invent ownership: another container may still be live.

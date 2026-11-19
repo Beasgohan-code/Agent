@@ -27,7 +27,7 @@ async def operate(db, operation, user_id, *, days=30, by=None):
     if type(user_id) is not int or not 0 < user_id < 2**63:
         raise EntitlementError("A positive Telegram user id is required.")
     if not db.connected or getattr(db, "_pool", None) is None:
-        raise EntitlementError("PostgreSQL entitlement state is unavailable.")
+        raise EntitlementError("Database entitlement state is unavailable.")
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

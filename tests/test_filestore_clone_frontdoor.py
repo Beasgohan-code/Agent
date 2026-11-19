@@ -74,7 +74,7 @@ async def test_clone_genlink_creates_real_scoped_archive_ticket():
     from agent.platform.db import Database
     from test_archive_links import client
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     scope = 'fs-clone:' + uuid.uuid4().hex
     db = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=scope, required=True)
     assert await db.connect()

@@ -45,7 +45,7 @@ async def _operate(ctx, group, kinds=None, *, actor=None):
         return list(ctx.chats.get(group, "command_cleaning", []))
     if not db.connected or getattr(db, "_pool", None) is None:
         raise CleaningError(
-            "PostgreSQL cleaning settings unavailable. No changes confirmed."
+            "Database cleaning settings unavailable. No changes confirmed."
         )
     try:
         async with db._pool.acquire(timeout=5) as conn:

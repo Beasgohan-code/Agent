@@ -97,7 +97,7 @@ def test_pg_real_workers_boot_persist_isolated_state_and_release_leases(tmp_path
     from agent.modules.clone.manager import CloneManager, CloneError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         ctx, _, _ = build(tmp_path)
@@ -256,7 +256,7 @@ def test_full_suite_worker_postgres_lifecycle_and_restart(tmp_path, monkeypatch)
     from agent.platform.db import Database
 
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     monkeypatch.setattr(assistant, 'validate_session', lambda session: None)
     monkeypatch.setattr(bot_module, 'capability', lambda session: (True, ''))
     monkeypatch.setattr(music, 'capability', lambda session: (True, ''))

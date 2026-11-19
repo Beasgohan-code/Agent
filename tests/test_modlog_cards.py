@@ -90,7 +90,7 @@ async def test_real_pg_log_reads_committed_scoped_history(tmp_path):
     from agent.platform.db import Database
     from agent.platform.antispam import change_policy
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     ctx,client,message=setup(tmp_path,'/modlog')
     db=Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='modlog:'+uuid.uuid4().hex,required=True)
     assert await db.connect()

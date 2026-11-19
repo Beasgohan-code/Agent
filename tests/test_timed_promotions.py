@@ -12,7 +12,7 @@ async def test_timed_promotion_admission_restart_scope_and_active_uniqueness():
     from agent.platform.timed_promotions import reserve,finish,read,PromotionError
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='tpromote:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:
@@ -87,7 +87,7 @@ async def test_due_promotion_recovery_real_pg_with_simulated_telegram(case,expec
     from agent.platform.timed_promotions import reserve,finish,read,reconcile_due
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='expiry:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:
@@ -149,7 +149,7 @@ async def test_tpromote_command_to_expiry_with_real_pg(tmp_path,outcome):
     from agent.platform.timed_promotions import reconcile_due
     url=os.environ.get('AGENT_TEST_DATABASE_URL')
     if not url:
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(url,scope='tpcommand:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     ctx,client,message=setup(tmp_path,'/tpromote 22 5m')

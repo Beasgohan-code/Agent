@@ -64,7 +64,7 @@ def test_directory_postgresql_refresh_deletion_and_outage(tmp_path):
     from agent.platform.secrets import SecretBox
     from test_atomic_clones import KEY
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     async def scenario():
         scope = 'directory:' + uuid.uuid4().hex
         dbs = [Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=scope) for _ in range(2)]

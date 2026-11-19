@@ -443,8 +443,8 @@ def build(ctx):
         database = getattr(ctx, "db", None)
         lease = getattr(ctx, "lease", None)
         rows: list[tuple[str, str]] = [
-            ("Backend", "postgres" if database is not None and database.connected else "json files"),
-            ("Lease", getattr(lease, "backend", "file")),
+            ("Storage", "Connected" if database is not None and database.connected else "Unavailable"),
+            ("Lease", "Shared storage" if getattr(lease, "backend", "file")=="postgres" else "Local compatibility"),
         ]
         if database is None:
             rows.append(("DATABASE_URL", "not set"))
@@ -555,10 +555,10 @@ def build(ctx):
         monitor = getattr(ctx, 'monitor', None)
         jobs = getattr(ctx, 'jobs', None)
         rows = [
-            ('Database', 'PostgreSQL connected' if database is not None and database.connected else 'Unavailable'),
+            ('Database', 'Connected' if database is not None and database.connected else 'Unavailable'),
             ('Queued writes', str(len(getattr(database, '_pending', {}) or {}))),
             ('Instance lock', ('held' if lease.held else 'not held') if lease is not None else 'Unavailable'),
-            ('Lock backend', str(lease.backend) if lease is not None else 'Unavailable'),
+            ('Lock storage', ('Shared storage' if lease.backend=='postgres' else 'Local compatibility') if lease is not None else 'Unavailable'),
             ('Lock degraded', ('yes' if lease.degraded else 'no') if lease is not None else 'Unavailable'),
             ('Uptime', format_uptime(monitor.snapshot().uptime_seconds) if monitor is not None else 'Unavailable'),
             ('Active jobs', str(len(jobs.active())) if jobs is not None else 'Unavailable'),
@@ -584,12 +584,12 @@ def build(ctx):
                 "Database",
                 icon=ctx.theme.emoji("stats"),
                 subtitle=(
-                    "PostgreSQL stores relational records and scoped "
+                    "Stored state includes relational records and scoped "
                     "documents; durable media requires configured remote archives."
                 ),
                 table=kv_table(_database_rows()),
                 note=(
-                    "Set <code>DATABASE_URL</code> to a PostgreSQL URL to share state "
+                    "Configure <code>DATABASE_URL</code> to share state "
                     "between instances and survive a redeploy."
                 ),
                 footer="Critical transactional writes are awaited; legacy settings still use queued writes.",
@@ -641,7 +641,7 @@ def build(ctx):
             from ...platform.plugin_access import AccessError
             service = getattr(ctx, "plugin_access", None)
             if service is None:
-                await reply(message, "PostgreSQL plugin access is unavailable.")
+                await reply(message, "Database plugin access is unavailable.")
                 return
             try:
                 operation = service.approve if args[1].lower() == "approve" else service.revoke
@@ -744,7 +744,7 @@ def build(ctx):
         try:
             rows = await service.recent()
         except Exception:
-            await reply(message, "PostgreSQL incident history could not be read.")
+            await reply(message, "Database incident history could not be read.")
             return
         await reply(message, panel("Error incidents", icon=ctx.theme.emoji("shield"),
             table=Table(headers=("Incident", "Type", "Count"), rows=tuple(
@@ -808,7 +808,7 @@ def build(ctx):
         except LogSettingsError as exc:
             await reply(message, html.escape(str(exc)))
             return
-        await reply(message, f"Log channel set to <b>{html.escape(str(title))}</b> (<code>{target}</code>). Saved in {logbook.backend}.")
+        await reply(message, f"Log channel set to <b>{html.escape(str(title))}</b> (<code>{target}</code>). Settings saved.")
 
 
     async def log(client, message):
@@ -842,7 +842,7 @@ def build(ctx):
         lines = [
             "<b>Log book</b>",
             f"Destination: {where}",
-            f"Settings store: {logbook.backend}",
+            "Settings: saved configuration",
             f"Events recorded: {events.count() if events is not None else 0}",
         ]
         status=logbook.delivery_status()

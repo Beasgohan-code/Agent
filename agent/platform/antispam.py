@@ -157,7 +157,7 @@ async def _operate(ctx, group_id, operation=None, value=None, actor=None):
         ctx.chats.log(group_id, "antispam", actor_id=actor, reason=operation)
         return updated
     if not db.connected or getattr(db, "_pool", None) is None:
-        raise PolicyError("PostgreSQL protection settings unavailable.")
+        raise PolicyError("Database protection settings unavailable.")
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

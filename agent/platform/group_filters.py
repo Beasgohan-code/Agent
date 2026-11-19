@@ -55,7 +55,7 @@ async def operate(ctx, group_id, *, name=None, body=None, actor=None):
             ctx.chats.set_filter(group_id, name, body, by=actor)
         return changed
     if not db.connected or getattr(db, "_pool", None) is None:
-        raise FilterError("PostgreSQL filters are unavailable. No changes confirmed.")
+        raise FilterError("Database filters are unavailable. No changes confirmed.")
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

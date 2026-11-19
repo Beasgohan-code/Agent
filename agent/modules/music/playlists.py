@@ -32,7 +32,7 @@ def build_playlists(ctx, queues):
                     table=Table(headers=('Name', 'Tracks'), rows=tuple((row['name'], str(row['count'])) for row in records)),
                     lines=[] if records else [f"{ctx.theme.emoji('sparkles')} Your library is empty here. Use /saveplaylist name during playback."],
                     note=f"{ctx.theme.emoji('lock')} Only your lists in this group and bot. /playlist name appends after fresh playback starts.",
-                    footer='Saved in PostgreSQL · current playback and queue are session-only'))
+                    footer='Saved in Database · current playback and queue are session-only'))
                 return
             upcoming_only = name == 'saveplaylist' and len(args) == 2 and args[1] == 'upcoming'
             if upcoming_only:
@@ -64,7 +64,7 @@ def build_playlists(ctx, queues):
                 count = await store.save(chat_id, owner_id, key,
                                          [{'title': track.title, 'source': track.source} for track in tracks])
                 await reply(message, panel('Playlist saved', icon=ctx.theme.emoji('check'),
-                    table=kv_table([('Name', key), ('Tracks', str(count)), ('Persistence', 'PostgreSQL confirmed'),
+                    table=kv_table([('Name', key), ('Tracks', str(count)), ('Persistence', 'Database confirmed'),
                                     ('Selection', 'Upcoming only' if upcoming_only else 'Current and upcoming')]),
                     lines=[f'Saved {count} tracks as <b>{html.escape(key)}</b>. This replaces your same-named playlist here.'],
                     note=f"{ctx.theme.emoji('shield')} Media URLs are stored as metadata; delete with /deleteplaylist.",

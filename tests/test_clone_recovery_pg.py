@@ -8,7 +8,7 @@ from agent.platform.db import Database
 from agent.platform.clone_recovery import CloneRecovery
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Dedicated PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Dedicated Database required')
 def test_restart_budget_is_durable_serialized_and_tenant_scoped():
     async def scenario():
         db = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope='test:' + uuid.uuid4().hex)
@@ -32,7 +32,7 @@ def test_restart_budget_is_durable_serialized_and_tenant_scoped():
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Dedicated PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Dedicated Database required')
 def test_diagnostic_history_is_bounded_classified_and_separate_from_budget():
     async def scenario():
         db = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope='test:' + uuid.uuid4().hex)

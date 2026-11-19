@@ -13,7 +13,7 @@ from agent.platform.db import Database
 async def test_pg_afk_toggle_replay_scope_and_notice_cooldown():
     from agent.platform.afk import toggle, clear, notice, AFKError
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='afk:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     ctx=NS(db=db)

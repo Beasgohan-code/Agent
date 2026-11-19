@@ -49,7 +49,7 @@ async def trusted_members(ctx, group_id, *, toggle=None, actor=None, approved=No
             if member.get("trusted")
         }
     if not db.connected or getattr(db, "_pool", None) is None:
-        raise TrustError("PostgreSQL approval state unavailable. No changes confirmed.")
+        raise TrustError("Database approval state unavailable. No changes confirmed.")
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

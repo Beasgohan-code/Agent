@@ -30,7 +30,7 @@ def test_database_outage_refuses_settings_and_event_fallback(tmp_path):
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.getenv('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.getenv('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_restart_isolation_and_stale_toggle_preserves_sql_text():
     async def scenario():
         scope = 'greetings-test:' + uuid.uuid4().hex

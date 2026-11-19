@@ -37,7 +37,7 @@ async def operate(ctx, group, topic=None, *, actor=None):
         return ctx.chats.get(group, "action_topic", None)
     if not db.connected or getattr(db, "_pool", None) is None:
         raise ActionTopicError(
-            "PostgreSQL action-topic settings unavailable. No destination confirmed."
+            "Database action-topic settings unavailable. No destination confirmed."
         )
     try:
         async with db._pool.acquire(timeout=5) as conn:

@@ -39,7 +39,7 @@ async def test_pg_note_serialization_scope_restart_and_stale_document(tmp_path):
     from agent.platform.chats import ChatStore
     from agent.platform.db import Database
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='notes:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:

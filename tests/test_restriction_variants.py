@@ -209,7 +209,7 @@ def test_pg_restriction_intents_replay_isolation_and_outcomes():
     from agent.platform.restriction_cases import begin, finish, history, CaseError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "restriction-test:" + uuid.uuid4().hex

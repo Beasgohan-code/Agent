@@ -78,7 +78,7 @@ class SudoAccess:
             or not self.db.connected
             or getattr(self.db, "_pool", None) is None
         ):
-            raise SudoError("PostgreSQL sudo state is unavailable; access denied.")
+            raise SudoError("Database sudo state is unavailable; access denied.")
         return self.db._pool
 
     async def allowed(self, user_id, capability, group_id=0):

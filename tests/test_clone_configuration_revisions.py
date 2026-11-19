@@ -14,7 +14,7 @@ from agent.platform.secrets import SecretBox
 from test_atomic_clones import KEY
 from test_clone import TOKEN_A, MEMBER, build
 
-pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 
 
 def test_revision_cas_encrypted_snapshots_and_restart(tmp_path):

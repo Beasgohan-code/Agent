@@ -35,7 +35,7 @@ def test_pg_warning_removal_is_scoped_and_history_retained(tmp_path):
     from agent.platform.db import Database
     from agent.platform.chats import ChatStore
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     async def scenario():
         db = Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='warning-controls:'+uuid.uuid4().hex,required=True)
         assert await db.connect()

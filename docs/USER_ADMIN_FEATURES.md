@@ -32,7 +32,7 @@ Six test-first/edge cases cover real count invocation/uptime, denied admin befor
 
 ## Self-service group AFK
 
-Added `/afk [reason]` to Group with a group-only watcher under existing plugin/runtime gates. Toggles only current sender's AFK status in current group; accepts accountable non-bot identities, reason <=500 characters and valid command message ID. PostgreSQL required, scoped AFK state + unique AFK-command admission tables, serialized toggle/return writes. Duplicate command updates never toggle again. Clearing removes current stored reason/state; replay IDs retained. No presence tracking, message history or global user-away index.
+Added `/afk [reason]` to Group with a group-only watcher under existing plugin/runtime gates. Toggles only current sender's AFK status in current group; accepts accountable non-bot identities, reason <=500 characters and valid command message ID. database required, scoped AFK state + unique AFK-command admission tables, serialized toggle/return writes. Duplicate command updates never toggle again. Clearing removes current stored reason/state; replay IDs retained. No presence tracking, message history or global user-away index.
 
 Normal non-command messages/media clear caller's own status. Replies, Telegram text mentions and at most three mention entities can trigger away cards (max three target candidates); usernames resolved live with 5s deadline rather than stale username index. No full text stored. Card reason escaped by shared renderer, intentional group-visible AFK reason only. Per-away-user/group 30-second PG notification claim prevents concurrent notification storms; claim is spent before sending, ambiguous send not retried, process restarts do not reset cooldown. It is not an unbounded global anti-spam scheduler or exactly-once notification system. A notice admitted before concurrent clear can still arrive; older Telegram updates aren't a durable ordered presence feed. Disabled plugin/Telegram privacy mode may prevent the watcher seeing messages, so this is not reliable online/offline detection.
 
@@ -360,7 +360,7 @@ are redacted, no automatic retries or fallback on configured DB failures. PG tru
 revision/audit writes remain one transaction. Standalone file-mode audit errors may
 occur after mutation and are truthfully unconfirmed; inspect /approval before retry.
 Rights revoked after a successful write report committed with details withheld,
-not a rollback. No claim of atomic authorization across Telegram and PostgreSQL.
+not a rollback. No claim of atomic authorization across Telegram and database.
 
 Eleven regressions (initial7 failed/2 passed before implementation) cover target
 parity, strict extras, final rights loss, post-read authorization, valid/invalid live
@@ -467,7 +467,7 @@ claimed, executed or retried in this phase. No sleeping coroutine posing as dura
 Ambiguous admission errors require durable inspection before retry. Terminal rows
 retained. Schema is additive; no migration/deployment/production access performed.
 
-Two test-first cases initially failed. Real PostgreSQL six-way admission race allows
+Two test-first cases initially failed. Real database six-way admission race allows
 one unresolved intent, second connection reads restart state, group/tenant filters,
 stale transition refusal, review blocking/new admission after closure, validation and
 disconnected store refusal. Full test counts in CODEBASE_AUDIT. New module is required
@@ -563,7 +563,7 @@ Native task in lease-owned main/clone AgentBot lifecycle starts after connection
 scans up to20 due intents every30s, cancellation awaited before client teardown;
 restart scans SQL, no per-user sleeping tasks. Offline/scan failure logs safe #Errors
 and retries only scan, never ambiguous Telegram mutation. Commands refuse grants
-without running recovery or PostgreSQL. Bot must remain online and retain rights;
+without running recovery or database. Bot must remain online and retain rights;
 expiry is not Telegram-native and can be delayed by downtime/batches. No guarantee
 all expired users demoted: changed/uncertain state deliberately stops for review.
 
@@ -576,7 +576,7 @@ still applies. Fixed-point finite task shutdown; cancelled in-flight action leav
 review. No production/deployment/live Telegram claims.
 
 Five new tests (initial2 missing command/worker tests failed; realPG grant test
-requires PostgreSQL): full grant/expiry/status, false ack + manual resolution,
+requires database): full grant/expiry/status, false ack + manual resolution,
 pre-write owner loss/cancel, owner/DB/worker denial, worker outage/stop lifecycle.
 Existing12 expiry regressions rerun. Real SQL with simulated Telegram, not live proof.
 Command inventory245 names; missing tagging family still explicitly absent.
@@ -595,7 +595,7 @@ storage. Admin output is aggregate count, no consent roster export.
 Dedicated tenant/group canonical SQL settings and consent table; serialized group
 operations, idempotent join/leave, max500 members, disable atomically clears all
 consent so reenabling never restores old opt-ins. Last configuration actor/time kept.
-PostgreSQL required; errors redact provider content, no local fallback/retries/fake
+database required; errors redact provider content, no local fallback/retries/fake
 success. Late authority loss after write reports saved/details withheld. Member can
 race leave/rejoin Telegram across checks; future send worker must revalidate consent
 and current membership immediately before sending. No message sends in this phase.
@@ -726,7 +726,7 @@ state mutation. Requires bot rights for actual notice deletion; saved settings n
 live deletion proof. Late rights/delivery failure after successful mutation identifies
 saved state; unexpected provider bodies redacted/type-only #Errors/no auto retries.
 Local-file audit errors after mutation can be unconfirmed; inspect settings before
-retry. Configured PostgreSQL never falls back to local state.
+retry. Configured database never falls back to local state.
 
 Four regressions (initial three failed before implementation): pre-write/post-read rights loss,
 simple saved status/readable labels, provider ValueError redaction, bot/invalid-extra
@@ -775,7 +775,7 @@ members admin, bot/anonymous/configured-Owner bypass rejected, username/ID/textm
 same-group reply targeting with strict extras, protected/unverified admins refused,
 final current authority before canonical all-active clear. Rich count/moderator/
 committed/history-retained result; local audit failure separate from committed clear,
-redacted errors/no retries/no Telegram ban/mute changes. Canonical awaited PostgreSQL
+redacted errors/no retries/no Telegram ban/mute changes. Canonical awaited database
 warning store unchanged. A warning reset is not deletion of warning history.
 
 Two test-first regressions initially failed (username/history parity and final rights/
@@ -836,3 +836,14 @@ identities hidden,64-character names, no partial list/provider errors leaked.
 Usage/navigation keep /adminlist when invoked through that alias. This replaces
 its older20-row page layout. /admincache is a separate refresh command, not an
 authorization cache; bounded refresh review remains separate work.
+
+
+## /admincache bounded live check
+
+/admincache now checks a bounded current administrator response rather than
+retaining identities in an unused in-memory snapshot. Personal current Manage
+chat administrator required before listing and before result disclosure; no
+arguments, sender-chat identities or bots accepted.201 raw fetched/200 considered,
+15-second read deadline,5-second permission deadlines. Counts distinct valid
+returned admins, including hidden/bot admins numerically. Explicit cap notice;
+no partial count or raw provider errors. Permission checks remain live, not cached.

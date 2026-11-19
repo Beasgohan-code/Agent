@@ -154,7 +154,7 @@ def test_pg_action_topic_isolation_atomic_audit_and_outage(tmp_path):
     from agent.platform.action_topics import operate, ActionTopicError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "action-topic:" + uuid.uuid4().hex

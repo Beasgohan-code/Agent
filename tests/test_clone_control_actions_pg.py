@@ -12,7 +12,7 @@ from agent.platform.secrets import SecretBox
 from test_atomic_clones import KEY
 from test_clone import build, MEMBER, OWNER, TOKEN_A, TOKEN_B
 
-pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 
 
 def test_atomic_owner_revision_generation_admission_and_audit(tmp_path):

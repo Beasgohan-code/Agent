@@ -65,7 +65,7 @@ class MusicPlaylists:
 
     def _scope(self, group_id, owner_id, name=None):
         if (self.db is None or not self.db.connected or self.db._pool is None):
-            raise PlaylistError('PostgreSQL is unavailable; no playlist operation was performed.')
+            raise PlaylistError('Database is unavailable; no playlist operation was performed.')
         if (not isinstance(group_id, int) or isinstance(group_id, bool) or group_id >= 0
                 or not isinstance(owner_id, int) or isinstance(owner_id, bool) or owner_id <= 0):
             raise PlaylistError('A group and authenticated user are required.')

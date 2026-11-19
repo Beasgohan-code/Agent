@@ -64,7 +64,7 @@ class PluginRuntime:
     def _save(self) -> None:
         if self._db is not None:
             if not self._db.connected:
-                raise RuntimeError("PostgreSQL unavailable: refusing local runtime settings write")
+                raise RuntimeError("Database unavailable: refusing local runtime settings write")
             self._db.save("runtime", {"disabled": sorted(self._disabled)})
             return
         if not self.state_path:

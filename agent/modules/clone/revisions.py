@@ -45,7 +45,7 @@ class CloneConfigurationRevisions:
 
     def _available(self):
         if not self.db.connected or self.db._pool is None or not self.box.enabled:
-            raise RuntimeError('Encrypted PostgreSQL revision storage unavailable')
+            raise RuntimeError('Encrypted Database revision storage unavailable')
 
     @staticmethod
     def _decode(raw):

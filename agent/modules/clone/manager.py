@@ -282,7 +282,7 @@ class CloneManager:
                 lease = getattr(self._running[configuration.bot_id][0], 'lease', None)
                 if (lease is None or getattr(lease, 'name', None) != 'agent'
                         or getattr(getattr(lease, '_db', None), 'scope', None) != f'clone:{configuration.bot_id}'):
-                    raise ReconciliationError('Worker PostgreSQL lease unavailable')
+                    raise ReconciliationError('Worker Database lease unavailable')
                 return lease
             await CloneReconciler(self.configuration.repository).run(clone.bot_id, revision=revision, apply=apply,
                 generation=current.lifecycle_generation)
@@ -327,10 +327,10 @@ class CloneManager:
                 database = getattr(bot, "database", None)
                 if database is not None:
                     if not await database.connect():
-                        raise CloneError("Clone PostgreSQL connection is unavailable.")
+                        raise CloneError("Clone Database connection is unavailable.")
                     await database.load()
                     if getattr(database, "load_error", None):
-                        raise CloneError("Clone PostgreSQL state could not be loaded.")
+                        raise CloneError("Clone Database state could not be loaded.")
                     logbook = getattr(bot, "logbook", None)
                     if logbook is not None:
                         await logbook.hydrate()

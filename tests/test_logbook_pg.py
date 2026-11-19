@@ -44,7 +44,7 @@ def test_bot_logbook_is_wired_to_its_database(tmp_path):
     assert bot.logbook._db is bot.database
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_real_pg_log_settings_survive_fresh_redeploy_clear_and_tenant_changes(tmp_path):
     async def scenario():
         url = os.environ['AGENT_TEST_DATABASE_URL']
@@ -107,7 +107,7 @@ def test_required_database_log_load_failure_prevents_telegram_start():
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_setlog_command_and_internal_clear_persist(tmp_path):
     from agent.modules import ops
     from test_logbook import make_ctx, FakeMessage
@@ -121,7 +121,7 @@ def test_setlog_command_and_internal_clear_persist(tmp_path):
             await ctx.logbook.hydrate()
             command = FakeMessage('/setlog -2002')
             await ops.build(ctx)[1]['setlog'](client, command)
-            assert 'Saved in postgres' in command.replies[-1]
+            assert 'Settings saved' in command.replies[-1]
             async with db._pool.acquire() as connection:
                 assert await connection.fetchval('SELECT channel_id FROM agent_log_settings WHERE tenant=$1', db.scope) == -2002
             after = LogBook(tmp_path / 'after', channel_id=-3003, owner_id=11, db=db)

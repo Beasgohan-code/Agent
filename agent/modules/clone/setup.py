@@ -387,7 +387,7 @@ class CloneSetup:
                 ok, _ = capability('dependency-check-only')
                 db = getattr(self.ctx, 'db', None)
                 if not ok or db is None or not db.connected or not self.ctx.settings.database_url:
-                    await query.answer('Music setup requires connected PostgreSQL and installed voice dependencies. Do not send a session.', show_alert=True)
+                    await query.answer('Music setup requires an available database and installed voice dependencies. Do not send a session.', show_alert=True)
                     return
                 state.step = 'music_consent'
                 await edit(query, panel('Assistant account consent', icon=self.ctx.theme.emoji('shield'),

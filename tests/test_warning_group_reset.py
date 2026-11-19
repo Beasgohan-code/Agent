@@ -13,7 +13,7 @@ from agent.platform import warnings
 @pytest.mark.asyncio
 async def test_pg_group_reset_preserves_history_isolates_and_deduplicates(tmp_path):
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db = Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='resetall:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     store = ChatStore(tmp_path,db=db)
@@ -53,7 +53,7 @@ async def test_handler_requires_confirmation_and_permissions(tmp_path):
 async def test_pg_reset_rollback_and_concurrent_add(tmp_path):
     import json
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db = Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='resetall:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     store = ChatStore(tmp_path,db=db)

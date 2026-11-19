@@ -252,7 +252,7 @@ async def operate(
             ctx.chats.log(group_id, "blocklist:" + operation, actor_id=actor)
         return policy
     if not db.connected or getattr(db, "_pool", None) is None:
-        raise BlocklistError("PostgreSQL blocklists unavailable. No changes confirmed.")
+        raise BlocklistError("Database blocklists unavailable. No changes confirmed.")
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

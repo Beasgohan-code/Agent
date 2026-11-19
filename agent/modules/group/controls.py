@@ -150,7 +150,7 @@ def register(ctx):
                         if body
                         else "Add your group’s rules to help members get started."
                     ],
-                    note="Publish with /setrules &lt;text&gt; or reply to a message with /setrules. Members can read all rules with /rules. /setrules clear removes the published text while retaining PostgreSQL revision history.",
+                    note="Publish with /setrules &lt;text&gt; or reply to a message with /setrules. Members can read all rules with /rules. /setrules clear removes the published text while retaining Database revision history.",
                 )
                 buttons = Keyboard(
                     [

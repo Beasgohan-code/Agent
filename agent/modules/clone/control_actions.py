@@ -27,7 +27,7 @@ class CloneControlActions:
         store, db = self.store, self.store._db
         try:
             if db is None or not db.connected or db._pool is None or not store.encrypted():
-                raise ControlConflict('Encrypted PostgreSQL lifecycle authority is unavailable.')
+                raise ControlConflict('Encrypted Database lifecycle authority is unavailable.')
             if 'clones' in getattr(db, '_pending', {}):
                 raise ControlConflict('Clone state has an unconfirmed write.')
             repo = store.configuration.repository

@@ -61,7 +61,7 @@ def build(ctx):
         try:
             template = await get_template(message.chat.id)
         except Exception:
-            await reply(message, feedback('Template unavailable', 'Could not read current PostgreSQL settings. No preview or post was sent.', 'warn'))
+            await reply(message, feedback('Template unavailable', 'Could not read current Database settings. No preview or post was sent.', 'warn'))
             return
         try:
             text = _post_text(template, title, body)

@@ -34,7 +34,7 @@ class AssistantLease:
             raise AssistantBusy('Telegram did not confirm a valid assistant account.')
         db = self.database
         if db is None or not db.connected or db._pool is None:
-            raise AssistantBusy('PostgreSQL is required for assistant exclusivity.')
+            raise AssistantBusy('Database is required for assistant exclusivity.')
         self._pool = db._pool
         connection = await self._pool.acquire(timeout=10)
         self._connection = connection

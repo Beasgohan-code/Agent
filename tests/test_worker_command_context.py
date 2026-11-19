@@ -32,3 +32,10 @@ def test_worker_command_context_matches_manifest_and_offers_guide(slug, name):
 def test_worker_context_never_exposes_unselected_tool():
     theme = Theme(worker_plugins=('encoder',))
     assert command_screen(None, theme, 'ask', active={'ask', 'encode'}) is None
+
+
+def test_music_context_uses_generic_storage_requirement():
+    screen=command_screen(None,Theme(worker_plugins=('music',)),'play',active={'play'})
+    assert screen is not None
+    assert 'persistent storage' in screen.rich_text
+    assert 'postgres' not in screen.rich_text.lower()

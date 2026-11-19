@@ -43,7 +43,7 @@ Nine new regressions first seven failed before implementation: nested credential
 and content redaction, unlabelled common credentials/escaping, safe hashtags and
 epoch0, escaped-size bounds, ring/listener/console safety, failed-send redaction
 and no retry, deep-copy/reserved fields, error severity/incident preservation.
-Full working PostgreSQL suite before final API-key/queued-argument hardening:
+Full working database suite before final API-key/queued-argument hardening:
 2,217 passed in22.10s, no skips. No live Telegram delivery/production writes.
 
 ## Missing startup-post diagnosis

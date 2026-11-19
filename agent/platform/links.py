@@ -101,7 +101,7 @@ class LinkStore:
 
     def _save(self) -> None:
         if self._db is not None:
-            raise LinkError("Awaited PostgreSQL link operation required")
+            raise LinkError("Awaited Database link operation required")
         save_document(
             self._db, "links", self._path, {k: asdict(v) for k, v in self._links.items()}
         )
@@ -117,7 +117,7 @@ class LinkStore:
             return getattr(self, operation)(*args, **kwargs)
         db = self._db
         if not db.connected or getattr(db, "_pool", None) is None:
-            raise LinkError("PostgreSQL link state is unavailable")
+            raise LinkError("Database link state is unavailable")
         if "links" in getattr(db, "_pending", {}):
             raise LinkError("Legacy link write pending; retry after it is flushed")
         try:
@@ -148,7 +148,7 @@ class LinkStore:
         except LinkError:
             raise
         except Exception:
-            logger.warning("PostgreSQL link operation was not confirmed")
+            logger.warning("Database link operation was not confirmed")
             raise LinkError("Link result was not confirmed; check before retrying") from None
 
     async def acreate(self, *args, **kwargs):
@@ -183,7 +183,7 @@ class LinkStore:
         max_uses: int = 0,
     ) -> LinkRecord:
         if self._db is not None:
-            raise LinkError("Awaited PostgreSQL link operation required")
+            raise LinkError("Awaited Database link operation required")
         # ``ttl_hours=0`` means "expires now"; only None falls back to the default.
         hours = self.default_ttl // 3600 if ttl_hours is None else ttl_hours
         ttl = hours * 3600
@@ -210,7 +210,7 @@ class LinkStore:
     def resolve(self, token: str) -> LinkRecord:
         """Return the record for *token*, or raise :class:`LinkError`."""
         if self._db is not None:
-            raise LinkError("Awaited PostgreSQL link operation required")
+            raise LinkError("Awaited Database link operation required")
         record = self._links.get(token)
         if record is not None:
             if record.revoked:
@@ -257,12 +257,12 @@ class LinkStore:
     def get(self, token: str) -> LinkRecord | None:
         """The stored record for *token*, without validating it."""
         if self._db is not None:
-            raise LinkError("Awaited PostgreSQL link operation required")
+            raise LinkError("Awaited Database link operation required")
         return self._links.get(token)
 
     def revoke(self, token: str, *, owner_id: int | None = None) -> bool:
         if self._db is not None:
-            raise LinkError("Awaited PostgreSQL link operation required")
+            raise LinkError("Awaited Database link operation required")
         record = self._links.get(token)
         if record is None or record.revoked:
             return False
@@ -278,7 +278,7 @@ class LinkStore:
 
     def owned(self, owner_id: int) -> list[LinkRecord]:
         if self._db is not None:
-            raise LinkError("Awaited PostgreSQL link operation required")
+            raise LinkError("Awaited Database link operation required")
         return sorted(
             (r for r in self._links.values() if r.owner_id == owner_id),
             key=lambda r: r.created_at,
@@ -305,7 +305,7 @@ class LinkStore:
     def purge_expired(self) -> int:
         """Drop records whose expiry has passed. Returns how many were removed."""
         if self._db is not None:
-            raise LinkError("Awaited PostgreSQL link operation required")
+            raise LinkError("Awaited Database link operation required")
         stale = [token for token, record in self._links.items() if record.expired]
         for token in stale:
             self._links.pop(token, None)

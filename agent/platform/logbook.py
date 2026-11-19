@@ -142,13 +142,13 @@ class LogBook:
             self._config_loaded = False
             db = self._db
             if not db.connected or db._pool is None:
-                raise LogSettingsError("PostgreSQL log settings are unavailable.")
+                raise LogSettingsError("Database log settings are unavailable.")
             try:
                 async with db._pool.acquire(timeout=10) as connection:
                     row = await connection.fetchrow(
                         'SELECT channel_id FROM agent_log_settings WHERE tenant=$1', db.scope, timeout=10)
             except Exception:
-                raise LogSettingsError("Could not read PostgreSQL log settings.") from None
+                raise LogSettingsError("Could not read Database log settings.") from None
             self._apply({"channel_id": row['channel_id']} if row is not None else {})
             self._config_loaded = True
 
@@ -170,7 +170,7 @@ class LogBook:
             else:
                 db = self._db
                 if not db.connected or db._pool is None:
-                    raise LogSettingsError("PostgreSQL is unavailable; the log setting was not changed.")
+                    raise LogSettingsError("Database is unavailable; the log setting was not changed.")
                 try:
                     async with db._pool.acquire(timeout=10) as connection:
                         await connection.execute('''INSERT INTO agent_log_settings (tenant,channel_id)
@@ -180,7 +180,7 @@ class LogBook:
                     self._config_loaded = False  # commit outcome may be ambiguous; do not route to stale state
                     if isinstance(exc, asyncio.CancelledError):
                         raise
-                    raise LogSettingsError("PostgreSQL did not confirm the log setting. Check /log before retrying.") from None
+                    raise LogSettingsError("Database did not confirm the log setting. Check /log before retrying.") from None
             self._channel_id = channel_id
             self._config_loaded = True
 
@@ -194,7 +194,7 @@ class LogBook:
 
     def set_channel(self, channel_id: int | None) -> None:
         if self._db is not None:
-            raise LogSettingsError("Use awaited configure() for PostgreSQL settings.")
+            raise LogSettingsError("Use awaited configure() for Database settings.")
         self._validate(channel_id)
         write_json(self._path, {"channel_id": channel_id})
         self._channel_id = channel_id

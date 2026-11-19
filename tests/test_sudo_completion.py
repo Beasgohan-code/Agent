@@ -115,7 +115,7 @@ def test_sudo_permission_catalog_does_not_accidentally_list_all_users():
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="PostgreSQL required"
+    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="Database required"
 )
 def test_pg_sudo_concurrent_audits_expiry_metadata_and_rollback():
     async def scenario():

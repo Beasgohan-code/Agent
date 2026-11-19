@@ -82,7 +82,7 @@ async def operate(
     db = getattr(ctx, "db", None)
     if db is None or not db.connected or getattr(db, "_pool", None) is None:
         raise FederationError(
-            "PostgreSQL federations unavailable. No changes confirmed."
+            "Database federations unavailable. No changes confirmed."
         )
     if action in ("join", "leave", "quiet"):
         from pyrogram.enums import ChatMemberStatus

@@ -30,7 +30,7 @@ async def test_pg_warning_expiry_survives_restart_and_policy_change(tmp_path):
     from agent.platform.chats import ChatStore
     from agent.platform.warning_policy import operate
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='expiry:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:

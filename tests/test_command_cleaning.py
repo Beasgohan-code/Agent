@@ -85,7 +85,7 @@ def test_pg_command_cleaning_atomic_history_and_isolation(tmp_path):
     from agent.platform.command_cleaning import operate, CleaningError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "command-cleaning:" + uuid.uuid4().hex

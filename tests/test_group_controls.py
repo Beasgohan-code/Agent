@@ -138,7 +138,7 @@ from agent.platform.greetings import Greetings
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="PostgreSQL required"
+    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="Database required"
 )
 def test_controls_use_confirmed_sql_and_preserve_canonical_text(tmp_path, monkeypatch):
     async def scenario():

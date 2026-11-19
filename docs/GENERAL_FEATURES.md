@@ -6,7 +6,7 @@ Implemented first phase (main-bot diagnostics): `/bstats` registered in Operatio
 
 Shared command dispatch now accepts `/ ! . # $ % & ?`. Updated lexical watcher guards, start payload extraction, command-specific punctuation stripping, passive AI exclusion, Help text and prefix regression coverage. FileStore sessions use shared command recognition for cancellation/done and ignore other commands instead of archiving them as text.
 
-Evidence: tests initially failed for absent bstats and prefixes. Final targeted operations/prefix/registry/FileStore tests: 63 passed, one DB-only skip without configured test URI. Full disposable-PostgreSQL suite before final FileStore lexical guard: 2,059 passed, six failures (missing py_yt/pytgcalls dependencies and stale UI preview fixture), no full-green claim. No production calls, push or deployment.
+Evidence: tests initially failed for absent bstats and prefixes. Final targeted operations/prefix/registry/FileStore tests: 63 passed, one DB-only skip without configured test URI. Full disposable-database suite before final FileStore lexical guard: 2,059 passed, six failures (missing py_yt/pytgcalls dependencies and stale UI preview fixture), no full-green claim. No production calls, push or deployment.
 
 Still absent/not advertised as implemented: `/mychats`, `/massban`, `/broadcast`, `/bcleandup`, `/free`, social profile cards, translation picker, `/gu` demo. These require separate tested phases. Broadcast deletion must be limited to durable recorded bot-generated copies. Chat listing must not claim to enumerate all Telegram chats where the Owner is admin; only known bot chats can be checked. Social/translation need supported providers, not manufactured data. Destructive/bulk actions require mutation-time authorization and bounded admission.
 
@@ -38,7 +38,7 @@ Implemented main Utilities `/tiktok @handle`, `/x @handle`, `/yt @handle`, `/ig 
 
 Thirteen new tests failed on absent handlers then passed, covering exact URLs/styles and invalid input without actionable markup. Related cards/utilities/registry/demo run **43 passed**. Installed already-declared py-yt-search/py-tgcalls/ntgcalls packages in sandbox venv (no requirements changes); synchronized offline preview fixture to retire `/check`, include `/gu`, reflect current screen renderer and current prefix footer. No provider calls or Telegram session started.
 
-Full disposable-PostgreSQL suite now **2,098 passed in 22.97s, no skips**. This supersedes prior missing-dependency/preview failures for the current working tree only, not a clean staged export or deployed bot. No live social account data proof, production changes, push or deployment. Remaining requested functions: broadcast/recorded-copy cleanup, `/free` with defined warning/block semantics and provider-backed translation; live social statistics are not implemented.
+Full disposable-database suite now **2,098 passed in 22.97s, no skips**. This supersedes prior missing-dependency/preview failures for the current working tree only, not a clean staged export or deployed bot. No live social account data proof, production changes, push or deployment. Remaining requested functions: broadcast/recorded-copy cleanup, `/free` with defined warning/block semantics and provider-backed translation; live social statistics are not implemented.
 
 ## Bounded durable broadcast phase
 

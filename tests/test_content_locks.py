@@ -82,7 +82,7 @@ def test_locks_persist_in_existing_postgres_chat_store_and_isolate_clone(tmp_pat
     from agent.platform.db import Database
     from agent.platform.chats import ChatStore
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     async def scenario():
         scope = 'locks-test:' + uuid.uuid4().hex
         dbs = [Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=value, required=True)

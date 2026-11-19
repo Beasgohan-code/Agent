@@ -85,17 +85,47 @@ async def promotion_target(client,message):
 
 
 def build(ctx):
-    snapshots = {}
+    class SnapshotInputError(ValueError):
+        """Safe command validation, distinct from provider failures."""
 
-    async def refresh(client, chat_id):
-        members = [
-            member
-            async for member in client.get_chat_members(
-                chat_id, filter=ChatMembersFilter.ADMINISTRATORS
-            )
-        ]
-        snapshots[chat_id] = members
-        return members
+    async def admincache(client,message):
+        try:
+            chat=getattr(message,'chat',None)
+            user=getattr(message,'from_user',None)
+            if (getattr(chat,'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                    or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                    or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None):
+                raise SnapshotInputError('Use your personal administrator account inside the group.')
+            if len((getattr(message,'text','') or '').split())!=1:
+                raise SnapshotInputError('Usage: /admincache')
+            async def authority():
+                if not await asyncio.wait_for(is_moderator(client,message,need='can_manage_chat'),5):
+                    raise SnapshotInputError('Current Manage chat administrator permission required. Snapshot withheld.')
+            await authority()
+            ids=set()
+            truncated=False
+            async def collect():
+                nonlocal truncated
+                raw=0
+                async for record in client.get_chat_members(chat.id,filter=ChatMembersFilter.ADMINISTRATORS,limit=201):
+                    raw+=1
+                    if raw>200:
+                        truncated=True
+                        break
+                    uid=getattr(getattr(record,'user',None),'id',None)
+                    if type(uid) is int and 0<uid<2**63 and record.status in (ChatMemberStatus.OWNER,ChatMemberStatus.ADMINISTRATOR):
+                        ids.add(uid)
+            await asyncio.wait_for(collect(),15)
+            await authority()
+            await reply(message,panel('Administrator snapshot',lines=[
+                f'Live snapshot checked: {len(ids)} distinct administrators returned.',
+                'Bounded to the first 200 returned records; more may exist.' if truncated else 'Based on the current Telegram response.',
+            ],note='Permission checks are not cached. No administrator identities are stored by this command.'))
+        except SnapshotInputError as error:
+            await reply(message,str(error))
+        except Exception as error:
+            logging.getLogger(__name__).warning('#Errors Administrator snapshot unavailable (%s)',type(error).__name__)
+            await reply(message,'Administrator snapshot unavailable. No partial result displayed.')
 
     async def run(client, message, command):
         chat = getattr(message, "chat", None)
@@ -144,15 +174,6 @@ def build(ctx):
                 )
                 await reply(
                     message, f"{command}: {'on' if state[command] else 'off'}{warning}"
-                )
-                return
-            if command == "admincache":
-                if len((message.text or "").split()) != 1:
-                    raise ValueError("Usage: /admincache")
-                members = await refresh(client, chat.id)
-                await reply(
-                    message,
-                    f"Administrator snapshot refreshed: {len(members)} admins. Permission checks always use current Telegram rights, not this snapshot.",
                 )
                 return
             title = ""
@@ -221,7 +242,6 @@ def build(ctx):
                 raise ValueError(
                     "Telegram did not confirm the administrator change. Check current rights before retrying."
                 )
-            snapshots.pop(chat.id, None)
             try:
                 ctx.chats.log(chat.id, command, actor_id=user.id, target_id=target_id)
                 audit=''
@@ -260,7 +280,7 @@ def build(ctx):
 
         return call
 
-    return {**{command: handler(command) for command in COMMANDS if command not in ("adminlist", "tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort", "etagall", "eall")}, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
+    return {**{command: handler(command) for command in COMMANDS if command not in ("admincache", "adminlist", "tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort", "etagall", "eall")}, "admincache": admincache, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
 
 
 class TemporaryPromotionInputError(ValueError):

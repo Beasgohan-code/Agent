@@ -58,13 +58,13 @@ requires review; no automatic retry. No production deployment or startup-fix cla
 ## Database and isolation
 
 - **No more local JSON runtime state.** Use the existing Render `DATABASE_URL`;
-  PostgreSQL is mandatory for normal bot startup. Do not ask the user to reconnect/recreate their existing database.
+  database is mandatory for normal bot startup. Do not ask the user to reconnect/recreate their existing database.
 - `/setlog` must survive restart/redeploy; `/unsetlog` must not resurrect an env
   default. Success means confirmed persistence, not an in-memory change or a
   background write merely being queued. Upgrade other mutable settings against
   that durability standard in later increments.
 - Per-bot tenant and per-group feature data must remain isolated. Optional
-  reservations must be atomic in PostgreSQL, not a process-local counter.
+  reservations must be atomic in database, not a process-local counter.
 - Do not claim every document-backed setting has confirmed-write semantics:
   several older stores still use batched document writes and need further audit.
 
@@ -121,7 +121,7 @@ cases, richer settings and generic durable cleanup remain part of the backlog.
 Use the requested reference behavior as the feature target, including **all
 Music-related commands**, not just play/pause. Track actual support and remaining
 families in [MUSIC_PARITY.md](MUSIC_PARITY.md). Current additions include bounded
-queues, serialized controls and scoped PostgreSQL saved playlists. Search/media
+queues, serialized controls and scoped database saved playlists. Search/media
 extraction, channel/video playback, effects, seek, lyrics, autoplay/voting,
 request approvals, DJ delegation and recovery still need implementation and
 verification. Do not register placeholders or silently alias unsupported video
@@ -130,7 +130,7 @@ or extractor behavior to basic direct-URL audio playback.
 ## Latest urgent correction
 
 Log settings were still local-file-only. The current increment replaces that
-production path with a dedicated bot-scoped PostgreSQL row, awaited writes,
+production path with a dedicated bot-scoped database row, awaited writes,
 pre-start hydration, persistent explicit clearing and database-refreshing `/log`.
 A posting probe is sent before committing a new target. In database mode there
 is no ephemeral-file fallback; old file-only selections must be saved once with
@@ -142,9 +142,9 @@ atomic local-file compatibility, clearly labelled as such.
 
 Unhandled handler errors must also notify the configured log destination as
 `#Errors`. The incident center stores safe category/frame metadata and aggregated
-counts in PostgreSQL, without copying raw exception arguments or incoming
+counts in database, without copying raw exception arguments or incoming
 messages. `/errors` is private and Owner-only. Repeated alerts are bounded.
-The normal service now requires PostgreSQL regardless of the legacy DB_REQUIRED
+The normal service now requires database regardless of the legacy DB_REQUIRED
 flag. Remaining standalone JSON helper branches are legacy/test compatibility,
 not a supported bot runtime mode. Temporary downloaded/encoded media is distinct
 from JSON metadata. Continue upgrading mutable commands one by one; reference
@@ -158,3 +158,12 @@ coverage. Implemented public-origin web-service heartbeat plus uptime telemetry
 and themed Home/Help/profile/Ping headings; remaining commands are incremental
 work, not a completed universal redesign. Preserve fallback and never claim
 self-pinging guarantees uninterrupted hosting.
+
+
+## Neutral implementation wording
+
+Keep database-engine branding out of bot-facing text, setup prose and progress
+updates. Describe availability, persistence and failure honestly using generic
+storage wording; never imply a storage migration or remove failure warnings.
+Internal connection protocols, capability identifiers, driver imports, SQL,
+reference source paths and licenses must remain technically correct.

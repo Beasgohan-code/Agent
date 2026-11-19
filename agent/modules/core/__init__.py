@@ -134,7 +134,7 @@ def build(ctx):
             rows.append(("Jobs running", str(len(ctx.jobs.active()))))
         database = getattr(ctx, "db", None)
         rows.append(
-            ("State store", "postgres" if database is not None and database.connected else "json files")
+            ("State store", "Connected" if database is not None and database.connected else "Unavailable")
         )
         rows.append(("Modules", modules))
         rows.append(("Commands", str(commands)))

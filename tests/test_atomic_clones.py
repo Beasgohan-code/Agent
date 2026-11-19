@@ -32,7 +32,7 @@ def test_database_clone_mutations_require_awaiting(tmp_path):
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="PostgreSQL required"
+    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="Database required"
 )
 def test_atomic_clone_capacity_updates_and_isolation(tmp_path):
     async def scenario():
@@ -151,7 +151,7 @@ def test_database_outage_never_uses_local_clone_state(tmp_path):
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="PostgreSQL required"
+    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="Database required"
 )
 @pytest.mark.parametrize("operation", ["disable", "remove"])
 def test_worker_supervisor_observes_changes_from_another_controller(
@@ -209,7 +209,7 @@ def test_worker_supervisor_observes_changes_from_another_controller(
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 def test_invalid_selection_start_preserves_canonical_records_and_other_tenants(tmp_path):
     from unittest.mock import Mock
     from agent.modules.clone.manager import CloneError

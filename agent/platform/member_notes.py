@@ -28,7 +28,7 @@ async def operate(store,group,user,*,body=None,actor=None):
             store.set_note(group,user,body)
         return {'body':store.note_of(group,user),'version':0}
     if not db.connected or getattr(db,'_pool',None) is None:
-        raise NoteError('PostgreSQL notes unavailable. No note change confirmed.')
+        raise NoteError('Database notes unavailable. No note change confirmed.')
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():

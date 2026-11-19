@@ -47,7 +47,7 @@ def test_failed_job_has_safe_retained_error_and_no_traceback(caplog, unprintable
     assert len(records) == 1 and records[0].exc_info is None
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 def test_real_postgres_lease_errors_are_redacted_and_fail_closed(caplog):
     caplog.set_level(logging.DEBUG)
     probe = 'SYNTHETIC_PRIVATE_LEASE_DATABASE_VALUE'

@@ -24,7 +24,7 @@ def test_playlist_library_empty_success_and_failure_panels(monkeypatch):
         store.list.return_value = [{'name': 'mine', 'count': 2}]
         assert '1/10' in await invoke('playlists')
         body = await invoke('saveplaylist', 'mine')
-        assert 'PostgreSQL confirmed' in body
+        assert 'Database confirmed' in body
         body = await invoke('deleteplaylist', 'mine')
         assert 'Playlist deleted' in body and 'unchanged' in body
         store.delete.return_value = False

@@ -15,8 +15,9 @@ class SelectionError(ValueError):
     """Safe structured failure. Never retains input credentials or their values."""
     def __init__(self, code, *, plugin=None, fields=()):
         self.code, self.plugin, self.fields = code, plugin, tuple(fields)
+        labels=tuple('persistent storage' if item=='postgresql' else item for item in self.fields)
         super().__init__(code.replace('_', ' ') + (f': {plugin}' if plugin else '') +
-                         (f' ({", ".join(self.fields)})' if self.fields else ''))
+                         (f' ({", ".join(labels)})' if labels else ''))
 
     def as_dict(self):
         return {'code': self.code, 'plugin': self.plugin, 'fields': list(self.fields)}

@@ -95,7 +95,7 @@ class PluginAccess:
     async def _transaction(self):
         pool = getattr(self.db, "_pool", None)
         if not getattr(self.db, "connected", False) or pool is None:
-            raise AccessError("PostgreSQL is required; no local fallback is permitted.")
+            raise AccessError("Database is required; no local fallback is permitted.")
         async with pool.acquire() as conn:
             async with conn.transaction():
                 yield conn

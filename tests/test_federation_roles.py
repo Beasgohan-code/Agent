@@ -29,7 +29,7 @@ def test_pg_invitation_consent_revocation_transfer_and_audit_rollback():
     from agent.platform.federation_roles import change, FederationError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "fedroles:" + uuid.uuid4().hex

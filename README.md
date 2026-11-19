@@ -24,10 +24,10 @@ not a claim of implemented coverage. See [the architecture audit](docs/GROUP_MAN
 | `PLUGINS` | no | Which optional modules register; mandatory group core is always included. `*` includes all modules. |
 | `SESSION_STRING` | for music | A user session is the only thing that can join a group call. |
 | `LOG_CHANNEL` | no | Where the bot posts its event log; without it, the owner's DM. |
-| `DATA_DIR` | no | Temporary media/vault working directory. Metadata is PostgreSQL-backed. Default `data`. |
-| `DATABASE_URL` | **yes** | PostgreSQL DSN. Set it and every store is kept in the database, scoped per bot. |
+| `DATA_DIR` | no | Temporary media/vault working directory. Metadata is database-backed. Default `data`. |
+| `DATABASE_URL` | **yes** | Connection URL. Set it and every store is kept in the database, scoped per bot. |
 | `TOKEN_KEY` | for credential writes | Encrypts clone tokens/provider keys/sessions at rest (Fernet). Missing key refuses new secret writes; no plaintext fallback. Keep the existing key across redeploys. |
-| `DB_REQUIRED` | no | Legacy flag; PostgreSQL is now always required. `0` does not enable local state. |
+| `DB_REQUIRED` | no | Legacy flag; database is now always required. `0` does not enable local state. |
 | `STORAGE_CHANNEL` | no | A private channel id vault files are archived into (durable bytes). |
 | `CLONE_LIMIT` | no | How many clones this deployment will run at once. Default `5`. |
 | `START_IMAGE` | no | Picture above `/start`; `0` keeps the text only. |
@@ -103,7 +103,7 @@ Local staging and review APIs remain for inspection only. Symbolic links and
 unsafe manifest paths are refused; activation rechecks staged source bytes.
 A future external runtime needs an actual capability-scoped process boundary.
 
-`platform/plugin_access.py` implements PostgreSQL Owner approval, three optional
+`platform/plugin_access.py` implements database Owner approval, three optional
 slots per group, configuration and activation history. Approval is rechecked
 under a catalog row lock; reservation uses a group-specific transaction lock.
 There is no file fallback. In groups, optional command, callback, deep-link and
@@ -119,7 +119,7 @@ group slots; global approval is currently a group-use permission.
   features. Music also needs a configured voice session.
 - Group-owned invocation tasks and queued jobs are cancelled on local revocation
   or disable. Music releases its queue/call. Other processes reconcile active
-  scopes every two seconds; new requests always check PostgreSQL directly.
+  scopes every two seconds; new requests always check the database directly.
 
 This is the plugin slice of the Control Center, not its complete implementation.
 Generic durable job/subscription cleanup, plugin-specific configuration forms,
@@ -152,7 +152,7 @@ Linkshare, FileStore, Leech, Music and AI Agent** in compatible combinations:
 Drafts expire after ten minutes; `/cancel` discards one. Draft tokens are held in
 memory, not persisted. Completed tokens are encrypted. Telegram chat history is
 not a credential vault; message deletion cannot guarantee erasure from clients.
-Music setup is offered only with connected PostgreSQL and installed voice
+Music setup is offered only with a connected database and installed voice
 libraries. It requires explicit consent before accepting a dedicated account's
 pre-generated Telethon session. Phone numbers, passwords and OTPs are never
 requested. Session structure is checked offline; Telegram user authorization
@@ -191,7 +191,7 @@ Owner/sudo users remain subject to `CLONE_LIMIT`. Eligibility is rechecked on
 startup and supervisor passes; an ineligible running clone is stopped and parked.
 
 Each clone has its own bot id, link signer, session name, data directory and
-PostgreSQL scope. It does not inherit the parent assistant session, log/archive
+database scope. It does not inherit the parent assistant session, log/archive
 channels or HTTP port. Clone database loading and exclusive lease acquisition
 happen before Telegram startup; shutdown releases its lease and database.
 Clones are still clients in the parent process, not OS-process isolation.
@@ -248,16 +248,16 @@ stop-and-clear, for staff or whoever queued the track.
 
 ## Where state lives
 
-The bot runtime requires PostgreSQL. Missing credentials, a failed connection
+The bot runtime requires a database. Missing credentials, a failed connection
 or failed initial state load refuse startup; there is no local JSON fallback.
 The old `DB_REQUIRED=0` option no longer enables disk-backed operation.
 
-Legacy document stores use bot-scoped PostgreSQL JSONB rows; plugin approval,
+Legacy document stores use bot-scoped database JSONB rows; plugin approval,
 Music playlists, log destinations and incident aggregation use dedicated tables.
 Some older stores still batch writes in memory before flushing: this change
 removes disk fallback, not every outstanding confirmed-write limitation. `/setlog`
 uses awaited SQL and confirms only after persistence. Temporary media files can
-still use disk; media bytes are not PostgreSQL metadata.
+still use disk; media bytes are not database metadata.
 
 Low-level standalone file helpers remain for legacy/test compatibility, but the
 normal bot/clone service lifecycle does not start in that mode. Do not deploy
@@ -274,7 +274,7 @@ only in SQL. `clone:…` is applied by `CloneManager.settings_for`, so a clone's
 vault, premium ledger and plugin state are its own *and* survive a redeploy on
 any instance.
 
-Normal startup requires `DATABASE_URL` and a successful PostgreSQL connection.
+Normal startup requires `DATABASE_URL` and a successful database connection.
 `DB_REQUIRED=0` does not enable a file fallback. Some legacy/test helpers still
 support local files, but they are not the normal bot runtime.
 
@@ -293,7 +293,7 @@ remove or rotate the existing key to bypass a decryption error.
 Two halves, two lifetimes:
 
 * **the index** — which file belongs to whom, its size and its hash — is a
-  scoped `files` document in PostgreSQL, read back by `Storage.hydrate()` once the
+  scoped `files` document in database, read back by `Storage.hydrate()` once the
   database is loaded;
 * **the bytes** — on disk under `DATA_DIR` by default, or in a private Telegram
   storage channel when `STORAGE_CHANNEL` is set. A stored file is archived in the
@@ -364,8 +364,8 @@ pytest -q                      # 541 tests
 python -m pyflakes agent tests # no unused names
 ```
 
-Runtime state is PostgreSQL-backed. Local JSON helpers are legacy/test-only;
-the normal service refuses to start without PostgreSQL.
+Runtime state is database-backed. Local JSON helpers are legacy/test-only;
+the normal service refuses to start without database.
 
 ## Primary feature catalog and AI Agent
 
@@ -402,7 +402,7 @@ validation confirms a bot identity, not the human BotFather account owner.
 
 ### Music assistant isolation
 
-When PostgreSQL is configured, voice engines reserve their verified Telegram
+When database is configured, voice engines reserve their verified Telegram
 assistant account across bot tenants before starting calls. The same account
 cannot be acquired twice in that database, even with different session strings.
 Connection loss triggers shutdown and blocks new voice operations. Each active
@@ -410,7 +410,7 @@ assistant uses one database pool connection. This does not fence external
 Telegram clients or deployments using another database, and failure detection
 is not instantaneous. Use a dedicated account. Database-free legacy deployments
 do not have distributed assistant exclusivity. Music clone onboarding therefore
-requires PostgreSQL. Only production Telethon IPv4 sessions using port 443 and
+requires a database. Only production Telethon IPv4 sessions using port 443 and
 allowlisted Telegram DC networks are accepted; arbitrary session endpoints are
 rejected before any connection. Parent assistant credentials are never reused.
 Changing to a legacy profile clears the stored assistant session. Revoke it in
@@ -427,7 +427,7 @@ screen. Web services with `RENDER_EXTERNAL_URL` and `PORT` now self-ping
 free-tier sleep or guarantee uninterrupted hosting. See `docs/ALWAYS_ON.md`.
 
 Music has 24 base group commands when its dependencies and assistant are
-configured, plus four saved-playlist commands when PostgreSQL is connected, including queue editing, repeat modes, shuffle, replay, volume,
+configured, plus four saved-playlist commands when database is connected, including queue editing, repeat modes, shuffle, replay, volume,
 play-next and recent session titles. Song-name search, YouTube watch-page
 extraction, effects, seeking and linked-channel playback are **not** claimed as
 supported yet. See [Music behavior migration](docs/MUSIC_PARITY.md) for exact
@@ -453,7 +453,7 @@ this code silently purchases or changes on your live service.
 ### Saved Music playlists
 
 Admins can use `/saveplaylist name`, `/playlists`, `/playlist name` and
-`/deleteplaylist name`. Lists are PostgreSQL-backed and isolated by bot, group
+`/deleteplaylist name`. Lists are database-backed and isolated by bot, group
 and user, with atomic quotas (10 lists, 20 tracks each). Saving replaces your
 same-named list. Only stable public HTTP(S) media URLs are accepted—not local
 files, credentials or signed query URLs. Start fresh playback before loading;
@@ -464,14 +464,14 @@ for URL-validation limitations and the remaining feature backlog.
 ### Persistent log destination
 
 With `DATABASE_URL` configured, `/setlog <negative channel id>` tests posting
-permission and saves the destination directly to PostgreSQL **before** confirming
+permission and saves the destination directly to database **before** confirming
 success. `/log` rereads the database, and `/unsetlog` saves an explicit clear that
 continues overriding `LOG_CHANNEL` after restart. Main bot and clone settings
 are separate. A configured but unavailable database never silently redirects
 these settings to an ephemeral JSON file.
 
 **After deploying this correction, run `/setlog` once again** to save your old
-file-only selection in PostgreSQL. Data already lost from an old Render disk
+file-only selection in database. Data already lost from an old Render disk
 cannot be recovered. Without a database, standalone file compatibility remains
 clearly labelled; it is not redeploy-safe hosting storage.
 
@@ -484,7 +484,7 @@ not mean every older batched settings store already has confirmed-write semantic
 Unhandled handler failures generate **#Errors** log notifications with a stable
 incident ID, error category, handler, safe frame locations and occurrence count.
 Raw exception arguments, update/message text, usernames, tokens and local
-variables are not intentionally collected. Repeats are aggregated in PostgreSQL
+variables are not intentionally collected. Repeats are aggregated in database
 and alerts are throttled to once per fingerprint per minute per process.
 Owner-only `/errors` in private shows the latest 10 incident groups in this bot.
 At most 100 distinct groups are retained per tenant, pruned on incident writes.

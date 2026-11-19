@@ -8,7 +8,7 @@ from agent.platform.db import Database
 from agent.platform.startup_cooldown import StartupCooldown
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Dedicated PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Dedicated Database required')
 def test_cooldown_survives_new_controller_and_is_scoped_without_shortening():
     async def scenario():
         db = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope='test:' + uuid.uuid4().hex)

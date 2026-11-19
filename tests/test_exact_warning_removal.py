@@ -27,7 +27,7 @@ async def test_pg_exact_clear_concurrency_and_scope(tmp_path):
     from agent.platform.db import Database
     from agent.platform.chats import ChatStore
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db=Database(os.environ['AGENT_TEST_DATABASE_URL'],scope='exactwarn:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
     try:

@@ -15,7 +15,7 @@ SCHEMA = (
 def database(ctx):
     db = getattr(ctx, 'db', None)
     if db is None or not db.connected or getattr(db, '_pool', None) is None:
-        raise ValueError('PostgreSQL is required. No broadcast admitted.')
+        raise ValueError('Database is required. No broadcast admitted.')
     return db
 
 

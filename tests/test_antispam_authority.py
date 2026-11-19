@@ -53,7 +53,7 @@ def test_database_outage_never_uses_cached_policy(tmp_path):
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="PostgreSQL required"
+    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="Database required"
 )
 def test_pg_policy_atomic_changes_isolation_and_audit(tmp_path):
     async def scenario():

@@ -36,7 +36,7 @@ def test_pg_filter_atomic_limit_order_isolation_and_audit_rollback(tmp_path):
     from agent.platform.group_filters import operate, FilterError
 
     if not os.environ.get("AGENT_TEST_DATABASE_URL"):
-        pytest.skip("PostgreSQL required")
+        pytest.skip("Database required")
 
     async def scenario():
         scope = "filters-test:" + uuid.uuid4().hex

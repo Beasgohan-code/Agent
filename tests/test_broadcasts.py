@@ -12,7 +12,7 @@ from agent.platform.broadcasts import admit
 @pytest.mark.asyncio
 async def test_pg_broadcast_admission_once_and_scoped():
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     import asyncio
     db = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope='broadcast:'+uuid.uuid4().hex, required=True)
     assert await db.connect()
@@ -41,7 +41,7 @@ async def test_unauthorized_broadcast_has_no_effect():
 async def test_pg_forward_records_ack_and_duplicate_does_not_replay():
     from agent.modules.ops.broadcast import broadcast
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
-        pytest.skip('PostgreSQL required')
+        pytest.skip('Database required')
     db = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope='broadcast:'+uuid.uuid4().hex, required=True)
     assert await db.connect()
     ctx = NS(db=db, settings=NS(owner_id=11))

@@ -415,7 +415,7 @@ def build(ctx):
             logger.warning('#Errors Clone panel state could not be loaded')
             await reply(message, panel('Clone controller unavailable',
                 lines=['Your saved clone state could not be read safely. No clone was created, started or deleted.',
-                       'Bot Owner: check /errors and PostgreSQL availability, then retry /mybots.'],
+                       'Bot Owner: check /errors and Database availability, then retry /mybots.'],
                 note='Premium is required to create/start clones, not to view your saved bots. This error is separate from your subscription.'))
             return
         await reply(message, text, reply_markup=keyboard)

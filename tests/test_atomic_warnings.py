@@ -11,7 +11,7 @@ from agent.platform.chats import ChatStore
 from agent.platform.db import Database
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 def test_warning_concurrency_restart_isolation_and_legacy(tmp_path):
     async def scenario():
         scope = 'warnings:' + uuid.uuid4().hex
@@ -60,7 +60,7 @@ def test_database_warning_sync_mutations_fail_before_cache_change(tmp_path):
     assert store._chats == {}
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 def test_warning_rollback_unavailability_bounds_and_validation(tmp_path):
     from agent.platform.warnings import WarningStoreError
 
@@ -109,7 +109,7 @@ def test_warning_rollback_unavailability_bounds_and_validation(tmp_path):
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 def test_warning_handler_persistence_denial_and_cancelled_mutation(tmp_path):
     from agent.config import Settings
     from agent.modules import moderation

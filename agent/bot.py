@@ -516,20 +516,20 @@ class AgentBot:
     async def _run(self) -> None:
         """Connect only after obtaining exclusive ownership of this bot token."""
         if self.database is None:
-            self.fatal_reason = "PostgreSQL is required: DATABASE_URL is missing or invalid"
+            self.fatal_reason = "Database is required: DATABASE_URL is missing or invalid"
             logger.critical(self.fatal_reason)
             return
         if self.database is not None:
             if await self._startup_step('database-connect', self.database.connect):
                 await self._startup_step('database-load', self.database.load)
                 if self.database.load_error:
-                    self.fatal_reason = "Required PostgreSQL state could not be loaded"
+                    self.fatal_reason = "Required Database state could not be loaded"
                     logger.critical(self.fatal_reason)
                     return
                 try:
                     await self._startup_step('log-destination-load', self.logbook.hydrate)
                 except Exception:
-                    self.fatal_reason = "PostgreSQL log destination could not be loaded"
+                    self.fatal_reason = "Database log destination could not be loaded"
                     logger.critical(self.fatal_reason)
                     return
                 # These stores were built in __init__, before the database was

@@ -24,7 +24,7 @@ def test_sudo_outage_and_sensitive_capabilities_fail_closed():
 
 
 @pytest.mark.skipif(
-    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="PostgreSQL required"
+    not os.environ.get("AGENT_TEST_DATABASE_URL"), reason="Database required"
 )
 def test_pg_sudo_scopes_revocation_audit_and_tenant_isolation():
     async def scenario():

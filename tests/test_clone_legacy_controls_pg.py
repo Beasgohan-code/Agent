@@ -11,7 +11,7 @@ from agent.platform.db import Database
 from test_clone import make_ctx, TOKEN_A, MEMBER, OWNER, FakeMessage
 from test_clone_control_centre import private_query
 
-pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 
 
 @pytest.mark.parametrize('action', ['start', 'stop', 'restart', 'delete', 'delete_confirm'])

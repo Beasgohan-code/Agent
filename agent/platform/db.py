@@ -138,7 +138,7 @@ def normalise_url(raw: str | None) -> str | None:
     if text.startswith("postgresql+asyncpg://"):
         text = "postgresql://" + text[len("postgresql+asyncpg://") :]
     if not text.startswith("postgresql://"):
-        logger.warning("DATABASE_URL is not a PostgreSQL URL; ignoring it")
+        logger.warning("DATABASE_URL is not a Database URL; ignoring it")
         return None
     # asyncpg has no sslmode; the parameter is honoured by demanding TLS instead.
     if "sslmode=" in text:
@@ -222,7 +222,7 @@ class Database:
         if not self.driver_installed():
             self.error = "asyncpg is not installed"
             logger.warning(
-                "DATABASE_URL is set but asyncpg is not installed; PostgreSQL is unavailable. "
+                "DATABASE_URL is set but asyncpg is not installed; Database is unavailable. "
                 "Install it with `pip install asyncpg`."
             )
             return False
@@ -239,12 +239,12 @@ class Database:
             raise
         except Exception as exc:
             self.error = type(exc).__name__
-            logger.warning('Could not initialize PostgreSQL (%s); no local-state fallback.', self.error)
+            logger.warning('Could not initialize Database (%s); no local-state fallback.', self.error)
             self._discard_failed_pool()
             return False
         self.connected = True
         self.error = None
-        logger.info("PostgreSQL connected; stores are backed by agent_documents")
+        logger.info("Database connected; stores are backed by agent_documents")
         return True
 
     def _discard_failed_pool(self) -> None:
@@ -255,13 +255,13 @@ class Database:
             try:
                 pool.terminate()
             except Exception as error:
-                logger.warning('#Errors Failed PostgreSQL pool disposal (%s)', type(error).__name__)
+                logger.warning('#Errors Failed Database pool disposal (%s)', type(error).__name__)
 
     async def load(self) -> int:
         """Read every stored document into memory. Returns how many were found."""
         self.load_error = None
         if not self.connected or self._pool is None:
-            self.load_error = "PostgreSQL is not connected"
+            self.load_error = "Database is not connected"
             return 0
         try:
             async with self._pool.acquire() as connection:
@@ -271,7 +271,7 @@ class Database:
                 )
         except Exception as exc:  # noqa: BLE001
             self.load_error = type(exc).__name__
-            logger.warning("Could not read documents from PostgreSQL: %s", type(exc).__name__)
+            logger.warning("Could not read documents from Database: %s", type(exc).__name__)
             return 0
         self._docs = {}
         prefix = f"{self.scope}:"
@@ -283,7 +283,7 @@ class Database:
                 continue
             self._docs[name[len(prefix) :]] = _decode(row["value"])
         if self._docs:
-            logger.info("Loaded %d document(s) from PostgreSQL", len(self._docs))
+            logger.info("Loaded %d document(s) from Database", len(self._docs))
         return len(self._docs)
 
     async def close(self) -> None:
@@ -457,7 +457,7 @@ def save_document(database: Database | None, name: str, path: Path, value: Any) 
         database.save(name, value)
         return
     if database is not None:
-        raise RuntimeError("PostgreSQL required: refusing local document write")
+        raise RuntimeError("Database required: refusing local document write")
     write_json(path, value)
 
 

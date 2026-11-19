@@ -148,7 +148,7 @@ def duration_label(seconds: int) -> str:
 def warn_policy(chats, chat_id: int) -> tuple[int, str]:
     """(limit, action) for a group. A limit of 0 disables escalation."""
     if getattr(chats,"_db",None) is not None:
-        raise RuntimeError("Awaited PostgreSQL warning policy read required.")
+        raise RuntimeError("Awaited Database warning policy read required.")
     limit = chats.get(chat_id, "warn_limit", DEFAULT_WARN_LIMIT)
     action = chats.get(chat_id, "warn_action", DEFAULT_WARN_ACTION)
     try:

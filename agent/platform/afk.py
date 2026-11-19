@@ -20,7 +20,7 @@ def database(ctx, group, user):
         raise AFKError('A group and personal user identity are required.')
     db=getattr(ctx,'db',None)
     if db is None or not db.connected or getattr(db,'_pool',None) is None:
-        raise AFKError('PostgreSQL AFK storage unavailable. No status change confirmed.')
+        raise AFKError('Database AFK storage unavailable. No status change confirmed.')
     return db
 
 

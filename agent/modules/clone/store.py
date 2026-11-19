@@ -209,7 +209,7 @@ class CloneStore:
 
     def _save(self) -> None:
         if self._db is not None:
-            raise RuntimeError("Awaited PostgreSQL clone operation required")
+            raise RuntimeError("Awaited Database clone operation required")
         save_document(
             self._db,
             "clones",
@@ -237,7 +237,7 @@ class CloneStore:
             return getattr(self, operation)(*args, **fields)
         db = self._db
         if not db.connected or getattr(db, "_pool", None) is None:
-            raise RuntimeError("PostgreSQL clone state unavailable")
+            raise RuntimeError("Database clone state unavailable")
         if not self.encrypted():
             raise RuntimeError("Clone database operations require TOKEN_KEY")
         if "clones" in getattr(db, "_pending", {}):
@@ -402,7 +402,7 @@ class CloneStore:
     # -- writes -----------------------------------------------------------
     def add(self, clone: Clone) -> Clone:
         if self._db is not None:
-            raise RuntimeError("Awaited PostgreSQL clone operation required")
+            raise RuntimeError("Awaited Database clone operation required")
         if clone.bot_id in self._items:
             raise ValueError(
                 "This bot is already recorded; ownership cannot be overwritten"
@@ -426,7 +426,7 @@ class CloneStore:
 
     def update(self, bot_id: int, **fields) -> Clone | None:
         if self._db is not None:
-            raise RuntimeError("Awaited PostgreSQL clone operation required")
+            raise RuntimeError("Awaited Database clone operation required")
         clone = self._items.get(int(bot_id))
         if clone is None:
             return None
@@ -443,7 +443,7 @@ class CloneStore:
 
     def remove(self, bot_id: int) -> bool:
         if self._db is not None:
-            raise RuntimeError("Awaited PostgreSQL clone operation required")
+            raise RuntimeError("Awaited Database clone operation required")
         previous = self._items.pop(int(bot_id), None)
         if previous is None:
             return False

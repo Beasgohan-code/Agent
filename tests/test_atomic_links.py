@@ -33,7 +33,7 @@ def test_database_outage_never_uses_cached_grants(tmp_path):
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_pg_competing_consumers_revocation_persistence_and_tenant_isolation(tmp_path):
     async def scenario():
         scope = 'links-test:' + uuid.uuid4().hex
@@ -81,7 +81,7 @@ def test_pg_competing_consumers_revocation_persistence_and_tenant_isolation(tmp_
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_pg_legacy_document_preserves_grants_and_purge_does_not_resurrect(tmp_path):
     async def scenario():
         db = Database(os.environ['AGENT_TEST_DATABASE_URL'], scope='links-legacy:'+uuid.uuid4().hex, required=True)
@@ -118,7 +118,7 @@ def test_request_id_consumption_survives_reload(tmp_path):
     assert reloaded.get(record.token).uses == 1
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_pg_request_id_is_atomic_across_instances_and_expiry(tmp_path):
     async def scenario():
         scope = 'redemption-security:' + uuid.uuid4().hex

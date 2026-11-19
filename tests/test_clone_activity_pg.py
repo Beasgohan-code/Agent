@@ -15,7 +15,7 @@ from test_atomic_clones import KEY
 from test_clone import build, MEMBER, OWNER, TOKEN_A, TOKEN_B
 from test_clone_control_centre import private_query
 
-pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='PostgreSQL required')
+pytestmark = pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Database required')
 
 
 def test_activity_receipts_pagination_redaction_authority_and_outage(tmp_path):

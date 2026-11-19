@@ -45,7 +45,7 @@ async def operate(db,group,*,join=None,user=None):
     if join is not None and (type(join) is not bool or not personal(user)):
         raise TagError('Invalid personal opt-in request.')
     if db is None or not db.connected or getattr(db,'_pool',None) is None:
-        raise TagError('PostgreSQL tagging storage unavailable. No change confirmed.')
+        raise TagError('Database tagging storage unavailable. No change confirmed.')
     try:
         async with db._pool.acquire(timeout=5) as conn:
             async with conn.transaction():
@@ -75,7 +75,7 @@ def _pool(db,group,actor):
     if type(group) is not int or not -(2**63)<group<0 or not personal(actor):
         raise TagError('Personal administrator and group required.')
     if db is None or not db.connected or getattr(db,'_pool',None) is None:
-        raise TagError('PostgreSQL tagging storage unavailable.')
+        raise TagError('Database tagging storage unavailable.')
     return db._pool
 
 
