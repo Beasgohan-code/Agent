@@ -406,3 +406,58 @@ def build_language_picker(ctx):
     if router is not None and not router.handles('lang:x'):
         router.register('lang', press)
     return lang
+
+
+async def guest_help(client, message):
+    """Answer only through Telegram's guest channel; never dispatch commands.
+
+    Guest chat identifiers must not be used for settings, history, or ordinary
+    sends: they are not evidence that this bot belongs to that chat.
+    """
+    from pyrogram.types import InlineQueryResultArticle, InputTextMessageContent
+
+    query_id = getattr(message, "guest_query_id", None)
+    if not query_id:
+        return
+    await client.answer_guest_query(
+        query_id,
+        result=InlineQueryResultArticle(
+            title="Bot help",
+            input_message_content=InputTextMessageContent(
+                "Guest mode provides help only. Open this bot's private chat and "
+                "send /start or /help for its tools. Administration, clone setup, "
+                "account settings and credentials are never processed from guest messages.",
+                parse_mode=None,
+            ),
+        ),
+    )
+
+
+async def managed_bot_notice(client, update):
+    """Notify the creator privately without exporting or replacing credentials.
+
+    This event also means token changes. It is not consent to start a worker,
+    overwrite a stored secret, or transfer a clone between owners.
+    """
+    user = getattr(update, "user", None)
+    bot = getattr(update, "bot", None)
+    user_id = getattr(user, "id", None)
+    bot_id = getattr(bot, "id", None)
+    if (type(user_id) is not int or user_id <= 0 or getattr(user, "is_bot", False)
+            or type(bot_id) is not int or bot_id <= 0 or not getattr(bot, "is_bot", False)):
+        return
+    await client.send_message(
+        user_id,
+        f"Telegram reported a managed-bot creation or token change for bot {bot_id}. "
+        "No credentials were imported or replaced, and no clone was started. "
+        "Use /clone in this private chat to review access and follow the secure setup. "
+        "If an existing clone's token changed, its saved credential is not updated automatically. "
+        "Never post bot tokens in a group.",
+        parse_mode=None,
+    )
+
+
+def extra_handlers(ctx):
+    """Native update channels remain separate from ordinary command dispatch."""
+    from pyrogram.handlers import GuestMessageHandler, ManagedBotUpdatedHandler
+    return [GuestMessageHandler(guest_help), ManagedBotUpdatedHandler(managed_bot_notice)]

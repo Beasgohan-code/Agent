@@ -82,4 +82,26 @@ def build(ctx):
 def extra_handlers(ctx):
     """The join watcher that mutes unverified members."""
     instance = verifier(ctx)
-    return [ChatMemberUpdatedHandler(instance.on_member_update)]
+    from pyrogram.handlers import ChatJoinRequestHandler
+    return [ChatMemberUpdatedHandler(instance.on_member_update),
+            ChatJoinRequestHandler(queue_guard_request)]
+
+
+async def queue_guard_request(client, request):
+    """Guard queries go to human review, not arrival verification or auto-admit.
+
+    Telegram requires a native query response within ten seconds. No storage,
+    permission lookups or external providers belong in this deadline path.
+    Ordinary join requests have no query id and remain untouched.
+    """
+    import asyncio
+    from pyrogram.enums import ChatJoinRequestQueryResult
+
+    query_id = getattr(request, "query_id", None)
+    if query_id:
+        await asyncio.wait_for(
+            client.answer_chat_join_request_query(
+                query_id, ChatJoinRequestQueryResult.QUEUE,
+            ),
+            timeout=8,
+        )

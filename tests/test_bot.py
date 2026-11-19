@@ -89,7 +89,7 @@ def test_build_creates_client_and_registers_handlers():
     assert isinstance(client, Client)
     # Music registers nothing without SESSION_STRING. Count command handlers,
     # callback/error routing and isolated background watchers separately.
-    assert bot.handler_count == 226
+    assert bot.handler_count == 229
 
     handlers = client.dispatcher.groups[0]
     assert sum(isinstance(h, MessageHandler) for h in handlers) == 215
