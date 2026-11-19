@@ -847,3 +847,15 @@ arguments, sender-chat identities or bots accepted.201 raw fetched/200 considere
 15-second read deadline,5-second permission deadlines. Counts distinct valid
 returned admins, including hidden/bot admins numerically. Explicit cap notice;
 no partial count or raw provider errors. Permission checks remain live, not cached.
+
+
+## /anonadmin and /adminerror authority review
+
+Strict optional yes/no/on/off (case-insensitive); bare command reads current state.
+Current personal nonbot Manage chat admin required with5-second permission checks
+before access, immediately before mutation and after loading/saving. Invalid input
+or identities rejected before storage access. Final loss of rights withholds setting
+details. If the writer already confirmed, reply says saved rather than suggesting
+rollback. Provider failures use safe generic text/type-only logs. Existing silent
+initial denial behavior and anonymous-permission risk warning retained. Storage
+and transaction history unchanged; no permission cache or new commands.

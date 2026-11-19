@@ -1003,3 +1003,29 @@ clean; broader lint scan reports existing unused imports/fixture-import warnings
 in unrelated FileStore/UI/fixture modules, not a repository-wide clean claim.
 Inventory regenerated from isolated patch252 names; admincache review flag updated.
 Selective index transformations excluded unrelated dirty Music/clone/premium changes.
+
+## Administrator-option mutation and disclosure checks
+
+Existing /anonadmin and /adminerror now share an in-place dedicated option
+handler, replacing their older branch in the promotion handler. Group/personal
+nonbot identity with valid positive ID required; strict optional yes/no/on/off
+syntax before network or storage reads. Five-second live Manage chat checks at
+admission, immediately before write, and before state disclosure. Reads also
+recheck after loading. Initial denials preserve configured adminerror behavior;
+final revoked-rights results withhold details. Confirmed writes followed by revoked
+rights or provider failure explicitly say setting saved, never imply rollback.
+Local validation distinct from provider ValueError; errors log type only and no
+raw provider body reaches replies. Anonymous-setting risk warning retained.
+
+Store transaction/history/scoping unchanged; no new module/command/schema/fallback.
+Authority checks cannot be atomic with external rights changes. Settings still
+use existing canonical writer; post-save reply failure does not reverse a write.
+Two test-first regressions failed before implementation, expanded to both commands
+plus invalid arguments/identity/uppercase alias and post-save timeout coverage.
+Existing real disposable database concurrency/isolation/audit-rollback tests rerun;
+Telegram permissions simulated, no production or live group changes.
+User's neutral implementation wording remains in force; no engine branding added.
+Validation: exact selective suite2340 passed31.45s; working2422 passed28.21s,
+no skips. Changed-handler/test pyflakes, compile and staged whitespace checks
+clean.252-name inventory updated only for the reviewed options. Unrelated dirty
+Music/clone/premium/localization edits preserved. No deployment/merge/live calls.

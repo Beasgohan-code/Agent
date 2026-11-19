@@ -1,6 +1,7 @@
 """Administrator changes require current Telegram privileges."""
 
 import asyncio
+import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 import test_group as fixtures
@@ -255,4 +256,68 @@ def test_admincache_refuses_bad_input_and_unaccountable_callers_before_read(tmp_
             await commands['admincache'](client,request)
             client.get_chat_members.assert_not_called()
             assert request.replies
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('command',['anonadmin','adminerror'])
+def test_admin_options_recheck_before_write_and_report_committed_change(tmp_path,monkeypatch,command):
+    import agent.modules.group.admin as implementation
+    async def scenario():
+        _,commands=group.build(fixtures.ctx.__wrapped__(tmp_path))
+        saved=AsyncMock(return_value={'anonadmin':True,'adminerror':True})
+        monkeypatch.setattr(implementation,'options',saved)
+        monkeypatch.setattr(implementation,'is_moderator',AsyncMock(side_effect=[True,False]))
+        request=fixtures.FakeMessage(f'/{command} on')
+        await commands[command](fixtures.FakeClient(),request)
+        saved.assert_not_awaited()
+        monkeypatch.setattr(implementation,'is_moderator',AsyncMock(side_effect=[True,True,False]))
+        request=fixtures.FakeMessage(f'/{command} on')
+        await commands[command](fixtures.FakeClient(),request)
+        saved.assert_awaited_once()
+        text=str(request.replies[-1]).lower()
+        assert 'saved' in text and 'withheld' in text and f'{command}: on' not in text
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('command',['anonadmin','adminerror'])
+def test_admin_options_read_revocation_and_provider_error_redaction(tmp_path,monkeypatch,command):
+    import agent.modules.group.admin as implementation
+    async def scenario():
+        _,commands=group.build(fixtures.ctx.__wrapped__(tmp_path))
+        monkeypatch.setattr(implementation,'options',AsyncMock(return_value={'anonadmin':False,'adminerror':True}))
+        monkeypatch.setattr(implementation,'is_moderator',AsyncMock(side_effect=[True,False]))
+        request=fixtures.FakeMessage(f'/{command}')
+        await commands[command](fixtures.FakeClient(),request)
+        assert f'{command}: on' not in str(request.replies[-1])
+        monkeypatch.setattr(implementation,'is_moderator',AsyncMock(side_effect=ValueError('PRIVATE_PROVIDER_DATA')))
+        request=fixtures.FakeMessage(f'/{command}')
+        await commands[command](fixtures.FakeClient(),request)
+        assert 'PRIVATE_PROVIDER_DATA' not in str(request.replies)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('command',['anonadmin','adminerror'])
+def test_admin_options_identity_syntax_and_post_save_failure(tmp_path,monkeypatch,command):
+    import agent.modules.group.admin as implementation
+    async def scenario():
+        _,commands=group.build(fixtures.ctx.__wrapped__(tmp_path))
+        saved=AsyncMock(return_value={'anonadmin':True,'adminerror':True})
+        authority=AsyncMock(return_value=True)
+        monkeypatch.setattr(implementation,'options',saved)
+        monkeypatch.setattr(implementation,'is_moderator',authority)
+        for kind in ('extra','invalid','bot','anonymous','oversized'):
+            request=fixtures.FakeMessage(f'/{command} '+('on extra' if kind=='extra' else 'maybe' if kind=='invalid' else 'on'))
+            if kind=='bot':request.from_user.is_bot=True
+            if kind=='anonymous':request.sender_chat=SimpleNamespace(id=request.chat.id)
+            if kind=='oversized':request.from_user.id=2**63
+            await commands[command](fixtures.FakeClient(),request)
+            saved.assert_not_awaited()
+            authority.assert_not_awaited()
+        monkeypatch.setattr(implementation,'is_moderator',AsyncMock(side_effect=[True,True,TimeoutError('PRIVATE_PROVIDER_DATA')]))
+        request=fixtures.FakeMessage(f'/{command} YES')
+        await commands[command](fixtures.FakeClient(),request)
+        saved.assert_awaited_once()
+        assert saved.call_args.kwargs['enabled'] is True
+        text=str(request.replies[-1])
+        assert 'Setting saved' in text and 'PRIVATE_PROVIDER_DATA' not in text
     asyncio.run(scenario())

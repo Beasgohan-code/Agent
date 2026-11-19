@@ -127,6 +127,45 @@ def build(ctx):
             logging.getLogger(__name__).warning('#Errors Administrator snapshot unavailable (%s)',type(error).__name__)
             await reply(message,'Administrator snapshot unavailable. No partial result displayed.')
 
+    class OptionInputError(ValueError):
+        """Locally authored administrator-option validation."""
+
+    def option_handler(command):
+        async def call(client,message):
+            committed=False
+            try:
+                chat=getattr(message,'chat',None)
+                user=getattr(message,'from_user',None)
+                if (getattr(chat,'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                        or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                        or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None):
+                    raise OptionInputError('Use your personal administrator account inside the group.')
+                args=(getattr(message,'text','') or '').split()[1:]
+                if len(args)>1 or args and args[0].lower() not in ('yes','no','on','off'):
+                    raise OptionInputError(f'Usage: /{command} yes|no|on|off; omit the value to view.')
+                async def authority():
+                    return await asyncio.wait_for(is_moderator(client,message,need='can_manage_chat'),5)
+                if not await authority():
+                    await denied(ctx,message,'Current Manage chat administrator permission required.')
+                    return
+                if args:
+                    if not await authority():
+                        raise OptionInputError('Administrator permission changed. No setting change requested.')
+                    state=await options(ctx,chat.id,setting=command,enabled=args[0].lower() in ('yes','on'),actor=user.id)
+                    committed=True
+                else:
+                    state=await options(ctx,chat.id)
+                if not await authority():
+                    raise OptionInputError('Setting saved; current administrator permission changed. Details withheld.' if committed else 'Current administrator permission changed. Setting withheld.')
+                warning=('\nWarning: anonymous group senders can bypass granular group permission checks. Personal-identity and Owner-only safeguards still apply.' if command=='anonadmin' else '')
+                await reply(message,f"{command}: {'on' if state[command] else 'off'}{warning}")
+            except (OptionInputError,AdminStateError) as error:
+                await reply(message,str(error))
+            except Exception as error:
+                logging.getLogger(__name__).warning('#Errors Administrator option unavailable (%s)',type(error).__name__)
+                await reply(message,'Setting saved; confirmation or current permissions unavailable. Details withheld.' if committed else 'Administrator setting unavailable or result unconfirmed. Refresh before retrying.')
+        return call
+
     async def run(client, message, command):
         chat = getattr(message, "chat", None)
         if getattr(chat, "type", None) not in (ChatType.GROUP, ChatType.SUPERGROUP):
@@ -151,29 +190,6 @@ def build(ctx):
             if not await is_moderator(client, message, need=need):
                 await denied(
                     ctx, message, "You do not have the required group-admin permission."
-                )
-                return
-            if command in ("anonadmin", "adminerror"):
-                args = (message.text or "").split()
-                if len(args) == 1:
-                    state = await options(ctx, chat.id)
-                elif len(args) == 2 and args[1].lower() in ("yes", "no", "on", "off"):
-                    state = await options(
-                        ctx,
-                        chat.id,
-                        setting=command,
-                        enabled=args[1].lower() in ("yes", "on"),
-                        actor=user.id,
-                    )
-                else:
-                    raise ValueError(f"Usage: /{command} yes|no|on|off")
-                warning = (
-                    "\nWarning: anonymous group senders can bypass granular group permission checks. Personal-identity and Owner-only safeguards still apply."
-                    if command == "anonadmin"
-                    else ""
-                )
-                await reply(
-                    message, f"{command}: {'on' if state[command] else 'off'}{warning}"
                 )
                 return
             title = ""
@@ -280,7 +296,7 @@ def build(ctx):
 
         return call
 
-    return {**{command: handler(command) for command in COMMANDS if command not in ("admincache", "adminlist", "tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort", "etagall", "eall")}, "admincache": admincache, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
+    return {**{command: handler(command) for command in COMMANDS if command not in ("anonadmin", "adminerror", "admincache", "adminlist", "tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort", "etagall", "eall")}, "anonadmin": option_handler("anonadmin"), "adminerror": option_handler("adminerror"), "admincache": admincache, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
 
 
 class TemporaryPromotionInputError(ValueError):

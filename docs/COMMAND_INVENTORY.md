@@ -23,7 +23,7 @@
 | `/adminbox` | group | group | Live caller/bot permissions and registered admin tools | Targeted review/tests |
 | `/admincache` | group | group | Refresh the administrator snapshot | Targeted review/tests |
 | `/admincount` | group | group | Live administrator count (group admin) | Targeted review/tests |
-| `/adminerror` | group | group | Toggle admin permission-denial messages | Needs individual UI/behavior review |
+| `/adminerror` | group | group | Toggle admin permission-denial messages | Targeted review/tests |
 | `/adminlist` | group | group | List current group administrators | Targeted review/tests |
 | `/admins` | group | group | List this group's administrators | Targeted review/tests |
 | `/afk` | group | group | Toggle your group away status; optional public reason | Targeted review/tests |
@@ -31,7 +31,7 @@
 | `/all` | group | group | Alias of tagall; also @all | Targeted review/tests |
 | `/allowlist` | moderation | group | View/add URL-lock domain exemptions | Needs individual UI/behavior review |
 | `/allsettings` | group | group | View group mention limits and latest run (admin) | Targeted review/tests |
-| `/anonadmin` | group | group | Allow anonymous group-admin checks (unsafe) | Needs individual UI/behavior review |
+| `/anonadmin` | group | group | Allow anonymous group-admin checks (unsafe) | Targeted review/tests |
 | `/antispam` | moderation | group | Anti-spam policy for this group | Targeted review/tests |
 | `/appeal` | reports | all | Appeal a moderation action | Needs individual UI/behavior review |
 | `/approval` | moderation | group | Check a member approval | Targeted review/tests |
