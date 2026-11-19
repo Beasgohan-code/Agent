@@ -178,7 +178,7 @@
 | `/resetplayer` | music | group | Reset this group's player and queue | Needs individual UI/behavior review |
 | `/resetrules` | group | group | Clear this group’s rules; retain revisions (admin) | Needs individual UI/behavior review |
 | `/resetwarn` | moderation | group | Clear a member’s active warnings; retain history (admin) | Targeted review/tests |
-| `/resetwarns` | group | group | Clear all warnings for a member | Needs individual UI/behavior review |
+| `/resetwarns` | group | group | Clear all warnings for a member | Targeted review/tests |
 | `/restart` | ops | all | Restart the process (owner) | Needs individual UI/behavior review |
 | `/restart_bot` | shell | private | Alias of start, not a process restart | Needs individual UI/behavior review |
 | `/resume` | music | group | Resume playback | Needs individual UI/behavior review |

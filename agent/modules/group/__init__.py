@@ -44,8 +44,6 @@ from ...ui.tables import Table, kv_table, panel
 from ..moderation import (
     DENIED,
     is_moderator,
-    parse_target,
-    target_is_protected,
 )
 from ...utils.rich import reply
 
@@ -111,12 +109,6 @@ def build(ctx):
         if await is_moderator(client, message, need=need, ctx=ctx):
             return True
         await denied(ctx, message, DENIED)
-        return False
-
-    async def _protected(client, message, target_id: int) -> bool:
-        if await target_is_protected(client, message.chat.id, target_id):
-            await reply(message, "I cannot act on an administrator or a target whose membership could not be verified. Action not attempted.")
-            return True
         return False
 
     # -- /settings ---------------------------------------------------------
@@ -394,31 +386,10 @@ def build(ctx):
             )
         )
 
-    # -- /warnlimit --------------------------------------------------------
-
-    # -- /resetwarns -------------------------------------------------------
-
-    async def resetwarns(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to clear all their warnings.")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        cleared = await ctx.chats.aclear_all_warnings(message.chat.id, target_id)
-        if not cleared:
-            await reply(message, f"{mention} had no active warnings.")
-            return
-        ctx.chats.log(
-            message.chat.id, "resetwarns", actor_id=message.from_user.id,
-            target_id=target_id, reason=f"{cleared} cleared",
-        )
-        await reply(message, 
-            f"<b>Warnings cleared</b>\nMember: {mention}\nCleared: {cleared}"
-        )
+    # Reuse canonical warning-removal behavior; retain group command ownership
+    # and the resetwarns audit/usage name without a second clearing implementation.
+    from ..moderation.warning_controls import build as warning_removals
+    resetwarns=warning_removals(ctx,include_group_alias=True)['resetwarns']
 
     # -- /lockdown ---------------------------------------------------------
 

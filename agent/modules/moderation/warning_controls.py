@@ -15,7 +15,7 @@ class RemovalInputError(ValueError):
     """Locally authored safe validation."""
 
 
-def build(ctx):
+def build(ctx,*,include_group_alias=False):
     from . import is_moderator,target_is_protected
 
     def handler(command):
@@ -79,4 +79,5 @@ def build(ctx):
                     'Warning clear committed; result delivery unconfirmed. Check /warns before further action.' if committed else
                     'Warning removal unconfirmed. Check /warns before retrying; no automatic retry.']))
         return call
-    return {command:handler(command) for command in ('unwarn',*COMMANDS)}
+    commands=('unwarn',*COMMANDS,*(('resetwarns',) if include_group_alias else ()))
+    return {command:handler(command) for command in commands}

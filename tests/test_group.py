@@ -427,7 +427,7 @@ def test_resetwarns_clears_every_warning(ctx):
     run(handlers(ctx)["resetwarns"], FakeClient(), message)
 
     assert ctx.chats.active_warning_count(CHAT, 22) == 0
-    assert "Cleared: 3" in message.replies[0]
+    assert "Warnings cleared" in message.replies[0] and "3" in message.replies[0]
 
 
 def test_resetwarns_says_so_when_there_was_nothing_to_clear(ctx):
@@ -444,7 +444,7 @@ def test_resetwarns_refuses_to_touch_an_administrator(ctx):
 
     run(handlers(ctx)["resetwarns"], FakeClient(target=ADMIN), message)
 
-    assert "I cannot act on an administrator" in message.replies[0]
+    assert "Cannot act on an administrator" in message.replies[0]
     assert ctx.chats.active_warning_count(CHAT, 22) == 1
 
 

@@ -759,3 +759,25 @@ cross-group reply, final authority loss, verified readback+audit failure truth, 
 identity/no-right refusal. Old fake client pin/unpin returns corrected to actual API
 shapes rather than letting None stand for success. Existing realPG full suite rerun,
 Telegram simulated only; no production/live pin/deploy/merge. Tagging unchanged.
+
+## /resetwarns consolidation: no second warning-clearing implementation
+
+Removed legacy nested group resetwarns and its now-unused protection/parser helper
+imports. Group /resetwarns now reuses existing moderation/warning_controls builder's
+explicit group alias option. Default moderation registration remains unchanged;
+group retains sole manifest/handler ownership. Own resetwarns audit/usage name retained,
+not falsely logged as resetwarn. No new module or command invented.
+
+Same reviewed per-member reset behavior as /resetwarn: current personal Restrict
+members admin, bot/anonymous/configured-Owner bypass rejected, username/ID/textmention/
+same-group reply targeting with strict extras, protected/unverified admins refused,
+final current authority before canonical all-active clear. Rich count/moderator/
+committed/history-retained result; local audit failure separate from committed clear,
+redacted errors/no retries/no Telegram ban/mute changes. Canonical awaited PostgreSQL
+warning store unchanged. A warning reset is not deletion of warning history.
+
+Two test-first regressions initially failed (username/history parity and final rights/
+post-commit audit failure), existing empty/protected/all-clear group tests retained,
+legacy wording expectations updated to richer shared card. Existing realPG warning
+concurrency/tenant/history/removal tests rerun in full suites. No production/live
+Telegram/deploy/merge. Tagging and paused localization unchanged.

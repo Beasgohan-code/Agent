@@ -878,3 +878,17 @@ Full realPG exact2315 passed21.63s, working2397 passed20.36s, no skips. Pyflakes
 compile/diff clean;252-name inventory updated. No new module/commands; paused
 localization and unrelated dirty work excluded via selective docs index. Tagging
 always available unchanged. No deployment/merge/live Telegram/production changes.
+
+## /resetwarns shares the verified warning reset path
+
+Removed legacy group reset implementation and unused target/protection helpers.
+Existing warning_controls builder offers explicit group alias opt-in; group owns
+/resetwarns registration, preserves own audit/usage name, same rich/strict/live
+Restrict-authorized all-active clear as resetwarn. No new module/duplicate clearing
+writer/manifest collision. Two test-first regressions failed before implementation,
+username/history parity, final rights loss and committed/audit failure verified.
+Existing protected/empty/all-clear tests retained, changed wording expectations only.
+Full realPG exact2317 passed27.26s, working2399 passed26.83s, no skips. Pyflakes/
+compile/diff clean;252-name inventory review state updated. Paused localization and
+unrelated work excluded by selective docs staging. Tagging always available unchanged.
+No production/live Telegram/deployment/merge or full-command completion claim.
