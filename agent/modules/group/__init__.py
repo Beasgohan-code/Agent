@@ -336,7 +336,7 @@ def build(ctx):
     class AdminListInputError(ValueError):
         """Safe group-member reader validation."""
 
-    async def admins(client,message):
+    async def admins(client,message,*,command="admins"):
         user,chat=getattr(message,'from_user',None),getattr(message,'chat',None)
         async def membership():
             current=await asyncio.wait_for(client.get_chat_member(chat.id,user.id),5)
@@ -349,7 +349,7 @@ def build(ctx):
                 raise AdminListInputError('Use your personal account inside the group.')
             args=(getattr(message,'text','') or '').split()[1:]
             if len(args)>1 or args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0])>2 or not 1<=int(args[0])<=14):
-                raise AdminListInputError('Use /admins [page], for example /admins 2.')
+                raise AdminListInputError(f'Use /{command} [page], for example /{command} 2.')
             page=int(args[0]) if args else 1
             await membership()
             rows=[]
@@ -379,19 +379,22 @@ def build(ctx):
                 raise AdminListInputError(f'Choose an administrator page from 1 to {pages}.')
             current=rows[(page-1)*MAX_ADMIN_ROWS:page*MAX_ADMIN_ROWS]
             extra=max(0,len(rows)-page*MAX_ADMIN_ROWS)
-            lines=[f'Plus {extra} more. /admins {page+1}'] if extra else []
+            lines=[f'Plus {extra} more. /{command} {page+1}'] if extra else []
             if truncated:
                 lines.append('Showing a bounded snapshot from the first 200 returned records.')
             if not current:
                 lines.append('No visible administrators were returned for this group.')
             await reply(message,panel('Administrators',icon=ctx.theme.emoji('shield'),
                 table=Table(headers=('Role','Name','ID'),rows=tuple(current),aligns=('left','left','right')) if current else None,
-                lines=lines,footer=f'Page {page}/{pages} · /admins [page]',note='Live Telegram list. Anonymous admins hidden. Pages reload current state.'))
+                lines=lines,footer=f'Page {page}/{pages} · /{command} [page]',note='Live Telegram list. Anonymous admins hidden. Pages reload current state.'))
         except AdminListInputError as error:
             await reply(message,str(error))
         except Exception as error:
             logger.warning('#Errors Administrator list unavailable (%s)',type(error).__name__)
             await reply(message,'Could not read the administrator list: service or membership unavailable. No partial list displayed.')
+
+    async def adminlist(client,message):
+        await admins(client,message,command='adminlist')
 
     # Reuse canonical warning-removal behavior; retain group command ownership
     # and the resetwarns audit/usage name without a second clearing implementation.
@@ -479,6 +482,7 @@ def build(ctx):
 
     return MANIFEST, {
         **build_admin(ctx),
+        "adminlist": adminlist,
         **build_details(ctx),
         **build_warning_settings(ctx),
         "afk": build_afk(ctx),

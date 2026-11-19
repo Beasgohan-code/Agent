@@ -26,7 +26,7 @@ not a claim of implemented coverage. See [the architecture audit](docs/GROUP_MAN
 | `LOG_CHANNEL` | no | Where the bot posts its event log; without it, the owner's DM. |
 | `DATA_DIR` | no | Temporary media/vault working directory. Metadata is PostgreSQL-backed. Default `data`. |
 | `DATABASE_URL` | **yes** | PostgreSQL DSN. Set it and every store is kept in the database, scoped per bot. |
-| `TOKEN_KEY` | no | Encrypts clone tokens at rest (Fernet). Unset ⇒ plaintext, announced. |
+| `TOKEN_KEY` | for credential writes | Encrypts clone tokens/provider keys/sessions at rest (Fernet). Missing key refuses new secret writes; no plaintext fallback. Keep the existing key across redeploys. |
 | `DB_REQUIRED` | no | Legacy flag; PostgreSQL is now always required. `0` does not enable local state. |
 | `STORAGE_CHANNEL` | no | A private channel id vault files are archived into (durable bytes). |
 | `CLONE_LIMIT` | no | How many clones this deployment will run at once. Default `5`. |
@@ -42,7 +42,8 @@ the instance lease; `.env.example` lists them all with their defaults.
 ```sh
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env      # fill BOT_TOKEN, API_ID, API_HASH
+pip install --no-deps richgram==0.2.0  # keep wzgram as the pyrogram provider
+cp .env.example .env      # fill BOT_TOKEN, API_ID, API_HASH, DATABASE_URL
 python -m agent
 ```
 
@@ -60,8 +61,8 @@ Every panel is a **rich message**: a real heading over a real table (Bot API
 10.3), not a table drawn out of box characters. Tapping a button edits that same
 message in place — `edit_message_text(rich_text=…)` keeps the native table, so
 navigation does not downgrade the screen — and when Telegram or the client
-cannot take a rich message, `utils/rich.py` redraws the table as an aligned
-`<pre>` grid instead of flattening it into one run-on line. `/help` is a table of
+cannot take a rich message, `utils/rich.py` uses the classic escaped text
+fallback. Native tables are primary; the fallback does not draw ASCII grids. `/help` is a table of
 sections with a count for each, each section is a table of commands with the
 sentence behind each one, and `/help <command>` opens that command's own page
 (the description, the section it belongs to, and whether this deployment has it).
@@ -273,9 +274,9 @@ only in SQL. `clone:…` is applied by `CloneManager.settings_for`, so a clone's
 vault, premium ledger and plugin state are its own *and* survive a redeploy on
 any instance.
 
-`DB_REQUIRED=1` turns "the URL is set but unreachable" into a startup failure
-instead of a silent fall back to files — two competing sources of truth are worse
-than a bot that refuses to start.
+Normal startup requires `DATABASE_URL` and a successful PostgreSQL connection.
+`DB_REQUIRED=0` does not enable a file fallback. Some legacy/test helpers still
+support local files, but they are not the normal bot runtime.
 
 **Clone tokens are encrypted at rest.** With `TOKEN_KEY` set, records are written
 as Fernet ciphertext (`v1:` prefix, AES-CBC + HMAC) and decrypted only in memory;
@@ -283,7 +284,9 @@ masking a token in a panel was never protection for the database. A key that
 cannot be used is an error rather than a quiet downgrade, a record written before
 encryption existed is rewritten as ciphertext on the next save, and a record this
 key cannot read is skipped with a logged reason instead of taking the bot down.
-Without a key the store still works in plaintext and says so once at startup.
+Without a key, new secret writes are refused. Legacy plaintext reads remain for
+compatibility; this is not permission to write new plaintext credentials. Never
+remove or rotate the existing key to bypass a decryption error.
 
 ### The vault survives a redeploy
 

@@ -1,5 +1,7 @@
 # Agent — group-management architecture audit
 
+**Chronological architecture ledger:** early “next” steps and implementation gaps describe their phase; later sections and [the current review evidence](CODEBASE_AUDIT.md) supersede them. See [USER_REQUIREMENTS.md](USER_REQUIREMENTS.md#current-status-and-document-map) for document precedence. This is not a claim that every architecture gap has been closed.
+
 ## Product contract
 
 Agent is primarily a professional group-management bot. Moderation, group

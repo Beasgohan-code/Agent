@@ -4,6 +4,39 @@ This is the project requirement record, not a claim that all work is finished.
 Keep it current as commands are upgraded one by one. New explicit user decisions
 can supersede items here; do not silently discard earlier constraints.
 
+## Current status and document map
+
+- Latest explicit user decisions supersede older phase notes. Keep languages
+  paused until command improvements are finished; English only is released.
+- [COMMAND_INVENTORY.md](COMMAND_INVENTORY.md): generated source declarations,
+  aliases and targeted-review flags, **not** proof all behavior is complete.
+- [USER_ADMIN_FEATURES.md](USER_ADMIN_FEATURES.md): chronological command behavior,
+  limits and safety decisions. Later entries supersede earlier “missing” lists.
+- [CODEBASE_AUDIT.md](CODEBASE_AUDIT.md): phase-specific source/test evidence;
+  old baseline findings/test totals are not current release certification.
+- [GROUP_MANAGEMENT.md](GROUP_MANAGEMENT.md), [MODERATION_PARITY.md](MODERATION_PARITY.md),
+  [GENERAL_FEATURES.md](GENERAL_FEATURES.md), [MUSIC_PARITY.md](MUSIC_PARITY.md):
+  architecture and feature ledgers; respect recorded scope and unresolved limits.
+- [CLONE_CONTROL_CENTRE.md](CLONE_CONTROL_CENTRE.md) and
+  [FILESTORE_CLONE_PARITY.md](FILESTORE_CLONE_PARITY.md): clone/FileStore workflows,
+  authority boundaries and incremental delivery, not universal upstream parity.
+- [ALWAYS_ON.md](ALWAYS_ON.md), [LOG_SAFETY.md](LOG_SAFETY.md),
+  [EMOJI_THEME.md](EMOJI_THEME.md), [UI_PREVIEW.md](UI_PREVIEW.md): hosting/logging
+  limits, presentation and offline visuals. No uptime or live-render guarantee.
+- [REFERENCE_ADOPTION.md](REFERENCE_ADOPTION.md),
+  [references/README.md](references/README.md), [REFERENCE_INVENTORY.md](REFERENCE_INVENTORY.md)
+  and per-reference indexes are pinned static discovery, not execution or a full
+  behavioral/security audit. Preserve licenses; do not run reference installers.
+- [../README.md](../README.md) and
+  [../tools/typetube/README.md](../tools/typetube/README.md): setup and adapter limits.
+
+Current mention contract: @all uses clickable first names; @eall uses random
+emoji labels; no joining/on-off prerequisite.20/message,5s pause, up to2000 returned
+records; Telegram may return only part of a group. Optional command text only,
+no automatic headings or success cards; /tagabort stops future batches.
+Stop/error controls cannot recall an in-flight send. FloodWait/uncertain delivery
+requires review; no automatic retry. No production deployment or startup-fix claim.
+
 ## Non-negotiable workflow
 
 - **Never merge the PR.** Work on the Arena session's fixed current branch only.

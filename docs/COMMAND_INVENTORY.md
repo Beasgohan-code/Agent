@@ -24,7 +24,7 @@
 | `/admincache` | group | group | Refresh the administrator snapshot | Needs individual UI/behavior review |
 | `/admincount` | group | group | Live administrator count (group admin) | Targeted review/tests |
 | `/adminerror` | group | group | Toggle admin permission-denial messages | Needs individual UI/behavior review |
-| `/adminlist` | group | group | List current group administrators | Needs individual UI/behavior review |
+| `/adminlist` | group | group | List current group administrators | Targeted review/tests |
 | `/admins` | group | group | List this group's administrators | Targeted review/tests |
 | `/afk` | group | group | Toggle your group away status; optional public reason | Targeted review/tests |
 | `/alive` | core | all | Live bot health and uptime | Needs individual UI/behavior review |

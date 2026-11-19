@@ -1,5 +1,7 @@
 # Users/stats, tagging and admin reference checklist
 
+**Reading this ledger:** entries are chronological, not a current missing-command list. Later sections supersede earlier pending/opt-in statements. Current mention behavior: first-name or emoji links, no joining,20/message,5s pause; optional text only, no success cards. See [current status and document map](USER_REQUIREMENTS.md#current-status-and-document-map).
+
 Source: user-provided command lists. Inventory is code-level, not proof of live Telegram permissions.
 
 Implemented profile phase: `/myinfo` ignores replied target and renders caller; `/userinfo @username|ID` or replied user; `/info [@username|ID]` accepts explicit target in preference to reply, otherwise reply/caller. One shared existing profile renderer, no duplicated profile implementations. Five-second bounded explicit lookup, validates positive IDs/usernames and returned personal identity, raw errors redacted/type-only #Errors logs. Public Telegram fields only; no invented full/private account data. Existing moderator-only warning/approval visibility unchanged. Identity lookup can fail for inaccessible accounts.
@@ -823,3 +825,14 @@ no numeric Member labels, automatic heading or success cards. `/tagall hello` ad
 only your optional text before each batch; `/tagall` sends just mentions. Optional
 text is limited to500 characters and persisted across batches/Resume. Emoji mode
 keeps emoji labels. Use `/tagabort` to stop; errors are still reported.
+
+
+## /adminlist shares the bounded /admins reader
+
+Removed the second administrator-list implementation. /adminlist [page] now uses
+/admins behavior: current personal member before read and before disclosure,
+strict page1–14,15 rows/page,201 raw fetched/200 considered/15s limit, anonymous
+identities hidden,64-character names, no partial list/provider errors leaked.
+Usage/navigation keep /adminlist when invoked through that alias. This replaces
+its older20-row page layout. /admincache is a separate refresh command, not an
+authorization cache; bounded refresh review remains separate work.

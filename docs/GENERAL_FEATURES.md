@@ -1,5 +1,7 @@
 # General-command additions
 
+**Historical phase ledger:** later entries supersede initial missing-command and test/publication status. Use the [current command inventory](COMMAND_INVENTORY.md) for declarations and [review evidence](CODEBASE_AUDIT.md) for verified phases. Broad parity/live-provider support is not implied.
+
 Implemented first phase (main-bot diagnostics): `/bstats` registered in Operations, Help description/category, Owner-only and private-only at execution. Reports actual cached DB connection state, pending-write count, process lease held/degraded/backend, monitor uptime and active jobs. Does not expose DSN, host, lock owner or secret error text. No monitor/database/lease means unavailable, not fabricated success. No claim of fresh DB probe or global database-lock count. Worker Operations allowlist still excludes this command.
 
 Shared command dispatch now accepts `/ ! . # $ % & ?`. Updated lexical watcher guards, start payload extraction, command-specific punctuation stripping, passive AI exclusion, Help text and prefix regression coverage. FileStore sessions use shared command recognition for cancellation/done and ignore other commands instead of archiving them as text.

@@ -1,5 +1,7 @@
 # Requested moderation command parity
 
+**Historical phase ledger:** early “still missing” lists describe that phase only. Warning variants, resetallwarns, warnmode, warntime and privaterules have since been implemented/reviewed. Read the [current command inventory](COMMAND_INVENTORY.md) and [later review evidence](USER_ADMIN_FEATURES.md); registration is not full parity or live verification. Sub-minute scheduled release remains unsupported.
+
 Reference: user's two-page moderation list, behavior requirements, not an upstream runtime dependency.
 
 ## Current verified phase

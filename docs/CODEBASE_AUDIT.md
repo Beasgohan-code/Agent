@@ -1,5 +1,7 @@
 # Meiko — verified codebase discovery and hardening audit
 
+**Chronological evidence:** baseline counts, gaps and test totals apply to their recorded phase. Later sections supersede earlier findings; use [the current document map](USER_REQUIREMENTS.md#current-status-and-document-map) and [generated command inventory](COMMAND_INVENTORY.md) rather than treating baseline gaps as current.
+
 ## Baseline, scope and confidence
 
 - Phase: repository-wide discovery + diagnostic disclosure hardening.
@@ -939,3 +941,33 @@ realPG used, Telegram mocked. No deployment or live Telegram validation.
 Validation: exact selectively staged suite2324 passed27.99s; working suite2406
 passed25.16s (before strengthening existing multibatch text/fallback assertions,
 which passed in exact suite). No skips. Pyflakes/staged whitespace checks clean.
+
+## Markdown review and /adminlist consolidation
+
+Scanned all48 project Markdown files (README, docs including29 per-reference
+indexes plus reference catalog, TypeTube README; excludes environment/dependencies).
+Reviewed requirement/ledger headings and unresolved-status signals across the set,
+and targeted current source paths rather than executing reference code. Added a
+current document map/precedence guide and chronological banners so historical
+missing lists/baseline counts are not mistaken for current status. Corrected README
+secret-write/no-key and required-DB claims, Richgram no-deps installation and native
+vs classic fallback wording; reconciled obsolete no-self-ping Music paragraph with
+ALWAYS_ON. This is not a fresh manual upstream/source audit or complete parity.
+
+/adminlist now delegates to the existing /admins reader, removing the older
+unbounded reader that exposed raw provider ValueError and lacked live membership
+checks. Both names keep ordinary personal current-member access, validate page
+before listing, cap at200 raw considered/201 fetched/15s,15 rows/page, recheck
+membership before disclosure, hide anonymous admins and redact provider failures.
+Usage/footer retain the invoked name. No new module/command/store or privilege
+change. /admincache remains separate and needs a bounded refresh review next.
+Three parameterized regressions failed first on adminlist; shared bound/nonmember
+coverage added. Provider calls simulated; no live Telegram or production changes.
+Validation: full exact selectively staged code2329 passed32.36s; working2411
+passed35.08s, no skips, disposable realPG; provider mocked. Initial standalone
+DB URI run lost its temporary PG server on parent exit (2 connection failures);
+rerun with pgserver lifetime enclosing pytest passed. Pyflakes/compile/staged
+whitespace checks and document-map local file links verified. Inventory regenerated
+from isolated patch:252 names, no unrelated pending Music command/description
+changes included. README/user-admin selective staging preserves unrelated edits.
+No deployment/merge/production calls; languages remain paused/English only.

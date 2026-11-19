@@ -696,45 +696,75 @@ def test_pin_refuses_bot_caller_and_missing_bot_pin_right(ctx):
     client.pin_chat_message.assert_not_awaited()
 
 
-def test_admins_live_page_two_and_strict_page_syntax(ctx):
+@pytest.mark.parametrize('command',['admins','adminlist'])
+def test_admins_live_page_two_and_strict_page_syntax(ctx,command):
     from unittest.mock import Mock
     admins=[(ADMIN,100+i,f'Admin{i}',None) for i in range(20)]
-    message=FakeMessage('/admins 2')
-    run(handlers(ctx)['admins'],FakeClient(admins=admins),message)
+    message=FakeMessage(f'/{command} 2')
+    run(handlers(ctx)[command],FakeClient(admins=admins),message)
     text=str(message.replies[-1])
     assert 'Page 2/2' in text and 'Admin19' in text and 'Admin0<' not in text
     for arg in ('0','-1','９','2 extra','99'):
         client=FakeClient(admins=admins)
         client.get_chat_members=Mock(side_effect=AssertionError('Unexpected list read'))
-        message=FakeMessage('/admins '+arg)
-        run(handlers(ctx)['admins'],client,message)
+        message=FakeMessage(f'/{command} '+arg)
+        run(handlers(ctx)[command],client,message)
         client.get_chat_members.assert_not_called()
+        assert f'/{command} [page]' in str(message.replies[-1])
 
 
-def test_admins_rechecks_group_membership_before_disclosure(ctx):
+@pytest.mark.parametrize('command',['admins','adminlist'])
+def test_admins_rechecks_group_membership_before_disclosure(ctx,command):
     from unittest.mock import AsyncMock
     client=FakeClient()
     client.get_chat_member=AsyncMock(side_effect=[member(MEMBER),member(ChatMemberStatus.LEFT)])
-    message=FakeMessage('/admins')
-    run(handlers(ctx)['admins'],client,message)
+    message=FakeMessage(f'/{command}')
+    run(handlers(ctx)[command],client,message)
     text=str(message.replies[-1])
     assert 'membership' in text and 'Owner' not in text
 
 
-def test_admins_hides_anonymous_admins_and_redacts_provider_error(ctx):
+@pytest.mark.parametrize('command',['admins','adminlist'])
+def test_admins_hides_anonymous_admins_and_redacts_provider_error(ctx,command):
     class Anonymous(FakeClient):
         def get_chat_members(self,*args,**kwargs):
             async def stream():
                 yield SimpleNamespace(status=ADMIN,user=SimpleNamespace(id=22,first_name='SECRET_ANON'),privileges=SimpleNamespace(is_anonymous=True))
                 yield SimpleNamespace(status=ADMIN,user=SimpleNamespace(id=33,first_name='Visible'),privileges=SimpleNamespace(is_anonymous=False))
             return stream()
-    message=FakeMessage('/admins')
-    run(handlers(ctx)['admins'],Anonymous(),message)
+    message=FakeMessage(f'/{command}')
+    run(handlers(ctx)[command],Anonymous(),message)
     assert 'SECRET_ANON' not in str(message.replies[-1]) and 'Visible' in str(message.replies[-1])
     class Failing(FakeClient):
         def get_chat_members(self,*args,**kwargs):
             raise ValueError('PRIVATE_TOKEN')
-    message=FakeMessage('/admins')
-    run(handlers(ctx)['admins'],Failing(),message)
+    message=FakeMessage(f'/{command}')
+    run(handlers(ctx)[command],Failing(),message)
     assert 'PRIVATE_TOKEN' not in str(message.replies)
     assert 'unavailable' in str(message.replies[-1])
+
+
+@pytest.mark.parametrize('command',['admins','adminlist'])
+def test_admin_lists_bound_raw_records_and_reject_nonmembers(ctx,command):
+    from unittest.mock import Mock
+    seen=[]
+    class Many(FakeClient):
+        def get_chat_members(self,chat_id,**kwargs):
+            assert kwargs['limit']==201
+            async def stream():
+                for uid in range(1000,1300):
+                    seen.append(uid)
+                    yield SimpleNamespace(status=ADMIN,user=SimpleNamespace(id=uid,first_name='Visible'))
+            return stream()
+    message=FakeMessage(f'/{command} 14')
+    run(handlers(ctx)[command],Many(),message)
+    assert len(seen)==201
+    text=str(message.replies[-1])
+    assert 'Page 14/14' in text and 'first 200' in text
+    assert '1199' in text and '1200' not in text
+    client=FakeClient(caller=ChatMemberStatus.LEFT)
+    client.get_chat_members=Mock(side_effect=AssertionError('Unexpected list read'))
+    message=FakeMessage(f'/{command}')
+    run(handlers(ctx)[command],client,message)
+    client.get_chat_members.assert_not_called()
+    assert 'membership' in str(message.replies[-1])

@@ -1,5 +1,7 @@
 # Music behavior migration
 
+**Phase-specific ledger:** early command counts and pending rows are historical, not the current registration list. Use [COMMAND_INVENTORY.md](COMMAND_INVENTORY.md) for source declarations; Music remains conditional. Unpublished working-tree source/session changes are not verified published functionality. Live playback/provider support remains unverified.
+
 Target reference: the pinned `Videl0` checkout in
 [the source inventory](references/Videl0.md). Original Agent implementations are
 used; reference source is not copied or imported. This is an implementation
@@ -78,9 +80,10 @@ a healthy Telegram probe state (503 for starting, degraded or down).
 
 Telegram `/alive` is an alias for the measured `/status` screen, not a worker
 command. The existing watchdog remains in charge of Telegram probes and fatal
-restart policy. HTTP runs on `0.0.0.0` and `PORT`/`HEALTH_PORT` as before. Nothing
-pings itself; this does not defeat Render free-service sleep or replace a paid
-always-on worker. The async server can time out under an event-loop stall,
+restart policy. HTTP runs on `0.0.0.0` and `PORT`/`HEALTH_PORT` as before.
+An optional public-origin heartbeat is now implemented; see
+[ALWAYS_ON.md](ALWAYS_ON.md#public-keep-alive-heartbeat). It does not defeat
+free-service sleep or replace a paid always-on worker. The async server can time out under an event-loop stall,
 allowing the platform's own liveness check to detect it.
 
 Validation for this increment: **793 tests passed** with disposable PostgreSQL;

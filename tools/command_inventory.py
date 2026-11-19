@@ -5,7 +5,7 @@ from agent.modules import MODULES
 from agent.platform.menu import DESCRIPTIONS
 
 BASE={'start':'Open bot / route private deep links','restart_bot':'Alias of start, not a process restart','help':'Available command help','h':'Alias of help','ping':'Bot responsiveness'}
-POLISHED={'admins','resetwarns','pin','unpin','cleanservice','flood','setflood','setfloodtimer','floodmode','clearflood','etagall','eall','tagall','all','tagabort','allsettings','tagstats','tpromote','lang','cleancommand','keepcommand','modlog','antispam','approve','unapprove','approval','approved','note','warnings','warns','unwarn','rmwarn','resetwarn','resetallwarns','warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
+POLISHED={'adminlist','admins','resetwarns','pin','unpin','cleanservice','flood','setflood','setfloodtimer','floodmode','clearflood','etagall','eall','tagall','all','tagabort','allsettings','tagstats','tpromote','lang','cleancommand','keepcommand','modlog','antispam','approve','unapprove','approval','approved','note','warnings','warns','unwarn','rmwarn','resetwarn','resetallwarns','warn','kick','mute','unmute','ban','unban','rights','adminbox','privaterules','warntime','warnmode','fullpromote','admincount','setchatname','setchatphoto','setchatdescription','spurge','afk','userstats','recentactivity'}
 MISSING=()
 
 

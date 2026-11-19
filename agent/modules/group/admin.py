@@ -8,7 +8,7 @@ import unicodedata
 from pyrogram.enums import ChatMemberStatus, ChatType, ChatMembersFilter
 from pyrogram.types import ChatPrivileges
 from ...platform.admin_settings import options, denied, AdminStateError
-from ...ui.tables import panel, Table
+from ...ui.tables import panel
 from ...utils.rich import reply
 from ..moderation import is_moderator
 
@@ -103,48 +103,6 @@ def build(ctx):
             await reply(message, "Use administrator commands inside a group.")
             return
         try:
-            if command == "adminlist":
-                members = await refresh(client, chat.id)
-                rows = []
-                for member in members:
-                    user = getattr(member, "user", None)
-                    if user is not None and not getattr(getattr(member, "privileges", None), "is_anonymous", False):
-                        rows.append(
-                            (
-                                str(user.id),
-                                getattr(user, "first_name", "") or "Member",
-                                "Owner"
-                                if member.status == ChatMemberStatus.OWNER
-                                else "Admin",
-                            )
-                        )
-                args = (message.text or "").split()
-                if len(args) > 2 or (
-                    len(args) == 2
-                    and (
-                        not args[1].isascii()
-                        or not args[1].isdecimal()
-                        or len(args[1]) > 8
-                        or int(args[1]) < 1
-                    )
-                ):
-                    raise ValueError("Usage: /adminlist [page]")
-                page = int(args[1]) if len(args) == 2 else 1
-                pages = max(1, (len(rows) + 19) // 20)
-                if page > pages:
-                    raise ValueError(f"Choose an admin list page from 1 to {pages}.")
-                await reply(
-                    message,
-                    panel(
-                        "Group administrators",
-                        table=Table(
-                            headers=("ID", "Name", "Role"),
-                            rows=tuple(rows[(page - 1) * 20 : page * 20]),
-                        ),
-                        footer=f"Page {page}/{pages} · /adminlist [page]",
-                    ),
-                )
-                return
             user = getattr(message, "from_user", None)
             # Settings and privilege changes require accountable personal identity.
             if (
@@ -302,7 +260,7 @@ def build(ctx):
 
         return call
 
-    return {**{command: handler(command) for command in COMMANDS if command not in ("tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort", "etagall", "eall")}, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
+    return {**{command: handler(command) for command in COMMANDS if command not in ("adminlist", "tpromote", "allsettings", "tagstats", "tagall", "all", "tagabort", "etagall", "eall")}, "tpromote": build_tpromote(ctx), **build_tagging_settings(ctx), **build_tag_runs(ctx)}
 
 
 class TemporaryPromotionInputError(ValueError):
