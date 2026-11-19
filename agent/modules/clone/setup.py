@@ -67,6 +67,7 @@ class CloneSetup:
         self.ctx, self.store, self.manager = ctx, store, manager
         self.entitled, self.quota, self.api = entitled, quota, api
         self.sessions = {}
+        self._managed_offers = {}
         self._locks = WeakValueDictionary()
         self._finish_lock = asyncio.Lock()
 
@@ -161,7 +162,7 @@ class CloneSetup:
             footer='/cancel discards this draft · /clone resumes it')
         await reply(message, body, reply_markup=self.keyboard(state, options))
 
-    async def begin(self, message):
+    async def begin(self, message, *, managed_import=False):
         user_id = getattr(getattr(message, 'from_user', None), 'id', None)
         if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
             await reply(message, 'Use your personal Telegram identity in private chat to set up a clone.')
@@ -201,10 +202,108 @@ class CloneSetup:
         self.sessions[user_id] = state
         await reply(message, panel('Clone studio', icon=self.ctx.theme.emoji('bot'),
             lines=[f"{self.ctx.theme.emoji('diamond')} Premium setup · {self.ctx.theme.emoji('shield')} Private credentials",
-                   'Send the token from @BotFather. I will verify the bot before asking for configuration.',
+                   ('Managed credential import requested. I will verify the bot before asking for configuration.'
+                    if managed_import else 'Send the token from @BotFather. I will verify the bot before asking for configuration.'),
                    'Setup expires in 10 minutes. Send /cancel to discard it.'],
             footer='The authenticated person completing setup becomes the clone owner.'),
             reply_markup=self.keyboard(state, []))
+
+    def offer_managed(self, user_id, bot_id):
+        """Remember only Telegram-attested identities, never tokens, for ten minutes."""
+        now = time.monotonic()
+        self._managed_offers = {key: expiry for key, expiry in self._managed_offers.items()
+                                if expiry > now}
+        key = (user_id, bot_id)
+        if (type(user_id) is not int or user_id <= 0 or type(bot_id) is not int
+                or bot_id <= 0 or bot_id == self.ctx.settings.bot_id or self.store.get(bot_id)):
+            return False
+        if len(self._managed_offers) >= 100 and key not in self._managed_offers:
+            return False
+        self._managed_offers[key] = now + 600
+        return True
+
+    async def _accept_token(self, message, state, token, *, expected_bot_id=None):
+        user_id = state.user_id
+        if not isinstance(token, str):
+            raise SetupError('Telegram did not return a valid bot credential.')
+        ok, _, bot_id = parse_token(token)
+        if not ok or (expected_bot_id is not None and bot_id != expected_bot_id):
+            raise SetupError('That token format or managed bot identity is invalid.')
+        if bot_id == self.ctx.settings.bot_id or self.store.get(bot_id):
+            raise SetupError('That bot is already managed here or is the main bot.')
+        allowed = await self.entitled(user_id)
+        if not allowed or self.active(user_id) is not state or state.step != 'token':
+            return False
+        me = await self.api(token, 'getMe')
+        allowed = await self.entitled(user_id)
+        if not allowed or self.active(user_id) is not state or state.step != 'token':
+            return False
+        if (expected_bot_id is not None
+                and self._managed_offers.get((user_id, expected_bot_id), 0) <= time.monotonic()):
+            raise SetupError('Managed import consent expired. No credential was saved.')
+        if (not self.store.encrypted() or self.store.count() >= self.ctx.settings.clone_limit
+                or len(self.store.by_owner(user_id)) >= self.quota(user_id)):
+            raise SetupError('Clone encryption or capacity is no longer available. No credential was saved.')
+        if bot_id == self.ctx.settings.bot_id or self.store.get(bot_id):
+            raise SetupError('That bot is already managed here or is the main bot.')
+        if me.get('is_bot') is not True or me.get('id') != bot_id:
+            raise SetupError('Telegram did not confirm a matching bot identity.')
+        state.token, state.bot_id = token, bot_id
+        state.username = str(me.get('username') or '')
+        state.step = 'plugin'
+        await reply(message, panel('Choose clone features', icon=self.ctx.theme.emoji('sparkles'),
+            lines=[f"Verified bot: <b>@{html.escape(state.username)}</b>",
+                   'Mandatory group moderation stays available with every template.'],
+            footer='Music requires a dedicated assistant session. AI requires your own provider key and model.'),
+            reply_markup=self.keyboard(state, [(name, action) for action, (_, name, _) in TEMPLATES.items()]))
+        return True
+
+    async def import_managed(self, client, message, bot_id):
+        """Explicit private consent imports only a recent Telegram-attested bot.
+
+        This never revokes a token or replaces an existing clone's credentials.
+        The regular setup's final create confirmation remains required.
+        """
+        user_id = getattr(getattr(message, 'from_user', None), 'id', None)
+        if (type(user_id) is not int or user_id <= 0 or type(bot_id) is not int or bot_id <= 0
+                or getattr(getattr(message, 'chat', None), 'id', None) != user_id):
+            return
+        key = (user_id, bot_id)
+        if self._managed_offers.get(key, 0) <= time.monotonic():
+            await reply(message, 'No recent managed-bot event matches your identity and that bot. Use /clone for manual private setup.')
+            return
+        if self.active(user_id) is None:
+            await self.begin(message, managed_import=True)
+        state = self.active(user_id)
+        if state is None:
+            return
+        lock = self._locks.setdefault(user_id, asyncio.Lock())
+        async with lock:
+            if self.active(user_id) is not state or state.step != 'token':
+                await reply(message, 'A setup is already in progress. Finish it or /cancel before importing another bot.')
+                return
+            if (self._managed_offers.get(key, 0) <= time.monotonic()
+                    or not await self.entitled(user_id) or not self.store.encrypted()
+                    or self.store.count() >= self.ctx.settings.clone_limit
+                    or len(self.store.by_owner(user_id)) >= self.quota(user_id)
+                    or self.store.get(bot_id) or bot_id == self.ctx.settings.bot_id):
+                await reply(message, 'Managed import is no longer available. Check access and capacity with /mybots.')
+                return
+            if self.active(user_id) is not state or state.step != 'token':
+                return
+            try:
+                # Never use the revoke/replace API. Avoid exception text containing credentials.
+                try:
+                    token = await asyncio.wait_for(client.get_managed_bot_token(bot_id), timeout=15)
+                except Exception:
+                    raise SetupError('Telegram could not export that managed bot credential. No clone was created.') from None
+                if (self.active(user_id) is not state
+                        or self._managed_offers.get(key, 0) <= time.monotonic()):
+                    return
+                if await self._accept_token(message, state, token, expected_bot_id=bot_id):
+                    self._managed_offers.pop(key, None)
+            except SetupError as exc:
+                await reply(message, str(exc))
 
     async def receive(self, client, message):
         user_id = getattr(getattr(message, 'from_user', None), 'id', None)
@@ -237,24 +336,7 @@ class CloneSetup:
                         await message.delete()
                     except Exception:
                         pass  # best effort: Telegram/cloud history is not a secret vault
-                    ok, _, bot_id = parse_token(text)
-                    if not ok:
-                        raise SetupError('That token format is invalid. Send a token from @BotFather.')
-                    if bot_id == self.ctx.settings.bot_id or self.store.get(bot_id):
-                        raise SetupError('That bot is already managed here or is the main bot.')
-                    me = await self.api(text, 'getMe')
-                    if self.active(user_id) is not state or not await self.entitled(user_id):
-                        return
-                    if me.get('is_bot') is not True or me.get('id') != bot_id:
-                        raise SetupError('Telegram did not confirm a matching bot identity.')
-                    state.token, state.bot_id = text, bot_id
-                    state.username = str(me.get('username') or '')
-                    state.step = 'plugin'
-                    await reply(message, panel('Choose clone features', icon=self.ctx.theme.emoji('sparkles'),
-                        lines=[f"Verified bot: <b>@{html.escape(state.username)}</b>",
-                               'Mandatory group moderation stays available with every template.'],
-                        footer='Music requires a dedicated assistant session. AI requires your own provider key and model.'),
-                        reply_markup=self.keyboard(state, [(name, action) for action, (_, name, _) in TEMPLATES.items()]))
+                    await self._accept_token(message, state, text)
                 elif state.step == 'music_session':
                     try:
                         await message.delete()

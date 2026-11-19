@@ -577,3 +577,161 @@ def test_guided_file_suite_requires_archive_and_preserves_all_selected_plugins(
         assert wizard.active(MEMBER) is None
 
     asyncio.run(scenario())
+
+
+def test_managed_import_requires_event_and_explicit_private_consent(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        wizard.api = AsyncMock(side_effect=api)
+        client = SimpleNamespace(get_managed_bot_token=AsyncMock(return_value=TOKEN_A))
+        msg = FakeMessage('/clone managed 111111111')
+        await wizard.import_managed(client, msg, 111111111)
+        client.get_managed_bot_token.assert_not_awaited()
+        assert wizard.offer_managed(MEMBER, 111111111)
+        assert wizard.active(MEMBER) is None
+        await wizard.import_managed(client, msg, 111111111)
+        client.get_managed_bot_token.assert_awaited_once_with(111111111)
+        state = wizard.active(MEMBER)
+        assert state.step == 'plugin'
+        assert state.token == TOKEN_A
+        assert not ctx.clones.current()  # draft only; Create still required
+        assert (MEMBER, 111111111) not in wizard._managed_offers
+        assert TOKEN_A not in repr(state)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('case', ['foreign', 'group', 'expired', 'quota', 'encryption', 'existing', 'busy'])
+def test_managed_import_preexport_safeguards(tmp_path, case):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        wizard.offer_managed(MEMBER, 111111111)
+        client = SimpleNamespace(get_managed_bot_token=AsyncMock(return_value=TOKEN_A))
+        msg = FakeMessage('/clone managed 111111111')
+        if case == 'foreign':
+            msg = FakeMessage('', uid=999)
+        elif case == 'group':
+            msg.chat.id = -123
+        elif case == 'expired':
+            wizard._managed_offers[(MEMBER, 111111111)] = 0
+        elif case == 'quota':
+            wizard.quota = lambda uid: 0
+        elif case == 'encryption':
+            wizard.store.encrypted = lambda: False
+        elif case == 'existing':
+            wizard.store.get = lambda bot_id: object()
+        elif case == 'busy':
+            await wizard.begin(msg)
+            wizard.active(MEMBER).step = 'plugin'
+        await wizard.import_managed(client, msg, 111111111)
+        client.get_managed_bot_token.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('case', ['wrong_token', 'wrong_identity', 'cancel', 'revoke', 'full', 'expired', 'export_error'])
+def test_managed_import_rechecks_after_network_without_secret_leaks(tmp_path, case):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        wizard.offer_managed(MEMBER, 111111111)
+        async def export(bot_id):
+            if case == 'cancel':
+                wizard.cancel(MEMBER)
+            elif case == 'revoke':
+                wizard.entitled = AsyncMock(return_value=False)
+            elif case == 'full':
+                wizard.quota = lambda uid: 0
+            elif case == 'expired':
+                wizard._managed_offers[(MEMBER, bot_id)] = 0
+            elif case == 'export_error':
+                raise RuntimeError(TOKEN_A)
+            return TOKEN_A if case != 'wrong_token' else '222222222:AAHfakeTokenValueForTests_bbbbbbbb'
+        wizard.api = AsyncMock(return_value={'id': 999, 'is_bot': True} if case == 'wrong_identity'
+                               else {'id': 111111111, 'is_bot': True})
+        msg = FakeMessage('/clone managed 111111111')
+        await wizard.import_managed(SimpleNamespace(get_managed_bot_token=export), msg, 111111111)
+        state = wizard.active(MEMBER)
+        assert state is None or state.token == ''
+        assert not ctx.clones.current()
+        assert TOKEN_A not in str(msg.replies)
+    asyncio.run(scenario())
+
+
+def test_managed_offers_are_bounded_and_expire(tmp_path):
+    ctx, _, _ = build(tmp_path)
+    wizard = ctx.clone_setup
+    for bot in range(1000, 1100):
+        assert wizard.offer_managed(MEMBER, bot)
+    assert not wizard.offer_managed(MEMBER, 1200)
+    wizard._managed_offers[(MEMBER, 1000)] = 0
+    assert wizard.offer_managed(MEMBER, 1200)
+    assert len(wizard._managed_offers) == 100
+
+
+def test_managed_notice_to_command_route_requires_final_confirmation(tmp_path):
+    from agent.modules.core import extra_handlers
+    async def scenario():
+        ctx, _, handlers = build(tmp_path)
+        wizard = ctx.clone_setup
+        wizard.api = AsyncMock(side_effect=api)
+        client = SimpleNamespace(send_message=AsyncMock(), get_managed_bot_token=AsyncMock(return_value=TOKEN_A))
+        await extra_handlers(ctx)[1].callback(client, SimpleNamespace(
+            user=SimpleNamespace(id=MEMBER, is_bot=False),
+            bot=SimpleNamespace(id=111111111, is_bot=True)))
+        assert '/clone managed 111111111' in client.send_message.await_args.args[1]
+        client.get_managed_bot_token.assert_not_awaited()
+        await handlers['clone'](client, FakeMessage('/clone managed 111111111'))
+        state = wizard.active(MEMBER)
+        assert state.step == 'plugin'
+        assert not ctx.clones.current()
+        await wizard.press(None, query(state), state.nonce + ':files')
+        await wizard.receive(None, FakeMessage('-100100'))
+        await wizard.receive(None, FakeMessage('-100200'))
+        assert not ctx.clones.current()
+        await wizard.press(None, query(state), state.nonce + ':create')
+        record = ctx.clones.current()[0]
+        assert record.bot_id == 111111111 and record.owner_id == MEMBER
+        assert TOKEN_A not in (tmp_path / 'data' / 'clones.json').read_text()
+    asyncio.run(scenario())
+
+
+def test_concurrent_managed_import_exports_once(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        wizard.offer_managed(MEMBER, 111111111)
+        await wizard.begin(FakeMessage('/clone'))
+        wizard.api = AsyncMock(side_effect=api)
+        async def export(bot_id):
+            await asyncio.sleep(0)
+            return TOKEN_A
+        client = SimpleNamespace(get_managed_bot_token=AsyncMock(side_effect=export))
+        await asyncio.gather(*(wizard.import_managed(client, FakeMessage(''), 111111111) for _ in range(2)))
+        client.get_managed_bot_token.assert_awaited_once()
+        assert wizard.active(MEMBER).step == 'plugin'
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('case', ['cancel', 'expiry', 'revoke', 'capacity'])
+def test_managed_import_rechecks_after_identity_verification(tmp_path, case):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard = ctx.clone_setup
+        wizard.offer_managed(MEMBER, 111111111)
+        async def verify(*args):
+            if case == 'cancel':
+                wizard.cancel(MEMBER)
+            elif case == 'expiry':
+                wizard._managed_offers[(MEMBER, 111111111)] = 0
+            elif case == 'revoke':
+                wizard.entitled = AsyncMock(return_value=False)
+            elif case == 'capacity':
+                wizard.quota = lambda uid: 0
+            return {'id': 111111111, 'is_bot': True}
+        wizard.api = verify
+        await wizard.import_managed(SimpleNamespace(get_managed_bot_token=AsyncMock(return_value=TOKEN_A)),
+                                    FakeMessage(''), 111111111)
+        state = wizard.active(MEMBER)
+        assert state is None or not state.token
+    asyncio.run(scenario())

@@ -433,7 +433,7 @@ async def guest_help(client, message):
     )
 
 
-async def managed_bot_notice(client, update):
+async def managed_bot_notice(client, update, *, setup=None):
     """Notify the creator privately without exporting or replacing credentials.
 
     This event also means token changes. It is not consent to start a worker,
@@ -446,11 +446,17 @@ async def managed_bot_notice(client, update):
     if (type(user_id) is not int or user_id <= 0 or getattr(user, "is_bot", False)
             or type(bot_id) is not int or bot_id <= 0 or not getattr(bot, "is_bot", False)):
         return
+    offered = setup is not None and setup.offer_managed(user_id, bot_id)
+    guidance = (
+        f"To consent to importing this bot's credential into a private setup draft, send /clone managed {bot_id} "
+        "within ten minutes. This does not create or start a clone; review and confirmation are still required. "
+        if offered else "Use /clone in this private chat to review access and follow the secure setup. "
+    )
     await client.send_message(
         user_id,
         f"Telegram reported a managed-bot creation or token change for bot {bot_id}. "
         "No credentials were imported or replaced, and no clone was started. "
-        "Use /clone in this private chat to review access and follow the secure setup. "
+        + guidance +
         "If an existing clone's token changed, its saved credential is not updated automatically. "
         "Never post bot tokens in a group.",
         parse_mode=None,
@@ -460,4 +466,6 @@ async def managed_bot_notice(client, update):
 def extra_handlers(ctx):
     """Native update channels remain separate from ordinary command dispatch."""
     from pyrogram.handlers import GuestMessageHandler, ManagedBotUpdatedHandler
-    return [GuestMessageHandler(guest_help), ManagedBotUpdatedHandler(managed_bot_notice)]
+    async def managed(client, update):
+        await managed_bot_notice(client, update, setup=getattr(ctx, "clone_setup", None))
+    return [GuestMessageHandler(guest_help), ManagedBotUpdatedHandler(managed)]

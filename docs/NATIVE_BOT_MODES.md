@@ -8,13 +8,20 @@ they do not authorize privileged commands, credential replacement, or admission.
   redemption, settings lookup, or credential processing occurs. Guest chat IDs
   are not treated as proof of membership. Tools still require the normal bot
   conversation and authorization. This is informational support, not guest AI.
-- **Bot management:** creation/token-change events notify the creator privately
-  with the bot ID and secure setup guidance. No token is exported, rotated,
-  persisted or inherited; no worker starts from an update. Existing clone setup
-  retains premium, ownership, capacity, encryption and confirmation checks.
-  Managed-bot creation buttons and automatic managed-token onboarding are not
-  implemented by this phase. A token-change event does not update saved clone
-  credentials. Private notification delivery can fail if Telegram disallows it;
+- **Bot management:** creation/token-change events notify the creator privately.
+  Eligible new bot IDs get an explicit `/clone managed BOT_ID` import instruction,
+  bound to that Telegram-attested creator and bot for ten minutes. The event
+  alone never exports a token or starts a worker. Explicit private import checks
+  premium, encryption, capacity, ownership binding, expiry and draft state before
+  exporting with the non-revoking API. Token identity is verified with `getMe`;
+  cancellation, access, expiry and capacity are rechecked after network waits.
+  The credential stays in the expiring private setup draft until the existing
+  encrypted creation workflow receives final confirmation. No parent credentials
+  are inherited. Existing bot IDs and the controller are never import targets:
+  token-change events cannot replace saved credentials or transfer a clone.
+  Offers are memory-only, bounded to 100 entries, and lost on restart. Ordinary
+  manual private setup remains available. Managed-bot creation buttons are not
+  implemented. Private notification delivery can fail if Telegram disallows it;
   there is no group fallback or secret-bearing error text added here.
 - **Guard:** native join-request queries receive `QUEUE` (administrator review),
   never automatic approval or denial. An eight-second local timeout bounds the
@@ -31,10 +38,21 @@ Tests use synthetic updates and mocked native responses, not live Telegram.
 
 ## Validation
 
-Exact selective patch: **2,387 passed** in 29.58 seconds. Full working tree:
-**2,469 passed** in 25.88 seconds, including unrelated pending work. Both runs
+Initial native-handler phase: exact selective patch **2,387 passed** in 29.58
+seconds; full working tree **2,469 passed** in 25.88 seconds, including unrelated
+pending work. Both runs
 used disposable real database storage; no tests skipped. Targeted static checks
 and staged whitespace checks passed. Native tests cover separate handler types,
 guest privilege isolation and no public fallback, Guard queuing/failure/deadline,
 and managed-event identity checks/private notification without token access.
 No live Telegram verification, deployment or production configuration changes.
+
+Consent-based managed import phase: exact selective patch **2,409 passed** in
+29.71 seconds; full working tree **2,491 passed** in 26.44 seconds, no skips.
+Runs used disposable real database storage; credential exports and identity
+responses were mocked. Added tests cover the native-notice-to-command route,
+explicit final creation and encrypted persistence, per-user concurrent import,
+creator/chat binding, expiry, capacity, encryption, existing/busy draft refusal,
+post-network cancellation/revocation/capacity changes, identity mismatch and
+export failure without credential disclosure. Targeted static and whitespace
+checks passed. No live Telegram verification or deployment was performed.

@@ -282,6 +282,12 @@ def build(ctx):
                 note='If /premium or /addpremium gives no reply, check that premium is included in deployment PLUGINS and enabled with /plugin premium on. Adding a missing module requires an authorized restart; the runtime switch cannot install it.'))
             return
         parts = (getattr(message, "text", "") or "").split()
+        if len(parts) >= 2 and parts[1].lower() == 'managed':
+            if len(parts) != 3 or not parts[2].isascii() or not parts[2].isdigit() or len(parts[2]) > 20:
+                await reply(message, 'Use /clone managed BOT_ID from your recent private managed-bot notice. This imports a credential for review; it does not start a clone.')
+                return
+            await setup.import_managed(_client, message, int(parts[2]))
+            return
         if len(parts) < 2:
             await setup.begin(message)
             return
