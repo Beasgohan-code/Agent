@@ -4,6 +4,7 @@ from ...platform.warning_policy import threshold as warning_threshold
 from pyrogram.enums import ChatType, ChatMemberStatus
 from ...platform.restriction_cases import begin, finish, CaseError
 from ...platform.warnings import WarningStoreError
+from ...platform.commands import replied_message
 from ...utils.rich import reply
 from .restrictions import target_and_reason
 
@@ -29,7 +30,7 @@ def build(ctx):
                     raise WarningInputError('Use your personal administrator identity in a group.')
                 if not await is_moderator(client, message, need='can_restrict_members'):
                     raise WarningInputError('You need Restrict members permission.')
-                replied = getattr(message, 'reply_to_message', None)
+                replied = await replied_message(client,message)
                 if command == 'dwarn' and (replied is None or getattr(replied, 'from_user', None) is None):
                     raise WarningInputError('Reply to a member message with /dwarn [reason].')
                 if replied is not None and getattr(getattr(replied, 'chat', None), 'id', chat.id) != chat.id:

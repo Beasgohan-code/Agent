@@ -873,3 +873,21 @@ limited whitelist, protected target checks, strict acknowledgement and partial
 title/audit reporting retained. Local validation distinguished from provider
 ValueError; no raw service messages. Acknowledged changes are not labelled failed
 just because reply delivery fails. No automatic retries or transactional-API claim.
+
+
+## Reply-only member commands and full-promotion preview
+
+When an update includes a replied-message ID but not its message object, shared
+admin/moderation target parsers now fetch the actual reply once (5s bound), verify
+its ID and current chat, then use that member. Already loaded replies need no
+extra fetch. Deleted/inaccessible/cross-chat/incorrect replies stop instead of
+selecting a different person; anonymous/channel senders require a personal target.
+Delete-action/warning prechecks use the same resolver. Forum-header references
+alone do not count as a personal reply. This is not a guarantee of access to deleted
+or inaccessible messages, or coverage of every unrelated content command.
+
+Reply `/fullpromote` now selects the member and offers Confirm full promotion /
+Cancel. `/fullpromote ID` or @username also previews; explicit `confirm` forms
+continue working. Confirmation is bound to requesting Owner, group and card,
+expires after2 minutes/restart and is single-use. All authority/target/bot rights
+are rechecked before mutation; full promotion is not made an unconfirmed action.

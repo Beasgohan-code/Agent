@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from pyrogram.enums import ChatType, ChatMemberStatus
 from ...platform.admin_settings import denied
+from ...platform.commands import replied_message
 from ...platform.restriction_cases import begin, finish, CaseError
 from ...utils.rich import reply
 from .antiflood import duration
@@ -26,7 +27,10 @@ async def target_and_reason(client, message):
     text = getattr(message, "text", "") or ""
     parts = text.split(maxsplit=1)
     body = parts[1] if len(parts) > 1 else ""
-    replied = getattr(getattr(message, "reply_to_message", None), "from_user", None)
+    source=await replied_message(client,message)
+    replied=getattr(source,"from_user",None)
+    if source is not None and (replied is None or getattr(source,"sender_chat",None) is not None):
+        raise ValueError("Reply to a personal member message, not an anonymous sender or channel.")
     if replied is not None:
         return replied.id, body
     start = len(text[: text.find(body)].encode("utf-16-le")) // 2 if body else -1
@@ -106,7 +110,7 @@ def build(ctx):
                             "You also need Delete messages permission for this variant.",
                         )
                         return
-                replied = getattr(message, "reply_to_message", None)
+                replied = await replied_message(client,message)
                 replied_chat = getattr(getattr(replied, "chat", None), "id", None)
                 if replied_chat is not None and replied_chat != chat.id:
                     raise ValueError(

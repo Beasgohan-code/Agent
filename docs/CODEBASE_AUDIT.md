@@ -1056,3 +1056,36 @@ and post-ack delivery regression included. Pyflakes/compile/staged whitespace cl
 252-name inventory flags updated only for promote/demote. Recalled continuation
 order saved in existing requirements ledger; languages still deferred. Unrelated
 dirty work retained. No production/deployment/merge or full-completion claim.
+
+## Replied-message loading and full-promotion confirmation
+
+User reports replied commands not selecting the member. Source review found
+reply-ID-only updates were not resolved by shared target parsers, and bare reply
+/fullpromote only produced confirmation usage. Added bounded reply resolution in
+existing commands utility, shared by group target/title parsing, moderation target
+parsing, delete-restriction prechecks and warning variants. One5s get_messages read
+uses the actual command's reply reference (replies=0), verifies returned message
+ID and same chat, caches only on this update. Missing/deleted/external/mismatched
+replies fail closed rather than falling back to a different explicit target. Forum
+header-only references are not hydrated as personal targets. Provider bodies hidden;
+no background scan or message retention store. Already-populated replies avoid reads.
+
+/fullpromote bare reply or explicit target now selects a member and offers Confirm/
+Cancel; explicit confirm syntax remains supported. Preview requires current group
+Owner, and mutation still rechecks Owner, bot rights and target membership. Opaque
+one-use token bound to caller/group/card,120s expiry,128 pending cap, per-built-bot
+memory, no original message contents retained. Restart expires pending cards; no
+auto-resume/retry. Other users/copied/cross-group/expired cards cannot confirm.
+Cancel only consumes that card. No weaker authority or silent delegation changes.
+
+Two new regressions failed first, then reply hydration and bound confirmation
+worked in simulated Telegram tests. Added deleted/wrong-chat/wrong-ID/read-timeout/
+forum-header refusal, confirmation replay/actor/chat/card/expiry/cancel/ownership
+checks and loaded/missing reply warning-variant cases. No claim that every command
+or the reported deployed root cause is verified; deleted/anonymous messages may
+still require an explicit personal target. No live account, production or deploy.
+Validation: exact selective suite2361 passed28.58s; working2443 passed28.09s,
+no skips, disposable database. Changed-source/test pyflakes, compile and staged
+whitespace checks clean. Existing rights/scope/target/title/moderation regressions
+retained. No new command registration or unrelated dirty changes staged. No
+production, merge or deployment; user-facing storage wording remains neutral.

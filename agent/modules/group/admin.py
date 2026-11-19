@@ -8,6 +8,7 @@ import unicodedata
 from pyrogram.enums import ChatMemberStatus, ChatType, ChatMembersFilter
 from pyrogram.types import ChatPrivileges
 from ...platform.admin_settings import options, denied, AdminStateError
+from ...platform.commands import replied_message,ReplyTargetError
 from ...ui.tables import panel
 from ...utils.rich import reply
 from ..moderation import is_moderator
@@ -30,7 +31,7 @@ class AdminInputError(ValueError):
 
 
 async def resolve(client, message):
-    source=getattr(message,'reply_to_message',None)
+    source=await replied_message(client,message)
     args=(getattr(message,'text','') or '').split()
     if len(args)>2:
         raise AdminInputError('Reply to a user or provide one username, mention or user ID.')
@@ -60,7 +61,7 @@ async def promotion_target(client,message):
     """Parse title only for promotion; other consumers keep strict target syntax."""
     parts=(getattr(message,'text','') or '').split(maxsplit=1)
     tail=parts[1] if len(parts)==2 else ''
-    source=getattr(message,'reply_to_message',None)
+    source=await replied_message(client,message)
     if source is not None:
         if getattr(getattr(source,'chat',None),'id',None)!=message.chat.id:
             raise AdminInputError('Reply to a member from this group.')
@@ -298,7 +299,7 @@ def build(ctx):
                 message,
                 f"User <code>{target_id}</code> {'promoted' if command == 'promote' else 'demoted'}."+audit,
             )
-        except (AdminInputError, AdminStateError) as error:
+        except (AdminInputError, AdminStateError, ReplyTargetError) as error:
             await reply(message, html.escape(str(error)))
         except Exception as error:
             logging.getLogger(__name__).warning('#Errors Administrator change unavailable (%s)',type(error).__name__)

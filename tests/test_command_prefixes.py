@@ -203,3 +203,57 @@ def test_literal_at_all_and_eall_are_specific_aliases_not_global_prefixes():
             assert command_name(text) is None
         assert not await command_filter('ban')(client,NS(text='@all',caption=None))
     asyncio.run(scenario())
+
+
+def test_reply_target_hydration_shared_by_admin_and_moderation():
+    from unittest.mock import AsyncMock
+    from agent.modules.group.admin import resolve,promotion_target
+    from agent.modules.moderation.restrictions import target_and_reason
+    async def scenario():
+        for kind in ('demote','promote','ban'):
+            source=NS(id=70,chat=NS(id=-100),from_user=NS(id=22),sender_chat=None)
+            client=NS(get_messages=AsyncMock(return_value=source),get_users=AsyncMock())
+            message=NS(id=90,text='/'+kind,chat=NS(id=-100),reply_to_message=None,reply_to_message_id=70)
+            if kind=='demote':assert (await resolve(client,message)).id==22
+            elif kind=='promote':assert (await promotion_target(client,message))[0].id==22
+            else:assert (await target_and_reason(client,message))[0]==22
+            client.get_messages.assert_awaited_once_with(-100,reply_to_message_ids=90,replies=0)
+            client.get_users.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_missing_reply_never_falls_back_to_a_different_target():
+    from unittest.mock import AsyncMock
+    from agent.platform.commands import replied_message,ReplyTargetError
+    async def scenario():
+        for result in (None,NS(empty=True),NS(id=71,chat=NS(id=-100)),NS(id=70,chat=NS(id=-200))):
+            message=NS(id=90,text='/ban 999',chat=NS(id=-100),reply_to_message=None,reply_to_message_id=70)
+            client=NS(get_messages=AsyncMock(return_value=result))
+            try:
+                await replied_message(client,message)
+            except ReplyTargetError:
+                pass
+            else:
+                raise AssertionError('Invalid reply accepted')
+            assert message.reply_to_message is None
+            client.get_messages.assert_awaited_once()
+        client=NS(get_messages=AsyncMock(side_effect=TimeoutError('PRIVATE_REPLY_DATA')))
+        try:
+            await replied_message(client,message)
+        except ReplyTargetError as error:
+            assert 'PRIVATE_REPLY_DATA' not in str(error)
+        else:
+            raise AssertionError('Failed reply accepted')
+        client.get_messages.assert_awaited_once()
+        # A forum thread reference alone must not select the topic creator.
+        client.get_messages.reset_mock()
+        message.topic_message=True
+        message.message_thread_id=70
+        try:
+            await replied_message(client,message)
+        except ReplyTargetError:
+            pass
+        else:
+            raise AssertionError('Topic header treated as a personal reply')
+        client.get_messages.assert_not_awaited()
+    asyncio.run(scenario())
