@@ -816,3 +816,10 @@ of the group. Bots/deleted users excluded; current membership/authority rechecke
 Use Stop or /tagabort to stop future batches (cannot recall an in-flight message).
 FloodWait and uncertain delivery stop for review, without automatic retry.
 /allsettings and /tagstats show limits and last-run progress, not Join/Leave.
+
+
+Mention output uses clickable first names (or username/person emoji if unavailable),
+no numeric Member labels, automatic heading or success cards. `/tagall hello` adds
+only your optional text before each batch; `/tagall` sends just mentions. Optional
+text is limited to500 characters and persisted across batches/Resume. Emoji mode
+keeps emoji labels. Use `/tagabort` to stop; errors are still reported.

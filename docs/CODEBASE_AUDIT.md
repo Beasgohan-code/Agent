@@ -924,3 +924,18 @@ Validation: exact staged code2323 passed26.32s; working tree2405 passed24.62s,
 no skips, disposable realPG. Telegram provider mocked; pacing simulated in focused
 jobs tests (13 passed). Pyflakes and staged whitespace checks clean. Selective
 staging preserves unrelated localization/music/premium and other dirty work.
+
+## Clean first-name mention messages
+
+User correction: mention batches now contain clickable live first names, without
+"Member <id>" labels or an automatic heading. Escaped/capped names, username then
+person emoji fallback if missing. Emoji mode stays randomized. Optional command
+text (max500 characters) is escaped and saved with the durable run so every batch
+and Resume preserves it. Bare commands emit only mentions; no admission/completion
+cards. /tagabort remains available; errors/FloodWait still reported with controls.
+Roster completeness/cap information remains in /allsettings and /tagstats.
+Three new behavior cases failed before implementation, then focused14 passed;
+realPG used, Telegram mocked. No deployment or live Telegram validation.
+Validation: exact selectively staged suite2324 passed27.99s; working suite2406
+passed25.16s (before strengthening existing multibatch text/fallback assertions,
+which passed in exact suite). No skips. Pyflakes/staged whitespace checks clean.

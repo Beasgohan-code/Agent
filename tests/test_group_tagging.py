@@ -163,7 +163,7 @@ async def test_tag_batch_failure_no_replay_or_silent_restart():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('outcome',['normal','timeout','rights_lost','emoji','floodwait'])
+@pytest.mark.parametrize('outcome',['normal','timeout','rights_lost','emoji','floodwait','custom'])
 async def test_tag_command_sends_retrieved_members_and_real_stop(tmp_path,outcome):
     from test_mute_target_parity import setup
     from agent.platform.group_tagging import operate
@@ -174,7 +174,7 @@ async def test_tag_command_sends_retrieved_members_and_real_stop(tmp_path,outcom
         pytest.skip('PostgreSQL required')
     db=Database(url,scope='tagsend:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
-    ctx,client,message=setup(tmp_path,'@eall' if outcome=='emoji' else '/tagall')
+    ctx,client,message=setup(tmp_path,'@eall' if outcome=='emoji' else '/tagall Hello <team>' if outcome=='custom' else '/tagall')
     ctx.db=db
     ctx.actions=ActionRouter()
     client.send_message=AsyncMock(return_value=NS(id=500))
@@ -185,6 +185,12 @@ async def test_tag_command_sends_retrieved_members_and_real_stop(tmp_path,outcom
                 yield NS(user=NS(id=uid,is_bot=False,is_deleted=False),status=Status.MEMBER)
         return stream()
     client.get_chat_members=listing
+    original_member=client.get_chat_member
+    async def named_member(chat,uid):
+        record=await original_member(chat,uid)
+        record.user=NS(first_name='Alice <&>' if uid==21 else 'Bob',id=uid)
+        return record
+    client.get_chat_member=AsyncMock(side_effect=named_member)
     try:
         await operate(db,message.chat.id)
         if outcome=='timeout':
@@ -206,7 +212,7 @@ async def test_tag_command_sends_retrieved_members_and_real_stop(tmp_path,outcom
         await commands['eall' if outcome=='emoji' else 'tagall'](client,message)
         for job in ctx.jobs.for_owner(message.from_user.id):
             await job.task
-        if outcome not in ('normal','emoji'):
+        if outcome not in ('normal','emoji','custom'):
             assert client.send_message.await_count==(1 if outcome in ('timeout','floodwait') else 0)
             async with db._pool.acquire() as conn:
                 assert await conn.fetchval('SELECT state FROM agent_tag_runs WHERE tenant=$1',db.scope)==('paused' if outcome=='rights_lost' else 'review')
@@ -223,7 +229,14 @@ async def test_tag_command_sends_retrieved_members_and_real_stop(tmp_path,outcom
             assert '>Member ' not in body
             async with db._pool.acquire() as conn:
                 assert await conn.fetchval('SELECT style FROM agent_tag_runs WHERE tenant=$1',db.scope)=='emoji'
-        assert 'completed' in str(message.replies[-1])
+        assert 'Group mentions' not in body and '>Member ' not in body
+        if outcome!='emoji':
+            assert '>Alice &lt;&amp;&gt;</a>' in body
+        if outcome=='custom':
+            assert body.startswith('Hello &lt;team&gt;\n')
+        else:
+            assert body.startswith('<a href=')
+        assert not message.replies
         async with db._pool.acquire() as conn:
             request=await conn.fetchval('SELECT id FROM agent_tag_runs WHERE tenant=$1',db.scope)
         query=NS(message=message,from_user=message.from_user,data=f'tagrun:{request}:stop',answer=AsyncMock())
@@ -247,7 +260,7 @@ async def test_retrieved_member_job_20_per_message_auto_pause_and_stop(tmp_path,
         pytest.skip('PostgreSQL required')
     db=Database(url,scope='tagauto:'+uuid.uuid4().hex,required=True)
     assert await db.connect()
-    ctx,client,message=setup(tmp_path,'@all')
+    ctx,client,message=setup(tmp_path,'@all Hello everyone')
     ctx.db=db
     ctx.actions=ActionRouter()
     client.send_message=AsyncMock(return_value=NS(id=500))
@@ -277,6 +290,8 @@ async def test_retrieved_member_job_20_per_message_auto_pause_and_stop(tmp_path,
         await asyncio.gather(*tasks,return_exceptions=True)
         bodies=[call.kwargs['text'] for call in client.send_message.await_args_list]
         assert len(bodies)==(1 if stop_after_first else 2)
+        assert all(body.startswith('Hello everyone\n<a href=') for body in bodies)
+        assert all('>👤</a>' in body and 'Group mentions' not in body for body in bodies)
         assert bodies[0].count('tg://user?id=')==20
         if not stop_after_first:
             assert bodies[1].count('tg://user?id=')==3

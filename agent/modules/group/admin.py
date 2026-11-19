@@ -501,6 +501,7 @@ def build_tag_runs(ctx):
         chunk=await claim_batch(db,message.chat.id,request,actor=user.id)
         confirmed=False
         sent=0
+        labels={}
         try:
             if chunk['source']!='group':
                 raise TagError('Old opt-in run. Use /tagabort, then start @all again.')
@@ -509,11 +510,14 @@ def build_tag_runs(ctx):
                 member=await asyncio.wait_for(client.get_chat_member(message.chat.id,uid),5)
                 if member.status in (ChatMemberStatus.OWNER,ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.MEMBER) or (member.status==ChatMemberStatus.RESTRICTED and getattr(member,'is_member',False) is True):
                     members.append(uid)
+                    person=getattr(member,'user',None)
+                    name=getattr(person,'first_name',None) or getattr(person,'username',None) or '👤'
+                    labels[uid]=html.escape(str(name)[:48])
             await authorized(client,message,user)
             members=await eligible(db,message.chat.id,request,members)
             if members:
                 emojis=('🌟','🌸','🍀','🌻','🦋','🌺','🍁','🪷')
-                body='Group mentions\n'+' '.join(f'<a href="tg://user?id={uid}">{secrets.choice(emojis) if chunk["style"]=="emoji" else f"Member {uid}"}</a>' for uid in members)
+                body=(html.escape(chunk['mention_text'])+'\n' if chunk['mention_text'] else '')+' '.join(f'<a href="tg://user?id={uid}">{secrets.choice(emojis) if chunk["style"]=="emoji" else labels[uid]}</a>' for uid in members)
                 result=await asyncio.wait_for(client.send_message(chat_id=message.chat.id,text=body,parse_mode=ParseMode.HTML),15)
                 if type(getattr(result,'id',None)) is not int or result.id<=0:
                     raise TagError('Mention delivery unconfirmed. No batch retried.')
@@ -544,7 +548,6 @@ def build_tag_runs(ctx):
                     job.progress=scanned/max(1,total)
                     job.detail=f'{sent} mentions acknowledged'
                     if state!='paused':
-                        await report(message,request,state,sent,scanned,total)
                         return
                     await asyncio.sleep(5)
             except asyncio.CancelledError:
@@ -571,9 +574,13 @@ def build_tag_runs(ctx):
         async def call(client,message):
             try:
                 user=await authorized(client,message)
-                if len((getattr(message,'text','') or '').split())!=1:
-                    raise TagError(f'Use /{command} without extra arguments.')
+                parts=(getattr(message,'text','') or '').split(maxsplit=1)
+                mention_text=parts[1].strip() if len(parts)>1 else ''
+                if len(mention_text)>500:
+                    raise TagError('Keep the optional mention message within 500 characters.')
                 if command=='tagabort':
+                    if mention_text:
+                        raise TagError('Use /tagabort without extra arguments.')
                     await stop_run(getattr(ctx,'db',None),message.chat.id,actor=user.id)
                     await stop_local(message.chat.id)
                     await reply(message,'Mention run stopped. An in-flight message may still arrive.')
@@ -598,8 +605,7 @@ def build_tag_runs(ctx):
                 await authorized(client,message)
                 if not members:
                     raise TagError('Telegram returned no eligible members. Check my member-list access.')
-                request=await start_run(getattr(ctx,'db',None),message.chat.id,actor=user.id,style='emoji' if command in ('etagall','eall') else 'plain',members=members)
-                await report(message,request,'running',0,0,len(members),'Snapshot capped at 2000 returned records.' if raw>2000 else 'Using the members Telegram returned; this may not be the whole group.')
+                request=await start_run(getattr(ctx,'db',None),message.chat.id,actor=user.id,style='emoji' if command in ('etagall','eall') else 'plain',members=members,mention_text=mention_text)
                 await launch(client,message,request,user)
             except TagError as error:
                 await reply(message,str(error))
