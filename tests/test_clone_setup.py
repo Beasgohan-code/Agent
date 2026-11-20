@@ -1321,3 +1321,101 @@ def test_cancellation_during_failed_start_cleanup_clears_draft_without_retry(tmp
         assert wizard.store.aremove.await_count == 1
         assert wizard.store.get(state.bot_id) is not None
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('error', [RuntimeError('delivery unavailable'), asyncio.TimeoutError()])
+def test_successful_creation_does_not_retry_notification_or_report_creation_failure(tmp_path, monkeypatch, error):
+    import agent.modules.clone.setup as module
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        notify = AsyncMock(side_effect=error)
+        monkeypatch.setattr(module, 'reply', notify)
+        await wizard.press(None, query(state), state.nonce + ':create')
+        assert len(ctx.clones.current()) == 1
+        assert ctx.clones.is_running(state.bot_id)
+        assert wizard.active(MEMBER) is None and state.token == ''
+        assert notify.await_count == 1  # never send an uncertain delivery twice
+        assert 'Clone ready' in str(notify.await_args.args[1])
+    asyncio.run(scenario())
+
+
+def test_ready_notification_does_not_hold_global_creation_lock(tmp_path, monkeypatch):
+    import agent.modules.clone.setup as module
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def notify(*args, **kwargs):
+            entered.set()
+            await release.wait()
+        monkeypatch.setattr(module, 'reply', notify)
+        task = asyncio.create_task(wizard.press(None, query(state), state.nonce + ':create'))
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            assert not wizard._finish_lock.locked()
+            assert ctx.clones.is_running(state.bot_id)
+        finally:
+            release.set()
+            await task
+    asyncio.run(scenario())
+
+
+def test_cancellation_during_ready_delivery_keeps_committed_running_clone(tmp_path, monkeypatch):
+    import agent.modules.clone.setup as module
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        notify = AsyncMock(side_effect=asyncio.CancelledError)
+        monkeypatch.setattr(module, 'reply', notify)
+        with pytest.raises(asyncio.CancelledError):
+            await wizard.press(None, query(state), state.nonce + ':create')
+        assert ctx.clones.is_running(state.bot_id) and wizard.store.get(state.bot_id)
+        assert wizard.active(MEMBER) is None and state.token == ''
+        assert notify.await_count == 1 and not wizard._finish_lock.locked()
+    asyncio.run(scenario())
+
+
+def test_unconfirmed_ready_delivery_logs_no_provider_text_or_credentials(tmp_path, monkeypatch, caplog):
+    import agent.modules.clone.setup as module
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        monkeypatch.setattr(module, 'reply', AsyncMock(side_effect=RuntimeError(TOKEN_A)))
+        await wizard.press(None, query(state), state.nonce + ':create')
+        assert '#Errors Clone ready notification unconfirmed (RuntimeError)' in caplog.text
+        assert TOKEN_A not in caplog.text
+    asyncio.run(scenario())
+
+
+def test_slow_ready_delivery_does_not_block_another_owners_creation(tmp_path, monkeypatch):
+    import agent.modules.clone.setup as module
+    from test_clone import TOKEN_B
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, first = await confirmation_step(ctx)
+        second = module.Setup(33, step='confirm', bot_id=222222222, token=TOKEN_B, template='leech')
+        wizard.sessions[33] = second
+        wizard.quota = lambda uid: 3
+        wizard.entitled = AsyncMock(return_value=True)
+        wizard.manager.eligible = AsyncMock(return_value=True)
+        async def identity(token, method, **kwargs):
+            return {'id': int(token.split(':')[0]), 'is_bot': True}
+        wizard.api = identity
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def notify(message, *args, **kwargs):
+            if message.chat.id == MEMBER:
+                entered.set()
+                await release.wait()
+        monkeypatch.setattr(module, 'reply', notify)
+        first_task = asyncio.create_task(wizard.press(None, query(first), first.nonce + ':create'))
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            await asyncio.wait_for(wizard.press(None, query(second, user=33), second.nonce + ':create'), timeout=5)
+            assert len(ctx.clones.current()) == 2
+            assert wizard.manager.is_running(second.bot_id)
+            assert not first_task.done()
+        finally:
+            release.set()
+            await first_task
+    asyncio.run(scenario())

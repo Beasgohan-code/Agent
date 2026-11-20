@@ -678,10 +678,6 @@ class CloneSetup:
                         raise
                     raise SetupError('The clone did not start. The draft was discarded; check bot credentials and deployment availability.') from None
                 self.cancel(user_id, expected=state)
-                await reply(query.message, panel('Clone ready', icon=self.ctx.theme.emoji('sparkles'),
-                    lines=[f'Bot id: <code>{record.bot_id}</code>', f'Bot: @{html.escape(username or state.username)}',
-                           f'Owner: <code>{user_id}</code>', f'{selection_label(self.plugins(state))} is configured. Manage it with /mybots.',
-                           'Group use still requires approval and activation through /plugin and group /plugins.']))
             except asyncio.CancelledError:
                 # Saving may have committed before cancellation reached us. Never
                 # retry/delete an uncertain save or keep an immortal starting draft.
@@ -690,6 +686,18 @@ class CloneSetup:
             except (SetupError, SelectionError, CloneError) as exc:
                 self.cancel(user_id, expected=state)
                 await reply(query.message, str(exc))
+                return
             except Exception:
                 self.cancel(user_id, expected=state)
                 await reply(query.message, 'Creation could not be confirmed. Check /mybots before retrying; the setup draft was discarded.')
+                return
+        # Startup has been confirmed and the draft discarded. Telegram delivery
+        # is separate from creation and must not hold the global creation lock.
+        try:
+            await reply(query.message, panel('Clone ready', icon=self.ctx.theme.emoji('sparkles'),
+                lines=[f'Bot id: <code>{record.bot_id}</code>', f'Bot: @{html.escape(username or record.username)}',
+                       f'Owner: <code>{record.owner_id}</code>', f'{selection_label(record.selected_plugins)} is configured. Manage it with /mybots.',
+                       'Group use still requires approval and activation through /plugin and group /plugins.']))
+        except Exception as delivery_error:
+            # Delivery can be uncertain: no second message or creation rollback.
+            logger.warning('#Errors Clone ready notification unconfirmed (%s)', type(delivery_error).__name__)

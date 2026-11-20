@@ -227,3 +227,30 @@ commit and independently verifies the retained encrypted record. New worker and
 Telegram interactions were mocked; both full suites used disposable real storage.
 Static and staged whitespace checks passed. No live Telegram verification,
 deployment, merge, production configuration change or migration was performed.
+
+## Creation completion versus ready-message delivery
+
+Once persistence and worker startup return successfully, setup clears the draft
+and releases the global creation lock before building/sending the ready message.
+A slow notification therefore does not serialize other owners' creations behind
+Telegram delivery. The card uses the created record's identity and plugin
+selection, not a potentially changed setup draft.
+
+A failed or timed-out ready notification no longer enters the creation-error
+handler or sends a misleading second "creation unconfirmed" message. There is
+no added resend, rollback, deletion, worker stop or creation retry. A type-only
+`#Errors` warning reports unconfirmed notification delivery without raw provider
+text or credentials. Cancellation still propagates and leaves the successfully
+saved/running clone intact. Users can inspect `/mybots` if the message is missing;
+this is not proof that Telegram displayed or delivered any notification.
+
+Validation: three failures reproduced before implementation. Final exact
+selective patch **2,482 passed** in 37.70 seconds; full working tree **2,564
+passed** in 34.98 seconds, no skips. Six new cases cover notification error and
+timeout without resend, cancellation without rollback, secret-safe logs, lock
+release, and a controlled two-owner interleaving where the second creation
+finishes while the first owner's notification is blocked. Both full suites used
+disposable real database storage; new notification/worker interleavings were
+controlled test doubles, not live performance measurements. Static and staged
+whitespace checks passed. No live Telegram verification, deployment, merge,
+production configuration change or migration was performed.
