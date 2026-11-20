@@ -1,5 +1,6 @@
 """Delete/silent warning variants with durable intent admission and no replay."""
 import logging
+import asyncio
 from ...platform.warning_policy import threshold as warning_threshold
 from pyrogram.enums import ChatType, ChatMemberStatus
 from ...platform.restriction_cases import begin, finish, CaseError
@@ -65,8 +66,14 @@ def build(ctx):
                 # Escalation reports failure in text rather than raising; never hide it.
                 partial = bool(escalation and not escalation.startswith('Threshold reached:'))
                 if command == 'dwarn':
-                    if await client.delete_messages(chat.id, delete_id) is not True:
+                    try:
+                        if await asyncio.wait_for(client.delete_messages(chat.id, delete_id), timeout=10) is not True:
+                            partial = True
+                    except Exception as error:
+                        # The warning is already recorded. Cleanup failure is a
+                        # partial result, not an uncertain warning or a retry cue.
                         partial = True
+                        logging.getLogger(__name__).warning('#Errors Warning cleanup unconfirmed (%s)', type(error).__name__)
                 await finish(ctx, identity, 'partial' if partial else 'applied')
                 if command == 'dwarn' or partial:
                     # The outcome is already recorded. Notification failure must not

@@ -73,16 +73,17 @@ async def test_confirmed_warning_delivery_failure_does_not_rewrite_outcome_or_re
 
 
 @pytest.mark.asyncio
-async def test_warning_delivery_cancellation_keeps_confirmed_outcome():
+@pytest.mark.parametrize('stage', ['delivery', 'cleanup'])
+async def test_warning_delivery_cancellation_keeps_confirmed_outcome(stage):
     import asyncio
     value = NS(chats=NS(aadd_warning=AsyncMock(return_value=1), log=lambda *a, **k: None))
     message = NS(id=10, text='/dwarn', chat=NS(id=-100, type=ChatType.SUPERGROUP),
         from_user=NS(id=11), reply_to_message=NS(id=2, chat=NS(id=-100), from_user=NS(id=22)),
-        reply=AsyncMock(side_effect=asyncio.CancelledError))
+        reply=AsyncMock(side_effect=asyncio.CancelledError if stage == 'delivery' else None))
     client = NS(get_me=AsyncMock(return_value=NS(id=99)),
         get_chat_member=AsyncMock(return_value=NS(status=ChatMemberStatus.ADMINISTRATOR,
             privileges=NS(can_restrict_members=True, can_delete_messages=True))),
-        delete_messages=AsyncMock(return_value=True))
+        delete_messages=AsyncMock(return_value=True, side_effect=asyncio.CancelledError if stage == 'cleanup' else None))
     finish = AsyncMock()
     with patch('agent.modules.moderation.is_moderator', AsyncMock(return_value=True)), \
          patch('agent.modules.moderation.target_is_protected', AsyncMock(return_value=False)), \
@@ -92,6 +93,53 @@ async def test_warning_delivery_cancellation_keeps_confirmed_outcome():
         from agent.modules.moderation.warning_variants import build
         with pytest.raises(asyncio.CancelledError):
             await build(value)['dwarn'](client, message)
-    finish.assert_awaited_once_with(value, 'case', 'applied')
-    message.reply.assert_awaited_once()
+    if stage == 'delivery':
+        finish.assert_awaited_once_with(value, 'case', 'applied')
+        message.reply.assert_awaited_once()
+    else:
+        finish.assert_not_awaited()
+        message.reply.assert_not_awaited()
     value.chats.aadd_warning.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', [RuntimeError, TimeoutError, 'blocked'])
+async def test_delete_warning_cleanup_failure_records_partial_without_replay(failure, caplog, monkeypatch):
+    import asyncio
+    stopped = asyncio.Event()
+    async def blocked(*args):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+    original = asyncio.wait_for
+    async def fast_timeout(awaitable, timeout):
+        assert timeout == 10
+        return await original(awaitable, timeout=0.01)
+    if failure == 'blocked':
+        monkeypatch.setattr(asyncio, 'wait_for', fast_timeout)
+    value = NS(chats=NS(aadd_warning=AsyncMock(return_value=1), log=lambda *a, **k: None))
+    message = NS(id=10, text='/dwarn', chat=NS(id=-100, type=ChatType.SUPERGROUP),
+        from_user=NS(id=11), reply_to_message=NS(id=2, chat=NS(id=-100), from_user=NS(id=22)),
+        reply=AsyncMock())
+    client = NS(get_me=AsyncMock(return_value=NS(id=99)),
+        get_chat_member=AsyncMock(return_value=NS(status=ChatMemberStatus.ADMINISTRATOR,
+            privileges=NS(can_restrict_members=True, can_delete_messages=True))),
+        delete_messages=AsyncMock(side_effect=blocked if failure == 'blocked' else failure('SECRET_CLEANUP_TEXT')))
+    finish = AsyncMock()
+    with patch('agent.modules.moderation.is_moderator', AsyncMock(return_value=True)), \
+         patch('agent.modules.moderation.target_is_protected', AsyncMock(return_value=False)), \
+         patch('agent.modules.moderation.warning_variants.warning_threshold', AsyncMock(return_value=(3, 'mute'))), \
+         patch('agent.modules.moderation.warning_variants.begin', AsyncMock(return_value='case')), \
+         patch('agent.modules.moderation.warning_variants.finish', finish):
+        from agent.modules.moderation.warning_variants import build
+        await build(value)['dwarn'](client, message)
+    finish.assert_awaited_once_with(value, 'case', 'partial')
+    value.chats.aadd_warning.assert_awaited_once()
+    client.delete_messages.assert_awaited_once_with(-100, 2)
+    message.reply.assert_awaited_once()
+    body = str(message.reply.await_args.args[0])
+    assert 'Warning recorded' in body and 'Cleanup or escalation unconfirmed' in body
+    assert 'SECRET_CLEANUP_TEXT' not in body + caplog.text
+    if failure == 'blocked':
+        assert stopped.is_set()

@@ -379,3 +379,23 @@ suites used disposable real database storage; new warning/notification tests use
 controlled doubles, not live Telegram or durable-outcome integration proof.
 Changed-file static and staged whitespace checks passed. No deployment, merge,
 production changes or live verification.
+
+## Delete-warning cleanup: partial outcomes and bounded requests
+
+After the warning write and any escalation, `/dwarn` message deletion now has a
+ten-second request bound. Exceptions and timeouts are classified as partial
+cleanup results rather than making the recorded warning sound uncertain. The
+handler records partial once and reports the warning count with cleanup marked
+unconfirmed. No warning, escalation or deletion retry is introduced; diagnostics
+contain only exception types. Cancellation during cleanup still propagates,
+leaves the admitted outcome unresolved, and sends no completion claim.
+
+Initial tests reproduced two cleanup-failure misclassifications. Four additional
+regression cases overall cover provider error, timeout, cancellation of a blocked
+delete request, and command cancellation during cleanup. Focused tests: **17
+passed**. Exact selective patch: **2,532 passed** in 32.57 seconds; full working
+tree: **2,614 passed** in 30.67 seconds, no skips. Both full suites used disposable
+real database storage; cleanup interleavings and Telegram requests used controlled
+doubles, not live Telegram or durable-outcome integration proof. Changed-file
+static and staged whitespace checks passed. No deployment, merge or production
+changes.
