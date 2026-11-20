@@ -98,3 +98,34 @@ def test_native_reply_failure_has_no_public_fallback():
             await guest_help(client, NS(guest_query_id='123'))
         assert client.answer_guest_query.await_count == 1
     asyncio.run(run())
+
+
+def test_guest_help_links_only_to_valid_cached_private_identity():
+    async def run():
+        client = NS(me=NS(username='ExampleBot'), answer_guest_query=AsyncMock(), get_me=AsyncMock())
+        await guest_help(client, NS(guest_query_id='123', text='/start sensitive-payload'))
+        result = client.answer_guest_query.await_args.kwargs['result']
+        button = result.reply_markup.inline_keyboard[0][0]
+        assert button.url == 'https://t.me/ExampleBot'
+        assert button.callback_data is None
+        assert 'sensitive-payload' not in button.url
+        client.get_me.assert_not_awaited()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('username', [None, 'bad/name', '', 'a'*33])
+def test_guest_help_omits_navigation_when_identity_unavailable(username):
+    async def run():
+        client = NS(me=NS(username=username), answer_guest_query=AsyncMock(), get_me=AsyncMock())
+        await guest_help(client, NS(guest_query_id='123'))
+        assert client.answer_guest_query.await_args.kwargs['result'].reply_markup is None
+        client.get_me.assert_not_awaited()
+    asyncio.run(run())
+
+
+def test_guard_deadline_path_does_not_enter_optional_plugin_eligibility():
+    from agent.platform.execution import PluginGate
+    # Protected security handlers must remain direct: optional-plugin lookups
+    # or cleanup waits could consume the native ten-second response window.
+    gate = PluginGate(NS(), NS(), NS())
+    assert gate.wrap('security', queue_guard_request, silent=True) is queue_guard_request

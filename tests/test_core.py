@@ -333,3 +333,41 @@ def test_jobs_module_filter_keeps_owner_boundary_and_rejects_extra_args(tmp_path
         await command(None, empty)
         assert 'No matching jobs' in empty.replies[-1]
     asyncio.run(scenario())
+
+
+def test_status_reports_native_capabilities_without_network_lookup(tmp_path):
+    from unittest.mock import AsyncMock
+    ctx = make_ctx(tmp_path)
+    client = SimpleNamespace(me=SimpleNamespace(
+        supports_guest_queries=True, can_manage_bots=False, supports_join_request_queries=None,
+    ), get_me=AsyncMock())
+    message = FakeMessage('/status')
+    run(handlers(ctx)['status'], ctx, message, client=client)
+    body = str(message.replies[0])
+    assert 'Telegram guest chat' in body and 'Reported enabled' in body
+    assert 'Telegram bot management' in body and 'Reported disabled' in body
+    assert 'Telegram Guard' in body and 'Not reported' in body
+    assert 'not a live' in body
+    client.get_me.assert_not_awaited()
+
+
+def test_status_unknown_identity_does_not_claim_modes_are_disabled(tmp_path):
+    ctx = make_ctx(tmp_path)
+    message = FakeMessage('/status')
+    run(handlers(ctx)['status'], ctx, message)
+    body = str(message.replies[0])
+    assert body.count('Not reported') == 3
+    assert 'Reported disabled' not in body
+
+
+def test_status_uses_attached_identity_and_requires_boolean_capability_flags(tmp_path):
+    ctx = make_ctx(tmp_path)
+    for value in (True, False, 1, 0, 'true', None):
+        ctx.client = SimpleNamespace(me=SimpleNamespace(
+            supports_guest_queries=value, can_manage_bots=value, supports_join_request_queries=value,
+        ))
+        message = FakeMessage('/status')
+        run(handlers(ctx)['status'], ctx, message)
+        body = str(message.replies[0])
+        expected = 'Reported enabled' if value is True else 'Reported disabled' if value is False else 'Not reported'
+        assert body.count(expected) == 3

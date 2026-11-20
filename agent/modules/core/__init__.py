@@ -147,6 +147,16 @@ def build(ctx):
         )
         rows.append(("Modules", modules))
         rows.append(("Commands", str(commands)))
+        # Cached metadata is not a live Telegram permission probe.
+        identity = getattr(_client if _client is not None else getattr(ctx, 'client', None), 'me', None)
+        for label, attribute in (
+            ('Telegram guest chat', 'supports_guest_queries'),
+            ('Telegram bot management', 'can_manage_bots'),
+            ('Telegram Guard', 'supports_join_request_queries'),
+        ):
+            flag = getattr(identity, attribute, None)
+            value = 'Reported enabled' if flag is True else 'Reported disabled' if flag is False else 'Not reported'
+            rows.append((label, value))
         user = getattr(message, "from_user", None)
         if user is not None and ctx.storage is not None:
             rows.append(("Your storage", _human_bytes(ctx.storage.usage(user.id))))
@@ -154,8 +164,10 @@ def build(ctx):
             panel(
                 "Runtime status",
                 icon=ctx.theme.emoji("stats"),
-                subtitle="Read from this process, not from a cache.",
+                subtitle="Process counters and the last Telegram capability report.",
                 table=kv_table(rows),
+                note="Capability flags use the last cached Telegram identity, not a live permission or delivery test. "
+                     "Enabled flags do not prove module availability or authorization.",
                 footer="<code>/ping</code> checks the link, <code>/owner</code> shows the owner panel.",
             ),
             reply_markup=nav_keyboard(),
@@ -419,10 +431,17 @@ async def guest_help(client, message):
     query_id = getattr(message, "guest_query_id", None)
     if not query_id:
         return
+    from ...ui.bot_identity import bot_username
+    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    username = await bot_username(client, cached_only=True)
+    keyboard = (InlineKeyboardMarkup([[InlineKeyboardButton(
+        'Open private help', url=f'https://t.me/{username}',
+    )]]) if username else None)
     await client.answer_guest_query(
         query_id,
         result=InlineQueryResultArticle(
             title="Bot help",
+            reply_markup=keyboard,
             input_message_content=InputTextMessageContent(
                 "Guest mode provides help only. Open this bot's private chat and "
                 "send /start or /help for its tools. Administration, clone setup, "

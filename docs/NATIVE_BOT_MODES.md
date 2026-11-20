@@ -106,3 +106,34 @@ deployment, merge or production configuration change was performed.
 Before this phase, the restored local checkout's history/index was reconciled
 with the verified remote branch tip. All 510 checked working paths had identical
 before/after hashes; pending work was preserved and staging was initially clean.
+
+## Capability visibility and guest navigation
+
+`/status` now separates **Reported enabled**, **Reported disabled**, and
+**Not reported** for Telegram guest chat, bot management and Guard capabilities.
+Only explicit boolean flags from the latest cached bot identity count as enabled
+or disabled. Missing identity/fields are unknown, not assumed disabled. The card
+labels this as cached capability metadata, not a live permission, delivery,
+module-availability or authorization check. It does not call `get_me`.
+
+Native guest help includes **Open private help** only when a validated cached
+bot username is available. The button opens the bot's ordinary private chat;
+it contains no incoming text, command arguments, redemption payload or privileged
+callback. Unknown/invalid identity leaves text-only help. Replies still use only
+the native guest response API, with no ordinary-message fallback.
+
+Guard response routing was reviewed: security is protected group-management
+core, so `PluginGate.wrap` returns its handler directly without optional-plugin
+eligibility/storage/cleanup waits. A regression test locks down this boundary;
+no gating or admission policy was loosened. The existing eight-second local
+response timeout remains a bound from handler execution, not a guarantee about
+Telegram delivery time or dispatcher scheduling.
+
+Validation: exact selective patch **2,447 passed** in 30.28 seconds; full working
+tree **2,529 passed** in 27.88 seconds, no skips. Runs used disposable real
+database storage and mocked Telegram calls. Added coverage includes strict
+boolean/unknown capability reporting, attached-client identity fallback,
+private guest navigation without payload echo or network identity lookup,
+invalid username refusal, and the protected Guard execution boundary. Targeted
+static and staged whitespace checks passed. No live Telegram verification,
+deployment, merge, or production configuration changes were performed.
