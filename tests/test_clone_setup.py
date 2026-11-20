@@ -1008,3 +1008,158 @@ def test_managed_link_versions_are_bounded_with_offers(tmp_path):
     wizard.offer_managed(MEMBER, 1200)
     assert len(wizard._managed_versions) == 100
     assert (MEMBER, 1000) not in wizard._managed_versions
+
+
+@pytest.mark.parametrize('step,cancel_on', [('ai_key', 2), ('ai_model', 1), ('log', 1)])
+def test_cancel_during_setup_eligibility_cannot_advance_detached_draft(tmp_path, step, cancel_on):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        state.step = step
+        initial = state.step
+        calls = 0
+        async def eligibility(uid):
+            nonlocal calls
+            calls += 1
+            if calls == cancel_on:
+                wizard.cancel(uid)
+            return True
+        wizard.entitled = eligibility
+        text = {'ai_key': 'sk-private_clone_key_1234567890', 'ai_model': 'chosen-model', 'log': 'skip'}[step]
+        await wizard.receive(None, FakeMessage(text))
+        assert wizard.active(MEMBER) is None
+        assert state.ai_api_key == '' and state.ai_model == ''
+        assert state.step == initial
+        assert not ctx.clones.current()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('method,cancel_call', [('getChat', 1), ('getChatMember', 1), ('getChatMember', 2)])
+def test_channel_validation_stops_at_cancellation_boundary(tmp_path, method, cancel_call):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        state.step = 'storage'
+        calls = []
+        count = 0
+        async def verify(token, name, **values):
+            nonlocal count
+            calls.append((token, name))
+            if name == method:
+                count += 1
+                if count == cancel_call:
+                    wizard.cancel(MEMBER)
+            return await api(token, name, **values)
+        wizard.api = verify
+        await wizard.receive(None, FakeMessage('-100100'))
+        assert len(calls) == (1 if method == 'getChat' else 1 + cancel_call)
+        assert state.storage_channel is None
+        assert state.step == 'storage'
+        assert wizard.active(MEMBER) is None
+    asyncio.run(scenario())
+
+
+def test_queued_input_cannot_be_reinterpreted_as_the_next_setup_step(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        state.step = 'ai_key'
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def deleting():
+            entered.set()
+            await release.wait()
+        first = FakeMessage('sk-private_clone_key_1234567890')
+        first.delete = deleting
+        first_task = asyncio.create_task(wizard.receive(None, first))
+        await entered.wait()
+        second_task = asyncio.create_task(wizard.receive(None, FakeMessage('other-model')))
+        await asyncio.sleep(0)
+        release.set()
+        await asyncio.gather(first_task, second_task)
+        assert state.step == 'ai_model' and state.ai_model == ''
+    asyncio.run(scenario())
+
+
+def test_stale_callback_cannot_advance_after_cancellation_in_eligibility(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        async def eligibility(uid):
+            wizard.cancel(uid)
+            return True
+        wizard.entitled = eligibility
+        await wizard.press(None, query(state), state.nonce + ':ai_agent')
+        assert state.step == 'plugin'
+        assert wizard.active(MEMBER) is None
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('entry', ['message', 'callback'])
+def test_denied_old_update_cannot_cancel_a_replacement_draft(tmp_path, entry):
+    from agent.modules.clone.setup import Setup
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, old = await identity_step(ctx)
+        old.step = 'ai_model' if entry == 'message' else 'plugin'
+        replacement = Setup(MEMBER)
+        async def eligibility(uid):
+            wizard.cancel(uid)
+            wizard.sessions[uid] = replacement
+            return False
+        wizard.entitled = eligibility
+        if entry == 'message':
+            await wizard.receive(None, FakeMessage('chosen-model'))
+        else:
+            await wizard.press(None, query(old), old.nonce + ':ai_agent')
+        assert wizard.active(MEMBER) is replacement
+        assert replacement.step == 'token' and replacement.token == ''
+        assert old.ai_model == '' and old.token == ''
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('step', ['ai_key', 'ai_model', 'storage', 'music_session'])
+def test_expiry_during_setup_eligibility_never_advances_or_restores_credentials(tmp_path, step, monkeypatch):
+    import agent.modules.clone.setup as module
+    normalized = []
+    def normalize(value):
+        normalized.append(value)
+        return value
+    monkeypatch.setattr(module, 'normalize_session', normalize, raising=False)
+    monkeypatch.setattr(module, 'validate_session', normalize, raising=False)
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        state.step = step
+        calls = 0
+        async def eligibility(uid):
+            nonlocal calls
+            calls += 1
+            if calls == (2 if step in ('ai_key', 'music_session') else 1):
+                state.expires = 0
+            return True
+        wizard.entitled = eligibility
+        text = {'ai_key': 'sk-private_clone_key_1234567890', 'ai_model': 'chosen-model',
+                'storage': '-100100', 'music_session': 'private-session'}[step]
+        await wizard.receive(None, FakeMessage(text))
+        assert wizard.active(MEMBER) is None
+        assert state.step == step and state.storage_channel is None
+        assert state.ai_api_key == '' and state.token == '' and state.assistant_session == ''
+        assert not normalized
+    asyncio.run(scenario())
+
+
+def test_channel_eligibility_revocation_during_validation_discards_secrets(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await identity_step(ctx)
+        state.step = 'storage'
+        calls = 0
+        async def eligibility(uid):
+            nonlocal calls
+            calls += 1
+            return calls == 1
+        wizard.entitled = eligibility
+        await wizard.receive(None, FakeMessage('-100100'))
+        assert state.storage_channel is None and state.token == ''
+        assert wizard.active(MEMBER) is None
+    asyncio.run(scenario())

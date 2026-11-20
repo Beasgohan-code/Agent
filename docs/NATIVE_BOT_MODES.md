@@ -137,3 +137,33 @@ private guest navigation without payload echo or network identity lookup,
 invalid username refusal, and the protected Guard execution boundary. Targeted
 static and staged whitespace checks passed. No live Telegram verification,
 deployment, merge, or production configuration changes were performed.
+
+## Shared setup cancellation and step boundaries
+
+The ordinary setup workflow shared by manual and managed imports now verifies
+both the live draft identity and its expected step after asynchronous checks.
+Cancellation/expiry during premium eligibility can no longer restore an AI key,
+advance an abandoned model/log step, or apply a stale setup callback. A rejected
+old update cannot cancel a replacement draft created while the check waited.
+AI and assistant-session acceptance recheck eligibility and live state after
+best-effort credential-message deletion. No session/provider authorization is
+claimed from syntax checks.
+
+Channel validation stops after each outstanding Telegram read returns if its
+draft was cancelled or expired, rather than continuing with cleared credentials.
+Eligibility is rechecked before saving the destination. An input already queued
+for one step cannot be reinterpreted as input for the next step after waiting
+for the per-user lock. These are in-memory workflow checks; final create still
+uses the existing encrypted store, concurrency limits and identity/permission
+revalidation. No new commands, credentials, dependencies or worker writers were
+introduced.
+
+Validation: eight regression failures reproduced before the fix. Final exact
+selective patch **2,462 passed** in 30.29 seconds; full working tree **2,544
+passed** in 27.52 seconds, no skips. Fifteen added cases cover eligibility-time
+cancellation/expiry, replacement draft safety, channel-read cancellation at
+all three boundaries, post-validation revocation and queued-step isolation.
+Both full runs used disposable real database storage; Telegram, eligibility and
+session-format responses in the new race tests were controlled test doubles.
+Targeted static and staged whitespace checks passed. No live Telegram tests,
+deployment, merge, production changes or migration were performed.

@@ -89,6 +89,20 @@ class CloneSetup:
             state.ai_api_key = ''
             state.assistant_session = ''
 
+    def _at_step(self, state, step):
+        """A detached/expired draft is never a valid mutation target."""
+        return self.active(state.user_id) is state and state.step == step
+
+    async def _eligible_step(self, state, step):
+        allowed = await self.entitled(state.user_id)
+        # Eligibility may yield while /cancel, expiry or another update wins.
+        if not self._at_step(state, step):
+            return False
+        if not allowed:
+            self.cancel(state.user_id)
+            return False
+        return True
+
     def keyboard(self, state, options):
         rows = [[Button(label, callback_data=f'csetup:{state.nonce}:{action}')] for label, action in options]
         rows.append([Button('Cancel setup', callback_data=f'csetup:{state.nonce}:cancel')])
@@ -392,6 +406,7 @@ class CloneSetup:
         state = self.active(user_id)
         if state is None:
             return
+        step = state.step
         text = (getattr(message, 'text', '') or '').strip()
         if command_name(text) == 'cancel':
             if state.step == 'starting':
@@ -404,9 +419,12 @@ class CloneSetup:
             return
         lock = self._locks.setdefault(user_id, asyncio.Lock())
         async with lock:
-            if self.active(user_id) is not state:
+            if not self._at_step(state, step):
                 return
-            if not await self.entitled(user_id):
+            allowed = await self.entitled(user_id)
+            if not self._at_step(state, step):
+                return
+            if not allowed:
                 self.cancel(user_id)
                 await reply(message, 'Clone access is no longer available. Setup cancelled.')
                 return
@@ -422,7 +440,7 @@ class CloneSetup:
                         await message.delete()
                     except Exception:
                         pass
-                    if self.active(user_id) is not state or not await self.entitled(user_id):
+                    if not self._at_step(state, step) or not await self._eligible_step(state, step):
                         return
                     try:
                         validate_session(text)
@@ -440,7 +458,7 @@ class CloneSetup:
                         await message.delete()
                     except Exception:
                         pass
-                    if self.active(user_id) is not state or not await self.entitled(user_id):
+                    if not self._at_step(state, step) or not await self._eligible_step(state, step):
                         return
                     try:
                         validate_ai_key(text)
@@ -468,14 +486,20 @@ class CloneSetup:
                         if not -(2**63) < channel < 0:
                             raise SetupError('A negative Telegram channel id is required.')
                         chat = await self.api(state.token, 'getChat', chat_id=channel)
+                        if not self._at_step(state, step):
+                            return
                         if chat.get('type') != 'channel':
                             raise SetupError('Choose a channel, not a user or group.')
                         for uid in (state.bot_id, user_id):
                             member = await self.api(state.token, 'getChatMember', chat_id=channel, user_id=uid)
+                            if not self._at_step(state, step):
+                                return
                             if member.get('status') not in ('administrator', 'creator'):
                                 raise SetupError('Both you and the clone bot must administer this channel.')
                             if uid == state.bot_id and member.get('status') != 'creator' and not member.get('can_post_messages'):
                                 raise SetupError('Grant the clone bot permission to post in this channel.')
+                        if not await self._eligible_step(state, step):
+                            return
                         if state.step == 'log':
                             state.log_channel = channel
                         else:
@@ -500,7 +524,12 @@ class CloneSetup:
         if not state or nonce != state.nonce or getattr(origin, 'id', None) != user_id:
             await query.answer('This setup is expired or belongs to someone else.', show_alert=True)
             return
-        if not await self.entitled(user_id):
+        step = state.step
+        allowed = await self.entitled(user_id)
+        if not self._at_step(state, step):
+            await query.answer('This setup changed or expired. Use /clone to resume the current draft.', show_alert=True)
+            return
+        if not allowed:
             self.cancel(user_id)
             await query.answer('Clone access is no longer available.', show_alert=True)
             return
