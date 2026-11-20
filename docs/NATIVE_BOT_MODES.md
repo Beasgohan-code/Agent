@@ -297,3 +297,24 @@ disposable real database storage. The initial focused run without that storage
 had 55 passed and one storage-dependent skip; full runs cover it. Changed-file
 static and staged whitespace checks passed. No live Telegram verification,
 production changes, deployment or merge.
+
+## Administrator command text-mention targeting
+
+Promotion and strict administrator target parsing now bind a text mention to the
+first target argument by its Telegram UTF-16 offset and length. Missing,
+duplicate, misplaced, out-of-range or split-surrogate spans are rejected rather
+than selecting an unrelated entity. Valid multiword and non-BMP display names
+resolve without a user lookup. Promotion titles are parsed after the complete
+mention and pass the same length/control-character validation as other targets;
+strict target commands reject trailing arguments. Reply targeting and live
+permission checks remain unchanged.
+
+Validation: 13 new cases failed before implementation. Added 15 cases overall,
+including command-handler checks that malformed mentions cause neither user
+lookup nor administrator/title mutations. Two old mention fixtures were updated
+to include actual visible target text and Telegram-style spans; one was caught
+by the first full run. Final exact selective patch: **2,514 passed** in 29.07
+seconds; full working tree: **2,596 passed** in 28.78 seconds, no skips, both with
+disposable real database storage. Changed-file static and staged whitespace
+checks passed. Telegram calls used test doubles: no live verification,
+deployment, merge or production changes.

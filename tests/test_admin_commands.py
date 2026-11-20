@@ -66,8 +66,8 @@ def test_promote_demote_and_target_forms(tmp_path):
         client.promote_chat_member.reset_mock()
         await commands["demote"](client, fixtures.FakeMessage("/demote 22"))
         client.promote_chat_member.assert_not_awaited()
-        message = fixtures.FakeMessage("/promote")
-        message.entities = [SimpleNamespace(user=target)]
+        message = fixtures.FakeMessage("/promote Alice")
+        message.entities = [SimpleNamespace(user=target, offset=9, length=5)]
         assert (await resolve(client, message)).id == 22
 
     asyncio.run(scenario())
@@ -321,3 +321,61 @@ def test_admin_options_identity_syntax_and_post_save_failure(tmp_path,monkeypatc
         text=str(request.replies[-1])
         assert 'Setting saved' in text and 'PRIVATE_PROVIDER_DATA' not in text
     asyncio.run(scenario())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('parser_name', ['resolve', 'promotion_target'])
+@pytest.mark.parametrize('kind', ['command', 'suffix', 'missing_span', 'split_surrogate', 'multiple'])
+async def test_admin_text_mention_must_cover_the_target_argument(parser_name, kind):
+    from agent.modules.group import admin
+    text = '/promote 😀Name'
+    start = len('/promote '.encode('utf-16-le')) // 2
+    entity = SimpleNamespace(user=SimpleNamespace(id=22), offset=start, length=6)
+    if kind == 'command':
+        entity.offset = 0
+    elif kind == 'suffix':
+        entity.offset = start + 2
+        entity.length = 4
+    elif kind == 'missing_span':
+        entity = SimpleNamespace(user=entity.user)
+    elif kind == 'split_surrogate':
+        entity.length = 1
+    message = fixtures.FakeMessage(text)
+    message.entities = [entity, entity] if kind == 'multiple' else [entity]
+    client = SimpleNamespace(get_users=AsyncMock())
+    with pytest.raises(admin.AdminInputError):
+        await getattr(admin, parser_name)(client, message)
+    client.get_users.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('parser_name', ['resolve', 'promotion_target'])
+async def test_admin_text_mention_accepts_multiword_unicode_name(parser_name):
+    from agent.modules.group import admin
+    label = '😀 Alice Smith'
+    text = '/promote ' + label
+    target = SimpleNamespace(id=22)
+    message = fixtures.FakeMessage(text)
+    message.entities = [SimpleNamespace(user=target, offset=9,
+                        length=len(label.encode('utf-16-le')) // 2)]
+    client = SimpleNamespace(get_users=AsyncMock())
+    result = await getattr(admin, parser_name)(client, message)
+    assert (result[0] if parser_name == 'promotion_target' else result) is target
+    client.get_users.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_promotion_text_mention_title_is_validated_after_its_full_span():
+    from agent.modules.group.admin import promotion_target, AdminInputError
+    target = SimpleNamespace(id=22)
+    label = 'Alice Smith'
+    client = SimpleNamespace(get_users=AsyncMock())
+    for title in ('Team lead', 'x' * 17, 'bad\u200btitle'):
+        message = fixtures.FakeMessage('/promote ' + label + ' ' + title)
+        message.entities = [SimpleNamespace(user=target, offset=9, length=len(label))]
+        if title == 'Team lead':
+            assert await promotion_target(client, message) == (target, title)
+        else:
+            with pytest.raises(AdminInputError):
+                await promotion_target(client, message)
+    client.get_users.assert_not_awaited()

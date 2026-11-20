@@ -94,9 +94,9 @@ async def test_promotion_title_does_not_change_rights_parser(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_promotion_without_args_keeps_text_mention_target(tmp_path):
-    ctx,client,message=setup(tmp_path,'/promote')
-    message.entities=[NS(user=NS(id=22))]
+async def test_promotion_without_title_keeps_text_mention_target(tmp_path):
+    ctx,client,message=setup(tmp_path,'/promote Alice')
+    message.entities=[NS(user=NS(id=22),offset=9,length=5)]
     await group.build(ctx)[1]['promote'](client,message)
     client.promote_chat_member.assert_awaited_once()
     client.get_users.assert_not_awaited()
@@ -171,3 +171,14 @@ async def test_acknowledged_promotion_is_not_reported_failed_when_reply_fails(tm
     client.promote_chat_member.assert_awaited_once()
     assert 'Administrator change confirmed' in replies.await_args_list[-1].args[1]
     assert 'PRIVATE_REPLY_DATA' not in str(replies.await_args_list[-1])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('command', ['promote', 'demote'])
+async def test_admin_change_rejects_a_mention_on_the_command_itself(tmp_path, command):
+    ctx, client, message = setup(tmp_path, f'/{command} @target')
+    message.entities = [NS(user=NS(id=22), offset=0, length=len(command) + 1)]
+    await group.build(ctx)[1][command](client, message)
+    client.promote_chat_member.assert_not_awaited()
+    client.set_administrator_title.assert_not_awaited()
+    client.get_users.assert_not_awaited()

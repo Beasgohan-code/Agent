@@ -30,11 +30,39 @@ class AdminInputError(ValueError):
     """Safe locally authored input/permission failure, never provider text."""
 
 
+def mentioned_target(message):
+    """Bind a Telegram text mention to the first argument using UTF-16 spans."""
+    mentions = [entity for entity in getattr(message, 'entities', None) or []
+                if getattr(entity, 'user', None) is not None]
+    if not mentions:
+        return None
+    text = getattr(message, 'text', '') or ''
+    parts = text.split(maxsplit=1)
+    if len(mentions) != 1 or len(parts) != 2:
+        raise AdminInputError('Provide one text mention as the target argument.')
+    entity = mentions[0]
+    tail = parts[1]
+    prefix = text[:len(text) - len(tail)]
+    offset, length = getattr(entity, 'offset', None), getattr(entity, 'length', None)
+    if (type(offset) is not int or offset != len(prefix.encode('utf-16-le')) // 2
+            or type(length) is not int or length <= 0):
+        raise AdminInputError('Text mention must cover the target argument.')
+    encoded = tail.encode('utf-16-le')
+    if length * 2 > len(encoded):
+        raise AdminInputError('Text mention span is invalid.')
+    try:
+        label = encoded[:length * 2].decode('utf-16-le')
+        remainder = encoded[length * 2:].decode('utf-16-le')
+    except UnicodeDecodeError:
+        raise AdminInputError('Text mention span is invalid.') from None
+    if not label.strip() or (remainder and not remainder[0].isspace()):
+        raise AdminInputError('Text mention must cover the complete target name.')
+    return entity.user, remainder.strip()
+
+
 async def resolve(client, message):
     source=await replied_message(client,message)
     args=(getattr(message,'text','') or '').split()
-    if len(args)>2:
-        raise AdminInputError('Reply to a user or provide one username, mention or user ID.')
     if source is not None:
         if (getattr(getattr(source,'chat',None),'id',None)!=message.chat.id
                 or getattr(source,'sender_chat',None) is not None):
@@ -43,10 +71,12 @@ async def resolve(client, message):
         if target is None or len(args)!=1:
             raise AdminInputError('Reply to a personal member without an additional target.')
         return target
-    for entity in getattr(message,'entities',None) or []:
-        target=getattr(entity,'user',None)
-        if target is not None:
-            return target
+    mention = mentioned_target(message)
+    if mention is not None:
+        target, remainder = mention
+        if remainder:
+            raise AdminInputError('Provide one target without additional arguments.')
+        return target
     if len(args)!=2:
         raise AdminInputError('Reply to a user or provide a username, mention or user ID.')
     value=args[1]
@@ -71,23 +101,21 @@ async def promotion_target(client,message):
         title=tail
         value=None
     else:
-        args=tail.split(maxsplit=1)
-        if not args:
-            mentions=[getattr(entity,'user',None) for entity in getattr(message,'entities',None) or [] if getattr(entity,'user',None) is not None]
-            if mentions:
-                return mentions[0],''
-            raise AdminInputError('Usage: /promote @username|positive_ID [title], or reply /promote [title].')
-        value=args[0]
-        title=args[1] if len(args)==2 else ''
-        if value.isascii() and value.isdecimal() and len(value)<=19 and 0<int(value)<2**63:
-            value=int(value)
-        elif not re.fullmatch(r'@[A-Za-z0-9_]{1,32}',value):
-            # Preserve Telegram text-mention targeting without accepting arbitrary strings.
-            mentions=[getattr(entity,'user',None) for entity in getattr(message,'entities',None) or [] if getattr(entity,'user',None) is not None]
-            if mentions and not title:
-                return mentions[0],''
-            raise AdminInputError('Use a positive user ID or @username, or reply to a member.')
-        target=None
+        mention = mentioned_target(message)
+        if mention is not None:
+            target, title = mention
+            value = None
+        else:
+            args=tail.split(maxsplit=1)
+            if not args:
+                raise AdminInputError('Usage: /promote @username|positive_ID [title], or reply /promote [title].')
+            value=args[0]
+            title=args[1] if len(args)==2 else ''
+            if value.isascii() and value.isdecimal() and len(value)<=19 and 0<int(value)<2**63:
+                value=int(value)
+            elif not re.fullmatch(r'@[A-Za-z0-9_]{1,32}',value):
+                raise AdminInputError('Use a positive user ID or @username, or reply to a member.')
+            target=None
     if len(title)>16 or any(unicodedata.category(char).startswith('C') for char in title):
         raise AdminInputError('Administrator title must be 1–16 characters with no control/format characters. Omit it for no custom title. Telegram may reject emoji titles.')
     if target is None:
