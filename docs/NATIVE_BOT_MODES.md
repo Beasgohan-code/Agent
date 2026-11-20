@@ -318,3 +318,22 @@ seconds; full working tree: **2,596 passed** in 28.78 seconds, no skips, both wi
 disposable real database storage. Changed-file static and staged whitespace
 checks passed. Telegram calls used test doubles: no live verification,
 deployment, merge or production changes.
+
+## Moderation username lookup bounds and safe errors
+
+The shared restriction target parser bounds username lookups to five seconds and
+accepts only positive, signed-64-bit personal integer IDs (not booleans). Provider
+errors and invalid lookup results become a locally authored `TargetLookupError`;
+logs contain exception types, not raw provider text. Approval commands distinguish
+that safe lookup error from syntax errors, avoiding misleading usage-only replies.
+Cancellation propagates without retry, and no target is selected on lookup failure.
+This bound applies to the username read, not the whole moderation operation.
+
+Four new regression tests cover provider errors before restriction mutation,
+six invalid result identities, timeout cleanup, and cancellation without retry.
+Three tests failed before implementation. Final exact selective patch: **2,518
+passed** in 31.86 seconds; full working tree: **2,600 passed** in 28.26 seconds,
+no skips, both with disposable real database storage. Focused tests initially
+without storage: 26 passed, 16 storage-dependent skips; full runs cover those.
+Changed-file static and staged whitespace checks passed. Telegram calls used
+test doubles; no live verification, deployment, merge or production changes.

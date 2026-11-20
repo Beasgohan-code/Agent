@@ -296,3 +296,75 @@ def test_applied_action_with_failed_outcome_write_is_not_reported_as_unattempted
         )
 
     asyncio.run(scenario())
+
+
+def test_username_target_failures_are_safe_before_restriction(tmp_path, caplog):
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        commands = moderation.build(ctx)[1]
+        for error in (ValueError('SECRET_PROVIDER_TEXT'), RuntimeError('SECRET_PROVIDER_TEXT')):
+            client = client_with_rights()
+            client.get_users = AsyncMock(side_effect=error)
+            message = fixtures.FakeMessage('/tban @target 1h')
+            await commands['tban'](client, message)
+            client.ban_chat_member.assert_not_awaited()
+            assert 'SECRET_PROVIDER_TEXT' not in str(message.replies) + caplog.text
+            assert 'lookup unavailable' in str(message.replies).lower()
+    asyncio.run(scenario())
+
+
+def test_username_target_rejects_nonpersonal_lookup_results():
+    import pytest
+    from agent.modules.moderation.restrictions import target_and_reason
+    async def scenario():
+        for uid in (None, True, '22', 0, -22, 2**63):
+            client = SimpleNamespace(get_users=AsyncMock(return_value=SimpleNamespace(id=uid)))
+            with pytest.raises(ValueError, match='lookup unavailable'):
+                await target_and_reason(client, fixtures.FakeMessage('/tban @target 1h'))
+    asyncio.run(scenario())
+
+
+def test_username_target_lookup_has_a_deadline_and_cleans_up(monkeypatch):
+    import pytest
+    from agent.modules.moderation import restrictions
+    async def scenario():
+        stopped = asyncio.Event()
+        async def blocked(*args):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+        client = SimpleNamespace(get_users=AsyncMock(side_effect=blocked))
+        original = asyncio.wait_for
+        async def fast_timeout(awaitable, timeout):
+            assert timeout == 5
+            return await original(awaitable, timeout=0.01)
+        monkeypatch.setattr(asyncio, 'wait_for', fast_timeout)
+        # Outer watchdog makes the pre-fix failure terminate without hanging.
+        with pytest.raises(ValueError, match='lookup unavailable'):
+            await original(restrictions.target_and_reason(client, fixtures.FakeMessage('/tban @target 1h')), timeout=0.2)
+        assert stopped.is_set()
+    asyncio.run(scenario())
+
+
+def test_username_target_cancellation_propagates_without_retry():
+    import pytest
+    from agent.modules.moderation.restrictions import target_and_reason
+    async def scenario():
+        reached = asyncio.Event()
+        stopped = asyncio.Event()
+        async def blocked(*args):
+            reached.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+        client = SimpleNamespace(get_users=AsyncMock(side_effect=blocked))
+        task = asyncio.create_task(target_and_reason(client, fixtures.FakeMessage('/tban @target 1h')))
+        await asyncio.wait_for(reached.wait(), 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert stopped.is_set()
+        client.get_users.assert_awaited_once_with('@target')
+    asyncio.run(scenario())

@@ -2,6 +2,8 @@
 
 import html
 import re
+import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from pyrogram.enums import ChatType, ChatMemberStatus
 from ...platform.admin_settings import denied
@@ -21,6 +23,10 @@ COMMANDS = (
     "skick",
     "kickme",
 )
+
+
+class TargetLookupError(ValueError):
+    """Locally authored lookup failure, distinct from invalid command syntax."""
 
 
 async def target_and_reason(client, message):
@@ -52,7 +58,14 @@ async def target_and_reason(client, message):
     if re.fullmatch(r"[1-9][0-9]{0,18}", value):
         uid = int(value)
     elif re.fullmatch(r"@[A-Za-z0-9_]{1,32}", value):
-        uid = (await client.get_users(value)).id
+        try:
+            target = await asyncio.wait_for(client.get_users(value), timeout=5)
+            uid = getattr(target, 'id', None)
+            if type(uid) is not int or not 0 < uid < 2**63:
+                raise ValueError('Invalid personal user identity')
+        except Exception as error:
+            logging.getLogger(__name__).warning('#Errors Moderation target lookup unavailable (%s)', type(error).__name__)
+            raise TargetLookupError('User lookup unavailable; identity unconfirmed. Check the username or reply to a personal member message. No target selected.') from None
     else:
         raise ValueError("Provide a positive user ID or @username, or reply to a user.")
     return uid, args[1] if len(args) > 1 else ""

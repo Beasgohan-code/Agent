@@ -5,7 +5,7 @@ from pyrogram.enums import ChatType
 from ...platform.group_trust import trusted_members,TrustError
 from ...ui.tables import Table,panel,kv_table
 from ...utils.rich import reply
-from .restrictions import target_and_reason
+from .restrictions import target_and_reason, TargetLookupError
 
 logger=logging.getLogger(__name__)
 COMMANDS=('approve','unapprove','approval','approved')
@@ -51,6 +51,8 @@ def build(ctx):
                     raise ApprovalInputError('Reply to a personal member from this group.')
                 try:
                     uid,remainder=await asyncio.wait_for(target_and_reason(client,message),5)
+                except TargetLookupError as error:
+                    raise ApprovalInputError(str(error)) from None
                 except ValueError:
                     raise ApprovalInputError('Reply to a member or provide one positive ID, @username or text mention.') from None
                 if type(uid) is not int or not 0<uid<2**63 or remainder.strip():
