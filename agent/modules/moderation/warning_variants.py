@@ -56,9 +56,12 @@ def build(ctx):
                         raise WarningInputError('The replied message has no usable identity.')
                     if not getattr(rights, 'can_delete_messages', False) or not await is_moderator(client, message, need='can_delete_messages'):
                         raise WarningInputError('Both you and this bot need Delete messages permission.')
-                if not await is_moderator(client, message, need='can_restrict_members'):
-                    raise WarningInputError('Your administrator permissions changed.')
                 limit, action = await warning_threshold(ctx.chats, chat.id)
+                # Configuration reads may yield while live authority changes.
+                if not await is_moderator(client, message, need='can_restrict_members'):
+                    raise WarningInputError('Your administrator permissions changed. No warning recorded.')
+                if command == 'dwarn' and not await is_moderator(client, message, need='can_delete_messages'):
+                    raise WarningInputError('Your Delete messages permissions changed. No warning recorded.')
                 identity = await begin(ctx, chat.id, message.id, user.id, target, command, 0, reason)
                 count = await ctx.chats.aadd_warning(chat.id, target, moderator_id=user.id, reason=reason or 'no reason given')
                 audit_unconfirmed = False
@@ -81,15 +84,23 @@ def build(ctx):
                         # partial result, not an uncertain warning or a retry cue.
                         partial = True
                         logging.getLogger(__name__).warning('#Errors Warning cleanup unconfirmed (%s)', type(error).__name__)
-                await finish(ctx, identity, 'partial' if partial or audit_unconfirmed else 'applied')
-                if command == 'dwarn' or partial or audit_unconfirmed:
-                    # The outcome is already recorded. Notification failure must not
-                    # rewrite it or replay a warning, cleanup, escalation or reply.
+                outcome_unconfirmed = False
+                try:
+                    await finish(ctx, identity, 'partial' if partial or audit_unconfirmed else 'applied')
+                except Exception as error:
+                    # The write may have committed before its acknowledgement was
+                    # lost. Do not retry it or obscure the confirmed warning.
+                    outcome_unconfirmed = True
+                    logging.getLogger(__name__).warning('#Errors Warning outcome recording unconfirmed (%s)', type(error).__name__)
+                if command == 'dwarn' or partial or audit_unconfirmed or outcome_unconfirmed:
+                    # Notification failure must not rewrite outcomes or replay
+                    # a warning, cleanup, escalation or reply.
                     try:
                         await reply(message, f'Warning recorded for <code>{target}</code>. Active warnings: {count}. '
                                     + ('Cleanup or escalation unconfirmed. Check current state before retrying. ' if partial else '')
                                     + escalation
-                                    + (' Local audit unconfirmed.' if audit_unconfirmed else ''))
+                                    + (' Local audit unconfirmed.' if audit_unconfirmed else '')
+                                    + (' Outcome recording unconfirmed. Inspect /warns and Telegram before retrying; no automatic retry.' if outcome_unconfirmed else ''))
                     except Exception as error:
                         logging.getLogger(__name__).warning('#Errors Warning outcome notification unconfirmed (%s)', type(error).__name__)
             except (WarningInputError, CaseError, WarningStoreError) as error:

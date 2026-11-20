@@ -419,3 +419,30 @@ patch: **2,534 passed** in 32.67 seconds; full working tree: **2,616 passed** in
 new audit-failure cases use controlled doubles, not live Telegram or durable
 outcome integration proof. Changed-file static and staged whitespace checks
 passed. No deployment, merge or production changes.
+
+## Warning authority after configuration reads and uncertain outcome writes
+
+Warning variants now recheck Restrict members authority after the threshold
+configuration read, plus Delete messages authority for `/dwarn`, before durable
+intent admission. Revocation during that read prevents admission, warning write
+and cleanup. These are live checks, not atomic permission guarantees across
+Telegram and storage.
+
+A failed final outcome write no longer obscures the already-confirmed warning,
+retries the outcome, or leaks raw storage errors. The notification distinguishes
+“Warning recorded” from “Outcome recording unconfirmed,” including for `/swarn`.
+The outcome could already have committed when its acknowledgement was lost, so
+no replacement outcome write is attempted. Cancellation propagates without a
+completion claim.
+
+Nine regression cases failed before implementation. Twelve added cases overall
+cover configuration-read revocation and final-outcome failures, including three
+real-storage scenarios using independent writer/reader connections: failure
+before commit, lost acknowledgement after commit, and cancellation after commit.
+Readers verify the saved warning and pending/applied outcome, and real intent
+admission blocks command redelivery from repeating warning writes or cleanup.
+Final exact selective patch: **2,546 passed** in 32.95 seconds; full working tree:
+**2,628 passed** in 29.43 seconds, no skips, both with disposable real database
+storage. Telegram and injected failure boundaries use controlled doubles, not
+live Telegram. Changed-file static and staged whitespace checks passed. No
+production changes, deployment or merge.
