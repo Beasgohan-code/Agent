@@ -358,3 +358,24 @@ patch: **2,521 passed** in 31.36 seconds; full working tree: **2,603 passed** in
 without storage: 51 passed, one storage-dependent skip; full runs cover it.
 Changed-file static and staged whitespace checks passed. Telegram interactions
 used test doubles; no live verification, deployment, merge or production changes.
+
+## Warning variants: outcome versus notification delivery
+
+After `/dwarn` or a partial `/swarn` records its final outcome, a failure sending
+the outcome notification no longer enters the action-error handler, rewrites the
+recorded outcome as unconfirmed, or attempts a fallback reply. It emits only a
+type-only notification warning. No warning, escalation or deletion is replayed.
+Cancellation during notification still propagates without rewriting the outcome.
+This change does not claim delivery or change handling of failures before the
+final outcome is recorded.
+
+Seven added regression cases cover notification exceptions/timeouts for applied
+and partial outcomes, including partial silent warnings, secret-safe logging,
+no resend or action replay, and cancellation. The initial tests reproduced two
+failures before implementation, then coverage expanded across outcome variants.
+Focused tests: **13 passed**. Exact selective patch: **2,528 passed** in 32.26
+seconds; full working tree: **2,610 passed** in 29.59 seconds, no skips. Both full
+suites used disposable real database storage; new warning/notification tests use
+controlled doubles, not live Telegram or durable-outcome integration proof.
+Changed-file static and staged whitespace checks passed. No deployment, merge,
+production changes or live verification.

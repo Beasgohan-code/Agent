@@ -69,9 +69,14 @@ def build(ctx):
                         partial = True
                 await finish(ctx, identity, 'partial' if partial else 'applied')
                 if command == 'dwarn' or partial:
-                    await reply(message, f'Warning recorded for <code>{target}</code>. Active warnings: {count}. '
-                                + ('Cleanup or escalation unconfirmed. Check current state before retrying. ' if partial else '')
-                                + escalation)
+                    # The outcome is already recorded. Notification failure must not
+                    # rewrite it or replay a warning, cleanup, escalation or reply.
+                    try:
+                        await reply(message, f'Warning recorded for <code>{target}</code>. Active warnings: {count}. '
+                                    + ('Cleanup or escalation unconfirmed. Check current state before retrying. ' if partial else '')
+                                    + escalation)
+                    except Exception as error:
+                        logging.getLogger(__name__).warning('#Errors Warning outcome notification unconfirmed (%s)', type(error).__name__)
             except (WarningInputError, CaseError, WarningStoreError) as error:
                 await reply(message, str(error))
             except Exception as error:
