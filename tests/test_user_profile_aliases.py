@@ -40,3 +40,78 @@ async def test_bad_lookup_is_redacted():
     await commands['userinfo'](client,item)
     assert 'SECRET' not in str(item.reply.await_args.args[0])
     assert 'unavailable' in str(item.reply.await_args.args[0]).lower()
+
+
+@pytest.mark.asyncio
+async def test_private_profile_does_not_make_meaningless_membership_queries():
+    commands, item, client = setup('/myinfo')
+    await commands['myinfo'](client, item)
+    client.get_chat_member.assert_not_awaited()
+    assert 'not applicable' in str(item.reply.await_args.args[0])
+
+
+@pytest.mark.asyncio
+async def test_myinfo_does_not_fetch_an_unloaded_reply():
+    commands, item, client = setup('/myinfo')
+    item.reply_to_message = None
+    item.reply_to_message_id = 9
+    client.get_messages = AsyncMock()
+    await commands['myinfo'](client, item)
+    client.get_messages.assert_not_awaited()
+    assert 'Caller' in str(item.reply.await_args.args[0])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('command', ['info', 'userinfo'])
+async def test_explicit_identity_bypasses_unavailable_reply(command):
+    commands, item, client = setup('/' + command + ' @target')
+    item.reply_to_message = None
+    item.reply_to_message_id = 9
+    client.get_messages = AsyncMock(side_effect=RuntimeError('must not load reply'))
+    await commands[command](client, item)
+    client.get_messages.assert_not_awaited()
+    assert '&lt;Target&gt;' in str(item.reply.await_args.args[0])
+
+
+@pytest.mark.asyncio
+async def test_profile_membership_timeout_is_bounded_and_public_identity_survives(monkeypatch):
+    import asyncio
+    commands, item, client = setup('/myinfo')
+    item.chat.id = -22
+    reached = asyncio.Event()
+    async def blocked(*args):
+        reached.set()
+        await asyncio.Event().wait()
+    client.get_chat_member = AsyncMock(side_effect=blocked)
+    original = asyncio.wait_for
+    async def fast_timeout(awaitable, *, timeout):
+        assert timeout == 5
+        return await original(awaitable, timeout=0.01)
+    monkeypatch.setattr(utilities.asyncio, 'wait_for', fast_timeout)
+    await commands['myinfo'](client, item)
+    assert reached.is_set()
+    body = str(item.reply.await_args.args[0])
+    assert 'Caller' in body and 'unavailable' in body
+
+
+@pytest.mark.asyncio
+async def test_profile_cancellation_propagates_without_sending_a_card():
+    import asyncio
+    commands, item, client = setup('/myinfo')
+    item.chat.id = -22
+    reached = asyncio.Event()
+    stopped = asyncio.Event()
+    async def blocked(*args):
+        reached.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+    client.get_chat_member = AsyncMock(side_effect=blocked)
+    task = asyncio.create_task(commands['myinfo'](client, item))
+    await asyncio.wait_for(reached.wait(), timeout=1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert stopped.is_set()
+    item.reply.assert_not_awaited()

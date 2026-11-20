@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
+from ...platform.commands import replied_message, ReplyTargetError
 from ...platform.manifest import PluginManifest
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import kv_table, panel
@@ -39,7 +40,9 @@ def _version() -> str:
 
 def _replied(message):
     replied = getattr(message, "reply_to_message", None)
-    return getattr(replied, "from_user", None) if replied is not None else None
+    if replied is None or getattr(replied, 'sender_chat', None) is not None:
+        return None
+    return getattr(replied, 'from_user', None)
 
 
 def build(ctx):
@@ -49,10 +52,15 @@ def build(ctx):
             return False
         return True
 
-    async def show_id(_client, message):
+    async def show_id(client, message):
         if not await no_args(message, 'id'):
             return
-        user = getattr(message, "from_user", None)
+        try:
+            await replied_message(client, message)
+        except ReplyTargetError as error:
+            await reply(message, str(error))
+            return
+        user = getattr(message, "from_user", None) if getattr(message, 'sender_chat', None) is None else None
         lines = [f"Chat id: <code>{message.chat.id}</code>"]
         if user is not None:
             lines.append(f"Your id: <code>{user.id}</code>")
@@ -76,15 +84,9 @@ def build(ctx):
             note='Identifiers are visible in this chat. A sender-chat identity is not proof of the human administrator behind it.',
             footer='/info · /time · /help'))
 
-    async def render_profile(client, message, *, target=None):
-        replied = getattr(message, 'reply_to_message', None)
-        if target is None and replied is not None and getattr(replied, 'from_user', None) is None:
-            await reply(message, panel('User identity unavailable', icon=ctx.theme.emoji('lock'),
-                lines=['The replied message has no visible user identity. Use /id for sender-chat identifiers; the hidden human cannot be inferred.']))
-            return
-        target = target or _replied(message) or getattr(message, "from_user", None)
-        if target is None:
-            await reply(message, "Reply to a member, or run this in a chat where I can see you.")
+    async def render_profile(client, message, *, target):
+        if type(getattr(target, 'id', None)) is not int or not 0 < target.id < 2**63:
+            await reply(message, "A visible personal user identity is required. Use /id for sender-chat identifiers.")
             return
         name = " ".join(
             part
@@ -104,32 +106,45 @@ def build(ctx):
             lines.append(f"Username: @{html.escape(username)}")
         if getattr(target, "is_bot", False):
             lines.append("Bot: yes")
+        group = type(getattr(message.chat, 'id', None)) is int and message.chat.id < 0
         member = None
-        try:
-            member = await client.get_chat_member(message.chat.id, target.id)
-        except Exception:  # noqa: BLE001 - not a member, or no rights to ask
-            member = None
-        if member is not None:
-            status = getattr(member, "status", None)
-            lines.append(f"Status here: {getattr(status, 'name', 'unknown').title()}")
-        manager = await is_moderator(client, message, owner_id=ctx.settings.owner_id)
-        if ctx.chats is not None and manager and message.chat.id < 0:
-            warnings = await ctx.chats.aactive_warning_count(message.chat.id, target.id)
-            if warnings:
-                lines.append(f"Warnings: {warnings}")
-            from ...platform.group_trust import trusted_members, TrustError
+        if group:
             try:
-                if target.id in await trusted_members(ctx, message.chat.id):
+                member = await asyncio.wait_for(client.get_chat_member(message.chat.id, target.id), timeout=5)
+            except Exception as error:
+                logging.getLogger(__name__).warning('#Errors Profile membership unavailable (%s)', type(error).__name__)
+            if member is not None:
+                status = getattr(member, "status", None)
+                lines.append(f"Status here: {getattr(status, 'name', 'unknown').title()}")
+            else:
+                lines.append('Status here: unavailable (lookup not confirmed)')
+        else:
+            lines.append('Chat membership: not applicable in private chat')
+        # Public identity stays usable if optional moderation lookups fail.
+        manager = False
+        if group and ctx.chats is not None:
+            try:
+                manager = await asyncio.wait_for(
+                    is_moderator(client, message, owner_id=ctx.settings.owner_id), timeout=5)
+            except Exception as error:
+                logging.getLogger(__name__).warning('#Errors Profile authorization unavailable (%s)', type(error).__name__)
+        if manager:
+            try:
+                warnings = await asyncio.wait_for(ctx.chats.aactive_warning_count(message.chat.id, target.id), timeout=5)
+                if warnings:
+                    lines.append(f"Warnings: {warnings}")
+                from ...platform.group_trust import trusted_members
+                approved = await asyncio.wait_for(trusted_members(ctx, message.chat.id), timeout=5)
+                if target.id in approved:
                     lines.append("Approved: yes")
-            except TrustError:
-                lines.append("Approval: unavailable")
-        if member is None:
-            lines.append('Status here: unavailable (lookup not confirmed)')
+            except Exception as error:
+                logging.getLogger(__name__).warning('#Errors Profile moderation details unavailable (%s)', type(error).__name__)
+                lines.append('Moderation details: unavailable (lookup not confirmed)')
         await reply(message, panel('Member profile', icon=ctx.theme.emoji('user'),
             lines=lines[1:], note='Public Telegram identity only. Moderation details are added only for authorized moderators; replies are still visible to this chat.',
             footer='/id · /help info'))
 
-    async def show_info(client, message):
+    async def show_info(client, message, *, require_target=False):
         parts = (getattr(message, 'text', '') or '').split()
         if len(parts) > 2:
             await reply(message, 'Usage: <code>/info [@username|positive ID]</code>, or reply to a member.')
@@ -150,6 +165,23 @@ def build(ctx):
                 logging.getLogger(__name__).warning('#Errors User lookup unavailable (%s)', type(error).__name__)
                 await reply(message, 'User lookup unavailable. Check the username or ID; no private profile details were inferred.')
                 return
+        else:
+            try:
+                source = await replied_message(client, message)
+            except ReplyTargetError as error:
+                await reply(message, str(error))
+                return
+            if source is not None:
+                target = _replied(message)
+                if target is None:
+                    await reply(message, panel('User identity unavailable', icon=ctx.theme.emoji('lock'),
+                        lines=['The replied message has no visible user identity. Use /id for sender-chat identifiers; the hidden human cannot be inferred.']))
+                    return
+            elif require_target:
+                await reply(message, 'Usage: <code>/userinfo @username</code> or positive ID, or reply to a member.')
+                return
+            elif getattr(message, 'sender_chat', None) is None:
+                target = getattr(message, 'from_user', None)
         await render_profile(client, message, target=target)
 
     async def myinfo(client, message):
@@ -162,10 +194,7 @@ def build(ctx):
         await render_profile(client, message, target=target)
 
     async def userinfo(client, message):
-        if len((getattr(message, 'text', '') or '').split()) == 1 and _replied(message) is None:
-            await reply(message, 'Usage: <code>/userinfo @username</code> or positive ID, or reply to a member.')
-            return
-        await show_info(client, message)
+        await show_info(client, message, require_target=True)
 
     async def show_time(_client, message):
         args = (getattr(message, 'text', '') or '').split()[1:]

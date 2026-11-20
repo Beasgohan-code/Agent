@@ -94,3 +94,63 @@ def test_public_navigation_has_no_source_links():
             for button in row:
                 assert not button.url
                 assert 'source' not in button.text.lower()
+
+
+@pytest.mark.parametrize('command', ['id', 'info', 'userinfo'])
+def test_identity_commands_load_exact_replied_message_without_self_fallback(ctx, command):
+    async def scenario():
+        request = FakeMessage('/' + command)
+        request.reply_to_message_id = 9
+        source = SimpleNamespace(id=9, chat=SimpleNamespace(id=request.chat.id),
+            from_user=SimpleNamespace(id=77, first_name='Selected member'))
+        client = FakeClient()
+        client.get_messages = AsyncMock(return_value=source)
+        await utilities.build(ctx)[1][command](client, request)
+        client.get_messages.assert_awaited_once_with(request.chat.id, reply_to_message_ids=request.id, replies=0)
+        body = str(request.replies[-1])
+        assert '77' in body
+        if command != 'id':
+            assert 'Selected member' in body and 'Caller' not in body
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('command', ['id', 'info', 'userinfo'])
+def test_unavailable_reply_never_turns_into_a_different_profile(ctx, command):
+    async def scenario():
+        request = FakeMessage('/' + command)
+        request.reply_to_message_id = 9
+        client = FakeClient()
+        client.get_messages = AsyncMock(return_value=SimpleNamespace(id=9, chat=SimpleNamespace(id=-999),
+            from_user=SimpleNamespace(id=77, first_name='Wrong chat')))
+        await utilities.build(ctx)[1][command](client, request)
+        body = str(request.replies[-1])
+        assert 'another chat' in body or 'unavailable' in body
+        assert 'Member profile' not in body and 'Wrong chat' not in body
+    asyncio.run(scenario())
+
+
+def test_sender_chat_reply_never_exposes_a_synthetic_personal_identity(ctx):
+    async def scenario():
+        commands = utilities.build(ctx)[1]
+        for command in ('info', 'userinfo', 'id'):
+            request = FakeMessage('/' + command)
+            request.reply_to_message = SimpleNamespace(sender_chat=SimpleNamespace(id=-777),
+                from_user=SimpleNamespace(id=1087968824, first_name='Synthetic sender'))
+            await commands[command](FakeClient(), request)
+            body = str(request.replies[-1])
+            assert '1087968824' not in body and 'Synthetic sender' not in body
+            if command == 'id':
+                assert '-777' in body
+    asyncio.run(scenario())
+
+
+def test_moderation_storage_outage_does_not_hide_the_public_profile(ctx, caplog):
+    async def scenario():
+        ctx.chats.aactive_warning_count = AsyncMock(side_effect=RuntimeError('SECRET_STORAGE_TEXT'))
+        target = SimpleNamespace(id=77, first_name='Public member')
+        request = FakeMessage('/info', target=target)
+        await utilities.build(ctx)[1]['info'](FakeClient(), request)
+        body = str(request.replies[-1])
+        assert 'Public member' in body and 'unavailable' in body.lower()
+        assert 'SECRET_STORAGE_TEXT' not in body + caplog.text
+    asyncio.run(scenario())

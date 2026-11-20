@@ -254,3 +254,27 @@ disposable real database storage; new notification/worker interleavings were
 controlled test doubles, not live performance measurements. Static and staged
 whitespace checks passed. No live Telegram verification, deployment, merge,
 production configuration change or migration was performed.
+
+## Supporting identity commands: reply accuracy and bounded profile reads
+
+`/id`, `/info`, and `/userinfo` now resolve unloaded replies with the existing
+shared reply resolver. An unavailable or wrong-chat reply fails closed instead
+of silently selecting the caller. Explicit profile targets bypass reply loading;
+`/myinfo` always selects the caller without fetching a reply. Sender-chat replies
+never expose a synthetic personal sender as the hidden human administrator.
+
+Private profiles skip membership and moderator queries and label membership not
+applicable. Group membership, authorization and optional moderation reads each
+have a five-second bound. Storage or lookup errors preserve the public profile,
+with unavailable metadata where appropriate; authorization failure never grants
+access to moderation details. Diagnostics log exception types, not raw messages.
+Cancellation propagates and does not send a fallback profile. These are per-read
+bounds, not an end-to-end delivery deadline.
+
+Validation: initial targeted suite reproduced nine failures before implementation.
+Fourteen regression cases added overall. Exact selective patch: **2,496 passed**
+in 31.22 seconds; full working tree: **2,578 passed** in 31.39 seconds, no skips.
+Both full suites used disposable real database storage; identity API calls and
+controlled timeout/cancellation tests used test doubles, not live Telegram.
+Focused suite: **43 passed**. Changed-file static and staged whitespace checks
+passed. No deployment, merge, production changes or live Telegram verification.
