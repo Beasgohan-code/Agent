@@ -257,3 +257,56 @@ def test_missing_reply_never_falls_back_to_a_different_target():
             raise AssertionError('Topic header treated as a personal reply')
         client.get_messages.assert_not_awaited()
     asyncio.run(scenario())
+
+
+def test_loaded_replies_obey_reference_and_topic_guards():
+    from unittest.mock import AsyncMock
+    import pytest
+    from agent.platform.commands import replied_message, ReplyTargetError
+
+    async def scenario():
+        for reference, source_id, topic in (
+            (70, 71, False), (True, 70, False), ('70', 70, False),
+            (0, 70, False), (70, True, False), (70, 70, True),
+        ):
+            source = NS(id=source_id, chat=NS(id=-100), from_user=NS(id=22))
+            message = NS(id=90, chat=NS(id=-100), reply_to_message=source,
+                         reply_to_message_id=reference, topic_message=topic, message_thread_id=70)
+            client = NS(get_messages=AsyncMock())
+            with pytest.raises(ReplyTargetError):
+                await replied_message(client, message)
+            client.get_messages.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_valid_loaded_reply_is_reused_without_network():
+    from unittest.mock import AsyncMock
+    from agent.platform.commands import replied_message
+
+    async def scenario():
+        source = NS(id=70, chat=NS(id=-100), from_user=NS(id=22))
+        message = NS(id=90, chat=NS(id=-100), reply_to_message=source,
+                     reply_to_message_id=70, topic_message=True, message_thread_id=60)
+        client = NS(get_messages=AsyncMock())
+        assert await replied_message(client, message) is source
+        assert await replied_message(client, message) is source
+        client.get_messages.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_invalid_loaded_reply_cannot_select_a_moderation_target():
+    from unittest.mock import AsyncMock
+    import pytest
+    from agent.modules.moderation.restrictions import target_and_reason
+    from agent.platform.commands import ReplyTargetError
+
+    async def scenario():
+        source = NS(id=71, chat=NS(id=-100), from_user=NS(id=22))
+        message = NS(id=90, text='/ban 999', chat=NS(id=-100),
+                     reply_to_message=source, reply_to_message_id=70)
+        client = NS(get_messages=AsyncMock(), get_users=AsyncMock())
+        with pytest.raises(ReplyTargetError):
+            await target_and_reason(client, message)
+        client.get_messages.assert_not_awaited()
+        client.get_users.assert_not_awaited()
+    asyncio.run(scenario())

@@ -55,20 +55,24 @@ async def replied_message(client,message):
     source=getattr(message,'reply_to_message',None)
     chat_id=getattr(getattr(message,'chat',None),'id',None)
     reply_id=getattr(message,'reply_to_message_id',None)
+    if reply_id is not None:
+        if type(reply_id) is not int or reply_id <= 0:
+            raise ReplyTargetError('The replied message reference is invalid. Reply to the member again.')
+        if getattr(message,'topic_message',False) and reply_id==getattr(message,'message_thread_id',None):
+            raise ReplyTargetError('Reply to a member message, not the forum topic header.')
     if source is not None and not getattr(source,'empty',False):
         if getattr(getattr(source,'chat',None),'id',chat_id)!=chat_id:
             raise ReplyTargetError('Reply to a message in this chat, not an external message.')
+        if reply_id is not None and (type(getattr(source,'id',None)) is not int or source.id != reply_id):
+            raise ReplyTargetError('The loaded message does not match the reply reference. No target selected.')
         return source
     if reply_id is None:
         if source is not None:
             raise ReplyTargetError('The replied message is unavailable. Reply to the member again.')
         return None
     message_id=getattr(message,'id',None)
-    if (type(reply_id) is not int or reply_id<=0 or type(message_id) is not int or message_id<=0
-            or type(chat_id) is not int):
+    if type(message_id) is not int or message_id<=0 or type(chat_id) is not int:
         raise ReplyTargetError('The replied message reference is invalid. Reply to the member again.')
-    if getattr(message,'topic_message',False) and reply_id==getattr(message,'message_thread_id',None):
-        raise ReplyTargetError('Reply to a member message, not the forum topic header.')
     try:
         source=await asyncio.wait_for(client.get_messages(chat_id,reply_to_message_ids=message_id,replies=0),5)
     except Exception:

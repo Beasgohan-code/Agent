@@ -278,3 +278,22 @@ Both full suites used disposable real database storage; identity API calls and
 controlled timeout/cancellation tests used test doubles, not live Telegram.
 Focused suite: **43 passed**. Changed-file static and staged whitespace checks
 passed. No deployment, merge, production changes or live Telegram verification.
+
+## Shared reply resolver: loaded-reference validation
+
+Already-loaded replies now validate an available reply reference before returning
+a target: the reference must be a positive integer, and the source ID must be an
+integer matching it. Topic-header references are rejected before either the
+loaded or fetched path. Existing same-chat validation remains in place. Valid
+loaded replies remain network-free; legacy loaded messages without a separate
+reply-reference field retain their existing behavior.
+
+Three regression tests cover six invalid loaded-reference/topic combinations,
+valid loaded-reply reuse, and moderation resolution refusing a mismatched reply
+instead of selecting either its sender or an explicit fallback ID. Two tests
+failed before implementation. Exact selective patch: **2,499 passed** in 37.27
+seconds; full working tree: **2,581 passed** in 31.45 seconds, no skips, both with
+disposable real database storage. The initial focused run without that storage
+had 55 passed and one storage-dependent skip; full runs cover it. Changed-file
+static and staged whitespace checks passed. No live Telegram verification,
+production changes, deployment or merge.
