@@ -61,7 +61,14 @@ def build(ctx):
                 limit, action = await warning_threshold(ctx.chats, chat.id)
                 identity = await begin(ctx, chat.id, message.id, user.id, target, command, 0, reason)
                 count = await ctx.chats.aadd_warning(chat.id, target, moderator_id=user.id, reason=reason or 'no reason given')
-                ctx.chats.log(chat.id, command, actor_id=user.id, target_id=target, reason=reason)
+                audit_unconfirmed = False
+                try:
+                    ctx.chats.log(chat.id, command, actor_id=user.id, target_id=target, reason=reason)
+                except Exception as error:
+                    # Secondary audit failure must not skip required threshold
+                    # escalation or cleanup after the confirmed warning write.
+                    audit_unconfirmed = True
+                    logging.getLogger(__name__).warning('#Errors Warning local audit unconfirmed (%s)', type(error).__name__)
                 escalation = await escalate_warning(client, ctx, message, target, action, confirm=True) if limit and count >= limit else ''
                 # Escalation reports failure in text rather than raising; never hide it.
                 partial = bool(escalation and not escalation.startswith('Threshold reached:'))
@@ -74,14 +81,15 @@ def build(ctx):
                         # partial result, not an uncertain warning or a retry cue.
                         partial = True
                         logging.getLogger(__name__).warning('#Errors Warning cleanup unconfirmed (%s)', type(error).__name__)
-                await finish(ctx, identity, 'partial' if partial else 'applied')
-                if command == 'dwarn' or partial:
+                await finish(ctx, identity, 'partial' if partial or audit_unconfirmed else 'applied')
+                if command == 'dwarn' or partial or audit_unconfirmed:
                     # The outcome is already recorded. Notification failure must not
                     # rewrite it or replay a warning, cleanup, escalation or reply.
                     try:
                         await reply(message, f'Warning recorded for <code>{target}</code>. Active warnings: {count}. '
                                     + ('Cleanup or escalation unconfirmed. Check current state before retrying. ' if partial else '')
-                                    + escalation)
+                                    + escalation
+                                    + (' Local audit unconfirmed.' if audit_unconfirmed else ''))
                     except Exception as error:
                         logging.getLogger(__name__).warning('#Errors Warning outcome notification unconfirmed (%s)', type(error).__name__)
             except (WarningInputError, CaseError, WarningStoreError) as error:

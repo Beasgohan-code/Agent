@@ -143,3 +143,40 @@ async def test_delete_warning_cleanup_failure_records_partial_without_replay(fai
     assert 'SECRET_CLEANUP_TEXT' not in body + caplog.text
     if failure == 'blocked':
         assert stopped.is_set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('command', ['dwarn', 'swarn'])
+async def test_local_audit_failure_does_not_skip_warning_escalation_or_cleanup(command, caplog):
+    from unittest.mock import Mock
+    value = NS(chats=NS(aadd_warning=AsyncMock(return_value=3),
+        log=Mock(side_effect=RuntimeError('SECRET_AUDIT_TEXT'))))
+    message = NS(id=10, text='/' + command, chat=NS(id=-100, type=ChatType.SUPERGROUP),
+        from_user=NS(id=11), reply_to_message=NS(id=2, chat=NS(id=-100), from_user=NS(id=22)),
+        reply=AsyncMock())
+    client = NS(get_me=AsyncMock(return_value=NS(id=99)),
+        get_chat_member=AsyncMock(return_value=NS(status=ChatMemberStatus.ADMINISTRATOR,
+            privileges=NS(can_restrict_members=True, can_delete_messages=True))),
+        delete_messages=AsyncMock(return_value=True))
+    finish = AsyncMock()
+    escalate = AsyncMock(return_value='Threshold reached: muted.')
+    with patch('agent.modules.moderation.is_moderator', AsyncMock(return_value=True)), \
+         patch('agent.modules.moderation.target_is_protected', AsyncMock(return_value=False)), \
+         patch('agent.modules.moderation.warning_variants.warning_threshold', AsyncMock(return_value=(3, 'mute'))), \
+         patch('agent.modules.moderation.escalate_warning', escalate), \
+         patch('agent.modules.moderation.warning_variants.begin', AsyncMock(return_value='case')), \
+         patch('agent.modules.moderation.warning_variants.finish', finish):
+        from agent.modules.moderation.warning_variants import build
+        await build(value)[command](client, message)
+    escalate.assert_awaited_once_with(client, value, message, 22, 'mute', confirm=True)
+    finish.assert_awaited_once_with(value, 'case', 'partial')
+    value.chats.aadd_warning.assert_awaited_once()
+    if command == 'dwarn':
+        client.delete_messages.assert_awaited_once_with(-100, 2)
+    else:
+        client.delete_messages.assert_not_awaited()
+    message.reply.assert_awaited_once()
+    body = str(message.reply.await_args.args[0])
+    assert 'Warning recorded' in body and 'Local audit unconfirmed' in body
+    assert 'Cleanup or escalation unconfirmed' not in body
+    assert 'SECRET_AUDIT_TEXT' not in body + caplog.text

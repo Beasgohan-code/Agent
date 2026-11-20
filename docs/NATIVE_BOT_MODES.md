@@ -399,3 +399,23 @@ real database storage; cleanup interleavings and Telegram requests used controll
 doubles, not live Telegram or durable-outcome integration proof. Changed-file
 static and staged whitespace checks passed. No deployment, merge or production
 changes.
+
+## Warning secondary audit failures do not suppress required actions
+
+After a confirmed warning write, failure of the secondary local audit log no
+longer skips threshold escalation or `/dwarn` cleanup. It is logged with only the
+exception type, contributes a partial final outcome, and is disclosed separately
+as “Local audit unconfirmed.” Successful cleanup/escalation is not incorrectly
+labelled failed merely because that audit log failed. Even `/swarn` discloses
+this partial result instead of silently hiding the audit gap. Durable intent
+admission and the final outcome write remain required; no automatic warning,
+escalation, cleanup or audit retry is added.
+
+Two new regression cases failed before implementation and now verify exactly one
+warning write, escalation, outcome record and notification, plus command-specific
+cleanup and secret-safe diagnostics. Focused tests: **19 passed**. Exact selective
+patch: **2,534 passed** in 32.67 seconds; full working tree: **2,616 passed** in
+29.67 seconds, no skips. Both full suites used disposable real database storage;
+new audit-failure cases use controlled doubles, not live Telegram or durable
+outcome integration proof. Changed-file static and staged whitespace checks
+passed. No deployment, merge or production changes.
