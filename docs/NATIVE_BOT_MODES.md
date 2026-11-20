@@ -74,3 +74,35 @@ advanced-draft refusal, cancellation, and post-acknowledgement premium/capacity/
 encryption/capability changes. Targeted static and staged whitespace checks
 passed. Telegram UI rendering and actual creation were not tested live; nothing
 was deployed or changed in production.
+
+## Private import links and offer generations
+
+Managed-bot notices now include **Import into setup draft** when the controller's
+cached, validated username is available. The private start link carries a random
+nonce, not a bot credential. No extra identity lookup is performed; the existing
+`/clone managed BOT_ID` instruction remains the fallback.
+
+The clone module owns the `managed` deep-link prefix through the existing gated
+router. Links are bound to the Telegram-attested creator, bot ID, latest event
+nonce and ten-minute expiry. A forwarded link is not authority. Non-personal
+senders and group contexts are refused. Each new event replaces the previous
+nonce, invalidating older links and imports awaiting credential export or
+identity verification. Both command and link imports check the same offer
+generation after network waits. Successful import consumes that generation;
+a newer event arriving during panel delivery is not accidentally consumed.
+Nonce memory is bounded with the existing 100-offer limit and lost on restart.
+No credentials are imported by the notice itself; final clone review and create
+confirmation remain required. Existing clones still cannot be overwritten.
+
+Validation: exact selective patch **2,438 passed** in 32.37 seconds; full working
+tree **2,520 passed** in 32.00 seconds, no skips. Runs used disposable real
+database storage and mocked Telegram responses. Tests cover the complete
+notice/button/router/import path, command fallback without identity lookup,
+creator/private-chat binding, malformed/stale/consumed links, bounded nonce
+memory, and new events arriving during export or identity verification.
+Targeted static and staged whitespace checks passed. No live Telegram test,
+deployment, merge or production configuration change was performed.
+
+Before this phase, the restored local checkout's history/index was reconciled
+with the verified remote branch tip. All 510 checked working paths had identical
+before/after hashes; pending work was preserved and staging was initially clean.

@@ -105,6 +105,8 @@ def build(ctx):
     manager.eligible = entitled
     setup = CloneSetup(ctx, store, manager, entitled, quota)
     ctx.clone_setup = setup
+    if ctx.deeplinks is not None and not ctx.deeplinks.handles('managed_x'):
+        ctx.deeplinks.register('managed', setup.open_managed_link)
     if ctx.actions is not None and not ctx.actions.handles("csetup:x"):
         ctx.actions.register("csetup", setup.press)
 

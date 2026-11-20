@@ -68,6 +68,7 @@ class CloneSetup:
         self.entitled, self.quota, self.api = entitled, quota, api
         self.sessions = {}
         self._managed_offers = {}
+        self._managed_versions = {}
         self._locks = WeakValueDictionary()
         self._finish_lock = asyncio.Lock()
 
@@ -260,6 +261,8 @@ class CloneSetup:
         now = time.monotonic()
         self._managed_offers = {key: expiry for key, expiry in self._managed_offers.items()
                                 if expiry > now}
+        self._managed_versions = {key: nonce for key, nonce in self._managed_versions.items()
+                                  if key in self._managed_offers}
         key = (user_id, bot_id)
         if (type(user_id) is not int or user_id <= 0 or type(bot_id) is not int
                 or bot_id <= 0 or bot_id == self.ctx.settings.bot_id or self.store.get(bot_id)):
@@ -267,9 +270,30 @@ class CloneSetup:
         if len(self._managed_offers) >= 100 and key not in self._managed_offers:
             return False
         self._managed_offers[key] = now + 600
+        self._managed_versions[key] = secrets.token_hex(12)
         return True
 
-    async def _accept_token(self, message, state, token, *, expected_bot_id=None):
+    def _managed_current(self, key, version):
+        return (bool(version) and self._managed_offers.get(key, 0) > time.monotonic()
+                and secrets.compare_digest(self._managed_versions.get(key, ''), version))
+
+    def managed_payload(self, user_id, bot_id):
+        key = (user_id, bot_id)
+        version = self._managed_versions.get(key)
+        if self._managed_current(key, version):
+            return f'managed_{bot_id}_{version}'
+        return None
+
+    async def open_managed_link(self, client, message, rest):
+        # Treat a link as untrusted input, not proof of who pressed it.
+        bot, sep, nonce = rest.partition('_')
+        if (not sep or not bot.isascii() or not bot.isdigit() or len(bot) > 20
+                or len(nonce) != 24 or any(c not in '0123456789abcdef' for c in nonce)):
+            await reply(message, 'This managed-bot import link is invalid. Use your latest private notice or /clone.')
+            return
+        await self.import_managed(client, message, int(bot), offer_version=nonce)
+
+    async def _accept_token(self, message, state, token, *, expected_bot_id=None, offer_version=None):
         user_id = state.user_id
         if not isinstance(token, str):
             raise SetupError('Telegram did not return a valid bot credential.')
@@ -286,8 +310,8 @@ class CloneSetup:
         if not allowed or self.active(user_id) is not state or state.step != 'token':
             return False
         if (expected_bot_id is not None
-                and self._managed_offers.get((user_id, expected_bot_id), 0) <= time.monotonic()):
-            raise SetupError('Managed import consent expired. No credential was saved.')
+                and not self._managed_current((user_id, expected_bot_id), offer_version)):
+            raise SetupError('Managed import consent expired or a newer notice replaced it. No credential was saved.')
         if (not self.store.encrypted() or self.store.count() >= self.ctx.settings.clone_limit
                 or len(self.store.by_owner(user_id)) >= self.quota(user_id)):
             raise SetupError('Clone encryption or capacity is no longer available. No credential was saved.')
@@ -305,18 +329,21 @@ class CloneSetup:
             reply_markup=self.keyboard(state, [(name, action) for action, (_, name, _) in TEMPLATES.items()]))
         return True
 
-    async def import_managed(self, client, message, bot_id):
+    async def import_managed(self, client, message, bot_id, *, offer_version=None):
         """Explicit private consent imports only a recent Telegram-attested bot.
 
         This never revokes a token or replaces an existing clone's credentials.
         The regular setup's final create confirmation remains required.
         """
-        user_id = getattr(getattr(message, 'from_user', None), 'id', None)
-        if (type(user_id) is not int or user_id <= 0 or type(bot_id) is not int or bot_id <= 0
+        user = getattr(message, 'from_user', None)
+        user_id = getattr(user, 'id', None)
+        if (getattr(user, 'is_bot', False) or getattr(message, 'sender_chat', None) is not None
+                or type(user_id) is not int or user_id <= 0 or type(bot_id) is not int or bot_id <= 0
                 or getattr(getattr(message, 'chat', None), 'id', None) != user_id):
             return
         key = (user_id, bot_id)
-        if self._managed_offers.get(key, 0) <= time.monotonic():
+        version = offer_version if offer_version is not None else self._managed_versions.get(key)
+        if not self._managed_current(key, version):
             await reply(message, 'No recent managed-bot event matches your identity and that bot. Use /clone for manual private setup.')
             return
         if self.active(user_id) is None:
@@ -329,14 +356,15 @@ class CloneSetup:
             if self.active(user_id) is not state or state.step != 'token':
                 await reply(message, 'A setup is already in progress. Finish it or /cancel before importing another bot.')
                 return
-            if (self._managed_offers.get(key, 0) <= time.monotonic()
+            if (not self._managed_current(key, version)
                     or not await self.entitled(user_id) or not self.store.encrypted()
                     or self.store.count() >= self.ctx.settings.clone_limit
                     or len(self.store.by_owner(user_id)) >= self.quota(user_id)
                     or self.store.get(bot_id) or bot_id == self.ctx.settings.bot_id):
                 await reply(message, 'Managed import is no longer available. Check access and capacity with /mybots.')
                 return
-            if self.active(user_id) is not state or state.step != 'token':
+            if (self.active(user_id) is not state or state.step != 'token'
+                    or not self._managed_current(key, version)):
                 return
             try:
                 # Never use the revoke/replace API. Avoid exception text containing credentials.
@@ -344,11 +372,16 @@ class CloneSetup:
                     token = await asyncio.wait_for(client.get_managed_bot_token(bot_id), timeout=15)
                 except Exception:
                     raise SetupError('Telegram could not export that managed bot credential. No clone was created.') from None
-                if (self.active(user_id) is not state
-                        or self._managed_offers.get(key, 0) <= time.monotonic()):
+                if self.active(user_id) is not state:
                     return
-                if await self._accept_token(message, state, token, expected_bot_id=bot_id):
-                    self._managed_offers.pop(key, None)
+                if not self._managed_current(key, version):
+                    await reply(message, 'Managed import expired or a newer notice replaced it. Use your latest private notice; no credential was saved.')
+                    return
+                if await self._accept_token(message, state, token, expected_bot_id=bot_id, offer_version=version):
+                    # A newer event arriving during the feature-panel send remains usable.
+                    if self._managed_versions.get(key) == version:
+                        self._managed_offers.pop(key, None)
+                        self._managed_versions.pop(key, None)
             except SetupError as exc:
                 await reply(message, str(exc))
 

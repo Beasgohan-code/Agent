@@ -452,6 +452,16 @@ async def managed_bot_notice(client, update, *, setup=None):
         "within ten minutes. This does not create or start a clone; review and confirmation are still required. "
         if offered else "Use /clone in this private chat to review access and follow the secure setup. "
     )
+    markup = None
+    if offered:
+        from ...ui.bot_identity import bot_username
+        from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        username = await bot_username(client, cached_only=True)
+        payload = setup.managed_payload(user_id, bot_id)
+        if username and payload:
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton(
+                'Import into setup draft', url=f'https://t.me/{username}?start={payload}',
+            )]])
     await client.send_message(
         user_id,
         f"Telegram reported a managed-bot creation or token change for bot {bot_id}. "
@@ -459,7 +469,7 @@ async def managed_bot_notice(client, update, *, setup=None):
         + guidance +
         "If an existing clone's token changed, its saved credential is not updated automatically. "
         "Never post bot tokens in a group.",
-        parse_mode=None,
+        parse_mode=None, reply_markup=markup,
     )
 
 
