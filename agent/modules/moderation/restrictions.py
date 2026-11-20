@@ -39,16 +39,27 @@ async def target_and_reason(client, message):
         raise ValueError("Reply to a personal member message, not an anonymous sender or channel.")
     if replied is not None:
         return replied.id, body
-    start = len(text[: text.find(body)].encode("utf-16-le")) // 2 if body else -1
-    for entity in getattr(message, "entities", None) or []:
-        user = getattr(entity, "user", None)
-        if user is not None and getattr(entity, "offset", None) == start:
-            remainder = (
-                body.encode("utf-16-le")[entity.length * 2 :]
-                .decode("utf-16-le")
-                .strip()
-            )
-            return user.id, remainder
+    start = len(text[:len(text) - len(body)].encode('utf-16-le')) // 2 if body else -1
+    mentions = [entity for entity in getattr(message, 'entities', None) or []
+                if getattr(entity, 'user', None) is not None
+                and getattr(entity, 'offset', None) == start]
+    if mentions:
+        if len(mentions) != 1:
+            raise ValueError('Provide one text mention as the target.')
+        entity = mentions[0]
+        length = getattr(entity, 'length', None)
+        encoded = body.encode('utf-16-le')
+        if (type(getattr(entity, 'offset', None)) is not int
+                or type(length) is not int or length <= 0 or length * 2 > len(encoded)):
+            raise ValueError('The target text mention span is invalid.')
+        try:
+            label = encoded[:length * 2].decode('utf-16-le')
+            remainder = encoded[length * 2:].decode('utf-16-le')
+        except UnicodeDecodeError:
+            raise ValueError('The target text mention span is invalid.') from None
+        if not label.strip() or (remainder and not remainder[0].isspace()):
+            raise ValueError('Text mention must cover the complete target name.')
+        return entity.user.id, remainder.strip()
     args = body.split(maxsplit=1)
     if not args:
         raise ValueError(

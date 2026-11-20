@@ -337,3 +337,24 @@ no skips, both with disposable real database storage. Focused tests initially
 without storage: 26 passed, 16 storage-dependent skips; full runs cover those.
 Changed-file static and staged whitespace checks passed. Telegram calls used
 test doubles; no live verification, deployment, merge or production changes.
+
+## Moderation text-mention span integrity
+
+The shared restriction parser computes the target argument's actual UTF-16
+offset rather than searching for its text inside the whole command. Names that
+also occur within the command word therefore resolve correctly. At the target
+position, duplicate entities, nonpositive/noninteger or oversized lengths,
+split-surrogate boundaries and spans ending inside a visible name are rejected
+with locally authored validation errors. Valid multiword/non-BMP target names
+preserve the remainder as the reason; mentions later in that reason remain
+allowed and do not change the selected target. Reply and username behavior is
+unchanged.
+
+Three new regression tests include eight malformed span lengths, duplicate
+target entities, a Unicode multiword target with a second mention in the reason,
+and a command-substring target. Two failed before implementation. Exact selective
+patch: **2,521 passed** in 31.36 seconds; full working tree: **2,603 passed** in
+28.76 seconds, no skips, both with disposable real database storage. Focused run
+without storage: 51 passed, one storage-dependent skip; full runs cover it.
+Changed-file static and staged whitespace checks passed. Telegram interactions
+used test doubles; no live verification, deployment, merge or production changes.

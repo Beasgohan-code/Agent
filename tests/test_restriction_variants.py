@@ -368,3 +368,49 @@ def test_username_target_cancellation_propagates_without_retry():
         assert stopped.is_set()
         client.get_users.assert_awaited_once_with('@target')
     asyncio.run(scenario())
+
+
+def test_moderation_mention_spans_reject_malformed_target_without_lookup():
+    import pytest
+    from agent.modules.moderation.restrictions import target_and_reason
+    async def scenario():
+        for length in (None, True, 0, -1, '6', 1, 999, 3):
+            # Length 1 splits the emoji; length 3 stops inside the visible name.
+            message = fixtures.FakeMessage('/tban 😀Alice 1h reason')
+            message.entities = [SimpleNamespace(offset=6, length=length, user=SimpleNamespace(id=22))]
+            client = SimpleNamespace(get_users=AsyncMock())
+            with pytest.raises(ValueError, match='mention'):
+                await target_and_reason(client, message)
+            client.get_users.assert_not_awaited()
+        message.entities = [SimpleNamespace(offset=6, length=7, user=SimpleNamespace(id=22))] * 2
+        with pytest.raises(ValueError, match='mention'):
+            await target_and_reason(client, message)
+    asyncio.run(scenario())
+
+
+def test_moderation_mention_preserves_reason_and_its_other_mentions():
+    from agent.modules.moderation.restrictions import target_and_reason
+    async def scenario():
+        label = '😀 Alice Smith'
+        prefix = '/tban@MeikoBot  '
+        reason = '1h reported by Other Member'
+        message = fixtures.FakeMessage(prefix + label + ' ' + reason)
+        message.entities = [SimpleNamespace(offset=len(prefix),
+            length=len(label.encode('utf-16-le')) // 2, user=SimpleNamespace(id=22)),
+            SimpleNamespace(offset=len((prefix + label + ' 1h reported by ').encode('utf-16-le')) // 2,
+                            length=12, user=SimpleNamespace(id=33))]
+        client = SimpleNamespace(get_users=AsyncMock())
+        assert await target_and_reason(client, message) == (22, reason)
+        client.get_users.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_moderation_mention_target_offset_uses_argument_not_command_substring():
+    from agent.modules.moderation.restrictions import target_and_reason
+    async def scenario():
+        message = fixtures.FakeMessage('/tban ban')
+        message.entities = [SimpleNamespace(offset=6, length=3, user=SimpleNamespace(id=22))]
+        client = SimpleNamespace(get_users=AsyncMock())
+        assert await target_and_reason(client, message) == (22, '')
+        client.get_users.assert_not_awaited()
+    asyncio.run(scenario())
