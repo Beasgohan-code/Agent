@@ -10,7 +10,19 @@ Two deliberate rules, both to avoid fake behaviour:
 
 from __future__ import annotations
 
+from ...platform.commands import command_name
+
 import asyncio
+from .silent_purge import build as build_silent_purge
+from .mute import build as build_mute
+from .ban import build as build_ban
+from .kick import build as build_kick
+from .warning_cards import build as build_warning_card
+from .warning_read import build as build_warning_read
+from .modlog_card import build as build_modlog_card
+from .antispam_card import build as build_antispam_card
+from .approvals import build as build_approvals
+from .member_note import build as build_member_note
 import html
 import logging
 import re
@@ -25,21 +37,35 @@ from pyrogram.errors import RPCError, FloodWait
 from pyrogram.handlers import MessageHandler
 from pyrogram.types import ChatPermissions
 
+from .command_cleaning import build as build_command_cleaning
+from .cleaning import build as build_cleaning, clean as clean_service
+from .blocklists import COMMANDS as BLOCKLIST_COMMANDS, build as build_blocklists, enforce as enforce_blocklist
+from .warning_variants import COMMANDS as WARNING_VARIANT_COMMANDS, build as build_warning_variants
+from .warning_controls import COMMANDS as WARNING_CONTROL_COMMANDS, build as build_warning_controls
+from .restrictions import COMMANDS as RESTRICTION_COMMANDS, build as build_restrictions
+from .antiflood import COMMANDS as FLOOD_COMMANDS, build as build_antiflood, watch as watch_antiflood
+from ...platform.admin_settings import options as admin_options, denied, AdminStateError
+from ...platform.group_trust import trusted_members
+from ...platform.antispam import read_policy
 from ...platform.chats import SPAM_ACTIONS
 from ...platform.manifest import PluginManifest
-from ...ui.tables import Table, kv_table, panel
+from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
+
+from .locks import COMMANDS as LOCK_COMMANDS, build as build_locks, enforce as enforce_locks
 
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="moderation",
     name="Moderation",
     version="1.0.0",
     description="Warn, mute, kick, ban, purge and per-group anti-spam, with an audit trail.",
     commands=(
         "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "trust", "antispam", "modlog",
+        "unban", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "antispam", "modlog", *LOCK_COMMANDS, *FLOOD_COMMANDS, *RESTRICTION_COMMANDS, *WARNING_CONTROL_COMMANDS, *WARNING_VARIANT_COMMANDS, *BLOCKLIST_COMMANDS, "cleanservice", "cleancommand", "keepcommand",
     ),
     permissions=("messages.read", "messages.delete", "chats.restrict", "chats.ban"),
     scope="group",
@@ -57,7 +83,13 @@ PURGE_CONFIRM_TTL = 4.0
 #: Nothing allowed: the restriction Telegram applies to a muted member.
 MUTE_PERMISSIONS = ChatPermissions(
     can_send_messages=False,
-    can_send_media_messages=False,
+    can_send_audios=False,
+    can_send_documents=False,
+    can_send_photos=False,
+    can_send_videos=False,
+    can_send_video_notes=False,
+    can_send_voice_notes=False,
+    can_send_polls=False,
     can_send_other_messages=False,
     can_add_web_page_previews=False,
 )
@@ -115,6 +147,8 @@ def duration_label(seconds: int) -> str:
 
 def warn_policy(chats, chat_id: int) -> tuple[int, str]:
     """(limit, action) for a group. A limit of 0 disables escalation."""
+    if getattr(chats,"_db",None) is not None:
+        raise RuntimeError("Awaited Database warning policy read required.")
     limit = chats.get(chat_id, "warn_limit", DEFAULT_WARN_LIMIT)
     action = chats.get(chat_id, "warn_action", DEFAULT_WARN_ACTION)
     try:
@@ -145,13 +179,26 @@ async def _member_of(client, chat_id: int, user_id: int):
         return None
 
 
-async def is_moderator(client, message, *, need: str | None = None, owner_id: int | None = None) -> bool:
+async def is_moderator(client, message, *, need: str | None = None, owner_id: int | None = None, ctx=None) -> bool:
     """True when the caller may act here.
 
         The bot owner always may; an administrator may when they hold the specific
         privilege the command needs (Telegram grants exactly these).
         
     """
+    sender = getattr(message, "sender_chat", None)
+    if sender is not None:
+        if getattr(message, "from_user", None) is None:
+            return False  # downstream audit/mutation paths require a sender identity
+        if getattr(sender, "id", None) != getattr(getattr(message, "chat", None), "id", None):
+            return False  # linked channels are not anonymous group administrators
+        context = ctx or getattr(client, "agent_context", None)
+        if context is None:
+            return False
+        try:
+            return bool((await admin_options(context, message.chat.id))["anonadmin"])
+        except AdminStateError:
+            return False
     user = getattr(message, "from_user", None)
     if user is None:
         return False
@@ -186,25 +233,34 @@ class PartialKickError(RuntimeError):
     """Ban was confirmed, but the unban request was not confirmed."""
 
 
-async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source="manual"):
+async def kick_member(client, ctx, chat_id, target_id, *, actor_id=None, source="manual", confirm=False):
     """Use one recovery path for every kick; never retry the ban blindly."""
-    await client.ban_chat_member(chat_id, target_id)
+    banned = await asyncio.wait_for(client.ban_chat_member(chat_id, target_id),10)
+    if confirm and banned is not True:
+        raise RuntimeError("Kick ban was not confirmed.")
     try:
-        await client.unban_chat_member(chat_id, target_id)
+        unbanned = await asyncio.wait_for(client.unban_chat_member(chat_id, target_id),10)
+        if confirm and unbanned is not True:
+            raise RuntimeError("Kick unban was not confirmed.")
     except Exception as exc:
-        ctx.chats.log(
-            chat_id, "kick:incomplete", actor_id=actor_id, target_id=target_id,
-            reason=f"{source}: ban confirmed; unban unconfirmed ({type(exc).__name__})",
-        )
+        audit=''
+        try:
+            ctx.chats.log(
+                chat_id, "kick:incomplete", actor_id=actor_id, target_id=target_id,
+                reason=f"{source}: ban confirmed; unban unconfirmed ({type(exc).__name__})",
+            )
+        except Exception:
+            logger.warning('#Errors Partial kick local audit unconfirmed')
+            audit=' Local audit unconfirmed.'
         delay = f" Wait {int(exc.value)} seconds before retrying." if isinstance(exc, FloodWait) else ""
         raise PartialKickError(
             f"Kick incomplete: the ban succeeded, but unban was not confirmed "
             f"({type(exc).__name__}). Member {int(target_id)} may still be banned."
-            f"{delay} An administrator can check and use <code>/unban {int(target_id)}</code>."
+            f"{delay} An administrator can check and use <code>/unban {int(target_id)}</code>.{audit}"
         ) from exc
 
 
-async def escalate_warning(client, ctx, message, target_id: int, action: str) -> str:
+async def escalate_warning(client, ctx, message, target_id: int, action: str, *, confirm=False) -> str:
     """Apply the group's warn action. Returns a line for the report.
 
         A failure is reported, never swallowed: if the bot lacks the right to mute,
@@ -216,7 +272,7 @@ async def escalate_warning(client, ctx, message, target_id: int, action: str) ->
         return "Escalation not attempted: target is protected or membership could not be verified."
     try:
         if action == "mute":
-            await client.restrict_chat_member(
+            acknowledged = await client.restrict_chat_member(
                 chat_id,
                 target_id,
                 MUTE_PERMISSIONS,
@@ -224,16 +280,19 @@ async def escalate_warning(client, ctx, message, target_id: int, action: str) ->
             )
             outcome = f"muted for {duration_label(DEFAULT_MUTE_SECONDS)}"
         elif action == "kick":
-            await kick_member(client, ctx, chat_id, target_id, source="warnlimit")
+            await kick_member(client, ctx, chat_id, target_id, source="warnlimit", confirm=confirm)
+            acknowledged = True
             outcome = "kicked"
         else:
-            await client.ban_chat_member(chat_id, target_id)
+            acknowledged = await client.ban_chat_member(chat_id, target_id)
             outcome = "banned"
     except PartialKickError as exc:
         return str(exc)
     except Exception as exc:  # noqa: BLE001 - the moderator needs the real reason
-        logger.exception("warn escalation failed")
+        logger.warning("Warning escalation failed (%s).", type(exc).__name__)
         return f"Escalation failed: {type(exc).__name__}. Check my rights."
+    if confirm and acknowledged is not True:
+        return "Escalation unconfirmed: Telegram did not acknowledge the restriction. Check current membership."
     ctx.chats.log(
         chat_id, f"warnlimit:{action}", actor_id=None, target_id=target_id,
         reason="warning threshold reached",
@@ -296,10 +355,10 @@ async def _punish(client, ctx, message, action: str, *, policy: dict) -> None:
         except Exception:  # noqa: BLE001 - already gone is fine
             pass
     if action == "warn":
-        ctx.chats.add_warning(chat_id, user_id, moderator_id=0, reason="anti-spam")
+        count = await ctx.chats.aadd_warning(chat_id, user_id, moderator_id=0, reason="anti-spam")
         await reply(message, 
             f"Anti-spam: {_mention(user_id, getattr(message.from_user, 'first_name', 'member'))} "
-            f"warned. Warnings: {ctx.chats.active_warning_count(chat_id, user_id)}"
+            f"warned. Warnings: {count}"
         )
     elif action == "mute":
         await client.restrict_chat_member(
@@ -326,18 +385,24 @@ def watch(ctx):
         try:
             chat = getattr(message, "chat", None)
             user = getattr(message, "from_user", None)
+            if await clean_service(ctx, client, message):
+                return
+            if await enforce_locks(ctx, client, message):
+                return
+            if await enforce_blocklist(ctx, client, message):
+                return
             text = (getattr(message, "text", "") or "").strip()
-            if chat is None or user is None or not text or text.startswith("/"):
+            if chat is None or user is None or not text or command_name(text) is not None:
                 return
             if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
                 return
-            policy = ctx.chats.antispam(chat.id) if ctx.chats else {}
+            policy = await read_policy(ctx, chat.id) if ctx.chats else {}
             if not any(
                 policy.get(key)
                 for key in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled", "keywords_enabled")
             ):
                 return
-            if ctx.chats.is_trusted(chat.id, user.id):
+            if user.id in await trusted_members(ctx, chat.id):
                 return
             in_window, repeats = recent.note(
                 chat.id,
@@ -363,19 +428,17 @@ def watch(ctx):
         except PartialKickError as exc:
             try:
                 await reply(message, str(exc))
-            except Exception:
-                logger.exception("Could not send partial-kick recovery notice.")
-        except Exception:  # noqa: BLE001 - a watcher must never break the client
-            import logging
-
-            logging.getLogger(__name__).exception("anti-spam watcher failed")
+            except Exception as error:
+                logger.warning("Partial-kick recovery notice failed (%s).", type(error).__name__)
+        except Exception as error:  # a watcher must never break the client
+            logger.warning("Anti-spam watcher failed (%s).", type(error).__name__)
 
     return on_message
 
 
 def extra_handlers(ctx):
     """The anti-spam watcher, registered by the bot in its own handler group."""
-    return [MessageHandler(watch(ctx), tg_filters.group)]
+    return [MessageHandler(watch(ctx), tg_filters.group), MessageHandler(watch_antiflood(ctx), tg_filters.group)]
 
 
 # -- handlers ---------------------------------------------------------------
@@ -385,9 +448,9 @@ def build(ctx):
     """Wire the moderation commands to this repository's shared state."""
 
     async def _guard(client, message, need: str | None = None) -> bool:
-        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
+        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id, ctx=ctx):
             return True
-        await reply(message, DENIED)
+        await denied(ctx, message, DENIED)
         return False
 
     async def _protected(client, message, target_id: int) -> bool:
@@ -396,194 +459,50 @@ def build(ctx):
             return True
         return False
 
-    async def warn(client, message):
-        if not await _guard(client, message):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member or pass their id: <code>/warn 123 [reason]</code>")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        reason = _reason(message, skip_target=True)
-        count = ctx.chats.add_warning(
-            message.chat.id, target_id, moderator_id=message.from_user.id, reason=reason
-        )
-        ctx.chats.log(
-            message.chat.id, "warn", actor_id=message.from_user.id, target_id=target_id, reason=reason
-        )
-        limit, action = warn_policy(ctx.chats, message.chat.id)
-        escalation = ""
-        if limit and count >= limit:
-            escalation = "\n" + await escalate_warning(client, ctx, message, target_id, action)
-        await reply(message, 
-            f"<b>Warning issued</b>\nMember: {mention}\nWarnings: {count}\n"
-            f"Reason: {html.escape(reason)}{escalation}"
-        )
-
-    async def warnings(client, message):
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to inspect their warnings.")
-            return
-        target_id, mention = target
-        rows = ctx.chats.warnings_of(message.chat.id, target_id)
-        note = ctx.chats.note_of(message.chat.id, target_id)
-        trusted = ctx.chats.is_trusted(message.chat.id, target_id)
-        limit, action = warn_policy(ctx.chats, message.chat.id)
-        rows_out = tuple(
-            (
-                str(index),
-                warning.get("reason", "no reason"),
-                str(warning.get("by") or "-"),
-                time.strftime("%d %b %H:%M", time.gmtime(warning.get("at", 0))),
-            )
-            for index, warning in enumerate(reversed(rows[-10:]), 1)
-        )
-        lines = [f"Member: {mention} — <b>{len(rows)}</b> active warning(s)."]
-        if limit:
-            lines.append(
-                f"Escalates at <b>{limit}</b> warnings ({action})."
-            )
-        else:
-            lines.append("Warnings do not escalate in this group.")
-        if note:
-            lines.append(f"Note: {html.escape(note)}")
-        if trusted:
-            lines.append("Trusted: yes")
-        table = Table(
-            headers=("#", "Reason", "By", "When"),
-            rows=rows_out,
-            aligns=("right", "left", "right", "left"),
-            total_width=52,
-        ) if rows_out else None
-        if table is None:
-            lines.append("No active warnings.")
-        await reply(message, 
-            panel(
-                "Warnings",
-                icon=ctx.theme.emoji("warn"),
-                lines=lines,
-                table=table,
-                footer="<code>/unwarn</code> clears one, <code>/resetwarns</code> clears all.",
-            )
-        )
-
-    async def unwarn(client, message):
-        if not await _guard(client, message):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to clear a warning.")
-            return
-        target_id, mention = target
-        if not ctx.chats.clear_warning(message.chat.id, target_id):
-            await reply(message, "That member has no active warnings.")
-            return
-        ctx.chats.log(
-            message.chat.id, "unwarn", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Warning cleared</b>\nMember: {mention}")
-
-    async def mute(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member: <code>/mute 10m reason</code>")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        seconds = parse_duration(_args(message))
-        await client.restrict_chat_member(
-            message.chat.id,
-            target_id,
-            MUTE_PERMISSIONS,
-            until_date=datetime.now(timezone.utc) + timedelta(seconds=seconds),
-        )
-        ctx.chats.log(
-            message.chat.id, "mute", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, 
-            f"<b>Member muted</b>\nMember: {mention}\nDuration: {duration_label(seconds)}"
-        )
-
     async def unmute(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
+        from .restrictions import target_and_reason
+        user=getattr(message,'from_user',None)
+        if (getattr(getattr(message,'chat',None),'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                or type(getattr(user,'id',None)) is not int or user.id<=0
+                or getattr(message,'sender_chat',None) is not None):
+            await reply(message,panel('Unmute not applied',lines=['Use your personal administrator identity inside a group.']))
             return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to unmute them.")
+        if not await asyncio.wait_for(is_moderator(client,message,need='can_restrict_members'),5):
+            await reply(message,panel('Unmute not applied',lines=['Current Restrict members administrator permission required.']))
             return
-        target_id, mention = target
+        try:
+            target_id,extra=await asyncio.wait_for(target_and_reason(client,message),5)
+            if type(target_id) is not int or not 0<target_id<2**63 or extra:
+                raise ValueError()
+        except ValueError:
+            await reply(message,panel('Unmute usage',lines=['Use /unmute @username or positive ID, or reply without arguments.']))
+            return
         if await _protected(client, message, target_id):
             return
-        chat = await client.get_chat(message.chat.id)
+        me=await asyncio.wait_for(client.get_me(),5)
+        bot=await asyncio.wait_for(client.get_chat_member(message.chat.id,me.id),5)
+        if bot.status!=ChatMemberStatus.OWNER and not (bot.status==ChatMemberStatus.ADMINISTRATOR and getattr(getattr(bot,'privileges',None),'can_restrict_members',False)):
+            await reply(message,panel('Unmute not applied',lines=['This bot needs Restrict members permission.']))
+            return
+        chat = await asyncio.wait_for(client.get_chat(message.chat.id),5)
         permissions = getattr(chat, "permissions", None)
         if permissions is None:
             await reply(message, "Cannot read the group's current permissions; no member permissions were changed.")
             return
-        await client.restrict_chat_member(message.chat.id, target_id, permissions)
-        ctx.chats.log(
-            message.chat.id, "unmute", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Member unmuted</b>\nMember: {mention}")
-
-    async def kick(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
+        if not await is_moderator(client,message,need='can_restrict_members'):
+            await reply(message,panel('Unmute not applied',lines=['Your Restrict members permission changed. No change requested.']))
             return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to kick them.")
+        result=await asyncio.wait_for(client.restrict_chat_member(message.chat.id, target_id, permissions),10)
+        if result is not True:
+            await reply(message,panel('Unmute unconfirmed',lines=['Telegram did not acknowledge the unmute. Inspect the member before retrying. No automatic retry.']))
             return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        await kick_member(
-            client, ctx, message.chat.id, target_id,
-            actor_id=message.from_user.id, source="manual",
-        )
-        ctx.chats.log(
-            message.chat.id, "kick", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Member kicked</b>\nMember: {mention}")
-
-    async def ban(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member or pass an id to ban them.")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        reason = _reason(message, skip_target=True)
-        await client.ban_chat_member(message.chat.id, target_id)
-        ctx.chats.log(
-            message.chat.id, "ban", actor_id=message.from_user.id, target_id=target_id, reason=reason
-        )
-        await reply(message, 
-            f"<b>Member banned</b>\nMember: {mention}\nReason: {html.escape(reason)}"
-        )
-
-    async def unban(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Pass the user id to unban: <code>/unban 123456</code>")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        await client.unban_chat_member(message.chat.id, target_id)
-        ctx.chats.log(
-            message.chat.id, "unban", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Member unbanned</b>\nMember: {mention}")
+        try:
+            ctx.chats.log(message.chat.id, "unmute", actor_id=message.from_user.id, target_id=target_id)
+            audit=''
+        except Exception:
+            logger.warning('#Errors Unmute local audit unconfirmed')
+            audit=' Local audit unconfirmed.'
+        await reply(message,panel('Member unmuted',icon=ctx.theme.emoji('unlock'),table=kv_table([('Member',str(target_id)),('Moderator',str(message.from_user.id)),('Status','Telegram confirmed')]),note='Current group permissions restored, not unrestricted rights.'+audit))
 
     async def purge(client, message):
         if not await _guard(client, message, need="can_delete_messages"):
@@ -612,152 +531,6 @@ def build(ctx):
             except Exception:  # noqa: BLE001
                 pass
 
-    async def note(client, message):
-        if not await _guard(client, message, need="can_manage_chat"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to attach a note.")
-            return
-        target_id, mention = target
-        args = _args(message)
-        text = " ".join(args[2:]).strip() if len(args) > 2 else ""
-        if not text:
-            await reply(message, "Provide the note text after the id.")
-            return
-        ctx.chats.set_note(message.chat.id, target_id, text)
-        ctx.chats.log(
-            message.chat.id, "note", actor_id=message.from_user.id, target_id=target_id
-        )
-        await reply(message, f"<b>Note saved</b>\nMember: {mention}")
-
-    async def trust(client, message):
-        if not await _guard(client, message, need="can_manage_chat"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to trust them.")
-            return
-        target_id, mention = target
-        trusted = ctx.chats.toggle_trust(message.chat.id, target_id)
-        ctx.chats.log(
-            message.chat.id, "trust" if trusted else "untrust",
-            actor_id=message.from_user.id, target_id=target_id,
-        )
-        await reply(message, 
-            f"<b>{'Member trusted' if trusted else 'Trust removed'}</b>\nMember: {mention}"
-        )
-
-    async def antispam(client, message):
-        chat = getattr(message, "chat", None)
-        if chat is None or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
-            await reply(message, "Anti-spam settings are per group.")
-            return
-        if not await _guard(client, message, need="can_manage_chat"):
-            return
-        policy = ctx.chats.antispam(chat.id)
-        args = _args(message)[1:]
-        if args:
-            key = args[0].lower()
-            value = args[1].lower() if len(args) > 1 else None
-            if key == "off":
-                for flag in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled"):
-                    policy[flag] = False
-            elif key == "on":
-                for flag in ("flood_enabled", "duplicate_enabled", "links_enabled", "invites_enabled"):
-                    policy[flag] = True
-            elif key == "limit" and value and value.isdigit():
-                policy["flood_messages"] = max(2, int(value))
-            elif key == "action" and value in SPAM_ACTIONS:
-                policy["action"] = value
-            elif key == "links" and value in ("on", "off"):
-                policy["links_enabled"] = value == "on"
-            elif key == "invites" and value in ("on", "off"):
-                policy["invites_enabled"] = value == "on"
-            elif key == "mute" and value and value.isdigit():
-                policy["mute_seconds"] = max(30, int(value))
-            elif key.startswith("keyword") and value:
-                policy["keywords_enabled"] = True
-                policy["blocked_keywords"] = [*policy.get("blocked_keywords", []), value]
-            elif key == "keyword-clear":
-                policy["keywords_enabled"] = False
-                policy["blocked_keywords"] = []
-            else:
-                await reply(message, 
-                    "Usage: /antispam on|off|limit 7|action mute|links off|invites off"
-                    "|mute 300|keyword word|keyword-clear"
-                )
-                return
-            policy = ctx.chats.save_antispam(chat.id, policy)
-            ctx.chats.log(
-                chat.id, "antispam", actor_id=message.from_user.id, reason=" ".join(args)
-            )
-        keywords = policy.get("blocked_keywords") or []
-        table = kv_table(
-            [
-                ("Flood", f"{policy['flood_messages']} per {policy['flood_window_seconds']}s "
-                          f"({'on' if policy['flood_enabled'] else 'off'})"),
-                ("Duplicates", f"threshold {policy['duplicate_threshold']} "
-                               f"({'on' if policy['duplicate_enabled'] else 'off'})"),
-                ("Links", "blocked" if policy["links_enabled"] else "allowed"),
-                ("Invites", "blocked" if policy["invites_enabled"] else "allowed"),
-                ("Keywords", ", ".join(keywords) if keywords else "none"),
-                ("Action", f"{policy['action']} (mute {policy['mute_seconds']}s)"),
-            ]
-        )
-        await reply(message, 
-            panel(
-                "Anti-spam settings",
-                icon=ctx.theme.emoji("shield"),
-                subtitle="Enforced by the watcher that ships with this module.",
-                table=table,
-                note=(
-                    "<code>/antispam on|off</code> · <code>limit 7</code> · <code>action mute</code> · "
-                    "<code>links off</code> · <code>invites off</code> · <code>keyword word</code> · "
-                    "<code>keyword-clear</code>"
-                ),
-                footer="Staff and trusted members are never auto-punished.",
-            )
-        )
-
-    async def modlog(client, message):
-        if not await _guard(client, message):
-            return
-        history = ctx.chats.history(message.chat.id, limit=10)
-        if not history:
-            await reply(message, 
-                panel(
-                    "Moderation log",
-                    icon=ctx.theme.emoji("stats"),
-                    lines=["No moderation actions recorded yet."],
-                    footer="Actions are appended when they happen.",
-                )
-            )
-            return
-        table = Table(
-            headers=("Action", "Target", "Reason", "When"),
-            rows=tuple(
-                (
-                    record.get("action", "?").upper(),
-                    str(record.get("target") or "-"),
-                    record.get("reason") or "no reason",
-                    time.strftime("%d %b %H:%M", time.gmtime(record.get("at", 0))),
-                )
-                for record in history
-            ),
-            aligns=("left", "right", "left", "left"),
-            total_width=56,
-        )
-        await reply(message, 
-            panel(
-                "Moderation log",
-                icon=ctx.theme.emoji("stats"),
-                subtitle="Newest first.",
-                table=table,
-                footer="Per group, capped at 200 entries, times in UTC.",
-            )
-        )
-
     def report_api_failure(handler):
         @wraps(handler)
         async def guarded(client, message):
@@ -772,19 +545,27 @@ def build(ctx):
                 await reply(message, f"Telegram could not complete this action ({type(exc).__name__}). Check my administrator rights and the target member. The action was not confirmed.")
         return guarded
 
+    warning_reader=build_warning_read(ctx)
     return MANIFEST, {
-        "warn": warn,
-        "warnings": warnings,
-        "warns": warnings,
-        "unwarn": unwarn,
-        "mute": report_api_failure(mute),
+        **build_locks(ctx),
+        **build_antiflood(ctx),
+        **build_restrictions(ctx),
+        **build_warning_controls(ctx),
+        **build_warning_variants(ctx),
+        **build_blocklists(ctx),
+        **build_cleaning(ctx),
+        **build_command_cleaning(ctx),
+        "warn": build_warning_card(ctx),
+        "warnings": warning_reader,
+        "warns": warning_reader,
+        "mute": build_mute(ctx),
         "unmute": report_api_failure(unmute),
-        "kick": report_api_failure(kick),
-        "ban": report_api_failure(ban),
-        "unban": report_api_failure(unban),
+        "kick": build_kick(ctx),
+        **build_ban(ctx),
         "purge": purge,
-        "note": note,
-        "trust": trust,
-        "antispam": antispam,
-        "modlog": modlog,
+        "spurge": build_silent_purge(ctx,MAX_PURGE),
+        "note": build_member_note(ctx),
+        **build_approvals(ctx),
+        "antispam": build_antispam_card(ctx),
+        "modlog": build_modlog_card(ctx),
     }

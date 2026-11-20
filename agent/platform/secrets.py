@@ -10,8 +10,7 @@ Four rules this module actually enforces:
 * a key that cannot be used is an **error**, never a silent downgrade to
   plaintext — a deployment that thinks it encrypts and does not is worse than one
   that knows it does not;
-* no key means plaintext, announced once at startup, so a small single-owner
-  deployment is not forced to manage a key;
+* no key permits legacy plaintext reads but refuses new credential writes;
 * ciphertext carries a ``v1:`` prefix, so the format can change and old rows stay
   readable;
 * decryption failure is its own exception: a rotated key must not be mistaken for
@@ -91,13 +90,13 @@ class SecretBox:
                 # image cannot provide it. Callers turn this into a refusal.
                 raise SecretError(
                     f"{what} is set but the `cryptography` package is not installed. "
-                    "Install it (it is in requirements.txt) or unset the key."
+                    "Install it (it is in requirements.txt); do not remove the key to bypass encryption."
                 )
             self._fernet = module(self._key)
         else:
             logger.warning(
-                "%s is not set: clone tokens are stored in plaintext. Set it to "
-                "encrypt them at rest.",
+                "%s is not set: secret writes are disabled. Configure a key to "
+                "encrypt credentials at rest.",
                 what,
             )
 
@@ -107,10 +106,12 @@ class SecretBox:
 
     # -- values ------------------------------------------------------------
     def encrypt(self, value: str) -> str:
-        """Ciphertext for *value*; plaintext when no key is configured."""
+        """Ciphertext for *value*; never silently downgrade to plaintext."""
         text = "" if value is None else str(value)
-        if not text or self._fernet is None:
+        if not text:
             return text
+        if self._fernet is None:
+            raise SecretError(f'{self._what} is required to write credentials.')
         token = self._fernet.encrypt(text.encode()).decode()
         return PREFIX + token
 

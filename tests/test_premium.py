@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent.config import Settings
-from agent.modules import filestore, leech, premium as premium_module
+from agent.modules import leech, premium as premium_module
 from agent.platform.chats import ChatStore
 from agent.platform.context import ModuleContext
 from agent.platform.jobs import JobQueue
@@ -183,21 +183,6 @@ def test_free_quota_is_smaller_and_enforced(tmp_path):
     storage.check_quota(USER, len(payload), quota_bytes=PREMIUM.quota_bytes)
 
 
-def test_filestore_reports_the_tier_quota(tmp_path):
-    ctx = make_ctx(tmp_path)
-    _, commands = filestore.build(ctx)
-    message = FakeMessage("/storequota")
-
-    run(commands["storequota"], message)
-
-    assert f"{FREE.quota_mb}.0 MB" in message.replies[0]
-
-    ctx.premium.grant(USER, 30)
-    run(commands["storequota"], message)
-
-    assert f"{PREMIUM.quota_mb}.0 MB" in message.replies[-1]
-
-
 def test_leech_refuses_when_the_day_is_spent(tmp_path):
     ctx = make_ctx(tmp_path)
     for _ in range(FREE.transfers_per_day):
@@ -293,3 +278,33 @@ def test_lifetime_is_the_zero_day_spelling(tmp_path):
     run(commands["addpremium"], message)
 
     assert ctx.premium.until(USER) == 0.0
+
+
+@pytest.mark.parametrize('args', ['99 -1', '99 nope', '99 3651', '99 1 extra', '-99 1', '0 1', '99 ²', '9999999999999999999999999999 1'])
+def test_invalid_grant_arguments_never_silently_grant_default_or_lifetime(tmp_path, args):
+    ctx = make_ctx(tmp_path)
+    _, commands = premium_module.build(ctx)
+    message = FakeMessage('/addpremium ' + args, uid=OWNER)
+    run(commands['addpremium'], message)
+    assert not ctx.premium.is_premium(USER)
+    assert 'Premium granted' not in str(message.replies)
+
+
+def test_premium_activation_screen_uses_presser_and_never_grants(tmp_path):
+    from unittest.mock import AsyncMock
+    from agent.platform.actions import ActionRouter
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        ctx.actions = ActionRouter()
+        premium_module.build(ctx)
+        origin = SimpleNamespace(chat=SimpleNamespace(id=OWNER), reply=AsyncMock())
+        query = SimpleNamespace(data='prem:activate', from_user=SimpleNamespace(id=OWNER), message=origin, answer=AsyncMock())
+        await ctx.actions.dispatch(None, query)
+        assert f'/addpremium {OWNER} 1' in str(origin.reply.await_args.args[0])
+        assert not ctx.premium.is_premium(OWNER)
+        origin.reply.reset_mock()
+        query.from_user = SimpleNamespace(id=USER)
+        await ctx.actions.dispatch(None, query)
+        origin.reply.assert_not_awaited()
+        assert query.answer.await_args.kwargs['show_alert']
+    asyncio.run(scenario())

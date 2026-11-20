@@ -32,7 +32,7 @@ def test_the_contact_sheet_is_one_tiled_frame():
 
     assert "-frames:v" in command and command[command.index("-frames:v") + 1] == "1"
     filter_arg = command[command.index("-vf") + 1]
-    assert "tile=3x3" in filter_arg and "scale=320:-1" in filter_arg
+    assert "tile=3x3" in filter_arg and "scale=320:-2" in filter_arg
     assert command[-1] == str(DST)
 
 

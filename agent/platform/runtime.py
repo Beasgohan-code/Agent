@@ -64,7 +64,7 @@ class PluginRuntime:
     def _save(self) -> None:
         if self._db is not None:
             if not self._db.connected:
-                raise RuntimeError("PostgreSQL unavailable: refusing local runtime settings write")
+                raise RuntimeError("Database unavailable: refusing local runtime settings write")
             self._db.save("runtime", {"disabled": sorted(self._disabled)})
             return
         if not self.state_path:
@@ -82,6 +82,11 @@ class PluginRuntime:
     def track(self, slug: str, handler, group: int = 0) -> None:
         self._handlers.setdefault(slug, []).append((handler, group))
 
+    def dormant_handler_ids(self) -> set[int]:
+        """Handlers built for disabled plugins, excluded from initial attach."""
+        return {id(handler) for slug, tracked in self._handlers.items()
+                if not self.registry.is_enabled(slug) for handler, _ in tracked}
+
     def wants_disabled(self, slug: str) -> bool:
         return slug not in self.protected and slug in self._disabled
 
@@ -95,21 +100,31 @@ class PluginRuntime:
     def is_protected(self, slug: str) -> bool:
         return slug in self.protected
 
+    def _set_disabled(self, slug: str, disabled: bool) -> None:
+        """Do not change live handlers if settings cannot even be queued/saved.
+
+        PostgreSQL save is a legacy queued write, not a durable confirmation.
+        """
+        previous = set(self._disabled)
+        if disabled:
+            self._disabled.add(slug)
+        else:
+            self._disabled.discard(slug)
+        try:
+            self._save()
+        except Exception:
+            self._disabled = previous
+            raise
+
     def disable(self, slug: str) -> bool:
         """Detach every handler of *slug*. False when it is protected/unknown."""
         if self.is_protected(slug):
             raise ValueError(f"{slug!r} cannot be disabled")
+        if not self.registry.is_enabled(slug) and slug in self._disabled:
+            return False
         if slug not in self._handlers and not self.registry.is_enabled(slug):
             return False
-        if self._client is not None:
-            for handler, group in self._handlers.get(slug, []):
-                try:
-                    self._client.remove_handler(handler, group)
-                except Exception:  # noqa: BLE001 - already gone
-                    logger.debug("handler for %s was not registered", slug)
-        self.registry.disable(slug)
-        self._disabled.add(slug)
-        self._save()
+        self._switch(slug, enabled=False)
         self._notify_change()
         return True
 
@@ -117,14 +132,47 @@ class PluginRuntime:
         """Re-attach the handlers recorded for *slug*."""
         if slug not in self._handlers:
             return False
-        if self._client is not None:
-            for handler, group in self._handlers[slug]:
-                self._client.add_handler(handler, group)
-        self.registry.enable(slug)
-        self._disabled.discard(slug)
-        self._save()
+        if self.registry.is_enabled(slug) and slug not in self._disabled:
+            return False
+        self._switch(slug, enabled=True)
         self._notify_change()
         return True
+
+    def _switch(self, slug: str, *, enabled: bool) -> None:
+        """Compensate completed synchronous handler operations on failure.
+
+        Client calls can schedule work asynchronously; this is not a Telegram
+        dispatcher acknowledgement or a cross-process transaction.
+        """
+        previous_disabled = set(self._disabled)
+        self._set_disabled(slug, not enabled)
+        completed = []
+        try:
+            if self._client is not None:
+                operation = self._client.add_handler if enabled else self._client.remove_handler
+                for handler, group in self._handlers.get(slug, []):
+                    operation(handler, group)
+                    completed.append((handler, group))
+        except Exception as error:
+            rollback_failed = False
+            reverse = self._client.remove_handler if enabled else self._client.add_handler
+            for handler, group in reversed(completed):
+                try:
+                    reverse(handler, group)
+                except Exception:
+                    rollback_failed = True
+            self._disabled = previous_disabled
+            try:
+                self._save()
+            except Exception:
+                rollback_failed = True
+            logger.error('#Errors Plugin %s switch failed; rollback %s', slug,
+                         'incomplete: restart/reconciliation needed' if rollback_failed else 'attempted')
+            raise RuntimeError('Plugin handler change failed; no success confirmed. Refresh state and inspect #Errors before retrying.') from error
+        if enabled:
+            self.registry.enable(slug)
+        else:
+            self.registry.disable(slug)
 
     def _notify_change(self):
         if self.change_hook is not None:
@@ -145,6 +193,7 @@ class PluginRuntime:
                     "commands": list(manifest.commands),
                     "description": manifest.description,
                     "scope": manifest.scope,
+                    "tracked_handlers": len(self._handlers.get(manifest.slug, [])),
                     "protected": self.is_protected(manifest.slug),
                 }
             )

@@ -69,12 +69,12 @@ def test_runtime_requires_postgres_even_if_legacy_flag_was_disabled():
         bot = SimpleNamespace(settings=SimpleNamespace(db_required=False), database=None,
                               fatal_reason=None, build=AsyncMock())
         await AgentBot._run(bot)
-        assert 'PostgreSQL is required' in bot.fatal_reason
+        assert 'Database is required' in bot.fatal_reason
         bot.build.assert_not_awaited()
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_real_pg_error_incidents_aggregate_survive_restart_and_isolate_tenants(tmp_path):
     async def scenario():
         scope = 'errors-test:' + uuid.uuid4().hex

@@ -73,7 +73,7 @@ class ErrorIncidents:
     async def recent(self):
         db = self.db
         if db is None or not db.connected or db._pool is None:
-            raise RuntimeError('PostgreSQL incident history is unavailable.')
+            raise RuntimeError('Database incident history is unavailable.')
         async with db._pool.acquire(timeout=5) as conn:
             return await conn.fetch('''SELECT incident_id,error_type,handler,occurrences,last_seen
                 FROM agent_error_incidents WHERE tenant=$1 ORDER BY last_seen DESC LIMIT 10''', db.scope, timeout=5)

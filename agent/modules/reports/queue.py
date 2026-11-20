@@ -5,7 +5,10 @@ returns the sentence the reply shows — including the honest "could not deliver
 case, which is better than a claim that never left the process.
 """
 
+import html
 import logging
+
+from pyrogram.enums import ParseMode
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +37,11 @@ async def _notify_owner(client, owner_id, message, number: int, text: str) -> st
         await client.send_message(
             owner_id,
             f"<b>Appeal #{number}</b> from user "
-            f"<code>{getattr(message.from_user, 'id', '?')}</code>\n{text}",
+            f"<code>{getattr(message.from_user, 'id', '?')}</code>\n"
+            f"Chat: <code>{getattr(message.chat, 'id', '?')}</code>\n{html.escape(text)}",
+            parse_mode=ParseMode.HTML,
         )
     except Exception as exc:  # noqa: BLE001 - reported to the member
-        logger.exception("appeal notification failed")
+        logger.warning("appeal notification unconfirmed (%s)", type(exc).__name__)
         return f"Could not reach the owner ({type(exc).__name__})."
     return "The owner was notified."

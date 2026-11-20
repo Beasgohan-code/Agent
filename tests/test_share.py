@@ -22,7 +22,13 @@ ENV = {
 
 
 class FakeMessage:
+    sequence = 0
+
     def __init__(self, text="", *, reply_to=None, uid=11):
+        type(self).sequence += 1
+        self.id = type(self).sequence
+        from types import SimpleNamespace
+        self.chat = SimpleNamespace(id=uid)
         self.text = text
         self.reply_to_message = reply_to
         self.from_user = FakeUser(uid)
@@ -195,6 +201,7 @@ def test_a_file_that_vanished_is_reported_not_crashed(ctx, media):
 
     assert opened.files == []
     assert "no longer stored" in opened.replies[0]
+    assert record.uses == 0  # Missing metadata must not spend a redemption.
 
 
 def test_a_vault_file_is_shared_without_storing_it_twice(ctx, media):

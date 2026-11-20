@@ -18,6 +18,7 @@ class Track:
     title: str
     source: str
     requested_by: int | None = None
+    youtube_origin: str | None = None
 
     def describe(self) -> str:
         who = f" (by {self.requested_by})" if self.requested_by else ""
@@ -35,10 +36,17 @@ class ChatQueue:
 
     def add(self, track: Track) -> int:
         """Queue *track*; returns its 1-based position in the waiting list."""
-        if self.size >= 50:
-            raise ValueError("The music queue is full (50 tracks).")
-        self.waiting.append(track)
+        self.add_many([track])
         return len(self.waiting)
+
+    def add_many(self, tracks: list[Track]) -> int:
+        """All-or-nothing admission; the current track counts toward capacity."""
+        if not isinstance(tracks, list) or any(not isinstance(track, Track) for track in tracks):
+            raise ValueError("Queue additions must be validated tracks.")
+        if self.size + len(tracks) > 50:
+            raise ValueError("The music queue is full for this request (50 tracks). No tracks were added.")
+        self.waiting.extend(tracks)
+        return len(tracks)
 
     def advance(self, *, force: bool = False) -> Track | None:
         """Move to the next track; returns it, or ``None`` when the queue ends."""
@@ -73,6 +81,10 @@ class QueueBook:
 
     def for_chat(self, chat_id: int) -> ChatQueue:
         return self._queues.setdefault(int(chat_id), ChatQueue())
+
+    def peek(self, chat_id: int) -> ChatQueue | None:
+        """Read without creating a new group queue."""
+        return self._queues.get(int(chat_id))
 
     def drop(self, chat_id: int) -> None:
         self._queues.pop(int(chat_id), None)

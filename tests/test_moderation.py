@@ -46,17 +46,23 @@ class FakeClient:
         self._rights = rights or {}
 
     async def get_chat_member(self, chat_id, user_id):
-        status = self._caller if int(user_id) == 11 else self._target
+        status = ADMIN if int(user_id)==99 else self._caller if int(user_id) == 11 else self._target
         return member(status, **self._rights)
+
+    async def get_me(self):
+        return SimpleNamespace(id=99)
 
     async def ban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("ban", int(user_id)))
+        return True
 
     async def unban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("unban", int(user_id)))
+        return True
 
     async def restrict_chat_member(self, chat_id, user_id, permissions, **kwargs):
         self.calls.append(("restrict", int(user_id), permissions, kwargs.get("until_date")))
+        return True
 
     async def delete_messages(self, chat_id, message_ids, **kwargs):
         self.calls.append(("delete", message_ids))
@@ -133,7 +139,7 @@ def test_a_plain_member_cannot_warn(ctx):
 
     run(handlers(ctx)["warn"], client, message)
 
-    assert message.replies == [moderation.DENIED]
+    assert "permission required" in str(message.replies[-1])
     assert ctx.chats.active_warning_count(-100500, 22) == 0
 
 
@@ -158,11 +164,11 @@ def test_an_admin_without_the_privilege_is_refused(ctx):
 
     run(handlers(ctx)["ban"], client, message)
 
-    assert message.replies == [moderation.DENIED]
+    assert "permission required" in str(message.replies[-1])
     assert client.calls == []
 
 
-def test_the_bot_owner_acts_without_being_an_admin(tmp_path):
+def test_configured_owner_cannot_warn_without_current_group_admin_rights(tmp_path):
     settings = Settings.from_env({**ENV, "OWNER_ID": "11"})
     owner_ctx = ModuleContext(
         settings=settings,
@@ -178,7 +184,8 @@ def test_the_bot_owner_acts_without_being_an_admin(tmp_path):
 
     run(handlers(owner_ctx)["warn"], client, message)
 
-    assert owner_ctx.chats.active_warning_count(-100500, 22) == 1
+    assert owner_ctx.chats.active_warning_count(-100500, 22) == 0
+    assert "permission required" in str(message.replies[-1])
 
 
 # --- target safety ---------------------------------------------------------
@@ -250,13 +257,13 @@ def test_note_is_stored_and_surfaced_by_warnings(ctx):
     assert "watch this one" in listing.replies[0]
 
 
-def test_trust_toggles(ctx):
+def test_approve_and_unapprove(ctx):
     client = FakeClient(caller=ADMIN)
 
-    run(handlers(ctx)["trust"], client, FakeMessage("/trust", reply=True))
+    run(handlers(ctx)["approve"], client, FakeMessage("/approve", reply=True))
     assert ctx.chats.is_trusted(-100500, 22) is True
 
-    run(handlers(ctx)["trust"], client, FakeMessage("/trust", reply=True))
+    run(handlers(ctx)["unapprove"], client, FakeMessage("/unapprove", reply=True))
     assert ctx.chats.is_trusted(-100500, 22) is False
 
 
@@ -420,7 +427,7 @@ def test_restriction_commands_report_api_permission_failures(ctx, command):
     message = FakeMessage('/' + command, reply=True)
     run(handlers(ctx)[command], Refusing(), message)
     assert 'ChatAdminRequired' in message.replies[-1]
-    assert 'not confirmed' in message.replies[-1]
+    assert 'not confirmed' in message.replies[-1] or 'unconfirmed' in message.replies[-1]
     assert not ctx.chats.history(-100500)
 
 

@@ -29,21 +29,35 @@ class CallbackHandlers:
     async def on_callback(self, client, callback_query) -> None:
         data = callback_query.data or ""
         user = callback_query.from_user
+        origin=getattr(callback_query,'message',None)
+        receiver=getattr(getattr(origin,'receiver_user',None),'id',None)
+        ephemeral_id=getattr(origin,'ephemeral_message_id',None)
+        if receiver is not None or ephemeral_id is not None:
+            if type(receiver) is not int or getattr(user,'id',None)!=receiver:
+                await self._answer(callback_query,'This temporary menu belongs to its recipient.',show_alert=True)
+                return
         if self._monitor is not None:
             self._monitor.record_activity("callback")
-        logger.info("Callback %r from user %s", data, getattr(user, "id", None))
+        logger.info("Callback received from user %s", getattr(user, "id", None))
 
         if self._router is not None and self._router.handles(data):
-            # Answer first: the handler below may answer with its own text.
-            if self._monitor is not None:
-                self._monitor.record_activity("callback")
+            # Module handlers own their callback acknowledgement.
             dispatched = await self._router.dispatch(client, callback_query)
             if dispatched:
                 return
 
+        active = set(self._active_commands()) if self._active_commands is not None else None
+        worker_screen = None
+        if data.startswith('worker:'):
+            from ..ui.workers import callback
+            worker_screen = callback(data, user, self._theme, active=active)
         builder = SCREENS.get(data)
-        if builder is None:
-            logger.warning("Unknown callback data %r", data)
+        if getattr(self._theme, 'worker_plugins', None) is not None:
+            from ..ui.keyboards import CB_HOME, CB_HELP, CB_INFO
+            if data not in (CB_HOME, CB_HELP, CB_INFO):
+                builder = None  # Old controller category buttons are not worker navigation.
+        if builder is None and worker_screen is None:
+            logger.warning("Unknown callback control")
             await self._answer(callback_query, STALE_OPTION, show_alert=True)
             return
 
@@ -52,21 +66,29 @@ class CallbackHandlers:
 
         message = callback_query.message
         if message is None:
-            logger.debug("Callback %r has no message to edit; ignoring.", data)
+            logger.debug("Callback has no message to edit; ignoring.")
             return
 
-        active = set(self._active_commands()) if self._active_commands is not None else None
-        screen = builder(user, self._theme, active=active)
-        if not await self._sender.edit(callback_query, screen):
+        from ..ui.screens import welcome_screen
+        options = {}
+        if builder is welcome_screen and self._theme.worker_plugins is None:
+            from ..ui.bot_identity import bot_username
+            options['bot_username'] = await bot_username(client,cached_only=getattr(getattr(message,'chat',None),'id',0)<0)
+        screen = worker_screen if worker_screen is not None else builder(user, self._theme, active=active, **options)
+        outcome = await self._sender.edit(callback_query, screen)
+        if outcome is None:
+            await self._answer(callback_query, "Update not confirmed. Please try again shortly.")
+            return
+        if outcome is False:
             chat_id = getattr(getattr(message, "chat", None), "id", None)
             try:
-                await self._sender.send(chat_id, screen)
-            except Exception:
-                logger.exception("Could not re-send screen %r to chat %s", data, chat_id)
+                await self._sender.send(chat_id, screen,**({"receiver_user_id":receiver} if receiver is not None else {}))
+            except Exception as error:
+                logger.warning("Could not re-send callback screen (%s)", type(error).__name__)
 
     @staticmethod
     async def _answer(callback_query, text: str | None = None, show_alert: bool = False) -> None:
         try:
             await callback_query.answer(text, show_alert=show_alert)
-        except Exception:
-            logger.debug("Could not answer callback query.", exc_info=True)
+        except Exception as error:
+            logger.debug("Could not answer callback query (%s)", type(error).__name__)

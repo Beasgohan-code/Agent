@@ -44,7 +44,7 @@ def test_bot_logbook_is_wired_to_its_database(tmp_path):
     assert bot.logbook._db is bot.database
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
 def test_real_pg_log_settings_survive_fresh_redeploy_clear_and_tenant_changes(tmp_path):
     async def scenario():
         url = os.environ['AGENT_TEST_DATABASE_URL']
@@ -99,14 +99,16 @@ def test_required_database_log_load_failure_prevents_telegram_start():
                                   load=AsyncMock(), load_error=None),
                               logbook=SimpleNamespace(hydrate=AsyncMock(side_effect=LogSettingsError('read failed'))),
                               build=AsyncMock())
+        bot._startup_phase = AgentBot._startup_phase.__get__(bot)
+        bot._startup_step = AgentBot._startup_step.__get__(bot)
         await AgentBot._run(bot)
         assert 'log destination' in bot.fatal_reason
         bot.build.assert_not_awaited()
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable PostgreSQL required')
-def test_setlog_and_unsetlog_commands_commit_before_success_reply(tmp_path):
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Disposable Database required')
+def test_setlog_command_and_internal_clear_persist(tmp_path):
     from agent.modules import ops
     from test_logbook import make_ctx, FakeMessage
     async def scenario():
@@ -119,14 +121,14 @@ def test_setlog_and_unsetlog_commands_commit_before_success_reply(tmp_path):
             await ctx.logbook.hydrate()
             command = FakeMessage('/setlog -2002')
             await ops.build(ctx)[1]['setlog'](client, command)
-            assert 'Saved in postgres' in command.replies[-1]
+            assert 'Settings saved' in command.replies[-1]
             async with db._pool.acquire() as connection:
                 assert await connection.fetchval('SELECT channel_id FROM agent_log_settings WHERE tenant=$1', db.scope) == -2002
             after = LogBook(tmp_path / 'after', channel_id=-3003, owner_id=11, db=db)
             await after.hydrate()
             assert after.channel_id == -2002
             ctx.logbook = after
-            await ops.build(ctx)[1]['unsetlog'](client, FakeMessage('/unsetlog'))
+            await after.configure(None)
             cleared = LogBook(tmp_path / 'empty', channel_id=-4444, owner_id=11, db=db)
             await cleared.hydrate()
             assert cleared.channel_id is None and cleared.destination() == 11

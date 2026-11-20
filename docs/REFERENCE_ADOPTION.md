@@ -49,7 +49,7 @@ A static catalog covering all files is **not** the same as extracting and safely
 integrating every feature. Duplicate plugins, unrestricted credential handling,
 unsafe admin tools and unrelated apps will not be imported wholesale.
 
-Validation for this increment: **772 tests passed** with disposable PostgreSQL
+Validation for this increment: **772 tests passed** with disposable database
 and the optional Telethon parser installed. Static compilation, pyflakes and
 whitespace checks passed. Pending log tasks are capped at 200 per bot and track
 dropped excess notifications. No production redeploy or live Telegram validation

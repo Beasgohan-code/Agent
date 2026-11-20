@@ -56,20 +56,27 @@ class FakeClient:
         self._fail_admins = fail_admins
 
     async def get_chat_member(self, chat_id, user_id):
-        status = self._caller if int(user_id) == 11 else self._target
+        status = ADMIN if int(user_id)==99 else self._caller if int(user_id) == 11 else self._target
         return member(status, **self._rights)
+
+    async def get_me(self):
+        return SimpleNamespace(id=99)
 
     async def pin_chat_message(self, chat_id, message_id, **kwargs):
         self.calls.append(("pin", int(message_id), kwargs))
+        return SimpleNamespace(id=901,chat=SimpleNamespace(id=chat_id),pinned_message=SimpleNamespace(id=message_id))
 
     async def unpin_chat_message(self, chat_id, message_id=0, **kwargs):
         self.calls.append(("unpin", int(message_id)))
+        return True
 
     async def unpin_all_chat_messages(self, chat_id, **kwargs):
         self.calls.append(("unpin_all", None))
+        return True
 
     async def restrict_chat_member(self, chat_id, user_id, permissions, **kwargs):
         self.calls.append(("restrict", int(user_id)))
+        return True
 
     async def ban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("ban", int(user_id)))
@@ -168,7 +175,7 @@ def pre(markup: str) -> str:
     if "<table" in markup:
         return html.unescape(" ".join(CELL_RE.findall(markup)))
     match = PRE_RE.search(markup)
-    return html.unescape(match.group(1)) if match else ""
+    return html.unescape(match.group(1)) if match else html.unescape(re.sub(r"<[^>]+>", "", markup))
 
 
 # --- permissions -----------------------------------------------------------
@@ -209,7 +216,7 @@ def test_settings_show_live_values_in_a_table(ctx):
     assert "5 -> ban" in table                    # warn threshold as configured
     assert "on" in table                          # welcome enabled
     assert str(CHAT) in body                      # this chat's id
-    assert "Trusted" in table and "1" in table
+    assert "Approved" in table and "1" in table
 
 
 def test_settings_report_the_log_channel_and_rules_state(ctx):
@@ -304,7 +311,7 @@ def test_pin_silent_disables_the_notification(ctx):
     run(handlers(ctx)["pin"], client, message)
 
     assert client.calls[0][2]["disable_notification"] is True
-    assert "No notification" in message.replies[0]
+    assert "Silent pin requested" in message.replies[0]
 
 
 def test_pin_reports_a_refusal_instead_of_claiming_success(ctx):
@@ -420,7 +427,7 @@ def test_resetwarns_clears_every_warning(ctx):
     run(handlers(ctx)["resetwarns"], FakeClient(), message)
 
     assert ctx.chats.active_warning_count(CHAT, 22) == 0
-    assert "Cleared: 3" in message.replies[0]
+    assert "Warnings cleared" in message.replies[0] and "3" in message.replies[0]
 
 
 def test_resetwarns_says_so_when_there_was_nothing_to_clear(ctx):
@@ -437,7 +444,7 @@ def test_resetwarns_refuses_to_touch_an_administrator(ctx):
 
     run(handlers(ctx)["resetwarns"], FakeClient(target=ADMIN), message)
 
-    assert "I cannot act on an administrator" in message.replies[0]
+    assert "Cannot act on an administrator" in message.replies[0]
     assert ctx.chats.active_warning_count(CHAT, 22) == 1
 
 
@@ -509,7 +516,8 @@ def test_warn_does_not_escalate_before_the_threshold(ctx):
     message = FakeMessage("/warn 22 spam")
     run(warn, client, message)
 
-    assert "Threshold" not in message.replies[0]
+    assert "Threshold reached" not in message.replies[0]
+    assert ctx.chats.active_warning_count(CHAT,22)==1
     assert client.calls == []
 
 
@@ -612,3 +620,151 @@ def test_lockdown_typo_does_not_lock_group(ctx):
     client = FakeClient()
     run(handlers(ctx)['lockdown'], client, FakeMessage('/lockdown of'))
     assert not client.calls
+
+
+def test_pin_unconfirmed_ack_never_claims_success_or_logs(ctx):
+    from unittest.mock import AsyncMock
+    client=FakeClient()
+    client.pin_chat_message=AsyncMock(return_value=None)
+    client.get_messages=AsyncMock(return_value=SimpleNamespace(id=42,chat=SimpleNamespace(id=CHAT),pinned=False))
+    message=FakeMessage('/pin',reply=True,reply_id=42)
+    run(handlers(ctx)['pin'],client,message)
+    assert 'unconfirmed' in str(message.replies[-1])
+    assert not ctx.chats.history(CHAT)
+    client.pin_chat_message.assert_awaited_once()
+
+
+def test_pin_invalid_syntax_and_cross_group_reply_never_mutates(ctx):
+    from unittest.mock import AsyncMock
+    for text in ('/pin extra','/unpin all extra'):
+        client=FakeClient()
+        client.pin_chat_message=AsyncMock()
+        client.unpin_all_chat_messages=AsyncMock()
+        message=FakeMessage(text,reply=True)
+        run(handlers(ctx)['unpin' if text.startswith('/unpin') else 'pin'],client,message)
+        client.pin_chat_message.assert_not_awaited()
+        client.unpin_all_chat_messages.assert_not_awaited()
+    client=FakeClient()
+    client.pin_chat_message=AsyncMock()
+    message=FakeMessage('/pin',reply=True)
+    message.reply_to_message.chat=SimpleNamespace(id=-999)
+    run(handlers(ctx)['pin'],client,message)
+    client.pin_chat_message.assert_not_awaited()
+
+
+def test_unpin_final_rights_loss_and_false_ack_are_truthful(ctx):
+    from unittest.mock import AsyncMock
+    client=FakeClient()
+    client.get_chat_member=AsyncMock(side_effect=[member(ADMIN),member(ADMIN),member(MEMBER)])
+    client.unpin_chat_message=AsyncMock(return_value=True)
+    message=FakeMessage('/unpin')
+    run(handlers(ctx)['unpin'],client,message)
+    client.unpin_chat_message.assert_not_awaited()
+    client=FakeClient()
+    client.unpin_chat_message=AsyncMock(return_value=False)
+    run(handlers(ctx)['unpin'],client,message)
+    assert 'unconfirmed' in str(message.replies[-1])
+    assert not ctx.chats.history(CHAT)
+
+
+def test_pin_readback_confirmation_and_audit_failure_preserve_committed_status(ctx):
+    from unittest.mock import AsyncMock,Mock
+    client=FakeClient()
+    client.pin_chat_message=AsyncMock(return_value=None)
+    client.get_messages=AsyncMock(return_value=SimpleNamespace(id=42,chat=SimpleNamespace(id=CHAT),pinned=True))
+    ctx.chats.log=Mock(side_effect=RuntimeError('PRIVATE_AUDIT'))
+    message=FakeMessage('/pin silent',reply=True,reply_id=42)
+    run(handlers(ctx)['pin'],client,message)
+    text=str(message.replies[-1])
+    assert 'Pinned state confirmed' in text and 'Local audit unconfirmed' in text
+    assert 'PRIVATE_AUDIT' not in text
+    client.pin_chat_message.assert_awaited_once()
+    client.get_messages.assert_awaited_once_with(CHAT,42)
+
+
+def test_pin_refuses_bot_caller_and_missing_bot_pin_right(ctx):
+    from unittest.mock import AsyncMock
+    client=FakeClient(rights={'can_pin_messages':False})
+    client.pin_chat_message=AsyncMock()
+    message=FakeMessage('/pin',reply=True)
+    run(handlers(ctx)['pin'],client,message)
+    client.pin_chat_message.assert_not_awaited()
+    client=FakeClient()
+    client.pin_chat_message=AsyncMock()
+    message.from_user=SimpleNamespace(id=11,is_bot=True)
+    run(handlers(ctx)['pin'],client,message)
+    client.pin_chat_message.assert_not_awaited()
+
+
+@pytest.mark.parametrize('command',['admins','adminlist'])
+def test_admins_live_page_two_and_strict_page_syntax(ctx,command):
+    from unittest.mock import Mock
+    admins=[(ADMIN,100+i,f'Admin{i}',None) for i in range(20)]
+    message=FakeMessage(f'/{command} 2')
+    run(handlers(ctx)[command],FakeClient(admins=admins),message)
+    text=str(message.replies[-1])
+    assert 'Page 2/2' in text and 'Admin19' in text and 'Admin0<' not in text
+    for arg in ('0','-1','９','2 extra','99'):
+        client=FakeClient(admins=admins)
+        client.get_chat_members=Mock(side_effect=AssertionError('Unexpected list read'))
+        message=FakeMessage(f'/{command} '+arg)
+        run(handlers(ctx)[command],client,message)
+        client.get_chat_members.assert_not_called()
+        assert f'/{command} [page]' in str(message.replies[-1])
+
+
+@pytest.mark.parametrize('command',['admins','adminlist'])
+def test_admins_rechecks_group_membership_before_disclosure(ctx,command):
+    from unittest.mock import AsyncMock
+    client=FakeClient()
+    client.get_chat_member=AsyncMock(side_effect=[member(MEMBER),member(ChatMemberStatus.LEFT)])
+    message=FakeMessage(f'/{command}')
+    run(handlers(ctx)[command],client,message)
+    text=str(message.replies[-1])
+    assert 'membership' in text and 'Owner' not in text
+
+
+@pytest.mark.parametrize('command',['admins','adminlist'])
+def test_admins_hides_anonymous_admins_and_redacts_provider_error(ctx,command):
+    class Anonymous(FakeClient):
+        def get_chat_members(self,*args,**kwargs):
+            async def stream():
+                yield SimpleNamespace(status=ADMIN,user=SimpleNamespace(id=22,first_name='SECRET_ANON'),privileges=SimpleNamespace(is_anonymous=True))
+                yield SimpleNamespace(status=ADMIN,user=SimpleNamespace(id=33,first_name='Visible'),privileges=SimpleNamespace(is_anonymous=False))
+            return stream()
+    message=FakeMessage(f'/{command}')
+    run(handlers(ctx)[command],Anonymous(),message)
+    assert 'SECRET_ANON' not in str(message.replies[-1]) and 'Visible' in str(message.replies[-1])
+    class Failing(FakeClient):
+        def get_chat_members(self,*args,**kwargs):
+            raise ValueError('PRIVATE_TOKEN')
+    message=FakeMessage(f'/{command}')
+    run(handlers(ctx)[command],Failing(),message)
+    assert 'PRIVATE_TOKEN' not in str(message.replies)
+    assert 'unavailable' in str(message.replies[-1])
+
+
+@pytest.mark.parametrize('command',['admins','adminlist'])
+def test_admin_lists_bound_raw_records_and_reject_nonmembers(ctx,command):
+    from unittest.mock import Mock
+    seen=[]
+    class Many(FakeClient):
+        def get_chat_members(self,chat_id,**kwargs):
+            assert kwargs['limit']==201
+            async def stream():
+                for uid in range(1000,1300):
+                    seen.append(uid)
+                    yield SimpleNamespace(status=ADMIN,user=SimpleNamespace(id=uid,first_name='Visible'))
+            return stream()
+    message=FakeMessage(f'/{command} 14')
+    run(handlers(ctx)[command],Many(),message)
+    assert len(seen)==201
+    text=str(message.replies[-1])
+    assert 'Page 14/14' in text and 'first 200' in text
+    assert '1199' in text and '1200' not in text
+    client=FakeClient(caller=ChatMemberStatus.LEFT)
+    client.get_chat_members=Mock(side_effect=AssertionError('Unexpected list read'))
+    message=FakeMessage(f'/{command}')
+    run(handlers(ctx)[command],client,message)
+    client.get_chat_members.assert_not_called()
+    assert 'membership' in str(message.replies[-1])

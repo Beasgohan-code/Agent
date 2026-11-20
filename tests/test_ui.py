@@ -48,11 +48,13 @@ def test_welcome_screen_greets_the_user_and_shows_the_menu():
     screen = welcome_screen(make_user(), Theme())
 
     assert "Ada Lovelace" in screen.rich_text
-    assert "Agent" in screen.rich_text
+    assert "Meiko" in screen.rich_text
     assert "Try" in screen.rich_text                 # three commands to start from
-    # The menu buttons plus the source link; the callbacks are the first two.
-    assert callbacks(screen.keyboard)[:2] == [CB_HELP, CB_INFO]
-    assert None in callbacks(screen.keyboard)        # the url button has no callback
+    # Menu navigation remains available without source promotion.
+    assert [c for c in callbacks(screen.keyboard) if c] == [CB_HELP]
+    urls = [b.url for row in screen.keyboard.inline_keyboard for b in row if b.url]
+    assert urls == ["https://t.me/ouchro", "https://t.me/ouchro", "https://t.me/Godgohan"]
+    assert not any("github.com" in url for url in urls)
 
 
 def test_the_start_screen_fits_a_caption():
@@ -219,8 +221,9 @@ def test_the_shipped_theme_carries_real_premium_ids():
 
     assert theme.custom_emoji_enabled is True
     assert 'emoji-id="5084979757905347540"' in theme.emoji("check")
-    # Glyphs without a vetted id stay unicode rather than render broken.
-    assert "<tg-emoji" not in theme.emoji("wave")
+    # The user supplied a wave document ID; unknown names still have no ID.
+    assert 'emoji-id="5040033797031070992"' in theme.emoji("wave")
+    assert theme.emoji_id("not_supplied") is None
 
 
 def test_premium_emoji_can_be_switched_off(monkeypatch):
@@ -339,3 +342,17 @@ def test_ping_screen_renders_to_parseable_html():
     assert "<h2>" not in rendered
     parsed = asyncio.run(Parser(None).parse(rendered, ParseMode.HTML))
     assert parsed["message"].strip()
+
+
+def test_help_copy_is_user_facing_not_deployment_instructions():
+    from agent.ui.screens import HELP_SECTIONS, help_section_screen
+
+    screens = [help_screen(make_user(), Theme())]
+    screens += [help_section_screen(title, make_user(), Theme()) for _, title, _ in HELP_SECTIONS]
+    for screen in screens:
+        assert 'OWNER_ID' not in screen.rich_text
+        assert 'group commands need moderator rights' not in screen.rich_text
+        assert 'command(s) ready here' not in screen.rich_text
+    assert 'Choose a category' in screens[0].rich_text
+    essentials = help_section_screen('Essentials', make_user(), Theme())
+    assert 'owner-only ones need' not in essentials.rich_text

@@ -9,12 +9,14 @@ a write queue that never blocks a handler.
 import asyncio
 import time
 
+import pytest
+
 from agent.modules.clone.store import Clone, CloneStore
 from agent.platform.audience import UserIndex
 from agent.platform.chats import ChatStore
 from agent.platform.db import Database, normalise_url
 from agent.platform.instance import InstanceLease
-from agent.platform.links import LinkStore
+from agent.platform.links import LinkStore, LinkError
 from agent.platform.premium import PremiumBook
 from agent.platform.runtime import PluginRuntime
 
@@ -138,23 +140,20 @@ def test_premium_ledger_round_trips_through_the_database(tmp_path):
     book = PremiumBook(tmp_path, db=database)
     assert book.is_premium(7) is True  # lifetime
 
-    book.grant(8, days=1, by=1)
-    assert "8" in database.saved["premium"]["users"]
+    from agent.platform.entitlements import EntitlementError
+    with pytest.raises(EntitlementError, match="Awaited"):
+        book.grant(8, days=1, by=1)
+    assert not database.saved
     assert not (tmp_path / "premium.json").exists()
 
-    # A second process reads exactly what the first one wrote.
-    again = PremiumBook(tmp_path, db=FakeDB({"premium": database.saved["premium"]}))
-    assert again.is_premium(8) is True
 
-
-def test_links_are_saved_as_a_single_document(tmp_path):
+def test_links_require_awaited_database_operations(tmp_path):
     database = FakeDB()
-
     links = LinkStore(tmp_path, "secret", db=database)
-    record = links.create("file-1", owner_id=7, ttl_hours=1)
-
-    assert set(database.saved["links"]) == {record.token}
-    assert record.file_id in database.saved["links"][record.token]["file_id"]
+    with pytest.raises(LinkError, match="Awaited"):
+        links.create("file-1", owner_id=7, ttl_hours=1)
+    assert not database.saved
+    assert not (tmp_path / "links.json").exists()
 
 
 def test_the_user_index_and_the_plugin_runtime_use_the_database(tmp_path):
@@ -176,9 +175,10 @@ def test_clone_records_are_shared_through_the_database(tmp_path):
     store = CloneStore(tmp_path, db=database)
     assert store.get(1).owner_id == 2
 
-    store.add(Clone(bot_id=3, owner_id=4, token="3:def"))
-    assert len(database.saved["clones"]) == 2
-    assert CloneStore(tmp_path, db=database).count() == 2
+    with pytest.raises(RuntimeError, match="Awaited"):
+        store.add(Clone(bot_id=3, owner_id=4, token="3:def"))
+    assert not database.saved
+    assert store.count() == 1
 
 
 def test_a_store_refuses_file_fallback_when_configured_database_is_down(tmp_path):
@@ -287,3 +287,146 @@ def test_failed_document_load_is_distinguishable_from_empty_database():
     db._pool = Pool()
     assert asyncio.run(db.load()) == 0
     assert db.load_error == 'RuntimeError'
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_failed_schema_initialization_disposes_pool_and_redacts_errors(monkeypatch, caplog, cancelled):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+    async def scenario():
+        error = asyncio.CancelledError() if cancelled else RuntimeError('postgresql://private:password@private-host/db')
+        connection = SimpleNamespace(execute=AsyncMock(side_effect=error))
+        class Acquisition:
+            async def __aenter__(self):
+                return connection
+            async def __aexit__(self, *args):
+                pass
+        pool = SimpleNamespace(acquire=lambda: Acquisition(), terminate=Mock())
+        driver = SimpleNamespace(create_pool=AsyncMock(return_value=pool))
+        monkeypatch.setattr(Database, '_driver', staticmethod(lambda: driver))
+        db = Database('postgresql://user@host/db')
+        if cancelled:
+            with pytest.raises(asyncio.CancelledError):
+                await db.connect()
+        else:
+            assert not await db.connect()
+            assert db.error == 'RuntimeError'
+        assert db._pool is None and not db.connected
+        pool.terminate.assert_called_once()
+        assert 'password' not in caplog.text and 'private-host' not in caplog.text
+        # Retry creates a fresh, usable pool, never a half-initialized one.
+        connection.execute.side_effect = None
+        assert await db.connect()
+        assert await db.connect()  # Existing connected pool is reused.
+        assert driver.create_pool.await_count == 2
+        assert db.connected and db._pool is pool
+    asyncio.run(scenario())
+
+
+def test_shutdown_retries_cancelled_inflight_batch_without_overwriting_newer_values(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    async def scenario():
+        db = Database('postgresql://user@host/db')
+        db.connected = True
+        db._pool = SimpleNamespace(close=AsyncMock())
+        entered = asyncio.Event()
+        attempts = []
+        async def write(batch):
+            attempts.append(dict(batch))
+            if len(attempts) == 1:
+                entered.set()
+                await asyncio.Event().wait()
+        monkeypatch.setattr(db, '_write_batch', write)
+        db.save('runtime', {'version': 1})
+        db.save('other', {'keep': True})
+        await entered.wait()
+        db.save('runtime', {'version': 2})
+        await db.close()
+        assert attempts == [{'runtime': {'version': 1}, 'other': {'keep': True}},
+                            {'runtime': {'version': 2}, 'other': {'keep': True}}]
+        assert not db._pending
+        assert not db.connected and db._pool is None
+    asyncio.run(scenario())
+
+
+def test_concurrent_flushes_commit_in_queue_order(monkeypatch):
+    async def scenario():
+        db = Database('postgresql://user@host/db')
+        db.connected = True
+        entered, release = asyncio.Event(), asyncio.Event()
+        writes = []
+        async def write(batch):
+            writes.append(dict(batch))
+            if len(writes) == 1:
+                entered.set()
+                await release.wait()
+        monkeypatch.setattr(db, '_write_batch', write)
+        db._pending['settings'] = 1
+        first = asyncio.create_task(db.flush())
+        await entered.wait()
+        db._pending['settings'] = 2
+        second = asyncio.create_task(db.flush())
+        await asyncio.sleep(0)
+        assert writes == [{'settings': 1}]
+        release.set()
+        assert await first == 1 and await second == 1
+        assert writes == [{'settings': 1}, {'settings': 2}]
+    asyncio.run(scenario())
+
+
+def test_document_save_snapshots_are_independent_of_caller_and_cache_mutation(monkeypatch):
+    async def scenario():
+        db = Database('postgresql://user@host/db')
+        db.connected = True
+        committed = []
+        async def write(batch):
+            committed.append(batch)
+        monkeypatch.setattr(db, '_write_batch', write)
+        value = {'group': {'locks': ['url']}}
+        db.save('chats', value)
+        value['group']['locks'].append('photo')
+        assert db.get('chats') == {'group': {'locks': ['url']}}
+        db.get('chats')['group']['locks'].append('video')
+        assert await db.flush() == 1
+        assert committed == [{'chats': {'group': {'locks': ['url']}}}]
+        db.save('chats', value)
+        await db.flush()
+        assert committed[-1] == {'chats': {'group': {'locks': ['url', 'photo']}}}
+        if db._writer is not None:
+            db._writer.cancel()
+            await asyncio.gather(db._writer, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+def test_synchronous_save_retains_snapshot_without_unawaited_coroutine_warning(recwarn):
+    import gc
+    db = Database('postgresql://user@host/db')
+    db.connected = True
+    db.save('runtime', {'disabled': ['music']})
+    gc.collect()
+    assert db._pending == {'runtime': {'disabled': ['music']}}
+    assert not any('never awaited' in str(item.message) for item in recwarn)
+
+
+def test_failed_background_flush_retries_without_needing_another_save(monkeypatch):
+    async def scenario():
+        db = Database('postgresql://user@host/db', flush_interval=0)
+        db.connected = True
+        failed = asyncio.Event()
+        attempts = []
+        async def write(batch):
+            attempts.append(dict(batch))
+            if len(attempts) == 1:
+                failed.set()
+                raise ConnectionError('temporary outage')
+        monkeypatch.setattr(db, '_write_batch', write)
+        db.save('runtime', {'version': 1})
+        await failed.wait()
+        db.save('runtime', {'version': 2})
+        db.save('chats', {'preserved': True})
+        await asyncio.wait_for(db._writer, timeout=3)
+        assert attempts == [{'runtime': {'version': 1}},
+                            {'runtime': {'version': 2}, 'chats': {'preserved': True}}]
+        assert not db._pending
+    asyncio.run(scenario())

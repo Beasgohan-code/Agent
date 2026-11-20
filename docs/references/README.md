@@ -45,7 +45,7 @@ Python parse failures recorded for manual review: **5**.
 ## Adoption boundaries
 
 - Keep Agent’s eight-feature catalog; do not create duplicate plugin identities.
-- Preserve mandatory safety and atomic PostgreSQL optional-slot approval.
+- Preserve mandatory safety and atomic database optional-slot approval.
 - Do not import developer eval/shell endpoints, global assistant clients, plaintext
   credential stores, hardcoded secrets or automatic dependency installers.
 - Use original implementations for unlicensed/incompatible sources; references

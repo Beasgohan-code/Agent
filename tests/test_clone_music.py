@@ -23,6 +23,7 @@ def ready(ctx, monkeypatch):
     ctx.clones._settings = ctx.settings
     ctx.db = SimpleNamespace(connected=True)
     monkeypatch.setattr(wizard_module, 'capability', lambda session: (True, ''))
+    monkeypatch.setattr('agent.platform.voice.capability', lambda session: (True, ''))
 
 
 def parser(monkeypatch, **overrides):
@@ -112,7 +113,7 @@ def test_music_session_is_never_written_as_plaintext(tmp_path):
 def test_music_settings_fail_without_private_session_or_postgres(tmp_path):
     ctx, _, _ = build(tmp_path)
     record = Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A, selected_plugins=('music',))
-    with pytest.raises(CloneError, match='PostgreSQL'):
+    with pytest.raises(CloneError, match='missing credentials|missing capabilities'):
         ctx.clones.settings_for(record)
 
 
@@ -177,3 +178,95 @@ def test_settings_repr_contains_no_runtime_credentials(tmp_path):
     for secret in (SESSION, settings.bot_token, settings.api_hash, settings.token_key,
                    settings.database_url, settings.ai_api_key, settings.link_secret):
         assert secret not in text
+
+
+def test_full_suite_guided_credentials_are_isolated_encrypted_and_started(tmp_path, monkeypatch):
+    from agent.modules.clone.catalog import FULL_SUITE, selection_label
+
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        ready(ctx, monkeypatch)
+        parser(monkeypatch)
+        class FullBot(FakeBot):
+            def __init__(self, settings):
+                super().__init__(settings)
+                self.voice = SimpleNamespace(start=AsyncMock(), shutdown=AsyncMock(), connected=True)
+        ctx.clones._factory = FullBot
+        wizard, state = await identity_step(ctx)
+        await wizard.press(None, query(state), state.nonce + ':full_suite')
+        assert state.step == 'music_consent'
+        await wizard.receive(None, FakeMessage(SESSION))
+        assert not state.assistant_session
+        await wizard.press(None, query(state), state.nonce + ':music_consent')
+        await wizard.receive(None, FakeMessage(SESSION))
+        assert state.step == 'ai_key'
+        key = 'sk-full_suite_private_1234567890'
+        await wizard.receive(None, FakeMessage(key))
+        assert state.step == 'ai_model'
+        await wizard.receive(None, FakeMessage('chosen-model'))
+        assert state.step == 'log'
+        await wizard.receive(None, FakeMessage('skip'))
+        assert state.step == 'storage'
+        await wizard.receive(None, FakeMessage('-100100'))
+        assert state.step == 'confirm'
+        assert SESSION not in str(wizard.review(state)) and key not in str(wizard.review(state))
+        await wizard.press(None, query(state), state.nonce + ':create')
+        record = wizard.store.all()[0]
+        settings = ctx.clones.settings_for(record)
+        assert settings.plugins == tuple(sorted(FULL_SUITE))
+        assert settings.owner_id == MEMBER
+        assert settings.session_string == SESSION
+        assert settings.ai_api_key == key and settings.ai_model == 'chosen-model'
+        assert settings.storage_channel == -100100
+        assert 'FileStore' in selection_label(FULL_SUITE)
+        assert 'Full Meiko suite' not in selection_label(('filestore',))
+        raw = wizard.store.path.read_text()
+        assert SESSION not in raw and key not in raw and TOKEN_A not in raw
+        assert not state.assistant_session and not state.ai_api_key and not state.token
+        restored = CloneStore(wizard.store.path.parent, box=wizard.store._box).get(record.bot_id)
+        assert restored.selected_plugins == tuple(sorted(FULL_SUITE))
+        assert restored.assistant_session == SESSION and restored.ai_api_key == key
+        assert ctx.clones.is_running(record.bot_id)
+        await ctx.clones.stop(record.bot_id)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('missing', ['assistant', 'key', 'model'])
+def test_full_suite_refuses_missing_own_credentials(tmp_path, monkeypatch, missing):
+    from agent.modules.clone.catalog import FULL_SUITE
+    ctx, _, _ = build(tmp_path)
+    ready(ctx, monkeypatch)
+    parser(monkeypatch)
+    record = Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A,
+                   selected_plugins=FULL_SUITE, assistant_session=SESSION,
+                   ai_api_key='sk-private_clone_key_1234567890', ai_model='chosen-model')
+    record = replace(record, **{ {'assistant':'assistant_session','key':'ai_api_key','model':'ai_model'}[missing]:None })
+    with pytest.raises(CloneError):
+        ctx.clones.settings_for(record)
+
+
+def test_full_suite_readiness_refusal_and_voice_failure_do_not_claim_running(tmp_path, monkeypatch):
+    from agent.modules.clone.catalog import FULL_SUITE
+
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        ready(ctx, monkeypatch)
+        parser(monkeypatch)
+        wizard, state = await identity_step(ctx)
+        ctx.db.connected = False
+        result = query(state)
+        await wizard.press(None, result, state.nonce + ':full_suite')
+        assert state.step == 'plugin' and not state.assistant_session
+        class DisconnectedBot(FakeBot):
+            def __init__(self, settings):
+                super().__init__(settings)
+                self.voice = SimpleNamespace(start=AsyncMock(), shutdown=AsyncMock(), connected=False)
+        ctx.clones._factory = DisconnectedBot
+        record = Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A,
+            selected_plugins=FULL_SUITE, assistant_session=SESSION,
+            ai_api_key='sk-own_full_suite_key_123456', ai_model='chosen-model')
+        with pytest.raises(CloneError):
+            await ctx.clones.start(record)
+        assert not ctx.clones.is_running(record.bot_id)
+        assert ctx.clones.state(record.bot_id).last_error
+    asyncio.run(scenario())

@@ -1,0 +1,2754 @@
+{
+  "scope": "Integrated Meiko controller, tenant-scoped clone workers and managed plugins; preserve supplied-source review and UI patches without equating them with runtime integration.",
+  "tasks": [
+    {
+      "id": "restore-regression-baseline",
+      "status": "completed",
+      "changes": [
+        "tests/test_bot.py watcher expectation and documentation reflect isolated FileStore conversation handler"
+      ],
+      "validation": "Full disposable PostgreSQL suite: 1452 passed, no skips; 24.32 seconds"
+    },
+    {
+      "id": "filestore-link-ui-patch-validation",
+      "status": "completed",
+      "changes": [
+        "Direct edits in Filestore/worker_bot/link_gen.py preserved in patches/filestore/001-meiko-link-ui.patch",
+        "tools/validate_filestore_patch.py verifies pinned source hashes, UI-only AST structure, command/callback interfaces, compile and clean patch reconstruction"
+      ],
+      "validation": "Validator passed for one upstream file; compileall, Pyflakes and git diff --check passed"
+    },
+    {
+      "id": "filestore-readable-ui",
+      "status": "pending",
+      "remaining_files": [
+        "main_bot/plugins/bot_settings.py",
+        "utils/helpers.py"
+      ]
+    },
+    {
+      "id": "filestore-opaque-ui",
+      "status": "blocked",
+      "reason": "main_bot/plugins/start.py and other PyArmor payloads have no readable implementation; cannot safely change hidden UI or verify hidden behavior without readable source."
+    },
+    {
+      "id": "remaining-mapped-repositories",
+      "status": "pending",
+      "paths": [
+        "music/Videl0",
+        "music/Playeon",
+        "saver",
+        "Encoder",
+        "Linkshare",
+        "leech"
+      ]
+    },
+    {
+      "id": "filestore-worker-delivery-ui",
+      "status": "completed",
+      "edited_clone_file": "Filestore/worker_bot/engine.py",
+      "patch": "patches/filestore/002-meiko-worker-ui.patch",
+      "changes": "35 built-in presentation literals updated; Meiko welcome, access/verification, delivery loading/error, broadcast/admin and auto-delete UI. Promotional default welcome credit changed; attribution comments retained.",
+      "preserved": [
+        "imports and executable AST after explicit approved literal substitutions",
+        "command IDs, callback routes, deep links and menu command names",
+        "permissions, bans, force-sub and shortener verification",
+        "copy arguments, custom captions, content protection, configured welcome/photos",
+        "storage/database calls, auto-delete timing and original reload URL",
+        "all source comments including attribution"
+      ],
+      "validation": [
+        "Mapped clone and target file accessible",
+        "Pinned SHA256 and exact reconstruction via both saved patches passed",
+        "Exact import AST, command/callback/URL interfaces and source comment comparisons passed",
+        "Syntax compilation passed without importing upstream startup/config or PyArmor",
+        "8 original-versus-edited /start offline differential scenarios passed",
+        "2 scheduled-delete offline differential scenarios passed",
+        "Full disposable PostgreSQL regression suite: 1452 passed, no skips, 25.39 seconds",
+        "compileall, Pyflakes and git diff --check passed"
+      ],
+      "limitations": [
+        "No live Telegram, MongoDB or shortener endpoint tests; local dependencies isolated for differential tests",
+        "Upstream utils/security.py returns tokens unchanged; unsafe to deploy without separate authorized security work",
+        "PyArmor dependency worker_bot/flink_logic.py remains unexecuted and unreadable"
+      ]
+    },
+    {
+      "id": "filestore-controller-admin-ui",
+      "status": "completed",
+      "files": [
+        "Filestore/main_bot/plugins/bans.py",
+        "Filestore/main_bot/plugins/broadcast.py"
+      ],
+      "patch": "patches/filestore/003-meiko-controller-admin-ui.patch",
+      "validation": [
+        "Four-file pinned patch reconstruction passed",
+        "Exact approved-literal AST, imports, command filters, callbacks and attribution checks passed",
+        "Syntax compilation and Pyflakes passed",
+        "Existing worker differential checks: 8 start and 2 deletion scenarios passed"
+      ],
+      "fixed": "Patch generation now includes missing-final-newline markers for upstream controller source.",
+      "limitations": [
+        "No live Telegram or database execution; controller behavior verified structurally, not end-to-end."
+      ]
+    },
+    {
+      "id": "filestore-creation-ui",
+      "status": "completed",
+      "files": [
+        "Filestore/main_bot/plugins/create_bot.py"
+      ],
+      "patch": "patches/filestore/004-meiko-creation-ui.patch",
+      "validation": [
+        "Five-file pinned patch reconstruction passed",
+        "Exact AST after approved presentation substitutions; imports, callback interfaces and attribution unchanged",
+        "4 offline creation comparisons passed: entry/cancel callback, limit, non-text, invalid token",
+        "Existing 10 worker behavior comparisons passed",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "limitations": [
+        "No real Telegram bot creation or channel verification performed",
+        "Upstream logs raw bot token in creation audit message and token encryption is passthrough; deployment blocked pending separate security changes. Neither was changed in this UI-only task."
+      ]
+    },
+    {
+      "id": "filestore-dashboard-ui",
+      "status": "completed",
+      "files": [
+        "Filestore/main_bot/plugins/my_bots.py"
+      ],
+      "patch": "patches/filestore/005-meiko-dashboard-ui.patch",
+      "changes": "66 presentation literals: readable labels and Meiko headings across bot list, dashboard, start/stop, protection, transfer and removal screens. Existing confirmation and callback layouts retained.",
+      "validation": [
+        "Six-file pinned patch reconstruction passed",
+        "Approved-literal exact AST, unchanged imports/interfaces/attribution passed",
+        "10 offline dashboard comparisons passed: eight ownership denials, authorized dashboard and delete-confirmation callback layouts",
+        "4 creation and 10 worker differential comparisons passed",
+        "compileall, Pyflakes and git diff --check passed"
+      ],
+      "limitations": [
+        "No real workers started/stopped, transfers or deletions executed",
+        "Existing delete confirmation incorrectly claims permanent deletion although delete_bot performs soft deletion; wording semantics preserved pending explicit behavior/UX correction",
+        "Existing transfer overwrites destination collections then purges source, without transactional rollback; prefix matching may include other bot IDs. Preserved for this UI-only task; unsafe for production use without separate hardening."
+      ]
+    },
+    {
+      "id": "integrated-clone-worker-authority-and-plugin-boundary",
+      "status": "completed",
+      "files": [
+        "agent/modules/clone/manager.py",
+        "tests/test_clone_worker_bootstrap.py",
+        "tests/test_clone_plugin_integration.py",
+        "tests/test_atomic_clones.py",
+        "tests/test_lifecycle.py"
+      ],
+      "implemented": [
+        "Reject Telegram identity mismatch before voice startup and command publication; cleanup failed startup",
+        "Capture factory/settings errors inside sanitized FAILED lifecycle path",
+        "Refresh authoritative clone records each supervision pass",
+        "Stop workers when deleted, disabled, reassigned or credentials changed",
+        "Stop workers when authoritative storage or premium eligibility checks become unavailable; do not persist premium revocation for transient eligibility errors",
+        "Tolerate concurrent removal from running map"
+      ],
+      "evidence": [
+        "Red tests reproduced identity mismatch, deleted-record keepalive, stale authority, unavailable premium authority, factory exception leak and reassignment defects before fixes",
+        "Seven actual AgentBot plugin builds retain selected plugin and mandatory core, no recursive clone module",
+        "Actual runtime disable and group approval gates are isolated between tenants",
+        "PostgreSQL-backed real AgentBot worker start/stop/restart with mocked Telegram: separate persisted state, competing lease rejection and hydration after restart",
+        "Two PostgreSQL controller stores: remote disable/removal stops live worker",
+        "Full disposable PostgreSQL suite 1470 passed, no skips, 22.04 seconds",
+        "compileall, Pyflakes, selected Ruff checks and git diff --check passed"
+      ],
+      "limitations": [
+        "Telegram transport mocked; no live credentials, group API, assistant or provider calls",
+        "Seven plugin wiring tests validate current compiled-in plugins, not upstream reference runtime parity",
+        "Music assistant credential path covered by existing focused tests, not real voice playback",
+        "Transient authority outage stops workers safely; automatic restoration after authority recovery is not yet implemented",
+        "Guided setup still selects one plugin per clone; multi-plugin selection UI remains pending"
+      ]
+    },
+    {
+      "id": "integrated-multi-plugin-clone-selection",
+      "status": "pending",
+      "requirements": [
+        "Select multiple reviewed plugins in one clone setup",
+        "Collect only credentials/destinations needed by selected plugins",
+        "Preserve premium enforcement, encryption, parent credential isolation and group approval/slot rules"
+      ]
+    },
+    {
+      "id": "integrated-file-suite-clone",
+      "status": "completed",
+      "files": [
+        "agent/modules/clone/catalog.py",
+        "agent/modules/clone/manager.py",
+        "agent/modules/clone/setup.py",
+        "tests/test_clone_setup.py",
+        "tests/test_clone_plugin_integration.py"
+      ],
+      "implemented": [
+        "File tools suite option in existing private clone wizard",
+        "Five reviewed plugins in one worker: filestore, encoder, linkshare, leech, postmaker",
+        "Archive channel required and revalidated; existing premium/quota/encryption gates unchanged",
+        "Only explicit reviewed selections accepted; arbitrary and duplicate plugin tuples remain rejected",
+        "Existing single-template choices and FileStore labels preserved"
+      ],
+      "validation": [
+        "Guided suite wizard regression passed through token identity, template choice, skipped log, mandatory archive, creation and draft clearing",
+        "Actual AgentBot suite build registers five tools, both archive and link deep-link routes, no recursive clone plugin",
+        "Full disposable PostgreSQL suite: 1472 passed, no skips, 20.20 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No live Telegram worker exercised",
+        "Arbitrary multi-select and combined Music/AI credential collection not yet implemented",
+        "Suite uses current compiled-in plugins; upstream full workflow integration remains separate pending work"
+      ]
+    },
+    {
+      "id": "clone-transient-authority-recovery",
+      "status": "completed",
+      "files": [
+        "agent/modules/clone/manager.py",
+        "tests/test_clone_worker_bootstrap.py"
+      ],
+      "implemented": [
+        "Queue only workers supervisor stopped for temporary authority failures",
+        "Recheck authoritative record and premium before restarting on a later supervisor pass",
+        "Cancel pending recovery on explicit stop or shutdown",
+        "Discard recovery for deleted/disabled clones and cap failed restart attempts",
+        "Automatic startup rechecks disabled state after authoritative refresh; explicit start remains supported"
+      ],
+      "validation": [
+        "Regression reproduced missing recovery before implementation",
+        "Six added recovery regressions passed: authority recovery, manual stop, bounded attempts, removed/disabled records, eligibility recovery, automatic disabled rejection",
+        "Full disposable PostgreSQL regression suite: 1478 passed, no skips, 21.79 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "limitations": [
+        "Recovery queue is process-local; process restarts use existing stored-clone restore",
+        "Retry interval is existing supervisor interval, not exponential backoff",
+        "Live Telegram recovery not tested"
+      ]
+    },
+    {
+      "id": "clone-restore-owner-failure-isolation",
+      "status": "completed",
+      "files": [
+        "agent/modules/clone/manager.py",
+        "tests/test_clone_worker_bootstrap.py"
+      ],
+      "implemented": [
+        "Sanitize synchronous/asynchronous eligibility provider exceptions as CloneError without leaking exception details",
+        "Restore checks premium through start independently for each worker; one failed owner lookup no longer aborts unrelated workers"
+      ],
+      "validation": [
+        "Two new regressions reproduced raw authority exception leak and restoration interruption before fixes",
+        "Restore comparison keyed by owner, independent of store iteration order",
+        "Full disposable PostgreSQL suite: 1480 passed, no skips, 21.91 seconds",
+        "compileall, Pyflakes, git diff --check passed"
+      ],
+      "limitations": [
+        "Live Telegram restoration untested; transport remains mocked in integration tests"
+      ]
+    },
+    {
+      "id": "clone-disconnection-retry-continuity",
+      "status": "completed",
+      "files": [
+        "agent/modules/clone/manager.py",
+        "tests/test_clone_worker_bootstrap.py"
+      ],
+      "implemented": [
+        "Failed first restart after a live connection drop enters existing bounded recovery queue",
+        "First failed restart counts toward retry budget; explicit stop still cancels queue"
+      ],
+      "validation": [
+        "Red regression reproduced stopped worker disappearing from supervision after failed restart",
+        "Transient restart failure recovers on following pass",
+        "Permanent restart failure capped at two attempts in regression",
+        "Full disposable PostgreSQL suite: 1482 passed, no skips, 21.96 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "limitations": [
+        "Telegram clients simulated; no live reconnect validation",
+        "Recovery uses supervisor cadence; backoff and pending-recovery panel visibility remain pending"
+      ]
+    },
+    {
+      "id": "saver-caption-runtime-integration",
+      "status": "completed",
+      "source": "saver/cantarella/caption.py at bf2e45a1ef187060e053e59c0336cb0e6a4a022b",
+      "files": [
+        "agent/modules/leech/captions.py",
+        "agent/modules/leech/__init__.py",
+        "agent/platform/menu.py",
+        "agent/ui/screens.py",
+        "tests/test_saver_caption_integration.py",
+        "tests/test_bot.py",
+        "licenses/saver-MIT.txt"
+      ],
+      "implemented": [
+        "Saver set_caption, see_caption, del_caption workflow integrated into existing Leech runtime, including File suite clones",
+        "Shared CAPTION_KEY and attachment rendering reused; no competing caption database or duplicate command ownership",
+        "Private sender-only commands, UTF-16 caption budget, escaped preview and honest unconfirmed persistence errors",
+        "Upstream MIT notice retained"
+      ],
+      "validation": [
+        "Three new tests: shared delivery-caption rendering/set/view/remove, private-chat and Unicode limits, failed flush reporting",
+        "Full disposable PostgreSQL suite 1485 passed, no skips, 21.56 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Saver login/session, dump-chat, thumbnails and batch-save workflows not integrated",
+        "Other reference repos still require individual runtime adapters and workflow validation; this is not seven-repo completion"
+      ]
+    },
+    {
+      "id": "encoder-attached-media-workflow",
+      "status": "completed",
+      "reference": "Encoder/VideoEncoder/plugins/encode.py at 84d4e256e2f2047c653691b5b59bfdea2a262fae; inspected attached-or-replied media validation and existing task dispatch",
+      "files": [
+        "agent/modules/encoder/__init__.py",
+        "tests/test_encoder_options.py"
+      ],
+      "implemented": [
+        "Actual Encoder commands accept attached video/documents and existing replied media",
+        "Options read from text or media caption consistently across validation and tool execution",
+        "Shared source selection used by encode, compress, media tools and mediainfo; existing queue/FFmpeg/cancellation preserved"
+      ],
+      "reuse": "Behavior independently adapted; upstream AGPL implementation not copied wholesale or imported",
+      "validation": [
+        "83 focused encoder tests passed",
+        "Attached caption with invalid CRF rejected before download",
+        "Attached media reaches existing probe through actual handler",
+        "Full disposable PostgreSQL suite: 1487 passed, no skips, 22.62 seconds",
+        "compileall, Pyflakes and git diff --check passed"
+      ],
+      "remaining": [
+        "Upstream URL and batch encoding not integrated; live Telegram transport not validated"
+      ]
+    },
+    {
+      "id": "music-live-queue-cards",
+      "status": "completed",
+      "reference": "music/Playeon/playeon-bot/src/services/playback/queue.ts reviewed for live-refetch and bounded-card behavior; independently implemented without copying restricted source",
+      "files": [
+        "agent/modules/music/queue_cards.py",
+        "agent/modules/music/__init__.py",
+        "tests/test_music_ui.py"
+      ],
+      "implemented": [
+        "Queue Previous/Refresh/Next and Close buttons via new mqueue callback prefix; existing transport callbacks preserved",
+        "Refresh reads current queue; removed tracks clamp stale page to live last page",
+        "Card bound to original requester, chat and message; ten-minute expiry and max 200 tracked cards",
+        "Native Rich Message edit path preserved; no queue or playback mutation from paging"
+      ],
+      "validation": [
+        "13 focused Music UI tests passed",
+        "New tests cover live refresh, page clamp, foreign-user close denial, owner close, stale card rejection, capacity and expiry",
+        "Full disposable PostgreSQL suite: 1489 passed, no skips, 21.51 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No live voice-call/Telegram interaction validation",
+        "Videl0 and Playeon full music parity remains incomplete; this task covers queue cards only"
+      ]
+    },
+    {
+      "id": "videl-queue-admission-integration",
+      "status": "completed",
+      "reference": [
+        "music/Videl0/videl/core/queue.py",
+        "music/Videl0/tests/test_queue_limits.py"
+      ],
+      "changes": [
+        "Reviewed Videl0 capacity semantics: current track counts, batch addition must fit entirely",
+        "Shared ChatQueue.add_many validates all entries and full capacity before one mutation",
+        "Existing single add and playlist admission use same bounded queue operation",
+        "Full live queue rejects play before source resolution; existing 50-track limit retained"
+      ],
+      "files": [
+        "agent/modules/music/queue.py",
+        "agent/modules/music/playlists.py",
+        "agent/modules/music/__init__.py",
+        "tests/test_music_controls.py"
+      ],
+      "validation": [
+        "New batch test confirms capacity and invalid-track refusal leave queue unchanged",
+        "New full-queue test confirms no resolver call for overflow request",
+        "Full disposable PostgreSQL suite: 1491 passed, no skips, 22.47 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "reuse": "Reviewed behavior independently adapted; no wholesale unlicensed source copy",
+      "remaining": [
+        "Videl0 queue persistence/recovery and broader playback parity not implemented",
+        "No live voice session validation"
+      ]
+    },
+    {
+      "id": "cbml-replied-url-transfer",
+      "status": "completed",
+      "reference": [
+        "leech/bot/modules/mirror_leech.py replied-message URL fallback",
+        "leech/bot/helper/ext_utils/bot_utils.py argument parsing"
+      ],
+      "files": [
+        "agent/modules/leech/options.py",
+        "agent/modules/leech/__init__.py",
+        "tests/test_leech_options.py"
+      ],
+      "implemented": [
+        "leech/mirror accept one replied public URL with optional -n output name",
+        "One parse_message boundary shared by validation and submission",
+        "Existing inline syntax preserved; ambiguous multi-link reply refused; existing URL/SSRF checks and cleanup retained"
+      ],
+      "reuse": "Independently adapted reviewed input workflow; upstream standalone clients/AGPL source not imported wholesale",
+      "validation": [
+        "18 focused transfer tests passed",
+        "New reply/query/filename parser regression and actual job-to-delivery regression passed",
+        "Full disposable PostgreSQL suite: 1493 passed, no skips, 22.02 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Torrent, external downloader and remote-drive workflows not integrated",
+        "No live external transfer or Telegram API validation"
+      ]
+    },
+    {
+      "id": "leech-openable-entry-screen",
+      "status": "completed",
+      "files": [
+        "agent/modules/leech/home.py",
+        "agent/modules/leech/__init__.py",
+        "tests/test_leech_home.py"
+      ],
+      "implemented": [
+        "Bare leech/mirror command without reply opens actionable entry screen instead of only parser error",
+        "How to transfer, availability and home callbacks routed through module action router and existing runtime gate",
+        "Availability distinguishes integrated direct HTTP backend from merely installed binaries; unsupported sources stated explicitly"
+      ],
+      "validation": [
+        "Regression caught and fixed module-name collision with shared panel() renderer during implementation",
+        "Existing 18 transfer tests passed after fix",
+        "New actual handler/router test opens home/help/availability, rejects unknown route, makes no network/job",
+        "Full disposable PostgreSQL suite: 1494 passed, no skips, 28.88 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "limitations": [
+        "Not deployed; cannot claim reported live-bot button problem fixed without exact route or live verification",
+        "Runtime-disabled plugins still require Owner enablement; group use still requires approval and activation"
+      ]
+    },
+    {
+      "id": "unified-clone-controller-panel",
+      "status": "completed",
+      "implemented": [
+        "Private /panel shares existing clone manager and ownership-scoped inventory with /mybots",
+        "Labelled per-bot start/stop, profile, details/storage, confirmed deletion and new premium-gated restart",
+        "Refresh all reloads persisted records and redraws caller-owned clones only",
+        "Menu description, help and private command registration updated"
+      ],
+      "validation": [
+        "Multiple clone inventory, refresh, foreign-user isolation, manager restart and premium rejection regressions",
+        "Full disposable PostgreSQL suite: 1496 passed, no skips, 21.87 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "limitations": [
+        "Not deployed or live Telegram validated",
+        "Does not grant access to other users clones or bypass premium/runtime policy"
+      ]
+    },
+    {
+      "id": "controller-cleanup-hardening",
+      "status": "completed",
+      "implemented": [
+        "Handle Telegram MessageNotModified refresh without sending duplicate controller",
+        "Empty controller retains Refresh all and Menu navigation",
+        "Escape clone names and failure text in controller HTML"
+      ],
+      "cleanup": [
+        "Removed only generated .pytest_cache and .ruff_cache directories; no source/reference/license/runtime data deletion"
+      ],
+      "validation": [
+        "25 clone tests passed including repeated refresh duplicate-send regression",
+        "Full disposable PostgreSQL suite: 1497 passed, no skips, 22.30 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Broad unused-source deletion requires dependency evidence; not performed",
+        "Remaining mapped repository integrations and live validation still pending"
+      ]
+    },
+    {
+      "id": "leech-callback-reliability",
+      "status": "completed",
+      "implemented": [
+        "Repeated home/help/availability clicks acknowledge unchanged Telegram screen instead of raising",
+        "Uneditable screen answers with actionable reopen instruction; internal exception details never shown",
+        "Sanitized warning logged for failed screen update"
+      ],
+      "validation": [
+        "20 focused Leech tests passed",
+        "Actual router regression covers MessageNotModified and generic edit failure",
+        "Full disposable PostgreSQL suite: 1498 passed, no skips, 28.62 seconds before final logging-only addition",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Live Telegram validation and deployment pending",
+        "Other repository integrations remain incremental, not complete parity"
+      ]
+    },
+    {
+      "id": "leech-transfer-result-notices-cleanup",
+      "status": "completed",
+      "implemented": [
+        "Removed unreferenced duplicate nested _job_body after repository reference search found definition only",
+        "Actual runner notifies chat on transfer failure or cancellation without disclosing raw exception/source",
+        "Notice delivery failure cannot overwrite original transfer failure/cancellation; temporary cleanup and queue state preserved"
+      ],
+      "validation": [
+        "22 focused Leech tests passed",
+        "Two new actual submission/runner tests cover failure and cancellation sanitized notices and retained job state",
+        "Full disposable PostgreSQL suite: 1500 passed, no skips, 19.52 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Live Telegram/provider checks pending",
+        "Broad upstream feature parity remains incomplete"
+      ]
+    },
+    {
+      "id": "shared-private-job-status",
+      "status": "completed",
+      "implemented": [
+        "Added missing /jobs destination referenced by transfer failure notice",
+        "Reads latest 20 caller-owned jobs from existing shared queue; no second scheduler or persistence",
+        "Rejects group/anonymous inspection; hides raw errors, labels, URLs, filesystem paths and results",
+        "Menu and help registration updated; process-only lifetime clearly stated"
+      ],
+      "validation": [
+        "32 core/bot focused tests passed",
+        "Regression covers private boundary, foreign-job isolation and sensitive-field exclusion",
+        "Full disposable PostgreSQL suite: 1501 passed, no skips, 14.70 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No live Telegram validation or deployment",
+        "Other mapped repository integrations still incomplete"
+      ]
+    },
+    {
+      "id": "selective-owned-job-cancellation",
+      "status": "completed",
+      "implemented": [
+        "/cancel job-id stops one owned job through existing shared queue",
+        "Bare /cancel behavior including private clone setup cancellation retained",
+        "Foreign and nonexistent IDs share refusal; finished/malformed requests report accurately",
+        "Jobs panel guidance and command description updated"
+      ],
+      "validation": [
+        "33 focused core/bot tests passed",
+        "New real queue regression covers selective cancellation, unrelated owned job preservation, foreign/missing refusal, completed and malformed inputs",
+        "Full disposable PostgreSQL suite: 1502 passed, no skips, 15.51 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No live Telegram validation or deployment",
+        "Broader integration checklist remains unfinished"
+      ]
+    },
+    {
+      "id": "completion-time-job-history-bounds",
+      "status": "completed",
+      "implemented": [
+        "Trim shared queue history on task completion after cancellation finalization",
+        "Retain active work even when active count temporarily exceeds history limit; prune oldest terminal records only"
+      ],
+      "validation": [
+        "Two regressions cover burst completion without new submission, latest record retention, active preservation and cancellation state",
+        "17 focused history/core tests passed",
+        "Full disposable PostgreSQL suite: 1504 passed, no skips, 15.46 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "History remains intentionally process-local",
+        "Live runtime and broader upstream parity work remain pending"
+      ]
+    },
+    {
+      "id": "saver-thumbnail-workflow-integration",
+      "status": "completed",
+      "source": "saver/cantarella/thumbnail.py @ bf2e45a1ef187060e053e59c0336cb0e6a4a022b",
+      "implemented": [
+        "Private set_thumb, view_thumb/see_thumb and del_thumb/delete_thumb integrated into existing Leech/File-suite runtime",
+        "Uses shared THUMB_KEY Telegram photo ID storage consumed by attachment_kwargs; no extra client/database",
+        "Unavailable storage, zero flush and invalid Telegram preview never reported as success; group/anonymous identities rejected",
+        "Saver MIT attribution retained in adapter and licenses/saver-MIT.txt; menu/help descriptions registered"
+      ],
+      "validation": [
+        "Two new workflow tests cover shared attachment consumption, tenant isolation, set/view/remove, group refusal, missing photo, failed flush and sanitized preview error",
+        "20 thumbnail/bot focused tests passed",
+        "Full disposable PostgreSQL suite: 1506 passed, no skips, 15.71 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Live Telegram thumbnail upload compatibility not validated",
+        "Other Saver/source workflows remain incomplete"
+      ]
+    },
+    {
+      "id": "saver-personal-settings-navigation",
+      "status": "completed",
+      "source": "saver/cantarella/settings.py reviewed settings/caption/thumbnail navigation",
+      "implemented": [
+        "Leech Upload settings callback displays actual shared caption/thumbnail status and available mutation commands",
+        "Personal settings only rendered for private caller identity, never group callbacks",
+        "Unavailable DB reports unknown state instead of defaults; cached-state warning retained",
+        "Existing group /settings command and callback namespaces preserved; no upstream standalone settings handler imported"
+      ],
+      "validation": [
+        "5 focused home/thumbnail tests passed",
+        "New router regression verifies shared state, hidden caption/file references, group refusal and DB outage state",
+        "Full disposable PostgreSQL suite: 1507 passed, no skips, 15.73 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Saver dump-chat forwarding and broader source workflows not implemented",
+        "No live Telegram validation or deployment"
+      ]
+    },
+    {
+      "id": "saver-media-rule-persistence-confirmation",
+      "status": "completed",
+      "implemented": [
+        "Existing Saver-derived delete/replacement rule commands reject disconnected database before cache mutation",
+        "Success requires positive shared database flush result; zero/exception returns sanitized unconfirmed cached-state warning",
+        "Existing permission checks, literal bounded rules and transformation pipeline retained"
+      ],
+      "validation": [
+        "Two regressions cover offline refusal, confirmed real transform, zero flush and sanitized raised exception",
+        "Full disposable PostgreSQL suite: 1509 passed, no skips, 15.52 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Cache may retain unconfirmed write; warning explicit, transactional cache rollback not implemented",
+        "Broader repo workflows and live validation remain pending"
+      ]
+    },
+    {
+      "id": "legacy-attachment-persistence-alignment",
+      "status": "completed",
+      "implemented": [
+        "Legacy renamer setthumb/delthumb/setcaption now require confirmed DB flush when DB exists",
+        "Offline DB refuses before mutation; failed writes report unconfirmed cached state",
+        "Legacy caption validation now counts UTF-16 units like Saver adapter and Telegram"
+      ],
+      "validation": [
+        "Actual command regression covers astral caption limit, offline refusal, zero flush, confirmed caption write and thumbnail deletion",
+        "Full disposable PostgreSQL suite: 1510 passed, no skips, 15.94 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Shared cache can contain unconfirmed writes; explicitly reported",
+        "Live Telegram verification and broader upstream workflows remain pending"
+      ]
+    },
+    {
+      "id": "leech-complete-response-validation",
+      "status": "completed",
+      "implemented": [
+        "Reject unsolicited partial/ranged HTTP responses and non-200 final responses before writing",
+        "Reject empty downloaded files before Telegram delivery; normal nonempty chunked downloads retained",
+        "Existing redirect validation, SSRF checks, byte limits and failure cleanup unchanged"
+      ],
+      "validation": [
+        "23 offline download tests passed including eight new response/empty/chunked cases",
+        "Full disposable PostgreSQL suite: 1518 passed, no skips, 17.33 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No range-resume support; partial responses deliberately refused",
+        "Broader upstream integrations and live provider validation pending"
+      ]
+    },
+    {
+      "id": "encoder-module-job-inspection",
+      "status": "completed",
+      "source": "Encoder/VideoEncoder/plugins/queue.py reviewed per-task inspection workflow",
+      "implemented": [
+        "Existing private /jobs now supports module filtering such as encoder/leech",
+        "Reuses shared queue; no upstream global queue or conflicting Music /queue registration",
+        "Filter applied only to caller-owned records; input bounded to lowercase module identifier"
+      ],
+      "validation": [
+        "34 core/bot tests passed",
+        "New actual-queue regression covers filter, foreign isolation, malformed/oversized args and empty result",
+        "Full disposable PostgreSQL suite: 1519 passed, no skips, 17.12 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Not full upstream paginated queue browser parity",
+        "Live Telegram verification and remaining mapped workflows pending"
+      ]
+    },
+    {
+      "id": "full-meiko-suite-managed-clone",
+      "status": "completed",
+      "implemented": [
+        "New guided Full Meiko suite template installs FileStore, Encoder, Linkshare, Leech, Post maker, mandatory Group Management, Music and AI Agent in one existing AgentBot worker",
+        "Consent-first Music session collection followed by clone-owned AI key/model, log channel and mandatory archive-channel permission verification",
+        "Manager credential validation and settings injection now use membership in reviewed selections, supporting combined Music/AI without parent credential inheritance",
+        "Mixed suite still requires a connected Music assistant at startup; unavailable plugin or disconnected voice fails honestly",
+        "Existing singleton and five-tool suite selection preserved; full suite store round-trip, encrypted secrets and panel labels retained"
+      ],
+      "validation": [
+        "Guided combined setup test checks consent, ordered credential steps, required archive, encrypted storage round-trip and draft secret wiping",
+        "Missing assistant/key/model each rejected; unreadiness refuses before secret request; disconnected mixed-suite voice never marked running",
+        "Real AgentBot build test registers all eight identities with mandatory group core and no recursive clone module; voice capability detection mocked explicitly",
+        "Disposable PostgreSQL actual AgentBot start/restart test validates tenant data hydration, held/released worker leases and isolated credentials; Telegram/voice transports stubbed",
+        "Full disposable PostgreSQL suite: 1526 passed, no skips, 21.20 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Full suite means combined installed Meiko workflows, NOT full parity with all seven source repositories",
+        "Arbitrary plugin multiselect not implemented; explicit reviewed bundle only",
+        "No live Telegram/voice/provider verification; no deployment or merge",
+        "Group optional plugin cap, approval/activation and premium requirements unchanged"
+      ]
+    },
+    {
+      "id": "guided-suite-profile-replacement-confirmation",
+      "status": "completed",
+      "implemented": [
+        "Changing a guided clone (including Full Meiko suite) to legacy profile first shows explicit feature/credential-loss confirmation",
+        "Keep-current action and initial selection leave stored suite and secrets unchanged",
+        "Confirmed replacement still rechecks ownership/premium and existing validated profile whitelist",
+        "Legacy-to-legacy behavior retained; no secret values rendered; owned files/token/channel records not removed"
+      ],
+      "validation": [
+        "27 focused clone tests passed",
+        "Two new regressions confirm no initial mutation, cancellation preservation, explicit replacement and premium refusal",
+        "Full disposable PostgreSQL suite: 1528 passed, no skips, 20.96 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No live Telegram validation/deployment",
+        "Remaining full-source workflows and broader integration backlog pending"
+      ]
+    },
+    {
+      "id": "linkshare-required-channel-integration",
+      "status": "completed",
+      "source": "Linkshare/plugins/start.py @ 265f2acbe720571e7c514cd32eea600292656fe2 membership-before-delivery workflow reviewed; independently adapted, no unlicensed source copied",
+      "implemented": [
+        "/linkchannel private Owner configuration: inspect policy, set verified channel, or explicitly disable",
+        "Configuration verifies selected Telegram chat is a channel and both Owner and bot are admins; bounds channel IDs and requires positive DB flush",
+        "Policy stored in existing tenant-scoped PostgreSQL documents; no standalone client/store or schema migration",
+        "Actual link redemption checks required membership before atomic use consumption and file delivery",
+        "API errors, disconnected storage, malformed policy, departed/banned members fail closed; no Owner membership bypass",
+        "Menu/help and private command registry updated; existing archive-range behavior explicitly unaffected"
+      ],
+      "validation": [
+        "Actual deep-link router test confirms denied recipient spends no use and member proceeds to existing delivery",
+        "Membership status matrix includes restricted is_member, banned and departed accounts",
+        "Owner boundary/channel verification, failed persistence cached-policy restoration, sanitized API error and malformed-policy regressions",
+        "Full disposable PostgreSQL suite: 1538 passed, no skips, 21.07 seconds",
+        "compileall, Pyflakes and diff checks passed after removing unused test import"
+      ],
+      "remaining": [
+        "Single required channel only; multi-channel and join-request approval modes not yet integrated",
+        "No auto-created invite links or live Telegram permission validation",
+        "Broader upstream parity incomplete; no deployment or merge"
+      ]
+    },
+    {
+      "id": "linkshare-multiple-required-channels",
+      "status": "completed",
+      "implemented": [
+        "/linkchannel accepts 1\u20135 unique channels and verifies all before replacing policy",
+        "Recipient must be confirmed in every required channel; only missing/unverified channel IDs shown",
+        "Legacy single-channel documents supported with no migration; off explicitly clears channel list",
+        "Malformed persisted lists and API errors fail closed before consume; all permissions retained"
+      ],
+      "validation": [
+        "11 subscription tests passed",
+        "Regression covers multi-channel save, partial membership refusal, all-members success, rejected reconfiguration preservation and off",
+        "Full disposable PostgreSQL suite: 1539 passed, no skips, 22.52 seconds",
+        "Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Join-request mode and automatic invite generation pending",
+        "Live Telegram checks and broader source integration remain incomplete"
+      ]
+    },
+    {
+      "id": "linkshare-actionable-bounded-join-screen",
+      "status": "completed",
+      "implemented": [
+        "Missing-membership screen offers join buttons only for Telegram-confirmed matching public channels and strictly validated usernames",
+        "Private/inaccessible channels retain Owner-invite guidance; no invite creation or unverified external URL",
+        "Membership checks run concurrently over max five channels with individual five-second timeouts; public metadata lookups similarly bounded",
+        "Configuration channel/admin verification calls also time out; failure remains before use consumption"
+      ],
+      "validation": [
+        "13 subscription tests passed",
+        "Two new regressions verify safe public buttons, invalid/mismatched channel suppression and stalled API fail-closed timeout",
+        "Full disposable PostgreSQL suite: 1541 passed, no skips, 21.44 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No join-request acceptance mode or automatic private invites",
+        "Live Telegram and broader upstream integration pending"
+      ]
+    },
+    {
+      "id": "music-saved-playlist-preview",
+      "status": "completed",
+      "implemented": [
+        "Existing /playlist name preview reads existing bounded metadata inspector without queue or playback mutation",
+        "Retains admin, owner/group/tenant scope and PostgreSQL capability gating",
+        "No URL resolution, raw source display or duplicate storage; track titles escaped by shared table renderer",
+        "Retired /playlistinfo name remains absent after full suite caught retired-surface guard during implementation"
+      ],
+      "validation": [
+        "New actual handler regression confirms admin refusal, owner-scoped metadata request, no store.load/save or queue mutation, escaping and missing-list message",
+        "Full disposable PostgreSQL suite: 1542 passed, no skips, 21.69 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No live Telegram/voice validation",
+        "Broader source workflows and full parity remain incomplete"
+      ]
+    },
+    {
+      "id": "videl-upcoming-only-explicit-snapshot",
+      "status": "completed",
+      "source": "Previously reviewed music/Videl0/videl/core/queue.py upcoming-only recovery semantics independently adapted",
+      "implemented": [
+        "/saveplaylist name upcoming snapshots only waiting metadata, excluding interrupted current track",
+        "Existing PostgreSQL playlist storage, public stable source validation, 20-track limit and tenant/group/owner scope reused",
+        "No auto-replay or duplicate persistence system; preview and fresh-playback append workflows retained",
+        "Saved screen identifies current+upcoming versus upcoming-only selection"
+      ],
+      "validation": [
+        "Handler regression confirms current excluded, waiting order retained, requester IDs omitted, queue unchanged and legacy full save retained",
+        "Full disposable PostgreSQL suite: 1543 passed, no skips, 22.61 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Explicit snapshot only; not automatic crash recovery/full Videl parity",
+        "Existing stable-URL-only restriction retained; transient stream URLs and local media cannot be persisted",
+        "Live Telegram/voice and remaining source integrations pending"
+      ]
+    },
+    {
+      "id": "playlist-live-restore-boundary",
+      "status": "completed",
+      "implemented": [
+        "Playlist append rechecks queue identity, original current-track identity and engine playback after awaited source validation and access gate",
+        "Changed/disconnected playback returns explicit no-addition error instead of mutating detached queue or falsely reporting queued tracks",
+        "Existing chat serialization, whole-list capacity and fresh-playback-only behavior retained"
+      ],
+      "validation": [
+        "Three new regressions simulate dropped queue, replaced current track and engine disconnection during load validation",
+        "Full disposable PostgreSQL suite: 1546 passed, no skips, 15.64 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No automatic recovery or live voice validation",
+        "Broader source-integration backlog remains incomplete"
+      ]
+    },
+    {
+      "id": "typetube-youtube-audio-download",
+      "status": "completed",
+      "source": {
+        "url": "https://github.com/playeon/typetube",
+        "reviewed_revision": "b970886f351d92277371edcc4aff94744981001e",
+        "npm": "typetube@1.1.4",
+        "license": "MIT; licenses/typetube-MIT.txt"
+      },
+      "implemented": [
+        "Canonical YouTube watch/shorts/live/youtu.be links route through public TypeTube SDK resolution inside actual Leech/mirror jobs",
+        "Node helper takes bounded input via stdin, emits allowlisted metadata only; no keys inherited or private endpoint configured",
+        "Python restricts returned stream to HTTPS googlevideo.com subdomains with shared public-address validation; existing Meiko downloader owns size limits, redirects, progress, delivery and cleanup",
+        "Resolution timeout/cancellation kills helper; source tokens omitted from job labels and user notices",
+        "Pinned npm lockfile, ignored node_modules, MIT notice, usage documentation and Docker build-stage wiring included",
+        "Existing clone Leech/File suite/Full suite use same runtime handlers"
+      ],
+      "validation": [
+        "npm dependency installation with lifecycle scripts disabled succeeded; node --check bridge passed",
+        "Eight tests cover canonicalization, rejected inputs, returned host validation, cancelled subprocess kill and actual job-to-delivery cleanup with mocked transports",
+        "Full disposable PostgreSQL suite: 1554 passed, no skips, 15.08 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Live TypeTube/YouTube requests blocked by workspace host allowlist; no live download verified",
+        "Dockerfile updated but image build not executed",
+        "Audio only; SDK parallel downloader, video muxing, search, playlist expansion, URL refresh and Music play integration not implemented",
+        "No deployment or merge"
+      ]
+    },
+    {
+      "id": "typetube-music-source-integration",
+      "status": "completed",
+      "implemented": [
+        "Music play/playnext YouTube video URLs use shared pinned TypeTube audio resolver instead of attempting to stream a webpage",
+        "Existing direct public URL and replied Telegram media paths retained",
+        "Existing voice capability, group admin playnext, per-chat serialization and queue admission protections unchanged",
+        "Track title uses provider title without filename extension; signed URL not displayed in queue acknowledgement"
+      ],
+      "validation": [
+        "Two actual Music-handler regressions cover shared resolver canonical request, engine play, playnext enqueue, resolver failure without playback and unchanged direct URL behavior",
+        "Full disposable PostgreSQL suite: 1556 passed, no skips, 16.18 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "TypeTube public cluster/YouTube/live voice cannot be tested under workspace network allowlist",
+        "Signed URLs may expire in waiting queue; automatic re-resolution not yet implemented",
+        "Saved stable-URL playlists still reject ephemeral TypeTube sources; no misleading persistence claim",
+        "Docker image build and deployment not performed"
+      ]
+    },
+    {
+      "id": "typetube-playback-time-queue-refresh",
+      "status": "completed",
+      "implemented": [
+        "Music Track stores optional canonical YouTube origin in memory, not provider query tokens as origin",
+        "Queue advance resolves fresh TypeTube stream before engine.play; successful playback updates source only after engine accepts it",
+        "Resolution/playback failure restores original current/waiting state; access gate rechecked after refresh",
+        "Removed raw source URL from existing Music play-start log to avoid signed CDN token exposure"
+      ],
+      "validation": [
+        "Actual handler regression covers queued origin, failed refresh with preserved playback, retry using fresh URL and no leaked provider error",
+        "INFO-level logging regression confirms initial TypeTube playback logs no signed source or token",
+        "Full disposable PostgreSQL suite: 1558 passed, no skips, 15.62 seconds",
+        "compileall, Pyflakes and diff checks passed before final test/docs additions; final checks rerun"
+      ],
+      "remaining": [
+        "No live TypeTube or voice validation under workspace network restrictions",
+        "No mid-stream reconnect/resume or replay/seek URL refresh",
+        "Saved playlist source restrictions unchanged; broader repo parity still incomplete",
+        "No deployment, merge or destructive cleanup"
+      ]
+    },
+    {
+      "id": "typetube-replay-refresh-and-prepush-validation",
+      "status": "completed",
+      "implemented": [
+        "Replay control uses shared Music replay callback to resolve a fresh TypeTube source before replacing current playback",
+        "Failed provider refresh does not call engine.play or overwrite current source; group access/current playback identity rechecked after awaited refresh",
+        "Direct/non-YouTube replay behavior retained; no new standalone workers or schedulers"
+      ],
+      "validation": [
+        "24 focused Music/TypeTube tests passed",
+        "New replay test confirms provider failure preserves exact playback object and retry uses fresh stream",
+        "Full disposable PostgreSQL suite: 1559 passed, no skips, 15.42 seconds",
+        "compileall, Pyflakes, node --check and git diff --check passed",
+        "Candidate push scan: 238 changed/new files, zero disallowed runtime/credential paths, zero files over 5MB",
+        "PR #2 verified OPEN on arena/3b91f811-agent"
+      ],
+      "remaining": [
+        "Pre-existing deleted README/docs intentionally excluded from commit pending explicit exact deletion approval",
+        "Docker unavailable; image build untested",
+        "Live TypeTube, Telegram, voice and paid AI provider validation not performed",
+        "Remaining mapped repo workflows still incomplete; tests are not proof of upstream parity",
+        "Requested branch push handled separately; no merge or deployment"
+      ]
+    },
+    {
+      "id": "remote-history-and-missrose-docs-reconciliation",
+      "status": "completed",
+      "implemented": [
+        "Fetched current remote branch and reconciled overlapping historical commits with tested cumulative implementation, preserving both histories; no force-push",
+        "Preserved README and 37 architecture/reference documents rather than accepting historical deletions; old deletion state safely retained in named stash and intentionally not reapplied",
+        "Added docs/MISS_ROSE_STATUS.md with source audit paths, honest feature-group counts, current product boundaries and pending work",
+        "README and group architecture document now point to current audits and label older checkpoints as historical; no retired commands reintroduced"
+      ],
+      "validation": [
+        "Rose audit rerun: 50 reviewed pages, 31 feature groups; 18 partial, 11 not implemented, one reference-only, one implemented with differences",
+        "Full disposable PostgreSQL suite after reconciliation: 1559 passed, no skips, 16.25 seconds",
+        "compileall, Pyflakes and Node bridge syntax checks passed"
+      ],
+      "remaining": [
+        "Miss Rose source not re-fetched; host not in workspace allowlist",
+        "Docker build/live Telegram/voice/TypeTube/provider validation pending",
+        "Rose and all supplied reference feature parity remain incomplete",
+        "No production deployment or PR merge; normal branch push follows history reconciliation"
+      ]
+    },
+    {
+      "id": "rose-typed-content-locks-runtime",
+      "status": "completed",
+      "source": "https://missrose.org/docs/anti-spam/locks/ fetched and read this turn",
+      "implemented": [
+        "Deleted unwanted docs/MISS_ROSE_STATUS.md and removed its README/architecture-document additions; no replacement Markdown created",
+        "Actual lock/unlock/locks/locktypes commands integrated into mandatory moderation and clone group core",
+        "Sixteen explicitly supported native content types, multiple types per request and supported-types-only all; unsupported syntax refused before changes",
+        "Actual message watcher enforces matching locks before blocklists; Telegram admins exempt; bot delete permission checked",
+        "Existing tenant/group ChatStore reused with awaited DB flush, same-process mutation/read serialization and failed-write cache restoration; no schema migration"
+      ],
+      "validation": [
+        "Tests cover admin refusal, multi-type add/remove, unknown type atomic refusal, zero flush/offline refusal, all behavior, group isolation, native media deletion, admin exemption, deletion failure and precedence",
+        "Actual disposable PostgreSQL test verifies persisted settings hydrate into another store with same tenant and do not cross clone/group scopes",
+        "Full disposable PostgreSQL suite: 1563 passed, no skips, 15.27 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Partial Rose locks only: additional types, allowlists, lock warnings/custom actions and approved-user semantics not implemented",
+        "No new enforcement action-claim/audit SQL tables; multi-process revision transactions not implemented",
+        "No live Telegram deletion validation; no deployment or PR merge"
+      ]
+    },
+    {
+      "id": "rose-entity-forward-sticker-locks",
+      "status": "completed",
+      "source": "Previously fetched https://missrose.org/docs/anti-spam/locks/ actual lock-type definitions",
+      "implemented": [
+        "Extended actual content locks from 16 to 26 supported types",
+        "URL covers Telegram URL and hidden TEXT_LINK entities; email/phone/spoiler/cashtag/custom emoji/command use explicit Telegram entities in text or captions",
+        "Forward detection supports legacy forwarding fields and forward_origin; animated/premium sticker subtypes use Telegram metadata",
+        "No broad regex/text heuristics for URL/email/phone; admin exemption, confirmed settings persistence and locks-before-blocklists retained"
+      ],
+      "validation": [
+        "Entity-kind matrix checks text/caption metadata and unrelated entity nonmatches",
+        "Forward/sticker subtype tests reject unrelated reply/static/nonpremium messages",
+        "Actual watcher test deletes hidden-link caption before blocklist handler",
+        "Full disposable PostgreSQL suite: 1566 passed, no skips, 15.77 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Invite links, allowlists, lock warnings/custom modes and other Rose event types pending",
+        "No live Telegram validation or production deployment",
+        "No new Markdown files created"
+      ]
+    },
+    {
+      "id": "rose-url-lock-domain-allowlists",
+      "status": "completed",
+      "source": "https://missrose.org/docs/anti-spam/locks/ chunk 1 read this turn: allowlist/rmallowlist/rmallowlistall",
+      "implemented": [
+        "Actual /allowlist view/add, /rmallowlist batch removal and group-owner-confirmed /rmallowlistall",
+        "Bounded 50-domain per-group policy with 20-domain edit batches; IDNA/domain validation rejects paths, IPs, credentials and unsupported allowlist kinds",
+        "Every Telegram URL or hidden-link entity in text/caption must match domain boundary; UTF-16 offsets decoded correctly",
+        "Allowed URL does not exempt other locked content or suppress blocklists; existing storage confirmation and same-process lock retained"
+      ],
+      "validation": [
+        "Tests cover lookalike hosts, mixed allowed/disallowed links, credentials/malformed ports, hidden links, astral emoji offsets, batch rejection, actual watcher photo-vs-url precedence and owner-confirmed clear",
+        "Full disposable PostgreSQL suite: 1569 passed, no skips, 15.67 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Path-specific domains, invite/inline/sticker/emoji/forward allowlist kinds not implemented",
+        "Warn/custom lock modes and live Telegram validation pending",
+        "No new Markdown files, no deployment or PR merge"
+      ]
+    },
+    {
+      "id": "rose-link-button-and-forward-subtype-locks",
+      "status": "completed",
+      "source": "https://missrose.org/docs/anti-spam/locks/ main section reread this turn",
+      "implemented": [
+        "Thirty supported types after button/forwarduser/forwardbot/forwardchannel additions",
+        "URL-button lock detects actual inline-keyboard URLs, not callback_data buttons",
+        "Shared URL/domain validation exempts button lock only when every button URL matches allowed domain; mixed links still blocked",
+        "Forward subtype detection uses legacy fields and actual Wzgram MessageOrigin API; hidden users not guessed to be bots"
+      ],
+      "validation": [
+        "Metadata tests distinguish bot/user/channel/hidden sender and reject unrelated replies/group origins",
+        "Actual enforcement test covers callback-only buttons, allowed public link buttons and mixed unapproved link deletion",
+        "Full disposable PostgreSQL suite: 1571 passed, no skips, 15.51 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Lock warning/custom-mode actions, invite handling and other allowlist kinds pending",
+        "No live Telegram or production validation; no new Markdown files"
+      ]
+    },
+    {
+      "id": "videl1-style-plugin-workspaces",
+      "status": "completed",
+      "source": "Reviewed https://github.com/Beasgohan-code/Videl1 VidelBot/core/menus.py @ ac16395e5c4054e8db74f0684a99a0ca7104fdd1: feature-specific rich help/setup navigation. Independently adapted; no unlicensed source copied.",
+      "implemented": [
+        "Existing group /plugins panel now offers per-tool About/setup workspace cards with actual runtime, approval, active slot, command scope and registered-command data",
+        "Feature guidance for Music, FileStore, Encoder, Leech, Linkshare, Post maker and AI Agent uses existing installed workflows; no unsupported buttons or provider-health claims",
+        "Contextual activation only when available, approved and under slot cap; disable remains available for active revoked/unavailable tools",
+        "Refresh and back navigation reuse live service.status and actual presser authorization; unknown/unapproved info routes refused",
+        "Repeated unchanged screen edits now answer successfully rather than report false failure; hub instructions shortened",
+        "Existing native rich message renderer reused; no parallel UI framework, Markdown docs or standalone bots added"
+      ],
+      "validation": [
+        "10 focused group-plugin-panel tests passed",
+        "Two new router regressions cover workspace state/commands, no side effects, back/activate callbacks, unchanged refresh, revocation and runtime-down disable",
+        "Full disposable PostgreSQL suite: 1573 passed, no skips, 15.66 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Not complete Videl1 functionality or copied visual parity",
+        "No live Telegram rendering/provider connectivity verified; private Owner runtime panel unchanged",
+        "Remaining plugin feature integrations still tracked separately; no deployment or PR merge"
+      ]
+    },
+    {
+      "id": "owner-runtime-plugin-workspaces",
+      "status": "completed",
+      "implemented": [
+        "Owner /plugins keeps native rich Plugin runtime screen and now opens feature workspaces instead of toggling on browse",
+        "Per-plugin workspace displays actual runtime state, scope, registered commands, manifest description and setup guidance without secrets or fabricated connectivity",
+        "Disabling through new UI requires confirmation that handlers detach across all chats; describes approval/slots/jobs separately",
+        "Explicit on/off callbacks replace toggle inversion so stale on requests cannot switch an enabled plugin off",
+        "Legacy bare-slug callbacks safely browse details; Owner-only authorization precedes all reads/controls; protected plugins remain locked",
+        "Refresh/back navigation tolerates Telegram MessageNotModified without false failure"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL: 1574 passed, no skips, 16.44 seconds",
+        "Regression coverage includes readonly browsing, confirmation, actual disable/enable, repeated on, unchanged refresh/home and rejection of every nonowner control",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "No live Telegram visual/provider validation",
+        "Not full Videl1 feature parity; plugin service integrations still tracked separately",
+        "Approval/revocation still uses existing transactional text commands; no deployment or merge"
+      ]
+    },
+    {
+      "id": "clone-premium-test-guidance-and-panel-errors",
+      "status": "completed",
+      "implemented": [
+        "Nonpremium /clone explains sender ID and exact Owner one-day premium grant, bot-local entitlement and missing module/runtime diagnosis",
+        "/mybots state-read/render failure gets sanitized clone-specific unavailable response without changing clones or blaming Premium; #Errors logged"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL suite 1576 passed, no skips, 16.17 seconds",
+        "Regression tests cover exact grant guidance and safe storage-failure response",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Live reported /mybots cause unknown without deployment logs; no production access or deployment performed",
+        "Premium is not in DEFAULT_PLUGINS; operator must include premium in explicit deployment selection and enable it before using its commands",
+        "No subscription granted in production; existing Owner-only grant authority preserved"
+      ]
+    },
+    {
+      "id": "persisted-disabled-runtime-reactivation",
+      "status": "completed",
+      "implemented": [
+        "Found shared startup bug affecting all selected optional plugins: persisted-off plugins had neither command nor extra handlers tracked, so enable could never reattach them",
+        "Startup now constructs/tracks handlers before applying persisted-off state, excludes dormant handlers from initial client attach, preserves watcher group numbers and supports real later enable",
+        "Owner workspace displays executable handler counts and hides futile runtime activation for modules with zero handlers",
+        "Callback and text no-op messages now distinguish already on/off from unavailable with manifest-reported blockers (including AI key/model and music capability reasons)",
+        "Existing Videl1-inspired feature workspace retained; no fabricated healthy states or authority bypasses"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL 1578 passed, no skips, 15.68 seconds before final text-message wording alignment",
+        "Focused runtime/Owner panel suite after text-message alignment: 35 passed",
+        "Regression rebuilds persisted-off FileStore and verifies actual handler attachments on enable, no duplicates on repeated enable, AI missing config diagnostics",
+        "compileall and Pyflakes passed; diff check passed"
+      ],
+      "remaining": [
+        "No production deployment or actual live plugin connectivity tested",
+        "Failed-build or unselected modules still require deployment configuration/restart; switches cannot install them",
+        "Not complete audit or behavioral parity of every Videl1 plugin; optional provider and service integrations remain separately tracked"
+      ]
+    },
+    {
+      "id": "runtime-save-failure-and-premium-validation",
+      "status": "completed",
+      "implemented": [
+        "Runtime enable/disable attempts settings save before changing handler attachments or registry; synchronous save failures restore prior disabled-set memory",
+        "Premium add rejects malformed/negative/non-ASCII/out-of-range day counts and extra arguments instead of silently granting default/capped duration",
+        "Premium user parsing rejects invalid explicit IDs without falling back to replied user; accepts only positive signed-bigint-range user IDs; reply IDs validated too"
+      ],
+      "validation": [
+        "50 focused Premium/runtime tests passed",
+        "10 new parametrized regressions cover enable/disable save failures and invalid Premium arguments",
+        "Full disposable PostgreSQL suite: 1588 passed, no skips, 16.49 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Not an all-bugs-fixed claim; production logs and live Telegram/provider verification still needed",
+        "Runtime PostgreSQL save still queues a legacy write, not confirmed durable commit",
+        "Partial Telegram handler attachment/removal failures and cross-process runtime changes still need reconciliation; this change only guards synchronous settings-save failure",
+        "No deployment, Premium grants, migrations or PR merge performed"
+      ]
+    },
+    {
+      "id": "premium-default-plan-options",
+      "status": "completed",
+      "implemented": [
+        "Premium now included in DEFAULT_PLUGINS so default installation registers /premium, /addpremium and real entitlement controls",
+        "Native /premium options for compare plans, refresh own plan and activation guidance; no fabricated payment/trial workflows",
+        "Activation screen identifies actual user; configured Owner gets exact one-day self-test grant command; ordinary callers get safe grant instructions",
+        "Callback reads use actual presser and require their private chat; browsing never grants Premium"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL suite 1589 passed, no skips, 16.87 seconds",
+        "Callback regression verifies Owner guidance, no implicit grant, and foreign-chat rejection",
+        "Default-build expectation updated; compileall/Pyflakes passed; whitespace warning corrected and diff check rerun"
+      ],
+      "remaining": [
+        "Custom explicit PLUGINS selections must still include premium; existing persisted disabled state is preserved",
+        "No payment checkout/trial/gift backend parity with Videl1 claimed",
+        "No live deployment, subscription grant or merge performed; running bot must be updated with authorization"
+      ]
+    },
+    {
+      "id": "runtime-partial-operation-compensation",
+      "status": "completed",
+      "implemented": [
+        "Runtime no longer swallows synchronous handler removal failures and claims successful disable",
+        "Enable/disable compensate completed synchronous handler operations in reverse order on failure and attempt to restore saved disabled state; registry changes only after operation loop succeeds",
+        "Failed compensation/settings restoration logs #Errors requiring reconciliation rather than success",
+        "Owner callbacks and text runtime commands handle RuntimeError with sanitized actionable errors, not leaked backend details"
+      ],
+      "validation": [
+        "1593 tests passed with disposable PostgreSQL, no skips, 15.85 seconds",
+        "New tests exercise enable/disable partial failure rollback, persisted settings restoration, no success notification, rollback failure logging and sanitized callback handling",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Pyrogram handler API may schedule actual dispatcher work asynchronously; synchronous rollback is not dispatcher acknowledgement",
+        "A failing handler call may itself have partial effects; compensation only covers calls that returned successfully",
+        "PostgreSQL runtime settings remain legacy queued writes, not distributed transactional state",
+        "No live Telegram/provider validation, deployment, migrations or PR merge; not an all-bugs-fixed claim"
+      ]
+    },
+    {
+      "id": "typetube-subprocess-environment-isolation",
+      "status": "completed",
+      "implemented": [
+        "Continued real Music/Leech shared TypeTube source adapter: helper environment now explicit PATH and LANG only, excludes inherited bot/session/database/provider/proxy variables and Node preload options",
+        "Helper runs from bridge directory; no private TAP keys inherited",
+        "Malformed URL/port input raises safe LinkError and credential-bearing YouTube URLs refused",
+        "Process spawn failures sanitized through existing resolver error boundary; cleanup tolerates ProcessLookupError exit race",
+        "Corrected Premium plan/pitch claims to acknowledge Premium-only clone creation/starts for all roles"
+      ],
+      "validation": [
+        "45 focused TypeTube/Music/Premium tests passed",
+        "Full disposable PostgreSQL suite 1597 passed, no skips, 17.25 seconds",
+        "Four new regression cases cover malformed/credential URL inputs, minimal subprocess environment and sanitized spawn failure",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Environment isolation is not OS sandboxing: helper still runs under bot OS user; no claim of filesystem isolation",
+        "No live TypeTube provider/Telegram upload/voice verification or deployment",
+        "Pending broader workflows remain separately tracked; no all-bugs-fixed or full upstream parity claim"
+      ]
+    },
+    {
+      "id": "rose-script-and-current-message-locks",
+      "status": "completed",
+      "source": "https://missrose.org/docs/anti-spam/locks/ reread this turn",
+      "implemented": [
+        "Six new lock types: cjk/cyrillic/rtl/externalreply/forwardstory/checklist; 36 supported types total",
+        "Unicode character-name checks for CJK families and Cyrillic, Unicode bidi classes for RTL including directional override/isolate characters; text and captions supported",
+        "Uses installed Wzgram Message.external_reply/story/checklist fields, checked actual constructor before implementation",
+        "Same persisted locks, all/unlock semantics, group admin checks and admin exemption; no new commands or competing watchers"
+      ],
+      "validation": [
+        "Focused tests: 14 passed, 1 PostgreSQL test skipped without test DB; authoritative full run below had no skips",
+        "Full disposable PostgreSQL suite: 1600 passed, no skips, 15.87 seconds",
+        "New regression tests cover mixed scripts/captions, supplementary CJK, halfwidth Japanese, Malayalam/Latin negative cases, native metadata distinction and real command/enforcement/admin exemption path",
+        "compileall/Pyflakes/diff checks passed"
+      ],
+      "remaining": [
+        "Unicode-name script classification is explicit local behavior, not exact Rose script implementation parity",
+        "Invite/bot links, channel identities, warning/custom modes and additional allowlist kinds still pending",
+        "No live Telegram validation/deployment or PR merge"
+      ]
+    },
+    {
+      "id": "rose-explicit-private-invite-lock",
+      "status": "completed",
+      "implemented": [
+        "Added invitelink lock for explicit private t.me/telegram.me/telegram.dog +hash or joinchat/hash forms and tg://join?invite= links; 37 supported lock types with invitelink explicitly partial",
+        "Shared safe URL-entity extraction handles UTF-16 offsets/hidden text and captions; invite detector also checks inline URL buttons",
+        "Domain allowlisting does not bypass invitelink; independent URL/button exemption boundaries preserved",
+        "Lock screen explains private-invite scope; public username links are not guessed to be groups"
+      ],
+      "validation": [
+        "17 focused lock tests passed; standalone PostgreSQL test skipped without test DB",
+        "Authoritative full disposable PostgreSQL: 1603 passed, no skips, 16.37 seconds",
+        "Tests cover private invite variants, lookalikes, public username negatives, credentials/malformed port, hidden captions, astral offsets, buttons and real URL-allowlist-versus-invite enforcement",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Public usernames require safe chat identity resolution; no full Rose invitelink parity claim",
+        "No invite-specific allowlist, URL-encoded invite normalization or live Telegram validation",
+        "Other lock modes/events and broader integrations remain separately pending; no deployment or merge"
+      ]
+    },
+    {
+      "id": "startup-announcement-and-optional-service-deadlines",
+      "status": "completed",
+      "trigger": "User reports bot stopped/no startup notification after 084d7bd; exact production cause not established",
+      "inspected": [
+        "084d7bd changes: Premium default selection and plan callbacks; optional module build failures are caught by existing build loop",
+        "Main startup path: required PostgreSQL loading, token lease, Telegram handshake, voice start, clone restore, start event, command publishing"
+      ],
+      "implemented": [
+        "Primary Telegram handshake now records health success and emits start before optional voice/clone initialization",
+        "Voice start and clone restore each bounded to 30 seconds; exceptions/timeouts logged and do not abort main controller",
+        "Extracted optional-service startup for direct cancellation/failure regressions"
+      ],
+      "validation": [
+        "20 focused startup/bot tests passed",
+        "Full disposable PostgreSQL suite 1605 passed, no skips, 16.13 seconds",
+        "Regression stalls both optional services, verifies timeout cancellation and continued return; voice failure still permits clone restore",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "No production startup logs yet: exact reported root cause unresolved; missing #Start alone is not proof of dead process",
+        "Required database/lease/Telegram connection failures still correctly prevent unsafe startup; no bypasses introduced",
+        "No live network/deployment validation, migrations, automatic rollback or PR merge performed"
+      ]
+    },
+    {
+      "id": "named-required-startup-deadlines",
+      "status": "completed",
+      "implemented": [
+        "Named startup phases logged and included in health details: database connect/load, log destination, handler build, token lease, Telegram connect, optional services, menu sync, running",
+        "Required network stages database connect/load, log destination hydration and Telegram handshake have 90-second deadlines",
+        "Required-stage errors record sanitized phase and exception type; database-unusable fatal reason no longer copies raw backend error",
+        "Shutdown cancellation propagates; required state/lease safety unchanged"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL suite 1607 passed, no skips, 15.90 seconds",
+        "New regressions verify timeout names, sanitized raised exceptions, cancellation and false-return semantics",
+        "Two existing startup test doubles updated to bind real new helper methods; initial full run exposed these fixture mismatches and rerun passed",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Reported live outage after 084d7bd still needs hosting logs; exact cause not reproduced",
+        "No claim of production restart or fix verification; no deployment, migrations, lease bypass or merge",
+        "Synchronous module/store build and menu sync are separate stages; not every operation has a deadline"
+      ]
+    },
+    {
+      "id": "startup-cancellation-cleanup-scope",
+      "status": "completed",
+      "implemented": [
+        "Expanded main client cleanup try/finally to include Telegram start, optional services, command menu sync and watchdog initialization, rather than only final stop-event wait",
+        "Telegram disconnect/service cleanup now runs on cancellation or errors in post-connection startup before outer lease release",
+        "Monitoring tasks cancelled/drained with gather(return_exceptions=True), so failed monitoring does not skip client cleanup"
+      ],
+      "validation": [
+        "Regression invokes real AgentBot._run with injected startup cancellation and command-menu failure after successful simulated Telegram handshake; verifies service cleanup and heartbeat cancellation",
+        "Full disposable PostgreSQL: 1608 passed, no skips, 16.49 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Live outage cause after 084d7bd still unknown without hosting startup logs",
+        "Cleanup service calls may still need individual deadlines; no live Telegram or hosting deployment performed",
+        "No token lease bypass, rollback, schema changes or merge performed"
+      ]
+    },
+    {
+      "id": "optional-shutdown-service-deadlines",
+      "status": "completed",
+      "implemented": [
+        "Voice, clone, verification, job and storage shutdown each get a five-second cooperative timeout so an optional cleanup stall does not prevent attempting primary Telegram disconnect",
+        "Shared sanitized #Errors cleanup logging reports service label and exception class, not raw credential-bearing errors",
+        "Primary client stop and exclusive token lease behavior not bypassed"
+      ],
+      "validation": [
+        "28 focused startup/deploy/clone cleanup tests passed",
+        "Regression stalls voice, clone and job cleanup, injects verifier exception with fake secrets and verifies cancellation, later storage cleanup, stop event and primary disconnect attempt",
+        "Full disposable PostgreSQL suite: 1609 passed, no skips, 17.46 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Timeouts depend on coroutine cancellation cooperation; synchronous blocking or cancellation-suppressing services still require process-level supervision",
+        "Timed-out optional cleanup does not prove all optional resources stopped",
+        "Primary Telegram stop is intentionally not skipped to force faster lease release; database/lease cleanup and cancelled background tasks may need further investigation",
+        "Live reported outage root cause remains unknown without hosting logs; no deployment/merge performed"
+      ]
+    },
+    {
+      "id": "database-failed-startup-pool-disposal",
+      "status": "completed",
+      "implemented": [
+        "PostgreSQL initialization failure after pool creation terminates owned failed pool instead of dropping/leaking reference",
+        "Cancellation during schema setup also disposes owned pool and propagates CancelledError",
+        "Connection startup errors store/log exception class instead of raw backend message that might contain credentials",
+        "Repeated connect on a usable pool returns true without creating another pool"
+      ],
+      "validation": [
+        "25 focused database/startup tests passed",
+        "Parametrized schema-error/cancellation tests verify pool termination, disconnected state, safe logs, successful retry and no duplicate pool on repeated connect",
+        "Full disposable PostgreSQL suite 1611 passed, no skips, 16.02 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "No production schema changes executed; normal existing application schema setup is unchanged",
+        "Cancellation inside driver pool construction before return remains driver-managed",
+        "Exact user-reported outage cause requires hosting startup log; no deployment, production connection or merge performed"
+      ]
+    },
+    {
+      "id": "document-writer-cancellation-and-write-order",
+      "status": "completed",
+      "implemented": [
+        "Background writer and explicit document flush now share serialized queue draining, preventing older in-flight writes from finishing after newer explicit flushes",
+        "Cancelled flush requeues unconfirmed batch using setdefault so newer pending values win",
+        "Database.close first cancels/drains writer, then flushes recovered pending batch before pool close",
+        "Document flush logs only exception class, avoiding raw backend secret disclosure"
+      ],
+      "validation": [
+        "21 focused database tests passed",
+        "New deterministic regressions cancel in-flight writer during close, verify recovered unrelated data and newer same-key value, and verify concurrent flush commit order",
+        "Full disposable PostgreSQL suite 1613 passed, no skips, 16.00 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Legacy document writes still best-effort queued, not cross-process revisions; ambiguous transaction acknowledgement can be retried",
+        "Final flush failure retains pending in memory but does not guarantee durability after process exit",
+        "No live deployment/startup logs received; reported outage cause still unknown; no production schema migration or merge performed"
+      ]
+    },
+    {
+      "id": "queued-document-snapshot-isolation",
+      "status": "completed",
+      "implemented": [
+        "Database.save stores independent deep copies for cache and pending batch, preventing caller/cache nested mutations from changing queued writes without explicit save",
+        "Synchronous save looks up running event loop before constructing drain coroutine, avoiding unawaited-coroutine warning while preserving pending queue"
+      ],
+      "validation": [
+        "23 focused database tests passed",
+        "Two new regressions verify nested caller/cache isolation, later explicit save updates, and synchronous queueing without never-awaited coroutine warnings",
+        "Full disposable PostgreSQL suite 1615 passed, no skips, 17.28 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Snapshot copying increases CPU/memory proportional to legacy document size; normalized transactional records remain preferred for authority",
+        "No full cross-process document revision or durable acknowledgement added",
+        "Live startup incident still unconfirmed without hosting logs; no deployment, migration or PR merge performed"
+      ]
+    },
+    {
+      "id": "telegram-startup-floodwait-cooldown",
+      "status": "completed",
+      "trigger": "User hosting log confirms FloodWait during telegram-connect, then wrapped RuntimeError and secondary BotStopped post failure because client never started",
+      "implemented": [
+        "Required-step wrapper preserves FloodWait for Telegram connector instead of converting it to fatal RuntimeError",
+        "Main Telegram connector logs requested delay, waits requested seconds plus one-second margin in-process and retries only after cooldown",
+        "Cooldown outside per-attempt handshake deadline; exclusive token lease heartbeat continues; stop/lease-loss event interrupts wait and prevents retry",
+        "Tracks successful main Telegram startup; suppresses stop event/log-channel notification when never started, avoiding observed secondary client-not-started error"
+      ],
+      "validation": [
+        "9 focused startup tests passed",
+        "New regressions verify FloodWait(5) schedules six-second delay before second handshake, stop event cancels FloodWait(600) without retry, and never-connected cleanup emits no false stop event",
+        "Full disposable PostgreSQL suite 1618 passed, no skips, 17.04 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "No production deployment or recovery claim; live cooldown duration was absent from supplied older wrapped log",
+        "Cooldown is process-local; forced restarts do not preserve its remaining duration; operator should avoid repeated restart/deploy loops",
+        "Telegram can issue another FloodWait or reject invalid credentials independently; no rate-limit bypass or token changes introduced"
+      ]
+    },
+    {
+      "id": "durable-telegram-startup-cooldown",
+      "status": "completed",
+      "implemented": [
+        "Awaited PostgreSQL cooldown record in existing bot-scoped agent_documents table; stores only retry_at, not credentials or session material",
+        "Main startup loads cooldown after token lease acquisition and waits before Telegram handshake; new FloodWait deadline saved before sleep/retry",
+        "Uses PostgreSQL clock for persisted deadlines and remaining time; upsert never shortens an existing longer cooldown",
+        "Cooldown SQL failures pass through named required-startup error boundary rather than allowing an early retry; stop event interrupts restored wait",
+        "No schema migration, parent credential inheritance or production connection added"
+      ],
+      "validation": [
+        "11 focused startup tests passed",
+        "New regression confirms restored wait prevents connection on stop and newly requested cooldown is persisted before waiting",
+        "Real disposable PostgreSQL regression verifies new controller reads deadline, shorter extension cannot shorten it, separate scopes isolated and expired deadlines return zero",
+        "Full disposable PostgreSQL suite 1621 passed, no skips, 15.94 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "No production deployment/recovery verification; Telegram may impose further waits",
+        "A Telegram wait received before a failed persistence attempt cannot be durably recorded; startup fails safely and operator must avoid forced restart loops",
+        "Broader Rose/plugin integrations remain separately tracked; not all tasks complete"
+      ]
+    },
+    {
+      "id": "telegram-handshake-stop-and-lease-loss-race",
+      "status": "completed",
+      "implemented": [
+        "Main Telegram handshake raced against shared stop event so shutdown or token lease loss cancels in-flight cooperative connection instead of waiting for full handshake timeout",
+        "Stop takes precedence over same-tick successful handshake; no false started flag or start announcement for late success",
+        "Connection/stop wait tasks always cancelled and drained before leaving attempt; FloodWait still reaches durable cooldown handling when not stopped"
+      ],
+      "validation": [
+        "12 focused startup tests passed",
+        "New regression covers blocked handshake cancelled by stop and same-tick late success, asserting task cleanup, single attempt, no successful-start flag and no fatal misclassification",
+        "Full disposable PostgreSQL suite 1622 passed, no skips, 15.96 seconds",
+        "compileall, Pyflakes, diff checks passed"
+      ],
+      "remaining": [
+        "Cancellation requires client coroutine cooperation; outer service cleanup still disconnects partial clients",
+        "No live Telegram or deployment verification; main confirmed FloodWait fix still requires authorized running-code update",
+        "Broader plugin/Rose feature work remains separately pending; no merge or migration performed"
+      ]
+    },
+    {
+      "id": "background-document-writer-recovery-retry",
+      "status": "completed",
+      "implemented": [
+        "Failed background document flush keeps retry ownership rather than sleeping once then abandoning pending writes",
+        "Exponential retry delay from one second capped at 30 seconds, reset after successful flush; new saves while backing off coalesce safely into pending batch",
+        "Workspace restored from base history with accumulated files; fetched current remote and verified every tracked blob matches workspace except two intentional edits before mixed fast-forward history alignment; no working-file resets or force push"
+      ],
+      "validation": [
+        "24 focused database tests passed",
+        "Regression fails first background write, saves newer same-key and separate-key settings during backoff, then verifies automatic successful retry without further saves",
+        "Initial full PostgreSQL run: 1622 passed, one missing-Telethon skip; installed test dependency and reran",
+        "Authoritative disposable PostgreSQL suite: 1623 passed, no skips, 17.37 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Permanent database outages still leave pending data in memory; no durability guarantee across process kill",
+        "Retries do not add cross-process revision semantics",
+        "No production deployment, credential changes, migrations or PR merge"
+      ]
+    },
+    {
+      "id": "audit-p0-clone-rolling-restart-budget",
+      "status": "completed",
+      "trigger": "User supplied static audit at aacc70a; reliability audit prioritized over feature expansion",
+      "verified_findings": [
+        "Confirmed WorkerState attempts reset at RUNNING and old supervisor reused it, allowing repeated successful reconnects to evade retry cap",
+        "Confirmed lifecycle.backoff existed but was unused in retry scheduling",
+        "Encryption claim qualified: clone command/setup reject absent encryption; PostgreSQL CloneStore._atomic rejects absent TOKEN_KEY, while SecretBox/local legacy writes can still be plaintext",
+        "Clone normalization and durable lifecycle diagnostics are separate future migration tasks; no production migration authorized"
+      ],
+      "implemented": [
+        "Separate automatic restart history uses monotonic timestamps, rolling one-hour window and max_attempts budget; success never clears history",
+        "First automatic recovery attempt immediate; following attempts gated by existing 15/30/60-second exponential backoff capped at ten minutes",
+        "Shared budget applied to disconnected-client and pending authority/startup recovery paths; exhausted circuit leaves worker stopped",
+        "Existing premium/ownership/disabled-record/authority checks preserved"
+      ],
+      "validation": [
+        "New regression repeatedly disconnects a successfully reconnecting worker; lifecycle attempts return to zero but restart budget still exhausts",
+        "Existing failed-recovery tests updated with deterministic clock advancement instead of assuming immediate retries",
+        "Full disposable PostgreSQL suite 1624 passed, no skips, 17.98 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Rolling restart history is process-local, not persistent; controller restart resets budget. Durable diagnostics/circuit state require separate awaited scoped storage work",
+        "Startup failure counters and runtime events still need durable, separately classified history",
+        "No exhaustive line-by-line audit claim; encryption legacy/local paths, archive recovery, plugin cleanup/capabilities and migration framework remain pending",
+        "No deployment, production data rewrite, schema migration or PR merge"
+      ]
+    },
+    {
+      "id": "durable-clone-restart-admission",
+      "status": "completed",
+      "implemented": [
+        "Automatic retry admission uses awaited tenant/bot-specific PostgreSQL history in existing agent_documents; no table/schema migration",
+        "Advisory transaction lock and SELECT FOR UPDATE serialize reservation across controllers; database clock supplies rolling-window time; success does not erase reservation history",
+        "Main clone boot restore also consults budget so restarting controller cannot bypass circuit; waiting recovery queues without starting, exhausted recovery remains stopped",
+        "Missing/corrupt restart authority defers retries rather than authorizing them; rejects non-finite stored history values",
+        "Local standalone compatibility retains monotonic in-memory budget; production database budget survives manager recreation"
+      ],
+      "validation": [
+        "Real PostgreSQL concurrency regression: one immediate reservation across three contenders, new service instances share cooldown/cap, tenant and bot isolation",
+        "Boot restore regression checks exhausted circuit and waiting recovery queue",
+        "Full disposable PostgreSQL suite 1626 passed, no skips, 19.88 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Durable history records automatic admission timestamps, not full classified startup/runtime error diagnostics; operational UI and separate failure history pending",
+        "Manual premium-authorized start is explicit operator action and not an automatic retry; other ownership/lease checks unchanged",
+        "Legacy/local plaintext and controlled migration/key rotation review remain separate; no production record rewrite performed",
+        "No production deployment, schema migration or PR merge"
+      ]
+    },
+    {
+      "id": "durable-classified-clone-diagnostics",
+      "status": "completed",
+      "implemented": [
+        "Clone manager records successful starts, startup failure exception categories and observed runtime disconnects in separate bot/tenant-scoped PostgreSQL diagnostic history",
+        "Awaits writes under advisory transaction lock, retains newest 50 events and timestamps using database clock",
+        "Diagnostic records separate from restart admission budget; only enum event names/class categories, no raw exception/token/session text",
+        "Manager limits diagnostic write wait to five seconds and logs unconfirmed diagnostics without changing retry authorization or preventing cleanup"
+      ],
+      "validation": [
+        "Real PostgreSQL regression checks event retention cap, classified ordering, allowed field set, rejected credential-like category and independence from restart admission",
+        "Full disposable PostgreSQL suite 1627 passed, no skips, 18.02 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Operator UI/history retrieval remains pending; this is backend diagnostic persistence, not complete recovery dashboard",
+        "Startup failure diagnostics cover worker initialization exception boundary, not every earlier authority denial/cancellation; no full audit log completeness claim",
+        "Legacy encryption, archive recovery and wider audit remain separate pending tasks; no feature expansion",
+        "No production deployment, migration, record rewrite or PR merge"
+      ]
+    },
+    {
+      "id": "refuse-plaintext-clone-credential-writes",
+      "status": "completed",
+      "implemented": [
+        "SecretBox.encrypt refuses nonempty secret writes without key; legacy plaintext decrypt compatibility remains read-only",
+        "CloneStore serializer independently requires enabled encryption for bot token writes; removed plaintext token output branch",
+        "Unkeyed local legacy reads no longer trigger failed automatic rewrite; file remains untouched on read",
+        "Failed local add/update/remove preserves store contents; update/remove cache restoration added",
+        "Legitimate writing tests use explicit deterministic test-only keys; no production TOKEN_KEY/token changes"
+      ],
+      "validation": [
+        "Regression validates missing-key SecretBox rejection, legacy-read compatibility, new store write refusal, unchanged legacy file and mutation cache rollback",
+        "Full disposable PostgreSQL suite 1628 passed, no skips, 17.16 seconds",
+        "compileall/Pyflakes/diff checks passed before final explanatory error wording edit; static checks rerun after"
+      ],
+      "remaining": [
+        "Existing keyed-local automatic legacy rewrite is pre-existing behavior and still requires controlled migration/key-rotation design; no production migration executed",
+        "No general OS secret sandboxing or comprehensive encryption audit claim",
+        "Durable archive recovery, plugin cleanup/authority audit and diagnostics retrieval remain pending",
+        "No deployment, production data rewrite, schema migration or PR merge"
+      ]
+    },
+    {
+      "id": "managed-local-archive-recovery",
+      "status": "completed",
+      "implemented": [
+        "Main and clone controller start managed archive recovery after Telegram connects",
+        "Single recovery task retries local-only index records in batches of 20 every 60 seconds, sharing existing per-file lock and two-upload semaphore",
+        "Round-robin cursor prevents permanently failing early files starving later files; no duplicate recovery loop",
+        "Shutdown cancels recovery and upload tasks; missing bytes are skipped, never marked archived",
+        "Upload path refuses symlinks and resolved paths outside vault files directory; failures log no raw upload exception"
+      ],
+      "validation": [
+        "Regressions simulate store reload/interrupted upload recovery, transient failure retry, missing bytes, duplicate start and shutdown drain",
+        "Batch-size-one regression confirms later uploads progress despite earlier permanent failure",
+        "Symlink regression confirms no uploader call",
+        "Full disposable PostgreSQL suite 1631 passed, no skips, 19.25 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Recovery depends on surviving local bytes; cannot recreate lost ephemeral-disk files without completed remote copy",
+        "Remote file_id index save still uses legacy queued persistence; transactional durable archive acknowledgement/state machine and quota reservations pending",
+        "Path checks mitigate ordinary unsafe paths/symlinks, not adversarial same-user filesystem TOCTOU replacement",
+        "No live archive upload, production deployment, migrations or PR merge"
+      ]
+    },
+    {
+      "id": "ui-command-catalogue-scope-and-menu-consistency",
+      "status": "completed",
+      "implemented": [
+        "Built-in start/help/ping remain private-only and are now published private-only, matching actual handlers rather than misleading group menu",
+        "Canonical home/help callback catalogue includes registered active commands plus three built-ins; welcome count/help shortcut no longer exclude them",
+        "Overflow Telegram native menus curate cross-feature entry points within 100-command cap; full active help remains available",
+        "Removed duplicate module-callback activity update and repeated active-set conversion within workspace-row loop",
+        "Existing README FileStore rows corrected: no restored fsave/files/del registration; check/get/custom_batch reflect runtime"
+      ],
+      "validation": [
+        "Full disposable PostgreSQL 1633 passed, no skips, 20.50 seconds",
+        "Menu regressions verify overflow entry points, deduplication, actual built-in published scopes and UI-visible catalogue",
+        "Existing truncation tests updated to check curated subset/cap rather than old first-100 order",
+        "compileall/Pyflakes/diff checks passed"
+      ],
+      "remaining": [
+        "UI_PREVIEW.md historical snapshots still need regeneration; no new Markdown status reports added",
+        "Lazy module imports, command-cache invalidation and measured latency remain unimplemented; no performance benchmark claims",
+        "User newly requested AI automatic chat; scope/opt-in trigger confirmation pending, no ordinary conversations auto-uploaded",
+        "No web dashboard, deployment, migration or PR merge"
+      ]
+    },
+    {
+      "id": "opt-in-ai-private-and-group-directed-autochat",
+      "status": "completed",
+      "authorization": "User selected Both: opt-in private auto-chat plus group mention/reply-triggered responses",
+      "implemented": [
+        "Configured AI Agent registers /autochat on|off|status alongside /ask; settings default off",
+        "Private mode restricts configuration to sender own private chat; group mode requires live owner/administrator status",
+        "Native text watcher registered through existing AgentBot extra_handlers and plugin gate; existing Owner approval/group activation/three-slot authority still applies",
+        "Group triggers require current bot username mention boundary or reply to bot ID; only current text becomes question, never replied message/history",
+        "Bot/service/sender-chat/forward/inline sources and command-prefixed text ignored; existing ask credential checks, 2000-character bound, ten-second user cooldown and two-request concurrency reused",
+        "Existing native cards disclose provider transmission and off command; help/menu/plugin workspace guidance updated"
+      ],
+      "validation": [
+        "New tests cover default-off, private opt-in/off, disclosure, credentials, command exclusion, rate limit, group mention and reply prompts, unrelated group text, nonadmin denial and actual PluginGate approval refusal",
+        "Parametrized privacy regressions ignore forwarded/service/channel/inline/bot sources",
+        "Full disposable PostgreSQL suite 1641 passed, no skips, 18.20 seconds",
+        "compileall, Pyflakes and diff checks passed"
+      ],
+      "remaining": [
+        "Stateless replies only: no conversation memory, media input, autonomous moderation or tools",
+        "Configuration uses existing ChatStore persistence and legacy flush acknowledgement; no cross-process setting revision mechanism added",
+        "No live paid provider or Telegram verification performed; configured provider may charge for opt-in triggering messages",
+        "Existing UI preview regeneration and wider security/reliability audit remain pending; no deployment or PR merge"
+      ]
+    },
+    {
+      "id": "refresh-existing-ui-preview-and-ai-usage-docs",
+      "status": "completed",
+      "implemented": [
+        "Updated existing README to describe default-off private/group-directed auto-chat, administrator control, provider charges and unavailable configuration",
+        "Replaced stale UI_PREVIEW examples with reproducible current screen-builder output from an explicitly small offline fixture; no fabricated live registry count",
+        "Added offline renderer and regression ensuring existing preview remains synchronized; native runtime message rendering unchanged"
+      ],
+      "validation": [
+        "89 focused UI/menu/AI tests passed",
+        "compileall, Pyflakes and diff checks passed",
+        "No network, provider, Telegram or production storage calls made by preview tool"
+      ],
+      "remaining": [
+        "No full-suite rerun for this documentation/tool-only follow-up; preceding runtime commit full PostgreSQL suite had 1641 passes",
+        "Wider reliability audit, measured latency and production verification remain pending",
+        "No deployment, migration or PR merge"
+      ]
+    },
+    {
+      "id": "ai-richgram-streaming-answer-drafts",
+      "status": "completed",
+      "implemented": [
+        "Uses installed Richgram rich_thinking and Wzgram InputRichMessage/send_rich_message_draft APIs for ephemeral generation status and answer previews",
+        "Provider SSE enabled for draft-capable requests; bounded 64KiB parser handles chunk/UTF8 boundaries and requires DONE before successful completion",
+        "Only public content deltas emitted; reasoning/tool events never rendered; escaped bounded preview",
+        "Per-request draft IDs, topic propagation and 1.5-second throttle; plain send_message_draft for clients without rich draft API",
+        "Draft rejection disables progress for that request without provider retries; final delivery retains existing rich/classic reply path",
+        "Auto-chat proxy preserves original client/message/topic context so final rich replies retain normal reply identity"
+      ],
+      "validation": [
+        "Six offline streaming tests cover SSE/public-content boundary, truncated/oversize streams, escaped thinking drafts, throttle/topic identity, plain drafts, provider SSE flag and final-only fallback",
+        "Full disposable PostgreSQL suite: 1648 passed, no skips, 18.56 seconds",
+        "compileall, Pyflakes and diff checks passed before final documentation update"
+      ],
+      "remaining": [
+        "No Telegram or live paid-provider verification; draft support depends on Telegram/client capabilities",
+        "Drafts are ephemeral and can expire on cancellation; no stop button or generation-stop handler advertised",
+        "No streaming of unrelated static screens or fabricated tool/model reasoning",
+        "No deployment, migration or PR merge"
+      ]
+    },
+    {
+      "id": "plugin-platform-rework-architecture-audit",
+      "status": "in_progress",
+      "scope": "Phase 1 initial catalogue/clone-selection architecture map; not completion of all nine phases or exhaustive reference review",
+      "architecture_map": {
+        "implemented": [
+          "PluginManifest and PluginRegistry own static metadata, command collision validation and runtime registration (agent/platform/manifest.py)",
+          "PluginRuntime tracks handler attachment and persisted disable state; protected shell and group core cannot be disabled through runtime controls",
+          "PluginAccess separately persists tenant approval and group activation with PostgreSQL locking and three optional slots; revoke removes activations and marks resource cleanup pending",
+          "CloneStore persists selected_plugins plus encrypted clone credentials; manager builds individual AgentBot instances with clone database scope/data directory, lease and startup cleanup",
+          "Premium authority uses relational PostgreSQL entitlement operations; clone ordinary start/setup use entitlement checks without intended Owner/sudo exemption",
+          "External installer load explicitly refuses third-party execution; AST/digest inspection is not sandboxing"
+        ],
+        "ui_or_limited_representation": [
+          "Clone template selection offers individual plugins and two fixed suites, not arbitrary editable multi-select",
+          "mybots profile screen replaces guided selection with a legacy profile; not an individual-plugin transaction manager",
+          "Plugin registration counts prove registration, not group approval, credential health or running worker health"
+        ],
+        "incomplete": [
+          "Manifest lacks typed dependency/conflict/credential/resource/clone-compatibility fields and separate installation/upgrade lifecycle",
+          "No shared dependency resolver: clone manager checks selected tuple against finite SUPPORTED_SELECTIONS plus ad hoc AI/music requirements",
+          "Clone transitions lack pending/applied/failed plugin-revision workflow and restart recovery",
+          "Renamer and utilities exist as builtin modules but are absent from guided template catalogue; compatibility must be verified before offering",
+          "Workers are in-process clients, not security-isolated processes; full persistent worker metrics and configurable inactivity policies require separate work",
+          "Custom emoji currently uses boolean USE_PREMIUM_EMOJI and Theme toggles; full automatic/enabled/disabled centralized context capability is not implemented"
+        ],
+        "reuse": [
+          "Existing AgentBot module selection, immutable manifests, mandatory GROUP_CORE, typed Clone record and selected_plugins storage",
+          "Existing PluginAccess authority, PluginGate job cancellation and reconciliation, clone supervisor restart budget/leases",
+          "Existing guided token/channel checks and credential-specific music consent/AI setup; preserve token-control wording",
+          "Existing native rich panels, callback namespaces, encryption and Premium authority tests"
+        ],
+        "redesign": [
+          "Catalogue should expose independent available/installed/verified/runtime/global/group/clone dimensions rather than one enabled flag",
+          "Resolve a canonical plugin set with dependency closure and conflict/config/credential validation at selection and worker start; legacy profiles must remain readable",
+          "Replace fixed final suites with editable presets; collect only selection-required secrets and revalidate at atomic creation",
+          "Use per-clone desired/applied configuration revisions and recoverable transitions before adding plugin toggles; do not mutate main registry or other clones",
+          "Separate installation records from static manifests; do not claim inspections are verified safe executable plugins"
+        ]
+      },
+      "reference_review": {
+        "repository": "Beasgohan-code/Videl1",
+        "observed_head": "6a00a55f6ad013c85e14c39a9b06922c1bb6f08c",
+        "inspected_paths": [
+          "VidelBot/core/plugin_manager.py",
+          "VidelBot/filestore/main_bot/plugins/create_bot.py",
+          "VidelBot/filestore/worker_bot/engine.py",
+          "VidelBot/filestore/database/worker_db.py",
+          "VidelBot/filestore/main_bot/plugins/clone_lifecycle.py"
+        ],
+        "observations": [
+          "Manifest/dependency/config checks and tracked handler lifecycle provide design reference, not code copied",
+          "Worker engine activity middleware and inactivity warning/suspension lifecycle are useful reference concepts; retain Agent PostgreSQL and tenant isolation"
+        ],
+        "limitations": [
+          "Initial structural inspection only; remaining relevant source bodies and previously supplied repositories still need detailed review",
+          "Upstream root licensing remains unresolved; no upstream source imported or executed"
+        ]
+      },
+      "validation": [
+        "Focused PostgreSQL-backed baseline: 128 passed, no skips, 1.30 seconds (plugins, clone integration/setup/Premium, atomic clones, PostgreSQL access, installer, entitlement authority)",
+        "No runtime implementation changes in this audit slice; no newly implemented behavior claimed"
+      ],
+      "next": [
+        "Finish targeted source/test/schema/reference audit before runtime edits",
+        "Write failing dependency/conflict/canonical-selection regression tests before adding resolver and richer manifest fields",
+        "Then wire resolver into existing startup and selection without new commands; wizard and transactional clone editing follow as separate coherent changes"
+      ],
+      "restrictions": [
+        "No new status Markdown",
+        "No deployment, environment change, destructive migration, user-data deletion or PR merge"
+      ]
+    },
+    {
+      "id": "plugin-platform-source-schema-reference-audit-and-red-contracts",
+      "status": "audit_complete_for_requested_catalogue_selection_slice_implementation_not_started",
+      "audited_agent_commit": "c237631439c1b203f812c2a73cf6ccc7c3dd4230",
+      "scope_note": "Finishes source/schema/Videl1 review for the requested selection and lifecycle boundaries, not a security certification of every upstream repository or proof that the nine-phase rework exists. No production code modified.",
+      "selected_plugins_literal_read_write_inventory": [
+        {
+          "source": "agent/modules/clone/__init__.py:L128",
+          "expression": "selection_label(clone.selected_plugins) if clone.selected_plugins else profiles.label(clone.profile),"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L187",
+          "expression": "current = None if clone.selected_plugins else profiles.clean(clone.profile)"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L188",
+          "expression": "active_label = selection_label(clone.selected_plugins) if clone.selected_plugins else profiles.label(current)"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L189",
+          "expression": "active_size = \"guided selection + group core\" if clone.selected_plugins else profiles.summary(current, ctx.settings)"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L477",
+          "expression": "if target.selected_plugins and action == \"p\":"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L479",
+          "expression": "table=kv_table([(\"Current features\", selection_label(target.selected_plugins)),"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L488",
+          "expression": "await store.aupdate(target.bot_id, profile=extra, selected_plugins=(), ai_api_key=None, ai_model=None, assistant_session=None)"
+        },
+        {
+          "source": "agent/modules/clone/__init__.py:L550",
+          "expression": "features = selection_label(target.selected_plugins) if target.selected_plugins else profiles.describe(target.profile)"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L73",
+          "expression": "if clone.selected_plugins and clone.selected_plugins not in SUPPORTED_SELECTIONS:"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L75",
+          "expression": "if \"ai_agent\" in clone.selected_plugins and (not clone.ai_api_key or not clone.ai_model):"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L77",
+          "expression": "if \"music\" in clone.selected_plugins:"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L97",
+          "expression": "session_string=clone.assistant_session if \"music\" in clone.selected_plugins else None,"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L98",
+          "expression": "ai_api_key=clone.ai_api_key if \"ai_agent\" in clone.selected_plugins else None,"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L99",
+          "expression": "ai_model=clone.ai_model if \"ai_agent\" in clone.selected_plugins else None,"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L105",
+          "expression": "plugins=tuple(name for name in clone.selected_plugins if name in ALLOWED_PLUGINS)"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L106",
+          "expression": "if clone.selected_plugins else profiles.plugins_for(clone.profile, self._settings),"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L139",
+          "expression": "return \"custom\" if clone and clone.selected_plugins else profiles.clean(getattr(clone, \"profile\", None))"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L204",
+          "expression": "if registry is not None and clone.selected_plugins:"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L207",
+          "expression": "or not registry.is_enabled(slug) for slug in clone.selected_plugins):"
+        },
+        {
+          "source": "agent/modules/clone/manager.py:L232",
+          "expression": "if \"music\" in clone.selected_plugins and (voice is None or not voice.connected):"
+        },
+        {
+          "source": "agent/modules/clone/setup.py:L390",
+          "expression": "username=state.username, assistant_session=state.assistant_session or None, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=TEMPLATE_PLUGINS[state.template], managed_owner=True,"
+        },
+        {
+          "source": "agent/modules/clone/store.py:L70",
+          "expression": "selected_plugins: tuple[str, ...] = ()"
+        },
+        {
+          "source": "agent/modules/clone/store.py:L172",
+          "expression": "selected_plugins=tuple(entry.get(\"selected_plugins\") or ()),"
+        },
+        {
+          "source": "agent/modules/clone/store.py:L275",
+          "expression": "\"selected_plugins\","
+        }
+      ],
+      "selection_flow": [
+        {
+          "finding": "Clone dataclass field defaults to empty tuple. as_json uses dataclasses.asdict; _payload encrypts secrets but leaves selected_plugins in the serialized record; JSON converts tuple to list; _decode restores tuple without semantic selection validation.",
+          "sources": [
+            "agent/modules/clone/store.py:L55-L93",
+            "agent/modules/clone/store.py:L124-L204"
+          ]
+        },
+        {
+          "finding": "Guided setup chooses TEMPLATES action, not editable arbitrary set. On confirmation, getMe and channel permissions are rechecked then TEMPLATE_PLUGINS is copied into Clone and aadd awaited. Failed/cancelled initial startup attempts aremove; this compensating deletion is not one transaction with startup. A kill between persistence/start/compensation can leave an incomplete record.",
+          "sources": [
+            "agent/modules/clone/catalog.py:L3-L44",
+            "agent/modules/clone/setup.py:L301-L413"
+          ]
+        },
+        {
+          "finding": "settings_for rejects nonempty tuples absent from SUPPORTED_SELECTIONS, so ordering and duplicates can reject semantically equivalent sets. Empty means legacy profile, not explicit custom selection with zero optionals. Music checks structural session and PostgreSQL; AI checks nonempty key/model, not setup syntax. Credential validity must not be equated with remote authorization.",
+          "sources": [
+            "agent/modules/clone/manager.py:L66-L106",
+            "agent/modules/clone/profiles.py:L35-L66"
+          ]
+        },
+        {
+          "finding": "Startup refreshes authoritative record, derives own settings, builds and checks each selected plugin registered commands/enabled. start, restart, restore and automatic recovery reuse settings_for. Profile display is custom when tuple nonempty. Supervisor compares token/owner but not selected plugins/config revision on connected workers.",
+          "sources": [
+            "agent/modules/clone/manager.py:L133-L144",
+            "agent/modules/clone/manager.py:L160-L265",
+            "agent/modules/clone/manager.py:L328-L330",
+            "agent/modules/clone/manager.py:L365-L499"
+          ]
+        },
+        {
+          "finding": "mybots/list/detail consume selected_plugins for labels. Confirmed legacy profile replacement clears tuple and AI/music credentials before restart; failure does not roll back configuration. Delete stops then removes entire registry record, including tuple; no clone data-directory or tenant document purge in these handlers.",
+          "sources": [
+            "agent/modules/clone/__init__.py:L107-L139",
+            "agent/modules/clone/__init__.py:L185-L237",
+            "agent/modules/clone/__init__.py:L405-L425",
+            "agent/modules/clone/__init__.py:L462-L507",
+            "agent/modules/clone/__init__.py:L550-L599"
+          ]
+        },
+        {
+          "finding": "Generic mutation entry points: aupdate permits selected_plugins and secret fields; update sets any existing attribute locally and persists with rollback on save error. These do not invoke a dependency resolver. Runtime enable/disable operates a worker registry, not Clone.selected_plugins.",
+          "sources": [
+            "agent/modules/clone/store.py:L216-L332",
+            "agent/modules/clone/store.py:L371-L411",
+            "agent/platform/runtime.py:L119-L177"
+          ]
+        }
+      ],
+      "manifest_inventory": [
+        {
+          "slug": "ops",
+          "source": "agent/modules/ops/__init__.py:L38",
+          "scope": "all",
+          "permissions": [
+            "process.control",
+            "plugins.manage",
+            "files.write"
+          ],
+          "config_schema": {},
+          "gaps": "Process control, file IO and plugin management; metadata is descriptive, not OS capability enforcement."
+        },
+        {
+          "slug": "core",
+          "source": "agent/modules/core/__init__.py:L27",
+          "scope": "all",
+          "permissions": [
+            "messages.read"
+          ],
+          "config_schema": {},
+          "gaps": "Shell/navigation; available regardless of optional selection."
+        },
+        {
+          "slug": "ai_agent",
+          "source": "agent/modules/ai_agent/__init__.py:L50",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "network"
+          ],
+          "config_schema": {
+            "AI_API_KEY": "secret; deployment environment only",
+            "AI_MODEL": "required model id"
+          },
+          "gaps": "AI key/model are prose config_schema entries, not typed validation; network credential syntax enforced by setup but not settings_for. Provider authorization/billing unverified."
+        },
+        {
+          "slug": "clone",
+          "source": "agent/modules/clone/__init__.py:L33",
+          "scope": "private",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "process.spawn"
+          ],
+          "config_schema": {},
+          "gaps": "Token encryption key, PostgreSQL, Telegram identity/channel verification and Premium authority requirements are not manifest fields. process.spawn describes intent; workers are in-process."
+        },
+        {
+          "slug": "encoder",
+          "source": "agent/modules/encoder/__init__.py:L28",
+          "scope": "private",
+          "permissions": [
+            "messages.read",
+            "files.write",
+            "process.spawn"
+          ],
+          "config_schema": {},
+          "gaps": "ffmpeg resolution at __init__.py:64-75 and job/process/disk needs are not typed prerequisites/resource budgets."
+        },
+        {
+          "slug": "filestore",
+          "source": "agent/modules/filestore/__init__.py:L30",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "storage.read",
+            "storage.write"
+          ],
+          "config_schema": {},
+          "gaps": "Shared storage/archive channel setup requirements are not manifest requirements; local versus durable remote storage must remain distinct."
+        },
+        {
+          "slug": "filters",
+          "source": "agent/modules/filters/__init__.py:L26",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Group message watcher and shared filter store; no typed service/dependency/resource declaration."
+        },
+        {
+          "slug": "federations",
+          "source": "agent/modules/federations/__init__.py:L26",
+          "scope": "all",
+          "permissions": [],
+          "config_schema": {},
+          "gaps": "Empty permissions tuple despite federation/group operations; needs operation-level permission inventory, not a fabricated claim of no permissions."
+        },
+        {
+          "slug": "group",
+          "source": "agent/modules/group/__init__.py:L50",
+          "scope": "group",
+          "permissions": [
+            "chats.read",
+            "chats.restrict",
+            "chats.pin",
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Group administration and shared services; command scope is plugin-wide, not per-handler metadata."
+        },
+        {
+          "slug": "leech",
+          "source": "agent/modules/leech/__init__.py:L37",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "storage.write",
+            "http.outbound"
+          ],
+          "config_schema": {},
+          "gaps": "Binary resolution at __init__.py:54-64; outbound requests, subprocess paths, temporary disk and jobs not fully expressed by current permissions."
+        },
+        {
+          "slug": "linkshare",
+          "source": "agent/modules/linkshare/__init__.py:L42",
+          "scope": "private",
+          "permissions": [
+            "messages.read",
+            "storage.read",
+            "storage.write"
+          ],
+          "config_schema": {},
+          "gaps": "Storage, link-signing and delivery dependencies are implicit shared services, not necessarily other plugin dependencies."
+        },
+        {
+          "slug": "moderation",
+          "source": "agent/modules/moderation/__init__.py:L50",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.delete",
+            "chats.restrict",
+            "chats.ban"
+          ],
+          "config_schema": {},
+          "gaps": "Mandatory core with delete/restrict/ban; no typed resource/config prerequisites."
+        },
+        {
+          "slug": "music",
+          "source": "agent/modules/music/__init__.py:L40",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.send",
+            "voice.stream"
+          ],
+          "config_schema": {},
+          "gaps": "capability check at __init__.py:72, assistant session/voice libraries and PostgreSQL assistant exclusivity are not in manifest. Runtime authorization still required."
+        },
+        {
+          "slug": "postmaker",
+          "source": "agent/modules/postmaker/__init__.py:L22",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Post-template persistence and group-admin configuration prerequisites implicit."
+        },
+        {
+          "slug": "premium",
+          "source": "agent/modules/premium/__init__.py:L27",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Owner-granted PostgreSQL entitlement authority, distinct from Telegram Premium; no Stars/subscription workflow."
+        },
+        {
+          "slug": "renamer",
+          "source": "agent/modules/renamer/__init__.py:L26",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Media/file IO/process/service requirements need declaration; messages.read/send alone is not a complete operational permission description."
+        },
+        {
+          "slug": "reports",
+          "source": "agent/modules/reports/__init__.py:L32",
+          "scope": "all",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Admin report routing/storage requirements implicit."
+        },
+        {
+          "slug": "security",
+          "source": "agent/modules/security/__init__.py:L51",
+          "scope": "group",
+          "permissions": [
+            "messages.send",
+            "chats.restrict",
+            "chats.ban"
+          ],
+          "config_schema": {},
+          "gaps": "Verification/restriction work and state services implicit; permissions are not capability restrictions."
+        },
+        {
+          "slug": "utilities",
+          "source": "agent/modules/utilities/__init__.py:L19",
+          "scope": "all",
+          "permissions": [
+            "messages.read"
+          ],
+          "config_schema": {},
+          "gaps": "Group configuration paths need send/config permission inventory beyond messages.read."
+        },
+        {
+          "slug": "welcome",
+          "source": "agent/modules/welcome/__init__.py:L21",
+          "scope": "group",
+          "permissions": [
+            "messages.read",
+            "messages.send"
+          ],
+          "config_schema": {},
+          "gaps": "Join/leave watchers and shared greeting configuration services implicit."
+        }
+      ],
+      "universal_manifest_gaps": {
+        "source": "agent/platform/manifest.py:L9-L31",
+        "missing": [
+          "category",
+          "plugin dependencies/version constraints",
+          "conflicts",
+          "typed required configuration vs optional configuration",
+          "credential declarations and validators",
+          "service/binary prerequisites",
+          "resource requests/limits",
+          "clone compatibility",
+          "per-command/watcher handler scopes",
+          "capabilities distinct from descriptive permissions",
+          "installation verification and upgrade records"
+        ],
+        "notes": [
+          "All 20 builtin manifest objects inspected; only AI currently supplies nonempty config_schema. These dictionaries/permission strings are metadata, not enforcement.",
+          "No plugin conflicts should be invented between compatible shipped features. Synthetic test manifests exercise conflict handling.",
+          "Installation/upgrade state belongs in separate observed records, not mutable fields conflated with immutable source metadata."
+        ]
+      },
+      "transaction_boundaries": [
+        {
+          "source": "agent/modules/clone/store.py:L216-L327",
+          "finding": "aadd/aupdate/aremove require connected PostgreSQL when configured. Tenant db.name_for(clones) advisory transaction lock plus SELECT FOR UPDATE serializes canonical whole-document mutations; counts and duplicate checks occur inside transaction; encrypted payload upsert commits before local cache replacement. aupdate has no expected revision/CAS and can overwrite concurrent intent. Local fallback is separate and only used when no db configured."
+        },
+        {
+          "source": "agent/modules/clone/setup.py:L362-L413",
+          "finding": "_finish_lock serializes this setup instance, not all controllers. Token/channel/Premium checks and worker start are outside CloneStore transaction. aadd counts are atomic but entitlement grant/revoke and insertion do not share one lock/transaction. Revocation between final check and commit/start is a TOCTOU window; manager checks entitlement again, supervisor enforces later, not instantaneous serializable entitlement+creation."
+        },
+        {
+          "source": "agent/platform/plugin_access.py:L94-L204",
+          "finding": "Approve/history commit together. Activation checks live admin before transaction, locks approval FOR SHARE then tenant/group advisory lock, counts and inserts with history atomically. Revocation UPDATE conflicts with approval SHARE lock, deletes activations and marks resources cleanup_pending in same transaction; cleanup callback runs after commit. Deactivate serializes group deletion/resource marking then cleanup. Three-slot invariant is application lock/count, not a SQL count constraint; all writers must use service."
+        },
+        {
+          "source": "agent/platform/plugin_access.py:L19-L45; agent/platform/db.py:L71-L89,L209-L239",
+          "finding": "Catalogue/global approval, group activation/config/history/resources are tenant-keyed relational tables. Clones are encrypted JSONB in agent_documents, leases in agent_lease; no clone-plugin revision table exists. Startup runs additive CREATE IF NOT EXISTS schema statements sequentially without an enclosing all-schema migration transaction. No destructive or production schema operation performed."
+        },
+        {
+          "source": "agent/platform/entitlements.py:L11-L118; agent/platform/premium.py:L163-L199",
+          "finding": "Premium operates separate tenant advisory-lock transactions and one-time legacy import. ais_premium reads authority rather than trusting UI cache. Owner/sudo policy is explicitly Premium-only for ordinary clone starts; this does not mean grant/revoke is atomic with clone setup/start."
+        }
+      ],
+      "concurrency_failure_cleanup_review": [
+        {
+          "sources": [
+            "agent/modules/clone/manager.py:L160-L265,L267-L330",
+            "tests/test_clone_cleanup_batch.py:L18-L107"
+          ],
+          "finding": "Manager-wide asyncio lock guards startup/stop locally; database lease prevents cross-controller serving. Build/database/voice/client failures and cancellation enter cleanup/release paths. Cleanup isolates service errors but has no durable retry record for a failed disconnect/release; cancellation or blocking cooperative cleanup can still interrupt teardown. restart is separate stop/start, not one atomic config transition."
+        },
+        {
+          "sources": [
+            "agent/modules/clone/__init__.py:L462-L507",
+            "agent/modules/clone/store.py:L271-L295"
+          ],
+          "finding": "Concurrent profile confirmations are last committed write wins; restart reads canonical record but callbacks can report their requested profile, not an applied revision. No per-clone desired/applied transition state exists. Supervisor does not reconcile a changed plugin tuple on an already connected worker."
+        },
+        {
+          "sources": [
+            "agent/platform/plugin_access.py:L135-L204",
+            "agent/platform/execution.py:L30-L60,L130-L145"
+          ],
+          "finding": "New group calls check authority; known invocation tasks/jobs are cancelled on revocation. Failed cleanup hook retains _seen for two-second reconciliation retry while process survives. _seen is memory-only. Search of agent found resource schema and cleanup_pending updates but no general resource registration/drain/replay consumer: do not claim restart-durable cleanup."
+        },
+        {
+          "sources": [
+            "agent/modules/clone/manager.py:L365-L435",
+            "agent/modules/clone/__init__.py:L87-L103,L576-L599",
+            "tests/test_clone_premium_policy.py:L13-L101",
+            "tests/test_premium_authority.py"
+          ],
+          "finding": "Supervisor refreshes records and checks entitlement; confirmed revocation stops worker and marks disabled without deleting record. Authority outage stops and queues recovery rather than permanently revoking. Enforcement is periodic, not instant cancellation concurrent with grant/revoke; manager rechecks ordinary start. Stop/view/delete remain available independently of Premium."
+        },
+        {
+          "sources": [
+            "agent/modules/clone/manager.py:L85-L106",
+            "agent/platform/db.py:L174-L180",
+            "agent/platform/instance.py:L138-L217,L244-L276",
+            "tests/test_atomic_clones.py:L28-L121",
+            "tests/test_clone_recovery_pg.py:L12-L65"
+          ],
+          "finding": "Preserve clone:<bot_id> database scope, individual session/data directory, sender owner, no inherited parent AI/session/archive channels, lease heartbeat and durable restart budget. These provide namespace/lifecycle isolation, not a separate OS security boundary."
+        }
+      ],
+      "videl_comparison": [
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/core/plugin_manager.py#L158-L180",
+          "finding": "Richer manifest includes dependencies, required_env and lifecycle settings. Useful vocabulary; not evidence of a plugin dependency closure resolver."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/core/plugin_manager.py#L538-L643",
+          "finding": "set_enabled persists enabled before hook/load completes; validate_prerequisites checks required_env; dependency helper reports Python distributions. Direct importlib/exec_module execution and shared module state are unsuitable for Agent external plugins. Retain installer.load refusal."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/core/plugin_manager.py#L648-L676",
+          "finding": "Bounded shutdown hooks and tracked handler removal are useful ideas; unload logs failures and is not transactional rollback."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/worker_bot/engine.py#L40-L105",
+          "finding": "Batch boot, bot-keyed in-process clients, message/callback last-active middleware. Duplicate check lock is released before app.start and registration at lines 656-657; not a PostgreSQL lease substitute or security sandbox."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/worker_bot/engine.py#L645-L694",
+          "finding": "Per-worker startup failure handling, task cancellation and bounded disconnect; adapt scoped lifecycle concepts, not its Mongo/shared-process architecture."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/database/worker_db.py#L8-L29",
+          "finding": "Bot-prefixed Mongo collections; Agent already has tenant-scoped PostgreSQL. Keep existing scopes, do not adopt a second worker database."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/database/worker_db.py#L248-L290",
+          "finding": "Reference copy/purge helpers clear collections. Do not import these destructive operations for selection changes."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/main_bot/plugins/clone_lifecycle.py#L24-L115",
+          "finding": "Inactivity warnings then stop/deactivation preserve data; useful configurable policy concept, distinct from heartbeat or Premium expiry. Agent should not inherit reference tier exceptions or silently add auto-suspension."
+        },
+        {
+          "source": "https://github.com/Beasgohan-code/Videl1/blob/6a00a55f6ad013c85e14c39a9b06922c1bb6f08c/VidelBot/filestore/main_bot/plugins/create_bot.py#L80-L154",
+          "finding": "Token-acceptance flow is useful presentation reference; Agent must continue describing verified bot-token control, not BotFather human ownership."
+        }
+      ],
+      "proposed_smallest_slice": {
+        "name": "Pure builtin selection resolver plus pre-build credential syntax validation",
+        "steps": [
+          "Add backwards-compatible dependencies/conflicts fields to PluginManifest and a pure resolve_selection over an explicit manifest catalogue; stable topological order, dedup, unknown/missing dependencies, cycles and symmetric conflicts. No imports, installation or network calls.",
+          "Replace finite tuple-membership gate only after tests prove safe canonical selection; constrain to reviewed clone-compatible builtins. Preserve empty tuple legacy profile semantics and mandatory core injection. Do not yet add wizard buttons or new plugins.",
+          "Reuse setup key/model/session syntax validation at worker settings boundary for persisted records; distinguish syntax validation from remote authorization; no paid validation requests.",
+          "Extend red contracts with cycles, unsupported clone slugs, deterministic ordering and unchanged tenant settings; run existing clone suite and full PostgreSQL suite before claiming implementation."
+        ],
+        "out_of_scope": [
+          "wizard multi-select UI",
+          "per-clone revision transactions and compensation",
+          "cleanup replay schema",
+          "resource/process isolation",
+          "external execution",
+          "new commands",
+          "production migrations"
+        ]
+      },
+      "red_regression_evidence": {
+        "file": "tests/test_plugin_selection_contract.py",
+        "command": ".venv/bin/python -m pytest -o addopts= -q tests/test_plugin_selection_contract.py --tb=short",
+        "result": "6 failed in 0.32s, exit 1; intentional unmarked red tests, not skipped/xfail",
+        "failures": [
+          "encoder + postmaker rejected by settings_for finite SUPPORTED_SELECTIONS",
+          "dependency resolver absent",
+          "symmetric conflict resolver absent",
+          "invalid AI key accepted",
+          "invalid model id accepted",
+          "whitespace key accepted"
+        ],
+        "full_suite_command": "AGENT_TEST_DATABASE_URL=<disposable pgserver URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "full_suite_result": "6 failed, 1648 passed, no skips in 17.79s; exit 1. The six failures are exactly the new red contracts. No existing tests weakened/deleted.",
+        "database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); pass s.get_uri() as AGENT_TEST_DATABASE_URL to subprocess; finally s.cleanup()"
+      },
+      "implementation_status": "No runtime implementation in this commit; tests intentionally leave suite red until next authorized implementation slice. Audit and proposed contracts only. No deploy, production env change, PR merge or destructive migration."
+    },
+    {
+      "id": "phase2-pure-plugin-resolver-and-reviewed-clone-selection",
+      "status": "completed",
+      "starting_commit": "f0f48100ac282d97ed1071c408c41ee43b00f926",
+      "preparation": [
+        "Verified current branch and exact starting commit; inspected existing JSON audit, all 20 builtin manifest objects, original six red contracts and current creation/start/restart/restore paths",
+        "Searched /home/user to depth 4 for SKILL.md, AGENTS.md, TDD/interface guidance; no matching guidance assets available. Applied explicit red/green tests, pure interface contracts, structured errors and no-IO resolver separation",
+        "New resolver tests first failed collection because module absent; original six red tests preserved unchanged. Pure resolver green before clone integration; initial combined run had 12 passes/4 remaining clone-validation failures"
+      ],
+      "sources": {
+        "manifest": "agent/platform/manifest.py:PluginManifest, PluginRegistry.register, resolve_selection compatibility facade",
+        "pure_resolver": "agent/platform/selection.py:SelectionError, catalogue, _ordered, resolve_selection",
+        "credentials": "agent/platform/credentials.py:CredentialError, validate_ai_key, validate_ai_model",
+        "reviewed_catalogue": "agent/modules/clone/catalog.py:plan_selection, validate_selection; explicit compatibility metadata in all 20 agent/modules/*/__init__.py manifests",
+        "setup": "agent/modules/clone/setup.py:Setup.selected_plugins, CloneSetup.select_plugins, selection_keyboard, review, press create preflight/snapshot check",
+        "startup_recovery": "agent/modules/clone/manager.py:settings_for, start, restore (existing restart/restore reuse start)"
+      },
+      "implemented": [
+        "Backward-compatible dependencies/conflicts/required_credentials/required_capabilities/clone_compatible/group_compatible/premium_required/resource_requirements/default_enabled fields; clone/group compatibility default deny and explicit builtin declarations; registry respects default_enabled",
+        "Pure resolver accepts supplied manifests only; normalizes/deduplicates requests, stable lexicographic DFS dependency order, validates duplicate slugs/unknown dependency or conflict/cycles/contradictions/malformed declarations, symmetric selected conflicts, explicit clone/group compatibility, required credentials/capabilities and Premium",
+        "SelectionError(ValueError) exposes code/plugin/fields and as_dict; no credential values retained in messages. Known AI credential names share pure format validators",
+        "Reviewed clone adapter validates mandatory GROUP_CORE without charging optional slots; injected core is supplied by existing module selector, not duplicated in optional stored set",
+        "Removed finite tuple-membership gate from runtime. SUPPORTED_SELECTIONS remains compatibility metadata, not authorization. Unknown/incompatible plugins never filtered out and started partially",
+        "Existing guided presets persist canonical combinations; existing review gains edit/toggle/continue callbacks within csetup namespace, not new commands. Required secret collection and channel checks use actual selection; unused draft AI/music secrets cleared on deselection",
+        "Creation validates before aadd, rechecks entitlement immediately before persistence, detects concurrent draft changes during awaited checks; start refreshes canonical persisted record and validates before factory/lease/client construction; recovery reuses it",
+        "Shared OpenAI key/model syntax validation and existing Telethon session structural validator; no remote key/model authorization claim; secret encryption path unchanged",
+        "Existing PostgreSQL authority, Premium-only ordinary create/start policy including Owner/sudo, clone scopes/leases, tenant namespaces, group approval/activation/three-slot limit and external execution refusal preserved"
+      ],
+      "tests": {
+        "original_red_contracts": "All 6 original tests in tests/test_plugin_selection_contract.py now pass without edits to that file",
+        "new_tests": [
+          "tests/test_selection_resolver.py",
+          "tests/test_clone_selection_foundation.py"
+        ],
+        "focused_command": ".venv/bin/python -m pytest -o addopts= -q tests/test_plugin_selection_contract.py tests/test_selection_resolver.py tests/test_clone_selection_foundation.py --tb=short",
+        "focused_result": "25 passed in 0.36s",
+        "full_command": "AGENT_TEST_DATABASE_URL=<disposable pgserver URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "full_database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); subprocess environment AGENT_TEST_DATABASE_URL=s.get_uri(); finally s.cleanup()",
+        "full_result": "1673 passed, no skips, 17.39s",
+        "static_command": ".venv/bin/python -m compileall -q agent tests tools start.py && .venv/bin/python -m pyflakes agent tests tools && git diff --check",
+        "coverage": [
+          "single/arbitrary/transitive/duplicate/unknown selection, symmetric conflicts and mandatory-core conflict, cycles and catalogue validation, stable order across request permutations",
+          "missing credentials/capabilities, malformed key/model, explicit clone/group compatibility and Premium requirements, default-disabled registration",
+          "canonical encrypted persistence/readback, malformed persisted selection refused on restore before factory, no record/worker mutation on validation failure",
+          "preset editing and actual guided arbitrary-combination creation, concurrent draft mutation refusal",
+          "existing PostgreSQL activation races, Premium authority, tenant isolation, worker startup/cleanup/lease and clone recovery suites included"
+        ],
+        "existing_test_adjustments": [
+          "Replaced obsolete reject-compatible-pair/reject-duplicate selection cases with genuinely invalid unknown/ops cases; new resolver tests explicitly assert compatible combinations and dedup",
+          "Suite persistence/settings assertions now expect canonical order; no features removed from suites",
+          "AI worker test dummy keys now meet the same format validation as real setup; fake voice-engine tests explicitly mock the new dependency capability observation",
+          "Music missing-requirement assertion checks structured failure rather than obsolete PostgreSQL prose"
+        ],
+        "intermediate_failures": "Initial full integration run: 41 failed/1628 passed; exposed accidental music-connectivity enforcement on legacy empty selections plus test diagnostic-field typo. Fixed code to preserve explicit-versus-legacy semantics and test to inspect WorkerState.last_error. Subsequent final full run passed.",
+        "property_testing": "No Hypothesis dependency declared; used itertools permutations rather than introducing a dependency."
+      },
+      "examples": {
+        "compatible": [
+          "encoder + postmaker",
+          "encoder + leech",
+          "duplicate filestore requests normalize to one entry"
+        ],
+        "incompatible": [
+          "encoder + ops (clone incompatible)",
+          "encoder + unknown (unknown plugin)",
+          "music without own assistant or voice/PostgreSQL capabilities",
+          "ai_agent with malformed/missing own provider key/model"
+        ],
+        "conflict_note": "No fabricated conflicts between compatible shipped plugins; synthetic declarations prove symmetric conflict rejection."
+      },
+      "remaining": [
+        "Resource requirements are typed metadata, not OS quotas; workers remain in-process, not sandboxed",
+        "Pure resolver consumes caller-supplied authority/capabilities; mandatory GROUP_CORE policy is supplied by reviewed clone adapter. It never activates group plugins or fetches entitlement itself",
+        "Only existing reviewed eight template features plus mandatory core are clone-compatible; renamer/utilities not newly approved in this slice",
+        "Empty persisted selection keeps legacy profile behavior; no data/schema migration or automatic rewrite. New guided core-only selection uses moderation sentinel rather than legacy empty tuple",
+        "Premium check and clone insertion/start remain separate transactions; revocation is not atomically coordinated with worker transition",
+        "AI key/model format validation supports existing fixed OpenAI configuration; no paid/provider verification or live Telegram validation performed",
+        "Per-clone applied revisions/profile rollback, durable cleanup replay, process isolation and dashboard redesign remain separate work",
+        "No external plugin execution, deployment, production environment/database changes, destructive migration or PR merge"
+      ]
+    },
+    {
+      "id": "phase2-malformed-selection-boundaries-and-postgres-rejection-regression",
+      "status": "completed",
+      "starting_commit": "f1b9f05a133747cf4ebeafb196c453cb87b7c69b",
+      "implemented": [
+        "Shared pure normalize_slugs rejects mappings, bytes, scalars and None rather than accepting mapping keys as plugin requests",
+        "Malformed catalogue containers produce structured invalid_catalogue instead of leaking TypeError or misclassifying the container as one invalid manifest",
+        "Clone structural planner reuses same normalizer before any draft mutation; canonical valid iterable semantics unchanged"
+      ],
+      "sources": [
+        "agent/platform/selection.py:normalize_slugs, catalogue",
+        "agent/modules/clone/catalog.py:plan_selection",
+        "tests/test_selection_resolver.py:test_malformed_request_shapes_raise_structured_errors,test_malformed_catalogue_shapes_raise_structured_errors",
+        "tests/test_clone_selection_foundation.py:test_malformed_draft_selection_has_no_mutation",
+        "tests/test_atomic_clones.py:test_invalid_selection_start_preserves_canonical_records_and_other_tenants"
+      ],
+      "validation": {
+        "red_command": ".venv/bin/python -m pytest -o addopts= -q tests/test_selection_resolver.py tests/test_clone_selection_foundation.py --tb=short",
+        "red_result": "7 failed, 22 passed in 0.55s before implementation",
+        "green_result": "29 passed in 0.38s after implementation; subsequent helper rename and SQL regression covered by final full run",
+        "full_command": "AGENT_TEST_DATABASE_URL=<disposable pgserver URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); pass s.get_uri() to subprocess; finally s.cleanup()",
+        "full_result": "1684 passed, no skips, 18.05s",
+        "static_command": ".venv/bin/python -m compileall -q agent tests tools start.py && .venv/bin/python -m pyflakes agent tests tools && git diff --check",
+        "static_result": "passed",
+        "sql_evidence": "Invalid stored selection rejected before worker factory; canonical clone JSONB in both primary and unrelated tenant unchanged. Safe failure diagnostics may still be recorded separately as designed."
+      },
+      "remaining": [
+        "No profile transitions/rollback, cleanup replay, new commands or dashboard changes",
+        "No deployment, production database/environment changes or PR merge"
+      ]
+    },
+    {
+      "id": "phase3-preimplementation-revision-boundary-audit",
+      "status": "audit_complete_first_storage_slice_pending",
+      "actual_start": "fe797fac41232b6d90aa78e17863df44c0ad55ca",
+      "requested_base": "f1b9f05a133747cf4ebeafb196c453cb87b7c69b",
+      "source_map": {
+        "canonical_writes": "agent/modules/clone/store.py:216-327 (_atomic/aadd/aupdate/aremove); tenant advisory and row locks; encrypted JSONB canonical registry",
+        "configuration_writer": "agent/modules/clone/__init__.py:464-507 (_profile_press); profile/selected plugins/AI/music credentials committed before restart; no revision CAS",
+        "other_writers": "agent/modules/clone/__init__.py:357,590,596; manager.py:436; username and disabled lifecycle updates are not plugin configuration changes",
+        "create": "agent/modules/clone/setup.py:415-479; selection/identity/credentials checks and entitlement recheck before aadd; compensated removal on startup failure",
+        "start_stop_recovery": "agent/modules/clone/manager.py:166-341,375-509; locked local running map, PostgreSQL worker lease, restart stop/start, periodic canonical refresh; no applied revision fencing",
+        "in_memory_queues": "manager.py:_pending_recovery/_restart_history/_lease_monitors/_states; platform/execution.py:_seen/_running; platform/jobs.py in-process tasks. Durable CloneRecovery restart admission is separate",
+        "cleanup": "agent/platform/plugin_access.py:135-204 marks resource cleanup_pending in transaction, callback after commit; execution.py:45-60,130-145 retries known in-memory cleanup only",
+        "premium": "agent/platform/entitlements.py:26-118 separate premium-authority advisory transaction; platform/premium.py:163-199; manager.py:180 check before start,416-436 periodic revocation enforcement. No serializable entitlement+configuration commit today",
+        "schema": "agent/platform/db.py:71-89,209-239 agent_documents and leases/additive startup schemas; no configuration revision relation today",
+        "diagnostics": "agent/platform/clone_recovery.py:36-64 bounded safe events but no config revision identity; manager _record_event uses separate best-effort transaction"
+      },
+      "guidance": "No SKILL.md/AGENTS.md guidance assets found under /home/user depth 4. Use red/green tests, explicit repository API, atomic CAS and no worker application claim from storage writes.",
+      "plan": [
+        "First implement durable encrypted revision repository with CAS and fencing; no runtime/UI writer rewiring until configuration service and worker acknowledgement are ready",
+        "Then validate/propose via service with entitlement coordination and reconcile actual workers; only confirmed initialization may acknowledge",
+        "Then durable cleanup claims/backoff/replay and revision-aware diagnostics; full phase remains incomplete until integrated tests prove all criteria"
+      ],
+      "restrictions": [
+        "No new commands/dashboard changes",
+        "No production data/schema/env operations or deployment",
+        "No destructive migration or PR merge"
+      ]
+    },
+    {
+      "id": "phase3-encrypted-configuration-revision-repository",
+      "status": "storage_slice_completed_phase3_in_progress",
+      "starting_commit": "fe797fac41232b6d90aa78e17863df44c0ad55ca",
+      "sources": [
+        "agent/modules/clone/revisions.py:CloneConfigurationRevisions, initial, METADATA",
+        "tests/test_clone_configuration_revisions.py:test_revision_cas_encrypted_snapshots_and_restart",
+        "tests/test_clone_configuration_revisions.py:test_revision_duplicate_invalid_request_and_tenant_isolation"
+      ],
+      "implemented": [
+        "Internal PostgreSQL repository for desired/applied/pending/last-failed revisions, configuration status, database timestamps and safe last-error code",
+        "Tenant/bot scoped clone_configuration:<bot_id> JSONB envelope in existing agent_documents; advisory transaction lock plus row lock serializes CAS even for absent first row",
+        "Optimistic expected_revision plus request-id idempotence; same id with different configuration rejected; trusted pre-worker validator required and canonicalizes selected plugins",
+        "Whole configuration snapshots encrypted with existing SecretBox; disabled key/database refuses operations; no plaintext credential fallback",
+        "New proposals remain pending and preserve applied snapshot; explicit internal confirm_applied fence rejects older desired revision and is idempotent for current acknowledgement; failure retains pending revision and prior applied snapshot",
+        "Applied snapshot and one previous-applied snapshot retained for subsequent rollback integration; no rollback/service/worker behavior claimed yet"
+      ],
+      "schema_and_compatibility": "No new SQL DDL or destructive migration. Existing clone registry and live writers are untouched. Absent revision envelope reads as untracked revision zero, not falsely applied; no automatic legacy rewrite. Repository is staged for later service integration, not wired into public mutations.",
+      "validation": {
+        "red_command": ".venv/bin/python -m pytest -o addopts= -q tests/test_clone_configuration_revisions.py --tb=short",
+        "red_result": "Collection failed exit 2 before implementation because revisions module absent",
+        "focused_command": "AGENT_TEST_DATABASE_URL=<disposable URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider tests/test_clone_configuration_revisions.py --tb=short",
+        "focused_result": "2 passed in 0.29s; later added old-failure and idempotent acknowledgement assertions covered by full run",
+        "full_command": "AGENT_TEST_DATABASE_URL=<disposable URI> .venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "database_setup": "pgserver.get_server('/tmp/agent-pg-tests'); subprocess env AGENT_TEST_DATABASE_URL=s.get_uri(); finally s.cleanup()",
+        "full_result": "1686 passed, no skips, 17.98s",
+        "static_command": ".venv/bin/python -m compileall -q agent tests tools start.py && .venv/bin/python -m pyflakes agent tests tools && git diff --check",
+        "static_result": "passed",
+        "evidence": [
+          "Simultaneous same-revision proposals have one winner; stale request/acknowledgement/failure fenced",
+          "Reopened repository retains pending and failed state with correct timestamps and prior applied snapshot",
+          "Invalid selection leaves stored revision unchanged; duplicate request is idempotent; unrelated tenant untracked",
+          "Stored JSONB excludes plaintext token; no worker factory/client/lease started by repository"
+        ]
+      },
+      "remaining": [
+        "Phase 3 NOT COMPLETE: new repository not yet wired to canonical clone configuration writers or worker manager",
+        "Need configuration service and authoritative Premium coordination before public use; repository is internal storage, not an authorization boundary",
+        "Need worker lease/identity verification before caller invokes confirm_applied; current tests simulate acknowledgements, not live workers",
+        "Need durable reconciliation claims, pending scan/recovery, application/failure acknowledgement integration and rollback API",
+        "Need durable cleanup queue/consumer/backoff/dead-letter and revision-aware retained diagnostic events",
+        "Existing profile change still uses legacy update-then-restart until service integration; no new transactional profile guarantee",
+        "No perfect atomic Premium revocation claim; existing startup checks and periodic supervisor policy remain unchanged",
+        "No production data/environment/schema operation, deployment, new commands/dashboard changes or PR merge"
+      ]
+    },
+    {
+      "id": "requested-deeplink-security-redemption-boundary-audit",
+      "status": "completed_security_hardening",
+      "inspection": [
+        "Inspected existing deep-link diff/tests before edits; preserved all local changes",
+        "Audited DeepLinkRouter,linkshare redemption,subscription gate,send_stored,archive redemption SQL",
+        "Found share use counters atomic but not duplicate-request-idempotent; archive already uses transactional unique delivery claims",
+        "Removed linkshare token-fragment/refusal-text logs and stored-delivery filename/raw-exception logs"
+      ],
+      "implementation": [
+        "LinkRecord persists redemption_requests using existing tenant JSONB document schema; old records default empty list",
+        "Request identity is chat:user:message; no reply-retry assumption. Atomic PostgreSQL advisory-lock transaction validates expiry/cap/revocation, records request and increments use together",
+        "Duplicate claims fail closed before delivery; failed/unconfirmed deliveries retain claims, not automatically replayed",
+        "Production redemption refuses missing/invalid Telegram request identity; test message fixtures now supply real-shaped distinct IDs"
+      ],
+      "evidence": {
+        "red": "New request-id reload test failed unexpected keyword before implementation",
+        "focused": "51 passed in0.97s with disposable PostgreSQL covering atomic links/router/archive/subscription; 2 additional handler security regressions passed",
+        "first_full": "1781 passed,2 failed due share fixtures missing chat/message IDs; updated fixtures, did not weaken production check",
+        "full": "1783 passed,no skips,20.09s; AGENT_TEST_DATABASE_URL from disposable pgserver, pytest -o addopts= -q -rs -p no:cacheprovider --tb=short",
+        "static": "compileall/pyflakes/diff --check passed",
+        "database": "20 concurrent same-request claims across2 instances admit exactly1; fresh store rejects replay; expired request increments0; existing archive test proves concurrent duplicate copy requests and partial delivery replay prevention",
+        "latest_full": "1786 passed,no skips,19.05s including Phase3 resumed read-fence regression; disposable PostgreSQL",
+        "latest_static": "compileall,pyflakes,working-tree and staged diff checks passed"
+      },
+      "limitations": [
+        "At-most-once admitted request, not exactly-once remote delivery; failed delivery may spend use without delivering",
+        "Legacy service calls without request_id retain non-idempotent consume semantics; bot redemption always supplies identity",
+        "Claim list retained with link record until purge; unlimited-use links can grow; no destructive migration or production cleanup performed",
+        "No production data,deployment,push or merge",
+        "Commit validation is current local tree; preexisting uncommitted feature dependencies remain and are not broadly bundled"
+      ],
+      "commit_scope": "Explicit security files plus preexisting atomic-link authority prerequisite; unrelated linkshare features excluded through index-only staging. Full historical checklist retained in working tree, only this security evidence staged.",
+      "outer_boundary_audit": [
+        "CommandHandlers.start raw payload logging reproduced red then sanitized to payload-present boolean",
+        "PluginGate exception traceback leak reproduced red then sanitized to exception class; no raw redemption exception traceback",
+        "8 router/entrypoint/execution-gate regressions pass"
+      ]
+    },
+    {
+      "id": "phase3-canonical-configuration-writes",
+      "status": "implemented-local",
+      "summary": "Canonical encrypted desired configuration, pending revision and request receipt in one PostgreSQL transaction; registry then revision lock, expected-revision CAS, owner authorization and safe errors. No worker acknowledgement.",
+      "validation": {
+        "focused": "12 passed in 0.60s (actual disposable PostgreSQL)",
+        "full": "1789 passed in 18.94s; no skips; current dirty working tree",
+        "red": "Initial canonical test failed: missing manager.configuration; subsequent rollback and reconnect regressions added after implementation",
+        "static": "compileall, pyflakes, working-tree and staged diff checks passed"
+      },
+      "limitations": [
+        "No worker reconciliation, lease-authorized apply, durable cleanup, deployment, push or merge",
+        "Validation is current dirty working tree, not clean commit checkout",
+        "Selective commit includes atomic clone storage prerequisite and revision reader; earlier manager validation/setup and other feature changes remain uncommitted"
+      ]
+    },
+    {
+      "id": "phase3-worker-reconciliation",
+      "status": "implemented-local",
+      "summary": "Exact revision assignment, unique expiring attempt claim, worker lease and registry-owner fenced CAS acknowledgement; shared startup/restart/recovery authority. No transaction spans worker I/O. Failed or stale application preserves last applied snapshot.",
+      "evidence": {
+        "red_service": "1 failed: missing agent.modules.clone.reconcile before implementation",
+        "red_manager": "1 failed,1 passed: startup left applied_revision=0 before wiring",
+        "focused": "39 passed in 1.25s; disposable PostgreSQL; existing writer/replay and bootstrap tests",
+        "full": "1791 passed in 19.54s, no skips; disposable PostgreSQL; final dirty working tree",
+        "static": "compileall, pyflakes, working-tree and staged diff checks passed",
+        "staged_manager": "14 passed in 0.81s using indexed manager source with dirty-tree dependencies; NOT a clean snapshot test"
+      },
+      "coverage": [
+        "successful acknowledgement; repeated live reconciliation; failed application",
+        "stale assignment; two concurrent reconcilers; newer revision during application",
+        "worker lease expiry; attempt lease expiry; unfenced acknowledgement rejected",
+        "interruption before apply; cancellation after apply before acknowledgement; retry by fresh reconciler",
+        "manager restart, supervisor update and restore; tenant isolation; encrypted snapshots and safe errors"
+      ],
+      "limitations": [
+        "No clean-checkout commit validation; earlier uncommitted dependencies remain outside this selective commit",
+        "Application is at-least-once after an unacknowledged crash, not exactly-once external effects; callbacks must be idempotent",
+        "Attempt lease TTL is 60 seconds; longer application fails closed and needs retry; no durable cleanup/replay added",
+        "Legacy untracked revision zero fails closed until configuration is revision-tracked",
+        "Workers are in-process clients, not OS-process isolation or sandboxing",
+        "No premium revocation policy changes, production data, deployment, push or PR merge"
+      ]
+    },
+    {
+      "id": "phase3-clean-snapshot-test-contract-fixes",
+      "status": "validated-local",
+      "summary": "Fix three reproducible committed-snapshot test failures: rejected synchronous PostgreSQL link/clone mutations and obsolete dot-separated link-token assumption. Only relevant test hunks staged; unrelated work preserved.",
+      "evidence": {
+        "red": "Isolated git archive of 006ec8b: 3 failed,875 passed in10.22s; disposable PostgreSQL",
+        "green_snapshot": "Isolated tracked-file export plus exact staged test fixes:878 passed,no skips,in10.22s; no dirty-tree source dependencies copied",
+        "dirty_tree": "1791 passed,no skips,in20.48s; disposable PostgreSQL",
+        "static": "compileall and pyflakes passed in both working tree and isolated export; working/staged diff checks passed"
+      },
+      "limitations": [
+        "Isolated export uses existing installed virtualenv, not a fresh dependency installation or live Telegram test",
+        "Clean export contains878 tracked tests; additional local uncommitted tests account for dirty-tree total",
+        "No production data,deployment,merge or unrelated feature commits"
+      ]
+    },
+    {
+      "id": "phase3-remote-history-integration",
+      "status": "validated",
+      "summary": "Integrate remote 6f2607b with local f4178a2; preserve both histories and local security/reconciliation changes; resolve12 conflicts without overwriting existing workspace files. Update subscription test to assert redemption request identity.",
+      "evidence": {
+        "red": "Isolated merged tracked snapshot:1 failed,1703 passed; subscription mock expected old aconsume signature",
+        "green": "Isolated merged tracked snapshot:1704 passed,no skips,in18.47s; disposable PostgreSQL",
+        "static": "compileall and pyflakes passed in isolated merged snapshot; merge-tree diff check passed"
+      },
+      "limitations": [
+        "Tracked snapshot exported without dirty dependencies; uses existing virtualenv, not a fresh dependency installation",
+        "No production data,deployment or PR merge",
+        "Uncommitted local files preserved byte-for-byte; only remote/local committed history and conflict resolutions enter merge"
+      ]
+    },
+    {
+      "id": "meiko-full-discovery-and-diagnostic-hardening",
+      "status": "discovery-complete-targeted-hardening-verified",
+      "starting_commit": "333c74486cf45336d5e8eda112dc9c165d3dd3aa",
+      "summary": "Repository-wide static inventory and critical runtime-path audit; docs/CODEBASE_AUDIT.md records dependency/flow maps, actual feature inventory, reproduced bugs and prioritized gates. Sanitize callback entry/answer/fallback logging and watchdog public-health exception metadata. No claim of whole-codebase security certification or feature completion.",
+      "files": [
+        "docs/CODEBASE_AUDIT.md",
+        "agent/handlers/callbacks.py",
+        "agent/watchdog.py",
+        "tests/test_audit_diagnostic_redaction.py"
+      ],
+      "evidence": {
+        "discovery": "308 Python files before new test:142 application,156 tests,9 tools,start.py;20 plugin packages,209 manifest command names (not feature count);52 startup SQL statements,44 tables in inspected dirty tree",
+        "red": "5 diagnostic tests failed before implementation; initial3 then expanded5 all reproduced intended leaks with synthetic values",
+        "focused": "45 passed in0.42s; diagnostic/health/action-router/deep-link unit+mocked Telegram coverage",
+        "full_dirty_pg": "1796 passed,no skips,in22.14s; actual disposable PostgreSQL configured",
+        "full_clean_export_pg": "1709 passed,no skips,in24.25s; tracked-source export plus exact new code/test slice, no dirty source dependencies; not fresh dependency installation",
+        "probes_pg": "Confirmed disable-during-apply applied_revision1 while disabled=True; delete/recreate blocked by retained revision/creation state;2 independent warning writers persisted1 warning",
+        "static": "AST inventory,compileall,Pyflakes,working/staged diff checks; isolated-export compile/lint also run"
+      },
+      "limitations": [
+        "No live Telegram,AI provider,native group-call,deployment or production database calls",
+        "Ruff/Black/Docker unavailable; no formatting configuration or CI workflow found; no Docker build or fresh dependency install",
+        "pip check reports deliberate Richgram/Kurigram no-deps packaging exception; not represented as passing",
+        "Unrelated dirty Music,Premium,UI/dependency changes left untouched and uncommitted",
+        "Open P0 findings are documented, not fixed by this slice; next gate lifecycle acknowledgement fencing",
+        "No external plugin execution boundary changes,production configuration changes,cleanup replay or PR merge"
+      ]
+    },
+    {
+      "id": "clone-lifecycle-generation-fencing",
+      "status": "completed",
+      "changes": [
+        "Durable tenant lifecycle generation tombstones and CAS stop/start/restart fencing",
+        "Registry eligibility, owner, credential and generation checks before apply and acknowledgement/recovery",
+        "Safe delete/recreate advances desired revisions; worker teardown separated from durable stop intent",
+        "11 real PostgreSQL regressions; unrelated Music/Premium/UI edits excluded"
+      ],
+      "validation": "Red regressions reproduced before fixes. Focused 50 passed (2.48s); dirty full 1807 passed (24.36s); isolated staged-source export 1720 passed (24.54s), no skips. Compileall, Pyflakes, working/staged diff checks passed. No live Telegram or production deployment validation."
+    },
+    {
+      "id": "atomic-warning-authority-data01",
+      "status": "completed",
+      "changes": [
+        "Tenant/group/member-scoped PostgreSQL warning history with serialized awaited mutations and one-time persisted legacy import",
+        "Awaited warning reads and writes in moderation, group reset, anti-spam, blocklist and info handlers; synchronous database access fails before cache mutation",
+        "Four PostgreSQL regression scenarios cover concurrent writers/clears, stale document flush, rollback/cancellation, isolation, bounds and handler persistence/denial"
+      ],
+      "validation": "Pre-fix probe submitted 2/persisted 1; new API/guard regressions failed before fix. Focused 119 passed (2.30s); full dirty 1811 passed (21.19s); isolated staged-source export 1724 passed (24.49s), no skips. Compileall/Pyflakes/diff checks passed. Telegram mocked; no production migration/deployment. Other ChatStore document races and exactly-once escalation remain outside scope."
+    },
+    {
+      "id": "net01-native-egress-failclosed",
+      "status": "completed",
+      "changes": [
+        "Fail-closed native voice playback/seek: reject remote protocols; require regular local files and offline protocol/container whitelists",
+        "Verify FFmpeg and FFprobe security-option support; bound and reap capability probes on timeout/cancellation",
+        "Real-engine queue admission rejects remote sources; preserve previous playback on rejection",
+        "Remote URL/YouTube playback deliberately disabled pending enforceable mediated fetching; not a native exploitation or sandbox certification"
+      ],
+      "validation": "15 boundary regressions red before fix. Final focused 87 passed (0.76s); dirty full 1833 passed (22.23s); exact staged-source export 1746 passed (23.37s), no skips, disposable PostgreSQL enabled. Compileall/Pyflakes/diff checks passed. Installed py-tgcalls command contracts tested with authored tool-help fixtures. FFmpeg/FFprobe binaries absent: no real native decode, exploit, live Telegram or deployment validation."
+    },
+    {
+      "id": "richgram-box-free-ui-and-moderation-diagnostics",
+      "status": "completed",
+      "changes": [
+        "Retained Badmunda05 Richgram native tables/headings; removed box-art/clipped-grid compatibility messages in favor of full escaped label/value rows",
+        "Clarified missing TOKEN_KEY clone guidance without removing encryption guard or collecting secrets",
+        "Redacted exception bodies/tracebacks from three reachable moderation watcher/escalation/recovery-notice log paths",
+        "Updated legacy UI expectations for the requested box-free fallback; preserve rich rejection/keyboard/ambiguous-transport behavior"
+      ],
+      "validation": "Four UI and three diagnostic cases red before fixes. Focused 194 passed (1.03s); full dirty 1840 passed (21.26s); exact staged-source export 1753 passed (23.45s), no skips, disposable PostgreSQL. Compileall/Pyflakes/diff checks passed. Verified installed richgram 0.2.0 source metadata; Telegram transport mocked, no live visual/deployment/config changes. Wider SEC-02 remains open."
+    },
+    {
+      "id": "sec02-job-and-lease-diagnostic-redaction",
+      "status": "completed",
+      "changes": [
+        "JobQueue retains stable runner_failed code instead of raw exceptions; no traceback or runner-provided identifiers in queue failure log",
+        "PostgreSQL lease take/release and InstanceLease heartbeat failures log operation/type-only #Errors diagnostics",
+        "Four red regressions cover raw/unprintable job errors, actual PostgreSQL failure/rollback/isolation/replacement-pool reads and heartbeat stop behavior"
+      ],
+      "validation": "Focused 50 passed (0.66s); dirty full 1844 passed (20.59s); exact staged-source export 1757 passed (22.62s), no skips; actual disposable PostgreSQL failure triggers and pools. Compileall/Pyflakes/diff checks passed. Wider SEC-02, other runner fields and job restart durability remain outside scope. No live provider/deployment/config changes."
+    },
+    {
+      "id": "sec02-encoder-diagnostics-and-delivery-outcomes",
+      "status": "completed",
+      "changes": [
+        "Remove raw provider bodies/local paths/tracebacks from Encoder download, delivery and cleanup diagnostics",
+        "Report missing/empty output and false/none/ambiguous upload acknowledgements as unconfirmed without automatic resend; retain completed conversion/artifact",
+        "Preserve original conversion and cancellation exceptions when owned-output/directory cleanup fails; clarify no-upload-client notification",
+        "42 new parameterized checks across six download commands, five delivery routes, cleanup, acknowledged sends and cancellation"
+      ],
+      "validation": "Initial 7 failed/5 passed before fix. Focused 140 passed (2.28s), includes existing actual FFmpeg tests. Dirty full 1886 passed (20.44s); exact staged-source export 1799 passed (22.38s), no skips, disposable PostgreSQL enabled. Compileall/Pyflakes/diff checks passed. New Telegram/error fixtures mocked; no production/deployment/config/schema/dependency changes. Wider SEC-02 and durable delivery/cleanup recovery remain open."
+    },
+    {
+      "id": "plugin-specific-worker-front-doors",
+      "status": "completed",
+      "changes": [
+        "Explicit user request: focused worker start/help/menu identities, workflow guidance, reviewed custom icons and paginated registered-command options for all eight clone template identities",
+        "Multi-plugin worker hub, legacy Renamer/Utilities presentation and slot-free group-management navigation; controller UI unchanged",
+        "Revalidate worker help callback selection/commands/page bounds; deep links remain first; no parent hero-image inheritance",
+        "Reference-only review of Videl1 worker extras/encoder start at 6a00a55f6ad013c85e14c39a9b06922c1bb6f08c; no copying/execution/parity claim"
+      ],
+      "validation": "10 initial red UI regressions; 13 final new checks. Focused 118 passed (0.60s); dirty full 1899 passed (20.34s); exact staged-source export 1812 passed (21.34s), no skips, disposable PostgreSQL. Compileall/Pyflakes/diff checks passed. UI presets only: owner-edited branding persistence remains unfinished; no live Telegram/production/deployment testing."
+    }
+  ],
+  "production_changes": false,
+  "merged": false
+}

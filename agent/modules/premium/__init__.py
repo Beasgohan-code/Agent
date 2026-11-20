@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import logging
 import time
+from types import SimpleNamespace
+
+from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
 
 from ...platform.manifest import PluginManifest
 from ...platform.premium import TIERS
+from ...platform.entitlements import EntitlementError
 from ...ui.keyboards import nav_keyboard
 from ...ui.tables import Table, kv_table, panel
 from ...utils.rich import reply
@@ -21,6 +25,8 @@ from .limits import pitch, rows, until_text, usage_rows
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=False,
     slug="premium",
     name="Premium",
     version="1.0.0",
@@ -38,12 +44,15 @@ MAX_DAYS = 3650
 def _parse_user(message, token: str | None) -> int | None:
     """A user id from the argument, or from the message being replied to."""
     if token:
-        cleaned = token.lstrip("-")
-        if cleaned.isdigit():
-            return int(token)
+        if token.isascii() and token.isdecimal() and len(token) <= 19:
+            value = int(token)
+            if 0 < value <= 9223372036854775807:
+                return value
+        return None
     replied = getattr(message, "reply_to_message", None)
     user = getattr(replied, "from_user", None) if replied is not None else None
-    return int(user.id) if user is not None and getattr(user, "id", None) else None
+    value = getattr(user, 'id', None)
+    return value if type(value) is int and 0 < value <= 9223372036854775807 else None
 
 
 def build(ctx):
@@ -70,6 +79,7 @@ def build(ctx):
         user = getattr(message, "from_user", None)
         if user is None:
             return
+        await book.ais_premium(user.id)
         until = book.until(user.id)
         await reply(
             message,
@@ -87,11 +97,55 @@ def build(ctx):
                     + "."
                 ],
                 note=pitch(),
-                footer="Counters reset at midnight UTC.",
+                footer=f'Your user ID: {user.id} · Counters reset at midnight UTC.',
             ),
-            reply_markup=nav_keyboard(),
+            reply_markup=Keyboard([
+                [Button('Compare plans', callback_data='prem:plans'), Button('Refresh my plan', callback_data='prem:status')],
+                [Button('How to activate Premium', callback_data='prem:activate')],
+                [Button('‹ Main menu', callback_data='menu:home')],
+            ]),
         )
         logger.info("premium status user=%s premium=%s", user.id, book.is_premium(user.id))
+
+    async def premium_press(client, query, rest):
+        user = getattr(query, 'from_user', None)
+        origin = getattr(query, 'message', None)
+        if user is None or origin is None:
+            await query.answer('Open /premium privately.', show_alert=True)
+            return
+        # Only the actual caller can view their own plan; never bot-message author.
+        if getattr(getattr(origin, 'chat', None), 'id', None) != user.id:
+            await query.answer('Open /premium in a private chat for plan options.', show_alert=True)
+            return
+        message = SimpleNamespace(from_user=user, chat=origin.chat, reply=origin.reply)
+        try:
+            if rest == 'status':
+                await premium(client, message)
+            elif rest == 'plans':
+                await plans(client, message)
+            elif rest == 'activate':
+                owner = ctx.settings.owner_id
+                lines = ['Premium is granted by this bot’s configured Owner. No checkout or payment collection is enabled here.',
+                         f'Your Telegram ID: <code>{user.id}</code>.',
+                         'Premium applies only to this bot. Creating and starting clones requires Premium, including for Owner and sudo.']
+                if owner is not None and user.id == int(owner):
+                    lines += [f'You are the configured Owner. Grant yourself one test day: <code>/addpremium {user.id} 1</code>.',
+                              'Use 0 days only for an intentional lifetime grant. /premiumusers lists current grants.']
+                else:
+                    lines += ['Ask this bot’s Owner to grant your user ID Premium. Never send your bot token or account session to buy a plan.']
+                await reply(message, panel('Activate Premium', lines=lines), reply_markup=Keyboard([
+                    [Button('My plan', callback_data='prem:status')], [Button('‹ Main menu', callback_data='menu:home')]]))
+            else:
+                await query.answer('Unknown Premium option.', show_alert=True)
+                return
+            await query.answer()
+        except Exception:
+            logger.warning('#Errors Premium screen could not load')
+            await query.answer('Premium status could not be confirmed. Check database availability; no grant was attempted.', show_alert=True)
+
+    actions = getattr(ctx, 'actions', None)
+    if actions is not None:
+        actions.register('prem', premium_press)
 
     # -- /myplan -----------------------------------------------------------
 
@@ -100,6 +154,7 @@ def build(ctx):
         user = getattr(message, "from_user", None)
         if user is None:
             return
+        await book.ais_premium(user.id)
         tier = book.tier(user.id)
         rows = [row for row in usage_rows(book, user.id) if row[0] != "Tier"]
         await reply(
@@ -123,7 +178,7 @@ def build(ctx):
             panel(
                 "Plans",
                 icon=ctx.theme.emoji("star"),
-                subtitle="Premium raises three numbers. It hides no features.",
+                subtitle="Higher file and daily allowances · Premium-only clone creation and starts.",
                 table=Table(headers=("Allowance", "Free → Premium"), rows=tuple(rows())),
                 note=pitch(),
                 footer="Owners grant premium with <code>/addpremium &lt;id&gt; [days]</code>.",
@@ -146,9 +201,17 @@ def build(ctx):
             )
             return
         days = DEFAULT_DAYS
-        if len(parts) > 2 and parts[2].isdigit():
-            days = max(0, min(MAX_DAYS, int(parts[2])))
-        until = book.grant(target, days, by=message.from_user.id)
+        if len(parts) > 3 or (len(parts) > 2 and (
+                not parts[2].isascii() or not parts[2].isdecimal() or len(parts[2]) > 4 or int(parts[2]) > MAX_DAYS)):
+            await reply(message, f'Days must be a whole number from 0 to {MAX_DAYS}; 0 means lifetime. No Premium was changed.')
+            return
+        if len(parts) > 2:
+            days = int(parts[2])
+        try:
+            until = await book.agrant(target, days, by=message.from_user.id)
+        except EntitlementError as exc:
+            await reply(message, str(exc))
+            return
         events = getattr(ctx, "events", None)
         if events is not None:
             events.emit("premium:grant", user=target, days=days, by=message.from_user.id)
@@ -186,7 +249,11 @@ def build(ctx):
         if target is None:
             await reply(message, "Usage: <code>/delpremium &lt;user_id&gt;</code>")
             return
-        removed = book.revoke(target)
+        try:
+            removed = await book.arevoke(target)
+        except EntitlementError as exc:
+            await reply(message, str(exc))
+            return
         events = getattr(ctx, "events", None)
         if events is not None and removed:
             events.emit("premium:revoke", user=target, by=message.from_user.id)
@@ -202,7 +269,11 @@ def build(ctx):
     async def premiumusers(client, message):
         if not await _owner(client, message):
             return
-        entries = book.listing()
+        try:
+            entries = await book.alisting()
+        except EntitlementError as exc:
+            await reply(message, str(exc))
+            return
         if not entries:
             await reply(
                 message,
@@ -219,7 +290,7 @@ def build(ctx):
             (
                 str(entry["user_id"]),
                 until_text(entry.get("until"), now=now) if entry.get("until") is not None else "lifetime",
-                "active" if book.is_premium(entry["user_id"], now=now) else "expired",
+                "active" if entry.get("until") is None or entry["until"] > now else "expired",
             )
             for entry in entries
         )

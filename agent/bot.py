@@ -8,12 +8,15 @@ import signal
 from contextlib import suppress
 
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 from pyrogram.enums import ParseMode
 from pyrogram.types import LinkPreviewOptions
 from pyrogram.handlers import CallbackQueryHandler, ErrorHandler, MessageHandler
 
 from . import __version__
 from .config import Settings
+from .platform.commands import command_filter
+from .modules.moderation.command_cleaning import wrap as wrap_command_cleaning
 from .handlers import CallbackHandlers, CommandHandlers
 from .keepalive import KeepAlive
 from .health import HealthMonitor
@@ -33,10 +36,27 @@ from .platform.logbook import LogBook, subscribe
 from .platform.menu import publish as publish_menu, reset_menu_button
 from .platform.premium import PremiumBook
 from .platform.runtime import PluginRuntime
+from .platform.startup_cooldown import StartupCooldown
 from .platform.voice import VoiceEngine, capability
 from .ui.theme import Theme
 from .utils.sender import ScreenSender
+from .platform.timed_promotions import watch as watch_promotions
 from .watchdog import build_watchdog
+
+
+OPTIONAL_STARTUP_TIMEOUT = 30.0
+REQUIRED_STARTUP_TIMEOUT = 90.0
+SERVICE_SHUTDOWN_TIMEOUT = 5.0
+
+async def _close_optional(label, operation):
+    """Bound cooperative optional cleanup; never log raw service exceptions."""
+    try:
+        await asyncio.wait_for(operation(), timeout=SERVICE_SHUTDOWN_TIMEOUT)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        logger.warning('#Errors %s cleanup failed (%s); continuing Telegram disconnect.',
+                       label, type(error).__name__)
 
 
 def _scope_filter(scope: str):
@@ -55,7 +75,8 @@ class AgentBot:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.theme = Theme()
+        self.theme = Theme(worker_plugins=settings.plugins
+                           if (settings.db_scope or '').startswith('clone:') else None)
         self.keepalive = KeepAlive(settings.keepalive_origin)
         self.health = HealthMonitor(
             degraded_after=max(60.0, settings.watchdog_interval * 3),
@@ -84,6 +105,7 @@ class AgentBot:
             else None
         )
         db = self.database
+        self._telegram_cooldown = StartupCooldown(db) if db is not None else None
         self.incidents = ErrorIncidents(db)
         self.users = UserIndex(settings.data_dir, db=db)
         self.logbook = LogBook(
@@ -121,6 +143,10 @@ class AgentBot:
     @property
     def client(self) -> Client | None:
         return self._client
+
+    def _visible_commands(self):
+        """Canonical UI catalogue includes built-ins outside plugin registry."""
+        return sorted(set(self.registry.active_commands()) | {'start', 'help', 'ping'})
 
     @property
     def handler_count(self) -> int:
@@ -169,7 +195,7 @@ class AgentBot:
             events=self.events,
             users=self.users,
             start_image=self.settings.start_image,
-            active_commands=self.registry.active_commands,
+            active_commands=self._visible_commands,
             deeplinks=self.deeplinks,
         )
         callbacks = CallbackHandlers(
@@ -177,13 +203,13 @@ class AgentBot:
             self.theme,
             monitor=self.health,
             router=self.actions,
-            active_commands=self.registry.active_commands,
+            active_commands=self._visible_commands,
         )
 
         self._handlers = [
-            MessageHandler(commands.start, filters.command(["start", "restart_bot"]) & filters.private),
-            MessageHandler(commands.help, filters.command(["help", "h"]) & filters.private),
-            MessageHandler(commands.ping, filters.command("ping") & filters.private),
+            MessageHandler(commands.start, command_filter(["start", "restart_bot"]) & (filters.private | filters.group)),
+            MessageHandler(commands.help, command_filter(["help", "h"]) & (filters.private | filters.group)),
+            MessageHandler(commands.ping, command_filter("ping") & filters.private),
             CallbackQueryHandler(callbacks.on_callback),
             ErrorHandler(self._on_error),
         ]
@@ -212,6 +238,7 @@ class AgentBot:
         self._wire_archive(client)
         self.modules.logbook = self.logbook
         self.modules.client = client
+        client.agent_context = self.modules
 
         from .platform.execution import PluginGate, REGISTERING
         from .platform.plugin_access import PluginAccess
@@ -223,10 +250,12 @@ class AgentBot:
         self.actions.gate = self.plugin_gate
         self.deeplinks.gate = self.plugin_gate
 
-        self._modules = select(self.settings.plugins)
+        from .platform.policy import is_worker
+        worker = is_worker(self.settings)
+        self._modules = select(self.settings.plugins, worker=worker)
         for slug in unknown(self.settings.plugins):
             logger.warning("PLUGINS names %r, which is not a module here; ignoring it", slug)
-        skipped = not_selected(self.settings.plugins)
+        skipped = not_selected(self.settings.plugins, worker=worker)
         if skipped:
             logger.info("Plugins not selected (compile in, register nothing): %s", ", ".join(skipped))
         built = []
@@ -237,6 +266,8 @@ class AgentBot:
             link_routes = dict(self.deeplinks._routes)
             try:
                 manifest, handlers = module.build(self.modules)
+                from .ui.identity import presentation
+                handlers = {name: presentation(handler, worker=worker) for name, handler in handlers.items()}
                 self.registry.register(manifest, handlers)
                 built.append(module)
             except Exception:
@@ -253,13 +284,8 @@ class AgentBot:
         # Staging/review is not isolation. External execution stays disabled until
         # a capability-scoped process boundary exists.
 
-        # A plugin disabled in a previous run stays off, and registers nothing.
-        for manifest in self.registry.manifests():
-            if self.runtime.wants_disabled(manifest.slug):
-                self.registry.disable(manifest.slug)
-
-        # Only *enabled* plugins contribute handlers. A disabled plugin
-        # registers nothing at all, which is the lifecycle rule that matters.
+        # Build and track dormant handlers too, so persisted-off plugins can
+        # be enabled without restarting. Attach only enabled handlers below.
         scopes = {c: m.scope for m in self.registry.manifests() for c in m.commands}
         owners = {c: m.slug for m in self.registry.manifests() for c in m.commands}
         for command in self.registry.active_commands():
@@ -268,7 +294,8 @@ class AgentBot:
                 continue
             chat_filter = _scope_filter(scopes.get(command, "private"))
             callback = self.plugin_gate.wrap(owners.get(command, "unknown"), callback)
-            handler = MessageHandler(callback, filters.command(command) & chat_filter)
+            callback = wrap_command_cleaning(self.modules, callback)
+            handler = MessageHandler(callback, command_filter(command) & chat_filter)
             self._handlers.append(handler)
             self.runtime.track(owners.get(command, "unknown"), handler, 0)
 
@@ -279,17 +306,29 @@ class AgentBot:
         for module in self._modules:
             factory = getattr(module, "extra_handlers", None)
             slug = module.MANIFEST.slug
-            if factory is None or not self.registry.is_enabled(slug):
+            if factory is None:
                 continue
             for watcher in factory(self.modules):
                 watcher.callback = self.plugin_gate.wrap(slug, watcher.callback, silent=True)
                 self._watchers.append(watcher)
                 self.runtime.track(slug, watcher, len(self._watchers))
 
+        # Scope all update paths, including base callbacks, watchers and child
+        # tasks. No process-global theme switch or payload-wide text replacement.
+        from .ui.identity import presentation
+        for handler in (*self._handlers, *self._watchers):
+            handler.callback = presentation(handler.callback, worker=worker)
+
+        for manifest in self.registry.manifests():
+            if self.runtime.wants_disabled(manifest.slug):
+                self.registry.disable(manifest.slug)
+        dormant = self.runtime.dormant_handler_ids()
         for handler in self._handlers:
-            client.add_handler(handler)
+            if id(handler) not in dormant:
+                client.add_handler(handler)
         for index, watcher in enumerate(self._watchers, start=1):
-            client.add_handler(watcher, group=index)
+            if id(watcher) not in dormant:
+                client.add_handler(watcher, group=index)
         self.runtime.attach(client)
         self.runtime.change_hook = self._schedule_command_sync
         self.logbook.client = client
@@ -406,23 +445,91 @@ class AgentBot:
                         await task
         return False
 
+    def _startup_phase(self, phase: str) -> None:
+        self.startup_phase = phase
+        logger.info('Startup phase: %s', phase)
+
+    async def _startup_step(self, phase, operation):
+        """Bound required network stages without exposing connection details."""
+        self._startup_phase(phase)
+        try:
+            return await asyncio.wait_for(operation(), timeout=REQUIRED_STARTUP_TIMEOUT)
+        except asyncio.CancelledError:
+            raise
+        except FloodWait:
+            # The Telegram connector owns server-directed cooldown/retry.
+            raise
+        except Exception as error:
+            self.fatal_reason = f'Startup failed at {phase} ({type(error).__name__}); check hosting configuration and connectivity'
+            logger.error('#Errors %s', self.fatal_reason)
+            raise RuntimeError(self.fatal_reason) from None
+
+    async def _connect_telegram(self, client, stop_event):
+        """Respect server-directed FloodWait without crashing into a restart loop.
+
+        Each handshake has its own deadline; cooldown intentionally is not
+        covered by that deadline. Lease heartbeat continues while waiting.
+        """
+        self._telegram_started = False
+        cooldown = getattr(self, '_telegram_cooldown', None)
+        if cooldown is not None:
+            seconds = await self._startup_step('telegram-cooldown-load', cooldown.remaining)
+            if seconds > 0:
+                self._startup_phase('telegram-floodwait')
+                logger.warning('Restored Telegram startup cooldown: waiting %.1f seconds before connecting.', seconds)
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=seconds)
+                except asyncio.TimeoutError:
+                    pass
+                else:
+                    return False
+        while not stop_event.is_set():
+            try:
+                connecting = asyncio.create_task(self._startup_step('telegram-connect', client.start))
+                stopping = asyncio.create_task(stop_event.wait())
+                try:
+                    await asyncio.wait((connecting, stopping), return_when=asyncio.FIRST_COMPLETED)
+                    # Stop/lease loss wins even when both finish in one loop tick.
+                    if stop_event.is_set():
+                        return False
+                    connecting.result()  # Propagate FloodWait to cooldown handling.
+                    self._telegram_started = True
+                    return True
+                finally:
+                    for task in (connecting, stopping):
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(connecting, stopping, return_exceptions=True)
+            except FloodWait as error:
+                seconds = max(1, int(error.value) + 1)
+                if cooldown is not None:
+                    await self._startup_step('telegram-cooldown-save', lambda: cooldown.extend(seconds))
+                self._startup_phase('telegram-floodwait')
+                logger.warning('Telegram startup rate-limited: waiting %s seconds before retry; do not restart repeatedly.', seconds)
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=seconds)
+                except asyncio.TimeoutError:
+                    continue
+                return False
+        return False
+
     async def _run(self) -> None:
         """Connect only after obtaining exclusive ownership of this bot token."""
         if self.database is None:
-            self.fatal_reason = "PostgreSQL is required: DATABASE_URL is missing or invalid"
+            self.fatal_reason = "Database is required: DATABASE_URL is missing or invalid"
             logger.critical(self.fatal_reason)
             return
         if self.database is not None:
-            if await self.database.connect():
-                await self.database.load()
+            if await self._startup_step('database-connect', self.database.connect):
+                await self._startup_step('database-load', self.database.load)
                 if self.database.load_error:
-                    self.fatal_reason = "Required PostgreSQL state could not be loaded"
+                    self.fatal_reason = "Required Database state could not be loaded"
                     logger.critical(self.fatal_reason)
                     return
                 try:
-                    await self.logbook.hydrate()
+                    await self._startup_step('log-destination-load', self.logbook.hydrate)
                 except Exception:
-                    self.fatal_reason = "PostgreSQL log destination could not be loaded"
+                    self.fatal_reason = "Database log destination could not be loaded"
                     logger.critical(self.fatal_reason)
                     return
                 # These stores were built in __init__, before the database was
@@ -441,13 +548,13 @@ class AgentBot:
                 # The deployment said the database is the source of truth; two
                 # competing ones (database and files) are worse than not starting.
                 self.fatal_reason = (
-                    "DATABASE_URL is required but unusable: "
-                    f"{self.database.error or 'no reason given'}"
+                    "DATABASE_URL is required but unusable; check database connectivity and credentials in hosting settings"
                 )
                 logger.critical(self.fatal_reason)
                 return
 
 
+        self._startup_phase('handler-build')
         client = self._client or self.build()
 
         stop_event = asyncio.Event()
@@ -457,6 +564,7 @@ class AgentBot:
         # Two copies of one token would answer every update twice. Take the
         # lease first; wait for a departing deploy, then give up rather than
         # double-serve.
+        self._startup_phase('token-lease')
         if not await self._acquire_lease(stop_event):
             if stop_event.is_set():
                 return
@@ -466,26 +574,78 @@ class AgentBot:
             )
             return
 
+        promotion_task = None
         heartbeat_task = self.lease.start_heartbeat(stop_event)
-        self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
-        logger.info("Starting Agent (token=%s)", self.settings.masked_token)
+        watchdog_task = None
         try:
-            await client.start()
-        except Exception:
-            logger.exception(
-                "Could not connect to Telegram. Check BOT_TOKEN, API_ID, API_HASH "
-                "and outbound network access."
-            )
-            # start() may have opened a session before failing. Disconnect it
-            # before the outer wrapper releases exclusive token ownership.
-            await self._shutdown(client)
-            raise
+            self._plugin_watch = asyncio.create_task(self.plugin_gate.watch(stop_event), name="plugin-reconciliation")
+            logger.info("Starting Meiko (token=%s)", self.settings.masked_token)
+            try:
+                if not await self._connect_telegram(client, stop_event):
+                    return
+            except Exception:
+                logger.exception(
+                    "Could not connect to Telegram. Check BOT_TOKEN, API_ID, API_HASH "
+                    "and outbound network access."
+                )
+                # start() may have opened a session before failing. Disconnect it
+                # before the outer wrapper releases exclusive token ownership.
+                raise
 
+            # The primary bot is connected now. Optional services must not hide
+            # this milestone or delay health readiness indefinitely.
+            self.health.record_success()
+            self.events.emit("start", version=__version__)
+            logger.info('Main Telegram client connected; starting optional services with bounded waits.')
+            self._startup_phase('optional-services')
+            await self._start_optional_services()
+            self._startup_phase('command-menu-sync')
+
+            # Make Telegram's own command menu match what this process actually
+            # registered — a disabled plugin must not linger in the menu either.
+            await self._sync_commands(client, reset_button=True)
+
+            self._startup_phase('running')
+            me = client.me
+            logger.info(
+                "Connected as %s (id=%s)",
+                f"@{me.username}" if me.username else me.first_name,
+                me.id,
+            )
+
+            watchdog = build_watchdog(
+                client,
+                self.health,
+                self.settings,
+                on_fatal=lambda: self._request_restart(stop_event),
+            )
+            watchdog_task = asyncio.create_task(watchdog.run(stop_event), name="agent-watchdog")
+            promotion_task = asyncio.create_task(watch_promotions(self.modules, client, stop_event), name="temporary-promotions")
+
+            await stop_event.wait()
+        finally:
+            if promotion_task is not None:
+                promotion_task.cancel()
+                await asyncio.gather(promotion_task, return_exceptions=True)
+            if watchdog_task is not None:
+                watchdog_task.cancel()
+            heartbeat_task.cancel()
+            tasks = [heartbeat_task] + ([watchdog_task] if watchdog_task is not None else [])
+            # A failed monitoring task must not skip Telegram disconnect.
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await self._cleanup_services(client)
+
+    async def _start_optional_services(self):
+        """Bound optional integrations; neither may block the main bot forever."""
+        storage = getattr(self.modules, 'storage', None)
+        recover = getattr(storage, 'start_archive_recovery', None)
+        if recover is not None:
+            recover()
         # Start the voice engine after the bot is up: a failure there must not
         # take the command surface down with it.
         if self.voice is not None:
             try:
-                await self.voice.start()
+                await asyncio.wait_for(self.voice.start(), timeout=OPTIONAL_STARTUP_TIMEOUT)
             except Exception:  # noqa: BLE001 - the music commands report the reason
                 logger.exception("Voice chat engine failed to start; the player is inert.")
 
@@ -495,7 +655,7 @@ class AgentBot:
         clones = getattr(self.modules, "clones", None)
         if clones is not None:
             try:
-                await clones.restore()
+                await asyncio.wait_for(clones.restore(), timeout=OPTIONAL_STARTUP_TIMEOUT)
             except Exception:  # noqa: BLE001 - clones are a feature, not the bot
                 logger.exception("Could not restore clones; continuing without them.")
             # Then keep watching: a clone that drops its connection is restarted
@@ -505,39 +665,6 @@ class AgentBot:
                     clones.watch(self.settings.watchdog_interval), name="clone-supervisor"
                 )
 
-        # A completed handshake is a successful probe.
-        self.health.record_success()
-        self.events.emit("start", version=__version__)
-
-        # Make Telegram's own command menu match what this process actually
-        # registered — a disabled plugin must not linger in the menu either.
-        await self._sync_commands(client, reset_button=True)
-
-        me = client.me
-        logger.info(
-            "Connected as %s (id=%s)",
-            f"@{me.username}" if me.username else me.first_name,
-            me.id,
-        )
-
-        watchdog = build_watchdog(
-            client,
-            self.health,
-            self.settings,
-            on_fatal=lambda: self._request_restart(stop_event),
-        )
-        watchdog_task = asyncio.create_task(watchdog.run(stop_event), name="agent-watchdog")
-
-        try:
-            await stop_event.wait()
-        finally:
-            watchdog_task.cancel()
-            heartbeat_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await watchdog_task
-            with suppress(asyncio.CancelledError):
-                await heartbeat_task
-            await self._cleanup_services(client)
 
     async def _sync_commands(self, client, *, reset_button=False):
         async with self._menu_sync_lock:
@@ -550,7 +677,8 @@ class AgentBot:
             try:
                 scopes = {command: manifest.scope for manifest in self.registry.manifests()
                           for command in manifest.commands}
-                scopes.update({command: "all" for command in ("start", "help", "ping")})
+                scopes.update({command: "all" for command in ("start", "help")})
+                scopes["ping"]="private"
                 await publish_menu(client, ["start", "help", "ping", *self.registry.active_commands()],
                                    command_scopes=scopes)
             except Exception:
@@ -593,32 +721,19 @@ class AgentBot:
                 logger.exception("Clone supervisor failed during shutdown.")
             self._supervisor = None
         if self.voice is not None:
-            try:
-                await self.voice.shutdown()
-            except Exception:
-                logger.exception("Voice shutdown failed; continuing cleanup.")
-        clones = getattr(self.modules, "clones", None)
+            await _close_optional('Voice', self.voice.shutdown)
+        clones = getattr(self.modules, 'clones', None)
         if clones is not None:
-            try:
-                await clones.stop_all()
-            except Exception:
-                logger.exception("Clone shutdown failed; continuing cleanup.")
-        verifier = getattr(self.modules, "verifier", None)
-        if verifier is not None:
-            try:
-                await verifier.shutdown()
-            except Exception:
-                logger.exception("Verification timer shutdown failed.")
-        jobs = getattr(self.modules, "jobs", None)
-        if jobs is not None:
-            try:
-                await jobs.shutdown()
-            except Exception:
-                logger.exception("Job shutdown failed; continuing Telegram disconnect.")
+            await _close_optional('Clones', clones.stop_all)
+        for name in ('verifier', 'jobs', 'storage'):
+            service = getattr(self.modules, name, None)
+            shutdown = getattr(service, 'shutdown', None)
+            if shutdown is not None:
+                await _close_optional(name, shutdown)
         # Emit while connected, then drain only this bot's delivery tasks.
         # A bounded log-channel failure must never prevent Telegram shutdown.
         try:
-            if not getattr(self, "_stop_event_emitted", False):
+            if getattr(self, '_telegram_started', True) and not getattr(self, "_stop_event_emitted", False):
                 self._stop_event_emitted = True
                 self.events.emit("stop")
             await self.logbook.close(timeout=5.0)
@@ -631,6 +746,7 @@ class AgentBot:
         """Extra fields for ``/health``: the lease and the plugin states."""
         disabled = [row["slug"] for row in self.runtime.state() if not row["enabled"]]
         return {
+            "startup_phase": getattr(self, 'startup_phase', 'initializing'),
             "instance": self.lease.state(),
             "plugins_disabled": disabled,
             "events": self.events.count(),
@@ -649,7 +765,7 @@ class AgentBot:
         except Exception:
             logger.exception("Error while stopping the client.")
         else:
-            logger.info("Disconnected. Agent stopped.")
+            logger.info("Disconnected. Meiko stopped.")
 
 
 def _install_signal_handlers(stop_event: asyncio.Event) -> None:

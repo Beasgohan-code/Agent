@@ -42,6 +42,9 @@ class FakeSender:
     def __init__(self):
         self.sent = []
 
+    async def send_hero(self, chat_id, screen, photo):
+        return await self.send(chat_id, screen)
+
     async def send(self, chat_id, screen):
         self.sent.append((chat_id, screen))
         return SimpleNamespace(id=1)
@@ -106,7 +109,7 @@ def test_status_reports_live_counters(tmp_path):
     assert "Probes" in body
     # Rendered as a table row now: label and value are separate cells.
     assert "Jobs running" in body
-    assert "| 0 " in body or "\u2502 0 " in body or "<td>0</td>" in body
+    assert "<b>Jobs running</b>: 0" in body or "<td>0</td>" in body
 
 
 def test_cancel_actually_cancels_the_callers_job(tmp_path):
@@ -250,3 +253,121 @@ def test_uptime_without_monitor_does_not_fabricate_measurements(tmp_path):
     message = FakeMessage('/uptime')
     run(handlers(ctx)['uptime'], ctx, message)
     assert 'unavailable' in message.replies[0]
+
+
+def test_jobs_private_owner_isolation_and_sensitive_details_hidden(tmp_path):
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        async def run(job):
+            return '/tmp/private'
+        own = ctx.jobs.submit('leech', 11, run, label='https://secret.example/token')
+        foreign = ctx.jobs.submit('encoder', 22, run)
+        await asyncio.gather(own.task, foreign.task)
+        own.error = 'raw credential'
+        own.detail = '/tmp/sensitive'
+        handler = core.build(ctx)[1]['jobs']
+        group = FakeMessage('/jobs')
+        await handler(None, group)
+        assert 'privately' in group.replies[-1]
+        message = FakeMessage('/jobs'); message.chat.id = 11
+        await handler(None, message)
+        text = message.replies[-1]
+        assert own.id in text and foreign.id not in text
+        assert 'done' in text
+        for secret in ('secret.example', 'raw credential', '/tmp/sensitive', '/tmp/private'):
+            assert secret not in text
+    asyncio.run(scenario())
+
+
+def test_cancel_by_id_is_selective_owner_bound_and_honest(tmp_path):
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        blocker = asyncio.Event()
+        async def waiting(job):
+            await blocker.wait()
+        first = ctx.jobs.submit('leech', 11, waiting)
+        second = ctx.jobs.submit('encoder', 11, waiting)
+        foreign = ctx.jobs.submit('leech', 22, waiting)
+        command = handlers(ctx)['cancel']
+        try:
+            await asyncio.sleep(0)
+            msg = FakeMessage('/cancel ' + first.id)
+            await command(None, msg)
+            assert first.state is JobState.CANCELLED
+            assert not second.finished and not foreign.finished
+            assert 'other jobs are unchanged' in msg.replies[-1]
+            for job_id in (foreign.id, 'missing-id'):
+                request = FakeMessage('/cancel ' + job_id)
+                await command(None, request)
+                assert 'No matching job belongs to you' in request.replies[-1]
+            done = FakeMessage('/cancel ' + first.id)
+            await command(None, done)
+            assert 'already finished' in done.replies[-1]
+            malformed = FakeMessage('/cancel one two')
+            await command(None, malformed)
+            assert 'Use /cancel' in malformed.replies[-1]
+        finally:
+            await ctx.jobs.shutdown()
+    asyncio.run(scenario())
+
+
+def test_jobs_module_filter_keeps_owner_boundary_and_rejects_extra_args(tmp_path):
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        async def done(job):
+            pass
+        encoder = ctx.jobs.submit('encoder', 11, done)
+        leech = ctx.jobs.submit('leech', 11, done)
+        foreign = ctx.jobs.submit('encoder', 22, done)
+        await asyncio.gather(encoder.task, leech.task, foreign.task)
+        command = handlers(ctx)['jobs']
+        msg = FakeMessage('/jobs encoder'); msg.chat.id = 11
+        await command(None, msg)
+        assert encoder.id in msg.replies[-1]
+        assert leech.id not in msg.replies[-1] and foreign.id not in msg.replies[-1]
+        for text in ('/jobs encoder extra', '/jobs <bad>', '/jobs ' + 'a'*33):
+            invalid = FakeMessage(text); invalid.chat.id = 11
+            await command(None, invalid)
+            assert 'Use /jobs' in invalid.replies[-1]
+        empty = FakeMessage('/jobs absent'); empty.chat.id = 11
+        await command(None, empty)
+        assert 'No matching jobs' in empty.replies[-1]
+    asyncio.run(scenario())
+
+
+def test_status_reports_native_capabilities_without_network_lookup(tmp_path):
+    from unittest.mock import AsyncMock
+    ctx = make_ctx(tmp_path)
+    client = SimpleNamespace(me=SimpleNamespace(
+        supports_guest_queries=True, can_manage_bots=False, supports_join_request_queries=None,
+    ), get_me=AsyncMock())
+    message = FakeMessage('/status')
+    run(handlers(ctx)['status'], ctx, message, client=client)
+    body = str(message.replies[0])
+    assert 'Telegram guest chat' in body and 'Reported enabled' in body
+    assert 'Telegram bot management' in body and 'Reported disabled' in body
+    assert 'Telegram Guard' in body and 'Not reported' in body
+    assert 'not a live' in body
+    client.get_me.assert_not_awaited()
+
+
+def test_status_unknown_identity_does_not_claim_modes_are_disabled(tmp_path):
+    ctx = make_ctx(tmp_path)
+    message = FakeMessage('/status')
+    run(handlers(ctx)['status'], ctx, message)
+    body = str(message.replies[0])
+    assert body.count('Not reported') == 3
+    assert 'Reported disabled' not in body
+
+
+def test_status_uses_attached_identity_and_requires_boolean_capability_flags(tmp_path):
+    ctx = make_ctx(tmp_path)
+    for value in (True, False, 1, 0, 'true', None):
+        ctx.client = SimpleNamespace(me=SimpleNamespace(
+            supports_guest_queries=value, can_manage_bots=value, supports_join_request_queries=value,
+        ))
+        message = FakeMessage('/status')
+        run(handlers(ctx)['status'], ctx, message)
+        body = str(message.replies[0])
+        expected = 'Reported enabled' if value is True else 'Reported disabled' if value is False else 'Not reported'
+        assert body.count(expected) == 3

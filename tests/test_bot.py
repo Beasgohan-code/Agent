@@ -87,13 +87,12 @@ def test_build_creates_client_and_registers_handlers():
     client = bot.build()
 
     assert isinstance(client, Client)
-    # 3 built-in commands + 103 module commands (music registers nothing without
-    # SESSION_STRING) + callback + error handler, plus four watchers (anti-spam,
-    # filters, joins/leaves, new-group log), each in its own group.
-    assert bot.handler_count == 115
+    # Music registers nothing without SESSION_STRING. Count command handlers,
+    # callback/error routing and isolated background watchers separately.
+    assert bot.handler_count == 229
 
     handlers = client.dispatcher.groups[0]
-    assert sum(isinstance(h, MessageHandler) for h in handlers) == 107
+    assert sum(isinstance(h, MessageHandler) for h in handlers) == 215
     assert sum(isinstance(h, CallbackQueryHandler) for h in handlers) == 1
     assert sum(isinstance(h, ErrorHandler) for h in handlers) == 1
 
@@ -105,10 +104,9 @@ def test_build_creates_client_and_registers_handlers():
         if group == 0:
             continue
         assert len(client.dispatcher.groups[group]) == 1
-    # Two message watchers (anti-spam, filters) and two membership watchers
-    # (greetings, new-group log). Which group number each lands in follows the
-    # module order, so assert the mix rather than the position.
-    assert sum(isinstance(w, MessageHandler) for w in watchers) == 3
+    # Four group-message watchers plus the private FileStore conversation;
+    # three membership watchers. Assert the mix, not module-order positions.
+    assert sum(isinstance(w, MessageHandler) for w in watchers) == 6
     assert sum(isinstance(w, ChatMemberUpdatedHandler) for w in watchers) == 3
 
 
@@ -125,7 +123,7 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     client = bot.build()
 
     messages = [h for h in client.dispatcher.groups[0] if isinstance(h, MessageHandler)]
-    assert len(messages) == 107
+    assert len(messages) == 215
     assert all(h.filters is not None for h in messages)
 
     scopes = {c: m.scope for m in bot.registry.manifests() for c in m.commands}
@@ -135,18 +133,20 @@ def test_every_command_has_a_scope_and_the_scopes_match_the_modules():
     # Media commands stay in private chats; moderation only makes sense in groups.
     assert private == {
         "encode", "compress", "sample", "toaudio", "screens",
-        "encinfo", "enccancel", "encpreset",
-        "genlink", "share", "links", "revoke",
-        "clone", "mybots", "delclone", "clonestats",
+        "mediainfo",
+        "genlink", "share", "links", "revoke", "linkchannel",
+        "clone", "panel", "mybots", "delclone", "clonestats",
     }
     assert group == {
-        "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
-        "unban", "purge", "note", "trust", "antispam", "modlog",
+        "fullpromote", "adminbox", "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto",
+        "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "privaterules", "resetrules",
+        "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "warn", "warnings", "warns", "unwarn", "mute", "unmute", "kick", "ban",
+        "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme", "unban", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood",
         "filter", "filters", "stopfilter",
         "setwelcome", "welcome", "goodbye",
         "settings", "rules", "setrules", "pin", "unpin",
-        "admins", "warnlimit", "resetwarns", "lockdown",
-        "post", "postpreview", "posttemplate", "verify",
+        "etagall", "eall", "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror", "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "admins", "warntime", "warnmode", "warnlimit", "resetwarns", "lockdown",
+        "post", "verify",
     }
 
 
@@ -246,9 +246,9 @@ def test_unknown_callback_warns_the_user_and_does_not_edit():
     assert query.edits == []
 
 
-def test_callback_falls_back_to_a_new_message_when_edit_fails():
+def test_callback_replaces_only_explicitly_uneditable_messages():
     handlers, client = make_callback_handlers()
-    query = FakeQuery(CB_HELP, edit_error=RuntimeError("message is too old"))
+    query = FakeQuery(CB_HELP, edit_error=RuntimeError("MESSAGE_EDIT_TIME_EXPIRED"))
 
     asyncio.run(handlers.on_callback(None, query))
 
@@ -346,7 +346,7 @@ def test_the_plugins_command_answers_instead_of_reporting_no_runtime(tmp_path):
     body = message.replies[0]
     assert "Plugin runtime" in body
     assert "unavailable" not in body
-    assert "encoder" in body
+    assert "Encoder" in body
 
 
 def test_the_events_command_sees_the_real_event_log(tmp_path):
@@ -371,3 +371,15 @@ def test_the_watchdog_command_sees_the_lease(tmp_path):
     # The lease is wired, so the panel either reports it or says it is not held;
     # it must not silently drop the row.
     assert "Instance" in message.replies[0]
+
+
+def test_group_start_and_help_filters_accept_actual_group_commands():
+    from pyrogram.enums import ChatType
+    async def scenario():
+        bot=AgentBot(make_settings())
+        bot.build()
+        client=SimpleNamespace(me=SimpleNamespace(username='ExampleBot'))
+        for handler,text in ((bot._handlers[0],'/start@ExampleBot'),(bot._handlers[1],'/help@ExampleBot')):
+            message=SimpleNamespace(text=text,caption=None,chat=SimpleNamespace(type=ChatType.SUPERGROUP))
+            assert await handler.filters(client,message)
+    asyncio.run(scenario())

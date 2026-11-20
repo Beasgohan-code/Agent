@@ -1,0 +1,1131 @@
+# Meiko — verified codebase discovery and hardening audit
+
+**Chronological evidence:** baseline counts, gaps and test totals apply to their recorded phase. Later sections supersede earlier findings; use [the current document map](USER_REQUIREMENTS.md#current-status-and-document-map) and [generated command inventory](COMMAND_INVENTORY.md) rather than treating baseline gaps as current.
+
+## Baseline, scope and confidence
+
+- Phase: repository-wide discovery + diagnostic disclosure hardening.
+- Starting commit: `333c74486cf45336d5e8eda112dc9c165d3dd3aa` on `arena/3b91f811-agent`; remote matched at discovery.
+- Scope includes the actual dirty working tree, not just committed files. Existing local changes to Premium, Music, UI, dependencies and other features remain outside this phase's commit.
+- Discovery read/parsed all **142 application Python files**, **156 existing test Python files**, **9 Python tools**, and `start.py` (308 Python files before this phase's new test). Imports, definitions, handler registrations, SQL/task/write boundaries were indexed across that set. All plugin manifests were inspected. Configuration, Docker/Render files, documentation, licenses, patch manifests, patch text and the TypeTube Node bridge were inventoried/read.
+- Manual execution-path review covered transport/build/run/shutdown, command/callback/deep-link dispatch, plugin selection/gates, clone setup/store/writer/reconciler/manager, authorization, document persistence, relational stores, health, networking, jobs, storage and the feature families below. This is **broad discovery and targeted behavioral verification**, not an exhaustive proof of every handler, dependency, SQL interleaving or upstream feature.
+- Evidence labels: **R** = reproduced locally; **S** = source-confirmed path/gap, not an exploitation claim; **U** = live behavior unverified. Old documentation and historical test totals are not current evidence.
+- No production services, credentials, Telegram accounts or connected-app data were used. Disposable database only. No PR merge or deployment.
+
+## Verified architecture and dependency map
+
+```text
+start.py -> Settings/from_env + logging + data path -> AgentBot
+ AgentBot.run -> Database.connect/load + settings hydration
+              -> build -> Wzgram Client/handlers + ModuleContext
+              -> InstanceLease/heartbeat -> Telegram handshake
+              -> optional voice/clone restore + menu sync + watchdog
+ Telegram updates -> command scope filters / callbacks / deep links / watchers
+                  -> PluginGate + handler-specific authorization
+                  -> application services -> scoped database / external API
+                  -> RichMessage/native table or classic HTML fallback
+ shutdown -> stop owned tasks/services -> disconnect -> release lease -> close DB
+
+ModuleContext -> chats, storage, links, jobs, runtime, premium, logbook,
+                 plugin access/gate, clone manager, transport routers
+Plugin catalogue -> manifests + pure selection resolver -> built-in registration
+Clone control plane -> encrypted registry + revision writer -> reconciler
+                    -> per-clone AgentBot + client + lease + resource cleanup
+```
+
+- Telegram transport is **Wzgram through the `pyrogram` namespace**, with Richgram installed without dependencies to avoid replacing Wzgram with Kurigram. Aiogram is not the application's implemented transport. Do not add a second framework without an explicit integration design.
+- Native rich messages/tables are used where available, with fallback handling in `utils/rich.py`, `utils/sender.py`, `ui/tables.py`. Rendering support is not a guarantee that every Telegram client accepts it.
+- The 20 built-in plugin packages are selected from `modules/ALL_MODULES`; shell and seven group-core plugins are mandatory. Discovery is an explicit catalogue, not arbitrary filesystem execution.
+- Manifests expose dependencies/conflicts, credentials/capabilities, compatibility, scopes, Premium/resource metadata and configuration schemas. The pure resolver validates selection graphs; the registry checks actual command-handler maps. Schema metadata is not proof that every configuration is validated at runtime.
+- External installer staging/hash review is retained, but `installer.load()` explicitly refuses third-party execution. Review is **not** a sandbox. Clone workers are **in-process clients**, not isolated OS processes.
+
+## Actual feature inventory and runtime flows
+
+There are **209 manifest command names**, including aliases, plus built-ins handled outside the registry. This is **not 209 independent features**, nor a claim of the requested 200+ behavior target. Registration remains conditional on dependencies, runtime state and capability.
+
+All command flows share transport scope filtering and PluginGate for optional modules; protected core uses its own authorization. Callbacks enter `CallbackHandlers -> ActionRouter`; `/start` payloads enter `DeepLinkRouter`. Known registration prefixes include clone/setup, group/plugin controls, verification, federation roles, leech, linkshare, music and Premium. Message watchers cover moderation/antiflood, greetings, filters, verification membership, guided clone/FileStore input and opt-in AI text.
+
+| Area / package | Actual action -> authority/service -> persistence/API -> response | Important limits |
+|---|---|---|
+| `ops`, `core` | diagnostics/runtime/plugin controls -> Owner or delegated capability checks -> runtime, incidents, logbook, Telegram command menu -> status/panels | Global runtime switches still queue document persistence; events are not universally durable. |
+| `group` (+ admin, controls, topics, plugin panel) | rules/settings, pins/admin/topic actions -> live group permissions -> group_rules/admin_settings/action_topics/PluginAccess or Telegram -> confirmation | Settings mix relational authority with legacy chat-document fields. |
+| `moderation` (+ restrictions, locks, blocklists, cleaning, antiflood) | target parsing -> caller/bot/target checks -> restriction intents, blocklist/policy tables or legacy warnings -> Telegram restrict/ban/delete -> outcome/history | Manual variants have intent/outcome records; base warnings/history are still cached document writes. Flood counters are local memory. |
+| `filters` | moderator adds/removes trigger -> group_filters transaction/revision -> text watcher match -> Telegram response | Not a durable scheduled automation engine. |
+| `welcome` | admin text/toggle -> Greetings -> membership watcher -> formatted welcome/goodbye | Membership delivery is not a durable outbox. |
+| `security` | verification setup -> joined-member restriction + nonce/origin-bound callback -> Telegram unrestrict / timeout removal | Pending challenges/timers are memory-resident; restart recovery is incomplete. |
+| `reports` | reply `/report`, `/appeal` -> chat report sequence; moderator reads/closes -> ChatStore -> panels | Report creation/sequence/closure are not cross-instance transactional. |
+| `federations` (+ roles) | create/join/admin/transfer workflows -> federation membership/role authority -> tenant-scoped tables/history -> confirmations | Do not infer a full federated-ban/analytics platform from administration commands. |
+| `clone` (12 Python files) | private draft -> encryption/Premium/capacity + Bot API getMe/channel checks -> canonical encrypted registry/revision -> reconciler -> AgentBot/lease -> panel | See P0 lifecycle defects below. Direct profile changes save pending revisions; supervisor/start/restart/restore use reconciliation. |
+| `filestore` | private conversation/channel range -> channel permissions -> archive_links/deliveries/items -> Telegram copy -> delivery result | Channel-message archive exists; local vault metadata/archive recovery is a different subsystem. No exactly-once remote delivery or general deletion outbox. |
+| `linkshare` | owner selects stored handle -> awaited LinkStore transaction -> subscription check -> durable redemption identity admission -> stored-file delivery | At-most-once admission is not exactly-once delivery; ambiguous sends can consume a use. Receipt retention is unbounded until record removal. |
+| `leech` (+ options/home/captions/thumbnails/TypeTube) | URL/file request -> authorization/quota/job admission -> bounded public-address HTTP transfer or allowlisted Node resolver -> Telegram/local storage | Jobs are in memory; not a durable download scheduler. Temporary outputs require cleanup on every exit. |
+| `encoder` (+ options) | replied media/options -> job/quota validation -> ffmpeg/ffprobe subprocess -> validate output -> upload/cleanup | No arbitrary shell arguments accepted as a feature; native tool packaging still needs an actual Docker build. |
+| `music` (+ controls/playlists/queue/cards/seeking/sources) | group request/admin control -> plugin/group/assistant readiness -> source resolution, per-chat queue/locks, voice engine -> call acknowledgement -> queue/card update | Saved playlists use database. Queue/playback are not durable. Search/session additions in the dirty tree are not all committed. Native fetch boundary differs from Leech. |
+| `postmaker` | group admin edits template/posts -> PostTemplates -> render/escape -> Telegram message | Not a complete scheduled publishing service. |
+| `ai_agent` | `/ask` or explicitly opted-in/directed text -> plugin/config/group checks -> provider SSE -> draft/final answer | Text is sent to external provider; no hidden-reasoning disclosure or autonomous tools. No live provider test in this phase. |
+| `renamer` (+ rules) | file/name/options -> ownership/limits -> media operation + caption/thumb/rule settings -> Telegram upload | Some rules/settings retain queued document persistence. |
+| `premium` (+ limits) | Owner grant/revoke; user plan/status -> entitlement authority -> tenant SQL -> result/limits | Meiko Premium != Telegram Premium. Working tree has explicit configured-Owner auto-Premium/Clone Pro behavior not present consistently in committed baseline; no policy change made here. Sudo alone is not Premium. |
+| `utilities` | IDs/info/time/version/repository-related command surface -> scope/permissions -> Telegram metadata -> response | Product naming/source-promotion review remains separate from removing required attribution. |
+
+## Clone and worker consistency
+
+Verified source path: guided setup/legacy creation -> `store.aadd` -> writer `_persist` in the registry transaction; profile callbacks -> `configuration.write(expected_revision, request_id)`; manager `start`, `restart`, `restore`, supervisor -> `CloneReconciler.run` -> exact encrypted snapshot -> `_start_assigned` -> lease/identity/startup -> conditional acknowledgement.
+
+- Registry then revision advisory-lock order; desired registry/snapshot/pending revision/receipt commit together. Duplicate write IDs replay their original result, not the latest revision.
+- Attempt claim and worker lease use database ownership checks; acknowledgement CAS rejects changed desired/pending revision. Registry-owner comparison runs in that transaction. Application I/O is outside SQL transactions.
+- Worker identity is checked after client startup and before voice/menu publication; **plugin build/handler registration already happened** in `bot.build()`. Thus “identity before plugin initialization” is not yet guaranteed.
+- Failed or stale application stops the unconfirmed worker and preserves the previous applied snapshot. That does not mean the previous worker continues serving; recovery can reapply after interruption.
+- Claims expire after 60 seconds without renewal. Startup longer than this fails closed; exactly-once external effects are not guaranteed.
+- Initial revision-zero legacy records cannot start through the revision reconciler. A migration/adoption path must not fake an applied acknowledgement.
+
+## Database and concurrency map
+
+`Database.SCHEMA` currently composes **52 statements / 44 tables** in the inspected working tree. These are additive startup DDL statements, not a versioned migration runner. Schema definitions live in `platform/db.py` and service modules, not ORM models or a migration directory.
+
+| Persistence family | Authority and concurrency |
+|---|---|
+| `agent_documents`, `agent_lease` | Bot-scoped document keys and token/attempt/assistant leases. Generic documents still use local cache + whole-row write-behind; special clone/link services use awaited locked transactions. |
+| Premium tenants/entitlements; sudo grants/audit | Tenant keys, one-time legacy entitlement import, awaited grant/check/revoke; sudo is capability delegation, not Owner/group-admin identity. |
+| Plugin catalog/group_plugins/config/history/resources | Global Owner approval distinct from group activation; group advisory locking + approval-row locks; max three optional slots; cleanup-pending resource records. |
+| Rules, trust, filters, antispam, admin settings, command/service cleaning, action topics | Tenant/group keys, dedicated state/revision/history tables; exact lock/validation rules differ by service. |
+| Blocklists/revisions/actions; restriction cases | Tenant/group action intents and outcomes; unique update identities in selected paths. Telegram and SQL are not one atomic transaction. |
+| Federations/admins/chats/history/invitations | Tenant-scoped federation relationships and ownership workflows. |
+| Archive links/deliveries/items | Durable token/use admission and per-message outcomes, not a general-purpose outbox. |
+| Greetings, post templates, music playlists, log settings, incidents | Dedicated awaited state/metadata tables; incidents retain categories/fingerprints rather than raw exception arguments. |
+| ChatStore/users/storage/runtime/media rules | Legacy cached documents still exist. Local compatibility APIs are not evidence of durable multi-instance correctness. |
+
+Tenant predicates and parameterized SQL were traced in the authority services; tests cover several real isolation/race boundaries. This is not a claim that all queries have been formally verified. `_clean_scope` normalizes strings; token-derived production scopes are preferable to accepting arbitrary caller scope strings. SQL tenancy is application-enforced, not a separate database role/RLS security boundary per clone.
+
+Pool maximum is four connections **per Database instance**; clones create additional pools. Capacity planning must account for roughly `4 * (1 + running clones)` possible connections, plus other applications. Many services specify acquire/query timeouts, but not every acquire/transaction does. Lease acquisition uses application wall time while reconciliation expiry checks use database time: clock-skew behavior needs tests.
+
+## Findings and priority
+
+| ID | Priority / evidence | Finding, actual impact and next boundary |
+|---|---|---|
+| SEC-01 | P0 / **R, fixed this phase** | Callback entry logging copied opaque payloads; unknown callbacks and answer failures could also log payloads/exception bodies. Watchdog copied raw provider exceptions into logs and public health `last_error`. Five synthetic-value regressions failed before category-only/generic logging was implemented. Dispatch, failure counts and notices remain intact. |
+| CLONE-01 | P0 / **R, fixed in lifecycle follow-up** | `reconcile._registry_owner` checks existence/owner, not disabled state or a lifecycle generation. Disposable database experiment disabled the clone inside application; acknowledgement still returned `applied_revision=1` with registry `disabled=True`. Supervisor eventually checks disable, but that is not an acknowledgement fence. Next: atomic lifecycle-generation/eligibility checks, including stop/disable during startup and owner/credential changes. |
+| CLONE-02 | P0 correctness / **R, fixed in lifecycle follow-up** | Delete then recreate the same bot fails despite free capacity: `aremove` leaves the revision and fixed `creation` receipt; `_persist` replays the old creation result or conflicts with expected zero. Failed initial setup also removes only the registry entry. Next: lifecycle/generation-aware creation and retry, preserving monotonic revisions/old receipts and rejecting stale workers. Do not blindly delete receipts or reset counters. |
+| DATA-01 | P0 integrity / **R, warnings fixed; other document races open** | Two independent ChatStore/Database snapshots each added a warning and flushed; only **1 of 2** warnings persisted. `chats._save -> save_document -> Database.save -> whole-row UPSERT` has no cross-process CAS. Warnings, report numbering/closure, notes and shared storage/runtime documents need an operation-by-operation migration, not a generic blind flush. |
+| NET-01 | P0 security review / **S, fail-closed mitigation implemented; native exploitation U** | Arbitrary Music media URLs receive DNS preflight then are handed to native `MediaStream`; native redirect/DNS resolution is not pinned to `PublicResolver`. Leech's connector is pinned and validates every redirect, so its tests do not prove native streaming safety. Next: reproduce with a local controlled redirect/rebinding fixture; design bounded mediated fetching or a restricted source policy before adding Music breadth. |
+| SEC-02 | P0 security review / **S, open** | Lease query/release/heartbeat diagnostics and JobQueue retained exceptions are fixed in follow-ups below; encoder download/delivery/cleanup logs are fixed in a further follow-up; remaining service/transport producers still require review (including Leech progress edits). Job history now retains a stable failure code, not exception bodies. No universal secret-safe logging policy is enforced. Add sentinel tests at each producer/sink; do not log raw updates. |
+| LIFE-01 | P1 / **S, open** | Main `_run` starts `plugin_gate.watch`; clone `_start_assigned` does not run that lifecycle. New clone invocations check approval, but cross-instance revocation of already-running optional work lacks the same periodic cancellation path. Clone supervision checks connection flags, not a full health probe. Unify owned-service startup/shutdown without calling the main polling lifecycle twice. |
+| DATA-02 | P1 / **S, open** | `Database.close()` makes one final flush attempt then closes; a failed flush remains only in memory. Process-local jobs/events/drafts cannot be treated as durable. Retry/backoff is not an outbox or restart-safe delivery. |
+| CLEAN-01 | P1 / **S, open** | Plugin resource cleanup markers exist; PluginGate only reconciles locally seen scopes. No general durable cleanup/dead-letter/replay worker was found. Storage/clone deletion does not provide a transactional, durable remote-resource cleanup ledger. Never claim local deletion means remote cleanup completed. |
+| HEALTH-01 | P1 / **S, open** | `/health/ready` derives from Telegram HealthMonitor only; no current database probe, required-plugin status or worker readiness aggregate. `/health` exposes operational details without authentication; minimize public fields. Liveness is intentionally independent. |
+| RESOURCE-01 | P1 / **S, open** | JobQueue limits running jobs with a semaphore but does not bound admitted pending tasks. Verification timers, flood/queue/draft state are memory-resident. Add admission bounds, per-user/group limits and restart semantics before scaling. |
+| PLUGIN-01 | P1 / **S, open** | Runtime enable/disable queues document persistence and compensates synchronous handler calls; it is not a durable cross-process dispatcher acknowledgement. Modules are eagerly imported before optional-build failure handling. Callback/watcher cleanup hooks are not a universal unload protocol. |
+| POLICY-01 | P0 decision gate / **S, open** | Explicit Owner-Premium behavior differs between dirty code and committed baseline and historical docs. New requirements prohibit silent exceptions. Make the intended policy explicit and reconcile all entry points/tests in a separately authorized phase; do not silently stage the existing local Premium changes. |
+| DOC-01 | P2 / **S, open** | Config/Render/env comments still describe optional database/plaintext/feature availability in places where current runtime refuses fallback or writes. Historical audits contain superseded pending/completed statements. This document supersedes totals as evidence, not all product documentation. |
+
+The database experiments were isolated probes, not committed regression coverage for the open defects. They did not contact Telegram or production. Their required regression cases are gates for the next phases; they are not added as permanently failing tests to the working suite.
+
+## Missing integrations and completion boundaries
+
+- **P0 before feature expansion:** remaining report/document atomicity; native remote-playback restoration only behind enforceable mediation; remaining secret-bearing diagnostic paths; explicit Owner policy. Lifecycle/recreation and warning authority fixes are recorded in the follow-ups below.
+- **P1 reliability:** durable cleanup intent/outcome/retry/dead-letter service; bounded worker/plugin startup parity; authoritative readiness; transactional runtime switches; Premium revocation convergence; durable moderation/verification recovery. Apply idempotency at the operation boundary and document ambiguous Telegram outcomes rather than replaying destructive actions blindly.
+- **P2 group-management target:** count real behaviors, not aliases. Full scheduled messages/reminders, join-request/raid workflows, queryable case/appeal lifecycle, activity analytics/export, backup/restore and safe setup diagnostics are not established as complete. Extend the existing moderation/group/reports services instead of adding competing command frameworks.
+- **P3 optional plugins:** complete source-by-source FileStore/Leech/Encoder/Music/Post Maker/AI/Renamer/Utilities mapping only after P0. Existing functionality is substantial but not upstream parity. Queue restoration, channel player modes, autoplay/effects and publishing schedules must not be advertised from an inventory alone.
+- **P4 operations:** migration versioning/compatibility checks, resource budgets, reproducible dependency/build/CI gates and operator runbooks. No webapp/dashboard phase until backend authority is reliable.
+- No proven-safe deletion list of “unused modules” was established. Legacy helpers and installer review APIs are not automatically dead because dynamic routes call them indirectly. Keep them until call-graph and compatibility tests justify removal. No `TODO.md` was found to remove.
+
+## Reference and packaging review
+
+- Read-only GitHub discovery of `Beasgohan-code/Videl1`, default-branch commit `6a00a55f6ad013c85e14c39a9b06922c1bb6f08c`: recursive tree (527 file entries) and `VidelBot/core/plugin_manager.py`. It contains multiple bot/plugin subtrees and its own persistence/execution design; it is not an interchangeable module dependency. No code copied, imported or executed. No whole-repository behavioral audit or license grant inferred; GitHub repository metadata did not supply a license identifier. Preserve per-component licenses/credits and existing patch manifests.
+- `patches/filestore` contains review-only upstream patches with before/after hashes; they are not the runtime `agent.modules.filestore` implementation. Patch validators execute extracted reviewed reference snippets in test scaffolding; this is not secure execution of third-party Python. Reference checkouts are excluded from Docker.
+- Docker uses a Node build stage, Python 3.11, native ffmpeg and unprivileged uid 10001; entry point is long polling. Render describes an auto-deploying worker, with optional HTTP-health example. **Pushing can trigger the host's configured automation**; this phase makes no deployment/API call and changes no deployment configuration.
+- No `.github/workflows`, Ruff/Black configuration or installed Ruff/Black/Docker executables were found. `requirements-dev.txt` declares pytest but not all tools used by this sandbox's tests. No Python dependency lockfile. TypeTube has an npm lockfile.
+- `pip check` reports Richgram's missing Kurigram dependency. This is consistent with the documented intentional `--no-deps` Wzgram ownership workaround, not a reason to install the conflicting fork. It remains a packaging exception, not a clean dependency-resolution result.
+
+## Current verification and limitations
+
+| Check | Actual evidence for this phase |
+|---|---|
+| TDD | Five diagnostic regressions failed before implementation; then passed. Tests use synthetic private strings, never real secrets. |
+| Focused | **45 passed in 0.42s**: new diagnostic tests, health, action-router and deep-link boundaries. Telegram operations are mocked. |
+| Full dirty working tree | **1,796 passed, no skips, 22.14s**, with `AGENT_TEST_DATABASE_URL` set to disposable database. Includes preexisting uncommitted tests/features. |
+| Clean tracked-source export plus this phase's exact code/test slice | **1,709 passed, no skips, 24.25s**, same disposable database approach; no dirty-tree source dependencies copied. This is an isolated export, not a fresh dependency installation or a separate Git checkout. |
+| database experiments | Recreated delete/recreate failure, disabled-during-apply acknowledgement, and lost warning update using real pools/transactions. No mocks claimed as SQL integration. |
+| Static | All application/test/tool Python ASTs parsed. Compileall, Pyflakes and working-tree diff checks passed; staged diff checked before commit. |
+| Unavailable / not run | Ruff, Black/format check, Docker build: tooling/config absent. No live Telegram/provider/native group-call/deployment test, fresh dependency installation, load test, full upgrade-matrix migration test or vulnerability-database scan. |
+
+Commands: `.venv/bin/python -m pytest -o addopts= -q -rs -p no:cacheprovider --tb=short` with a `pgserver` disposable server URI; `.venv/bin/python -m compileall -q agent tests tools start.py`; `.venv/bin/python -m pyflakes agent tests tools`; `git diff --check` and staged equivalent. database schema was applied by the actual `Database.connect()` paths on disposable databases.
+
+## Lifecycle fencing follow-up (CLONE-01 / CLONE-02)
+
+Implemented durable tenant-scoped lifecycle generations under the registry transaction lock. Deletion retains a non-secret generation tombstone; recreation advances desired revision and uses a generation-specific creation receipt rather than resetting revision authority. Existing registry records decode generation zero. Reconciliation checks enabled state, owner, credentials and assigned generation before application and again when committing pending acknowledgement or recovery. Explicit stop persists a fence even on a controller without a local worker. Start/restart use generation CAS; supervision detects generation changes. Worker-only cleanup and shutdown do not accidentally persist a disable intent. UI callbacks no longer overwrite a concurrent stop after startup.
+
+Evidence: 11 new real-database regressions cover disable/application, disable-enable ABA, deletion/recreation, recovery, remote stop, restart/supervision, concurrent CAS, transaction rollback, tenant/owner isolation and replacement reads. Initial tests reproduced seven failures; remote-controller stop independently failed before the manager fix. Final focused suite: **50 passed in 2.48s**. Full dirty tree: **1,807 passed in 24.36s**, no skips. Isolated tracked-source export plus exact staged lifecycle slice: **1,720 passed in 24.54s**, no skips, using actual disposable database pools/schema. Compileall, Pyflakes and both diff checks passed. Export shares the existing virtualenv; Telegram workers remain mocked, not live integration proof.
+
+This fences commit authority, not an atomic cancellation of already-in-flight Telegram effects. Remote live workers stop through supervision/lease handling; no instantaneous distributed termination claim. No production migration/deployment or fresh-install/upgrade-matrix validation was performed. Legacy revision-zero bootstrap and startup lease-duration review remain separate work. Earlier CLONE-01/02 findings above describe reproduced pre-fix behavior, now covered by these regressions.
+
+## Warning authority follow-up (DATA-01)
+
+Reproduced the original defect again with two independent database-backed ChatStores: submitted two warnings, persisted one. New awaited-API/guard regressions failed before implementation. Warning history now lives in `agent_member_warnings`, keyed by tenant/group/member, with advisory-locked read/modify/write transactions. This follows existing feature-table architecture rather than trying to serialize one writer while leaving stale whole-document writers able to erase it. First access imports persisted legacy history once, including empty/cleared state. Existing local-only standalone methods remain; database synchronous warning reads/mutations refuse before touching cache. Canonical warning operations never queue a chats document or write local JSON.
+
+Updated `/warn`, `/warnings`/`/warns`, `/unwarn`, `/resetwarns`, anti-spam, blocklist warnings and moderator `/info` reads to await authority. Private `/info` does not query group-only warning state. Existing handler permission checks remain; no premium/Owner exception introduced. Errors expose generic unconfirmed-state messages rather than database exception text. Retention/reason bounds and warning-clear semantics are preserved.
+
+Evidence: four new regression scenarios exercise 20 concurrent adds, 25 concurrent clears, persisted legacy import, replacement-store reads, stale document flushes, group/member/tenant isolation, retention limits, mutation-result independence, real trigger-induced transaction rollback, unavailable database refusal, cancelled database-lock wait, and moderator handler persistence/denial (Telegram client mocked). Focused: **119 passed in 2.30s**. Final full dirty tree: **1,811 passed in 21.19s**, no skips. Isolated staged-source export: **1,724 passed in 24.49s**, no skips. Actual disposable database schema/pools used; compileall, Pyflakes and working/staged diff checks passed. Existing fixture-loop/XDG warnings remain nonfatal. No fresh dependency install or live Telegram test.
+
+Limits: this closes the warning-history lost update, not every ChatStore document race. Moderation audit logs and generic settings still use batched documents; log and warning commits are not atomic together. Escalation remains a separate Telegram side effect, not exactly-once delivery. Legacy import is lazy; do not run an old warning-writing binary concurrently with the new authority or roll back expecting post-import warning writes to appear in the legacy document. Existing legacy data is not deleted. This adds boot-time additive schema only, tested on disposable databases; no production migration/deployment call or full upgrade-matrix test occurred.
+
+## Native media egress follow-up (NET-01 mitigation)
+
+Traced installed py-tgcalls 2.2.11 `MediaStream.check_stream`, FFmpeg/FFprobe command construction and option cleanup. Native HTTP resolution/redirects do not use `PublicResolver`. Fifteen new boundary regressions failed before implementation: direct/private, hypothetical redirect/rebinding and signed Googlevideo sources reached the native call during play, seek or stored-source seek. These are handoff regressions with a mocked call, **not a demonstrated native redirect/rebinding exploit**. No unsafe internet/private-service request was made.
+
+Implemented the charter's fail-closed alternative, not a pretend safe streaming proxy. The real VoiceEngine accepts only existing regular local files, rejects URL/protocol/device inputs before native handoff, and rechecks stored sources on seek. Real-engine queue admission rejects remote resolved sources before adding a track. Local decoding uses input protocol whitelist `file,pipe` and a small container whitelist (`wav,mp3,flac,ogg,mov,matroska,aac`), excluding playlist/concat/HLS/DASH/SDP demuxers. Required protocol/format options must be advertised by **both** installed FFmpeg and FFprobe using py-tgcalls' option-cleanup grammar. Capability subprocesses are time-bounded and reaped on timeout/cancellation; missing/unsupported tools fail closed. Existing uncertain-control tests still exercise acknowledgements/timeouts after isolating this new capability boundary; no guards were removed.
+
+**Compatibility impact:** native direct-URL, YouTube and search-result playback is disabled until a bounded mediated-fetch design exists. Source resolution remains, but resolved remote URLs cannot be played/queued by the real engine. Downloaded Telegram local media may play only with supported native tools/containers. Existing remote queue entries/replay attempts fail without committing playback changes. No bypass flag or trusted-host exception was added. This is not an OS sandbox for hostile local media or a global process/network firewall; TypeTube/Telegram provider traffic is not moved into a sandbox by this change.
+
+Evidence: 22 new parameterized checks cover rejection, real local paths, actual installed MediaStream/FFprobe command construction and cleanup, unsupported option refusal, regular-file validation, subprocess timeout/cancellation cleanup and real-engine queue admission. Tool-capability tests use small authored executable fixtures, not FFmpeg. Focused: **87 passed in 0.76s**. Final full dirty tree: **1,833 passed in 22.23s**, no skips. Isolated exact staged-source export: **1,746 passed in 23.37s**, no skips. Disposable database enabled for both full suites, with no schema change in this phase. Compileall, Pyflakes and working/staged diff checks passed.
+
+Limits: FFmpeg/FFprobe binaries are absent in this sandbox; no real native decode, controlled native redirect/DNS exploit, live group call or deployment validation was run. Installed Python-native command contracts were tested; this is not cross-version certification. Isolated export shares the existing virtualenv. Unrelated pending Music features/tests are excluded from the commit, including refreshed-source seek API additions; that pending path is also fenced in the working tree. Remote playback restoration is unfinished and must not be advertised as supported based on mocked Music handlers.
+
+## Richgram UI correction and moderation diagnostics (user follow-up)
+
+User-reported `┌─┬─┐` boxes came from `Table.classic_block -> Table.render` after rich delivery was unavailable/refused, including clone encryption guidance. They were not native Richgram tables. Verified installed distribution metadata: `richgram` **0.2.0**, source/homepage `https://github.com/Badmunda05/richgram`. Existing native `rich_table`, `rich_heading`, note and footer builders are retained; Wzgram remains the transport. No new dependency or conflicting Kurigram installation was introduced.
+
+Changed the shared compatibility renderer to escaped, untruncated label/value HTML: no preformatted grids, fixed-width clipping, padding or box-drawing separators. Native sends/edits still use Richgram tables/headings. Rich-format rejection and unavailable-client paths preserve content/keyboards without drawing boxes; ambiguous transport/rate-limit failures still propagate rather than resend. Tests expecting legacy transport grids were updated to assert the explicitly requested labelled rendering, not skipped. The explicit `Table.render()` text utility remains for compatibility/tests, but source search confirms message delivery does not call it. Code/log preformatted content unrelated to UI tables is not stripped.
+
+`TOKEN_KEY` remains the deployment encryption secret, not a BotFather token or Telegram password/OTP. Missing-key clone creation still refuses before collecting credentials or creating a draft. Clarified the other-command row and deployment-owner setup note; never generated, logged, requested or changed a real key. Native rich availability depends on the installed client/Telegram response, so a native-only presentation cannot be promised on unsupported transports. Those transports now get clean text, not fake tables.
+
+Also narrowed **SEC-02** by reproducing three moderation exception-body leaks (anti-spam watcher, warning escalation, failed partial-kick recovery notice) with synthetic private strings. Replaced traceback logging with operation/type-only diagnostics. Safe user-facing partial-kick recovery instructions, escalation failure handling and watcher containment remain. Other producers/sinks in SEC-02 remain open; no universal secret-redaction claim.
+
+Evidence: four box-free regressions and three diagnostic cases failed before fixes. Focused UI/clone/moderation/transport suite: **194 passed in 1.03s**. Final full dirty tree: **1,840 passed in 21.26s**, no skips; isolated exact staged-source export: **1,753 passed in 23.45s**, no skips. Both full suites use disposable database; this phase adds no schema. Compileall, Pyflakes, working/staged diff checks passed. Existing nonfatal fixture-loop/XDG warnings remain. Richgram output/native send-edit contracts are tested with transport fakes, not a live Telegram visual check. Export shares existing virtualenv. No production config/data, deployment or encryption migration was touched. Long untruncated panels remain subject to Telegram message-size limits; no new pagination guarantee is claimed.
+
+## Job and lease diagnostic follow-up (SEC-02 bounded slice)
+
+Reproduced four new regressions before implementation: JobQueue retained/logged a synthetic private runner exception; an exception whose `__str__` raises broke the failure handler itself; real database lease insert/update/delete failures logged the database message and detail; and InstanceLease heartbeat exceptions logged raw tracebacks. No real credentials were used.
+
+`Job.error` now records the stable code `runner_failed`, not an exception message. Queue failure logging includes operation/type only, with no traceback or runner-supplied job/module labels. Failure state/finished timestamp remain; later jobs still run, and cancellation/owner/history semantics are unchanged. Database take/release diagnostics and the InstanceLease heartbeat fallback now use operation/type-only `#Errors` messages. Failed authority checks still return unavailable/false, preserve existing holders, and stop/degrade the service on heartbeat failure rather than switching to a local lease. This changes diagnostic content, not lease SQL or authority semantics.
+
+Evidence: new database trigger-induced failures use the real asyncpg pools and actual `Database` methods. Tests verify rollback/no falsely released holder, another tenant's independent lease, wrong-holder refusal, and replacement-pool reads/reuse after the trigger is removed. Job tests cover retained/serialized failure code, unprintable exceptions, terminal state, owner lookup and continued execution; heartbeat test uses a fake failing database to exercise stop signaling separately from the SQL tests. Focused **50 passed in 0.66s**. Final dirty full **1,844 passed in 20.59s**, no skips; exact staged-source export **1,757 passed in 22.62s**, no skips. Both full suites enable disposable database; no schema change. Compileall, Pyflakes, working/staged diff checks passed. Only the failure-expectation hunk of the already-dirty platform test was staged.
+
+Limits: this is not a universal redaction pass. Other runner-controlled job fields (`detail`, `label`, `result`) retain their existing semantics; `Job.as_dict()` is not declared a public secret-safe telemetry format. Jobs remain in process memory and are not restart-durable. Other service/transport exception paths remain open. Export shares the existing virtualenv; no fresh install, live provider/Telegram, load or deployment test was run. No production connection/configuration/key changes occurred.
+
+## Encoder diagnostic and delivery follow-up (SEC-02 bounded slice)
+
+Initial sentinel suite reproduced **seven failures / five passes**: `/encode` download exceptions leaked raw provider text; upload errors logged a local output path and traceback; false/absent send acknowledgements produced no unconfirmed-delivery notice; missing output escaped the delivery handler; unlink cleanup failure replaced the conversion exception; directory cleanup logged both chained private errors. Other encoder download handlers already withheld exception bodies and were retained as regression coverage.
+
+Encoder download, delivery, output-access and cleanup diagnostics now use operation/type-only `#Errors` messages without path interpolation/tracebacks. Delivery checks nonempty regular output, caches its size, reports missing/empty output safely, and treats `False`/`None` upload results as unconfirmed. Ambiguous exceptions/timeouts trigger a clear check-before-retrying notice, never an automatic resend. Conversion remains `DONE` when upload fails; the completed artifact is retained. The no-upload-client path explicitly says file delivery is unavailable instead of implying that a finished conversion was sent. Output/directory cleanup catches and reports filesystem errors separately, then re-raises the original conversion/cancellation exception unchanged.
+
+Evidence: **42 new parameterized checks** cover all six download commands; shared delivery across encode/compress/sample/toaudio/screens with provider exceptions, timeouts, false/none acknowledgements and missing/empty output; original-error/cancellation preservation during unlink/rmdir failure; acknowledged single-send delivery; and cancelled upload propagation without resend. Focused encoder/modules suite **140 passed in 2.28s**, including existing genuine FFmpeg encode/probe/validation/tool tests via `ffmpeg_path()` (system or existing imageio-ffmpeg wheel). New Telegram/failure-path tests use transport/tool fakes; they are not live Telegram proof. Final dirty full **1,886 passed in 20.44s**, no skips; exact staged-source export **1,799 passed in 22.38s**, no skips. Both full suites enable disposable database. Compileall, Pyflakes and working/staged diff checks passed.
+
+Limits: delivery state is not a new durable ledger and an ambiguous Telegram upload may already have arrived. A failed cleanup may leave the owned temporary artifact/directory; no unsafe recursive deletion or forced removal was added. Successful send acknowledgement is not proof of client download/playability. This phase adds no schema/dependencies and makes no production calls/config changes. Wider SEC-02, admission budgets and restart-durable job/output recovery remain unfinished. Isolated export shares the existing virtualenv; no fresh-install/live-provider/load/deployment verification was run.
+
+## Plugin-specific worker front doors (explicit user request)
+
+User explicitly requested Videl1-style workers rather than a controller-looking clone. Read-only reference review at Videl1 `6a00a55f6ad013c85e14c39a9b06922c1bb6f08c`: recursive worker/start paths plus `VidelBot/filestore/worker_bot/extras.py` and `VidelBot/VideoEncoder/plugins/start.py`. Observed separate worker-facing commands/help and administrator options. No upstream code copied, imported or executed; no unsafe upstream exec/shell/update capabilities adopted or parity/license entitlement inferred.
+
+Added a presentation-only worker identity bound to each AgentBot's clone-scoped settings, not a process-global UI switch. Existing `/start`, `/help`, `/menu` and home/help callbacks now show a plugin-specific worker front door; `/help <plugin>` opens the focused options page. Single-plugin presets cover FileStore, Encoder, Group Management, Post maker, Linkshare, Leech, Music and AI Agent. Existing legacy Renamer/Utilities selections also get matching presentation without adding new clone templates. Bundles get a multi-plugin hub. Each uses reviewed existing custom emoji IDs (with Unicode fallback), Richgram headings/tables, workflow-specific guidance and command options. Commands/buttons are intersected with actual registration; group-management help stays present where its commands are registered. Optional activation/Owner checks are not replaced by presentation.
+
+Read-only `worker:<slug>:<page>` callbacks validate selection, registered commands and page bounds on each press, rejecting stale/forged choices. Options are paginated at eight commands; buttons navigate help rather than bypassing command handlers. Deep links dispatch before greetings. Clone settings no longer inherit controller hero artwork. Controller screens/settings remain unchanged. Profiles are rebuilt from existing revision-assigned settings after worker reconstruction, with no new persistence or global tenant state. Native remote Music refusal remains clearly documented in its worker guidance.
+
+Evidence: ten initial UI regressions failed before implementation; final **13 new checks** cover all eight named identities, escaping, command filtering, instance separation, bundles, callback bounds/staleness, pagination, custom-emoji fallback, reconstructed worker settings/controller separation and deep-link precedence. Focused worker/bootstrap/UI/deep-link/rich suite **118 passed in 0.60s**. Dirty full **1,899 passed in 20.34s**, no skips; exact staged-source export **1,812 passed in 21.34s**, no skips. Both full suites use disposable database; existing lifecycle/revision/tenancy regressions remain green. Compileall, Pyflakes and working/staged diff checks passed. Only phase-specific hunks of already-dirty bot/screens files were staged; pending Owner-Premium changes remain excluded.
+
+Limits: this is the first focused UI-preset layer, not all Videl1 worker features or isolated OS workers. Free-form owner-edited start/help content, per-worker hero uploads, custom emoji-pack selection and durable branding preferences are not implemented here. Plugin availability remains determined by credentials/dependencies/permissions; tailored help does not add absent functionality. Native Telegram/client visual delivery and real clone startup were not live-tested; transport clients are fakes and the export shares the existing virtualenv. No production configuration/data/deployment or upstream execution occurred.
+
+## Next implementation gate
+
+On “next”, re-read Git status and this audit. For the user's worker-personalization request, scope owner-only editable start/help/branding preferences against existing revision authority before adding mutations: reject non-owner/forged callbacks, bound/escape content, test tenant separation and restart/recovery with real database, and do not allow customization to hide mandatory permissions or impersonate operational readiness. Broader SEC-02 (including Leech progress logging), clone PluginGate watcher parity and non-warning ChatStore atomicity remain open. Keep native remote-playback refusal and box-free Richgram delivery intact. Preserve unrelated Premium/UI work; selectively commit/push this branch only, without PR merge or deployment.
+
+## Worker command-registration specialization
+
+Follow-up user priority supersedes the branding gate above: a Group Management-only worker must actually support only that suite plus basic navigation. Added clone-scope-aware module selection: mandatory GROUP_CORE stays loaded, incompatible controller modules (including clone and premium) cannot enter through legacy selections or `*`, and the full controller selection remains unchanged. Group-only workers build core navigation (`menu`, `about`) without ops. Optional-compatible tools retain only `plugin`/`plugins` controls from ops to preserve Owner approval, group-admin activation and slot limits; only encoder/leech/renamer selections gain `jobs`/`cancel`. Narrowed manifests and handler dictionaries are registered together, so help/Telegram command enumeration see the same command boundary. Worker `/plugin` rejects out-of-selection slugs before approval/revocation. Existing module permission checks, mandatory watchers and optional PluginGate remain unchanged, not claimed newly audited.
+
+Reference review used pinned Videl1 `6a00a55f6ad013c85e14c39a9b06922c1bb6f08c`. Read-only repository-wide inventory: 527 files, 349 Python files, 348 successfully AST-parsed with this interpreter, 846 registration-related call sites; root `__main__.py` failed parsing at line 33. This is a static inventory plus targeted worker/loader/clone/test source review, NOT a full line-by-line security or feature-parity audit. FileStore worker engine has its own handler setup and custom greetings; legacy clone manager instead smart-loads a shared root, so not all upstream clone paths demonstrate strict specialization. Source includes separate VideoEncoder and save-restricted-content license files; no general copying entitlement inferred. No upstream code executed or copied into the application.
+
+Evidence: 7 new runtime-registration regressions failed before implementation; final 8 tests pass, covering group-only/empty/explicit GROUP_CORE, encoder/leech/FileStore selection, controller-incompatible legacy selections and stale/forged callbacks. Actual AgentBot/Wzgram registration is built without a live Telegram connection. Dirty full suite: **1,907 passed in 20.76s**. Exact staged-source export: **1,820 passed in 22.75s**, no skips, disposable database; export shares the existing venv. Controller/premium/lifecycle/tenancy regressions remain green. Compileall, Pyflakes and diff checks passed. Unrelated dirty Music/Premium/config/UI work preserved and excluded. No deployment, merge, production access or live Telegram verification. Owner-edited branding and broader watcher-parity audit remain unfinished.
+
+## Independent, credit-free clone presentation
+
+User explicitly revised clone branding: separate UI, no controller credits, use Videl1 as a reference. Re-read pinned Videl1 FileStore `extras.py` start_markup/default_help and worker-engine welcome: task-specific introduction, Help/About navigation, capability-dependent tools. This is source-layout review, not a screenshot/live Telegram comparison; no upstream code copied or executed. Required license/source notices remain intact.
+
+Clone home/help/options now use feature identities without the Meiko/worker suffix, concise task-specific introductions and curated first commands intersected with registration. Native Richgram tables/headings and Unicode/custom-emoji fallback remain. Added a worker-owned About screen and wired both `/about` and its button; worker profile omits controller Premium advertising. Worker help lookups cannot fall through to controller categories; stale controller section callbacks reject. No developer/support promotional links were added. No new storage, owner-editing commands or external dependencies.
+
+Broader credit scan found the shared default panel footer, explicit Leech title and AI cards/drafts/provider identity prompt. Added task-local presentation context around registry handlers and transport entrypoints/watchers, reset in finally; child tasks inherit the appropriate identity without changing permissions or doing blanket substitutions on user/provider text. Default panels (including classic fallback) and explicit AI identity labels are neutral in clone execution; controller identity remains unchanged. Existing permission checks and capability refusals are retained. This does not guarantee an external AI provider will never independently mention a product name.
+
+Evidence: 10 initial independent-front-door tests failed before implementation. Final 15 new checks cover all 10 named/legacy profiles, credit/promotional-link absence, About navigation/actual handler, controller separation, forged controller callbacks and concurrent task-local rendering. Full dirty suite **1,922 passed in 21.10s**, exact staged-source export **1,835 passed in 23.40s**, no skips, disposable database. Initial full run caught two None-theme diagnostic callback regressions; fixed with defensive theme lookup, no weakened diagnostic tests. Exact export shares the existing virtualenv. Compileall, Pyflakes and both diff checks passed. Unrelated dirty Music/Premium/UI/config work excluded. No deployment, merge, live Telegram visual/transport check or production changes. Durable owner-edited greetings/images/icons remain a separate unfinished capability.
+
+## Clone card and premium-button polish
+
+Polished worker home/help, paginated commands, About, command lookup and profile cards: clear subtitles, shorter permission guidance, command/page counts and feature accents in tool rows. All navigation buttons in these worker screens now use one Theme.button constructor with reviewed catalog custom emoji IDs, Unicode labels and explicit primary/default styles. Pagination keeps distinct forward/back icons; callback payloads and registration/authorization checks are unchanged. No invented IDs, decorative success claims, promotional links or clone credits added. This bounded phase does not claim every feature module's bespoke keyboard has been restyled.
+
+Tests exposed a pre-existing delivery gap: body-only emoji stripping left rejected custom button IDs intact. Shared ScreenSender now copies keyboards and removes custom IDs as well as body markup on explicit emoji rejection, including native/classic send/edit and hero/photo paths; future screens respect the theme's disabled state. Styles, callbacks, original keyboard objects and classic Panel content survive. Ambiguous transport failures are not retried as emoji errors. This improves ScreenSender deliveries, not every module's separate rich utility transport.
+
+Evidence: 3 new visual tests failed first; 2 explicit button-only rejection tests also failed before sender fix. Final **6 new tests** cover premium-on/off worker navigation, explicit danger style/plain-only glyphs, native/classic send rejection and native edit retry. Full dirty **1,928 passed in 22.49s**, exact staged-source export **1,841 passed in 23.42s**, no skips, disposable database; export shares existing venv. Full run also caught an opaque-keyboard compatibility regression; fixed without changing the existing test. Compileall/Pyflakes and working/staged diff checks passed. Unrelated dirty Music/Premium/UI/config files remain excluded. No deployment, merge or live Telegram visual test; actual rendering depends on Telegram/client custom-emoji support.
+
+## Feature-card polish continuation
+
+Extended the reviewed-emoji button helper to Leech navigation, Linkshare's issued-link copy/revoke/home card and group plugin activation/details/pagination/confirmation screens. Leech has concise transfer/settings subtitles. Copy buttons retain native copy_text payloads; revocation remains danger-styled, and group disable keeps its separate confirmation step. Activation uses primary styling without claiming success. No callback IDs, mutation authority, slot checks or feature availability policy changed. These shared feature panels also improve controller use; clone front doors remain credit-free. Existing unrelated Music/UI/Premium/config work remains untouched and excluded.
+
+Feature modules use utils.rich rather than ScreenSender, so explicit decorative rejection now gets a single local retry there as well: copied keyboard without custom IDs and body markup reduced to Unicode, retaining original callbacks/styles/copy actions and Panel classic content. Timeout/permission/ambiguous errors continue to propagate without retry. No global cosmetic toggle or arbitrary user/provider text redaction added.
+
+Evidence: four new regressions failed before implementation; six final checks cover Leech accents, group disable danger/cancel/confirmation safety, native copy payload, issued Linkshare controls, feature reply button-only rejection and no retry on timeout. Existing group presser authorization, lifecycle, tenancy and sharing tests remain green. Full dirty **1,934 passed in 22.82s**; exact staged-source export **1,847 passed in 26.24s**, no skips, disposable database, shared existing virtualenv. Compileall, Pyflakes and both diff checks passed. No production calls, deployment, merge or live Telegram visual test. Other bespoke feature keyboards remain outside this bounded pass.
+
+## Group Management and runtime visual continuation
+
+Group Management overview, rules, blocklist, greetings and protection screens now use reviewed custom-emoji navigation with Unicode labels, consistent back/refresh controls and clearer section subtitles. Turning off protection or greetings uses danger styling; enabling uses primary. These are action-direction cues, not success claims. Runtime overview/workspace/confirmation buttons use the same helper; locked mandatory suite keeps its disabled property and lock icon, while runtime disable remains a separate danger confirmation. No authorization logic, callback payloads, mutations or mandatory availability changed. Extended Theme.button only to forward the existing disabled flag. Existing runtime status tables remain authoritative; no provider-readiness claim added.
+
+Evidence: three initial visual regressions failed before implementation; five final tests cover premium/fallback overview buttons, all six management subpanels, protection switch direction, non-mutating runtime confirmation and disabled mandatory lock preservation. Full disposable database working-tree suite **1,939 passed in 21.69s**; exact staged-source export **1,852 passed in 22.68s**, no skips, shared existing venv. Compileall, Pyflakes and working/staged diff checks passed. Unrelated dirty Music/Premium/UI/config work preserved and excluded. No deployment, merge, production access or live Telegram visual check. Broader feature-keyboard restyling and durable owner branding remain outside this pass.
+
+## Guided clone onboarding upgrade
+
+User requested a better experience beyond incremental accents. Added feature-specific, three-step Get started guides for the eight main presets plus legacy Renamer and Utilities. Each uses native step tables, reviewed numbered emoji, a command browser and copy-command shortcuts filtered against the live registry. Copying never executes a command or bypasses permissions. Home prioritizes a guide for the first visible tool; each plugin command page has its own guide entry. Multi-plugin home avoids repeating all long tool descriptions. Controller UI, credits policy, mandatory management and activation checks are unchanged.
+
+`worker:guide:<slug>` callbacks validate syntax, current selection and current command registration on each press; stale/off/unselected/controller-scope guides reject. Guides describe workflows rather than claim external connectivity, live success or new implementation. Music retains its explicit remote-playback refusal. Existing detailed command help remains the syntax source; no new network calls, persistence, privileged callbacks or dependencies.
+
+Evidence: 11 initial new checks failed; final **14 checks** cover all ten guide identities, available-only copy payloads, empty/stale/unselected/controller rejection, compact bundle home, Unicode fallback, malformed callbacks and actual CallbackHandlers stale-state dispatch. Full dirty suite **1,953 passed in 22.84s**, exact staged-source export **1,866 passed in 23.18s**, no skips, disposable database, shared existing venv. Compileall, Pyflakes and both diff checks passed. Unrelated dirty Music/Premium/UI/config files preserved and excluded. No deployment, merge, production access or live Telegram visual/clipboard test; those transport behaviors are synthetic tests. Durable owner-edited branding remains separate work.
+
+## Worker command discovery and detail navigation
+
+Added bounded partial-name and typo matching to worker `/help`, capped at six suggestions with escaped query text. Candidates intersect the live registry with selected feature manifests, mandatory management and applicable worker navigation controls. This also prevents exact help lookups from exposing controller-only commands if supplied a mismatched active set. Command pages now have two-column detail buttons; details offer a native copy-command action and a Back button restoring the command's source page. Copying is not execution, arguments are not fabricated, and existing runtime permission checks remain authoritative. `worker:cmd:<name>` validates bounded syntax, live availability and worker scope on each press. No command mutations, dependencies, production calls or controller UI changes.
+
+Evidence: six initial regressions failed before implementation. Ten final new checks cover partial/typo results, exact controller-command rejection, read-only copy payload, command-page detail buttons, stale/malformed/controller-scope callbacks, escaping and source-page restoration. Updated the previous visual test to distinguish the newly supported copy action from callback navigation, retaining exact payload and mutual-exclusion assertions. Full dirty suite **1,963 passed in 22.32s**, exact staged-source export **1,876 passed in 23.03s**, no skips, disposable database; export shares existing venv. Compileall, Pyflakes and both diff checks passed. Unrelated dirty Music/Premium/UI/config work preserved and excluded. No deployment, merge or live Telegram visual/clipboard validation. Detail text uses existing command descriptions; it does not claim comprehensive argument documentation or external-provider readiness.
+
+## Honest worker availability and wildcard presentation
+
+Configured features without live commands are no longer silently omitted from the worker home table: they show Not registered (or Unknown when registry state was not supplied), without command/guide buttons. Added a read-only Availability card with per-tool registration counts and refresh. It explicitly does not diagnose missing credentials, runtime disablement or failed module loading, nor equate command registration with provider connectivity, Telegram permissions, Owner approval or group activation. No internal errors/configuration/credentials are displayed. The availability callback is worker-only and does not mutate runtime or grants.
+
+Fixed wildcard (`*`) worker presentation: expand known PROFILES through clone-compatible manifests rather than treating the selection as an empty management-only identity. Command/help/guide eligibility still intersects live registration; controller commands remain excluded. Module loading and controller UI were not changed.
+
+Evidence: four new regressions failed before implementation; six final checks cover selected-but-unregistered visibility, registration/unknown truthfulness, controller rejection, wildcard help/command callbacks, refresh/action-button rebuilding and native/classic Unicode read-only fallback. Full dirty suite **1,969 passed in 22.06s**; exact staged-source export **1,882 passed in 23.91s**, no skips, disposable database, shared existing venv. Compileall, Pyflakes and both diff checks passed. Unrelated dirty Music/Premium/UI/config files preserved and excluded. No production access, deployment, merge or live Telegram visual validation. This is registration visibility, not a health dashboard or permission oracle.
+
+## My Bots control-centre programme — first complete read-only slice
+
+The user's comprehensive control-centre request supersedes the earlier cosmetic continuation scope. Inspected actual `ui`, clone module/setup/store/manager/configuration/revisions/reconciler, manifests/registry, group/plugin configuration, health, database schema/lease/recovery records and lifecycle/configuration tests before edits. Capability-to-backend map, storage decisions, explicit limitations and ordered next phases are in `docs/CLONE_CONTROL_CENTRE.md`. Actual My Bots is Telegram, not a browser app; no mock web interface or competing configuration system was introduced.
+
+Delivered a working Dashboard route from each My Bots entry into owner-private home/configuration/diagnostics and paginated command/plugin pages. Canonical clone registry reload precedes every new route's ownership check; require the saved owner in their own private chat, without deployment-Owner privilege substitution. Deleted/foreign/malformed controls reject, database failures never render cached fallback, and raw errors are not displayed. Added `CloneManager.observe_worker` to return only whitelisted local registry/health facts, including actual built-in command catalogue when available. Do not manufacture command lists or zero counts for unobserved workers. Disabled plugin commands are excluded from the command directory; plugins show declared scope, permissions, configuration field names, credential names and dependencies/capabilities, never credential/configuration values. Existing worker construction, config writer, revision receipts, lease/generation reconciliation and lifecycle transitions are unchanged.
+
+Home shows saved identity, UTC creation, local lifecycle/observation, desired intent, desired/applied revision, lifecycle generation, registered/enabled command counts, enabled plugin count, local activity where exposed and Open Bot only for a valid saved username. Configuration shows own channels/profile/selection and links the existing real profile editor. Diagnostics give redacted lifecycle/configuration observations and recovery guidance, not raw logs. Missing photo/telemetry/log/event functionality is explicitly Unavailable, not an operational-looking dead control. New views use two-button navigation rows and six-entry directory pages. Existing lifecycle controls stay available in My Bots; existing legacy button ordering retained after a full-suite regression exposed a compatibility break. My Bots failed-worker summary now hides verbatim last_error, closing an incidental credential-display risk. Shared dirty clone initializer was staged only for these changes; pending configured-Owner Premium policy and all other Music/UI/config work are excluded.
+
+Evidence: five initial dashboard regressions failed before implementation. **Nine final tests** cover real UI routing, different clone configurations/registries, foreign/deployment-Owner/group-origin refusal, disabled command hiding, built-in command parity using actual AgentBot/Wzgram registration, stale/deleted/malformed controls, two-column navigation, read-only refresh, raw-error redaction and real database concurrent CAS updates/reload/deletion/database outage. database test uses two independent database connections/stores, canonical writer and deletion authority; it does not mock persistence. Focused `tests/test_clone*.py`, `tests/test_worker*.py`, `tests/test_atomic_clones.py`: **269 passed in 4.07s**. Final full working tree **1,978 passed in 21.99s**, exact staged-source export **1,891 passed in 21.70s**, no skips, disposable database. Compileall, Pyflakes, working/staged diff checks passed. Export shares existing virtualenv; Telegram clients/health observations are synthetic, not live visual/startup proof.
+
+Not complete: full requested platform, new dashboard lifecycle mutation controls, durable actor/revision/generation admission for old callbacks, generic feature editing/reset, per-command toggles, resumable durable onboarding, photo fetching, event/log feed, fleet-wide status, My Bots search/filter/grid, browser-responsive UI or per-worker process resources. No new save/reset controls were invented. Mandatory moderation, approval/admin/max-three slot rules and premium gates remain intact. In-process clones are not an OS sandbox. No production access, deployment, PR merge or new schema migration. **Next gate:** durable lifecycle action admission/authorization and stale callback fencing through the existing manager/store/reconciler, with database races, before adding new Start/Stop/Restart/Reconcile controls to the dashboard.
+
+## Control-centre dashboard lifecycle admission and application
+
+Continued the explicit lifecycle gate. Added `CloneControlActions.admit` under the existing registry/revision advisory locks and transaction: validate saved owner (no deployment-Owner substitution), exact desired/configuration revision and lifecycle generation, advance existing lifecycle/tombstone sequence, save disabled/start intent and a non-secret scoped admission receipt atomically. Reject duplicate request identities and stale/foreign/deleted assignments. No competing configuration writer, new schema, JSON fallback, credential snapshots in receipts or transaction spanning worker I/O. Audit records are admission-only, not completion claims, and retained across deletion/recreation; compaction/retention remains unspecified.
+
+`CloneManager.control` refreshes eligibility for start/restart/reconcile, permits owner stop without Premium, serializes local application with existing reconciliation locks and reuses the existing worker startup/teardown/reconciler/lease acknowledgement. Strict assignment mode prevents the newer caller's disabled/revision/generation state being silently replaced by a delayed admitted request. Start/restart/reconcile advance generation and can replace a worker; no no-op/zero-disruption guarantee. Stop commits intent before requesting local teardown; UI explicitly does not claim synchronous fleet-wide stop or externally proven cleanup. A newer remote action/configuration/delete-recreate during startup fences acknowledgement and cleans up the local attempt. Failed/unconfirmed attempts retain durable desired intent under existing supervisor behavior; no automatic rollback success is claimed.
+
+database-backed revision-tracked dashboard home now has actual Start/Stop/Restart/Reconcile controls with confirmation and expected revision/generation in bounded callback payloads. Every callback reloads owner/private-chat authority; the mutation boundary independently rechecks it. Early validation acknowledgement avoids leaving the spinner pending during worker I/O; the refreshed card carries the confirmed result. Errors never claim no mutation after potentially committed admission. Legacy/untracked local dashboards do not get these mutation buttons. Existing legacy `clone:` lifecycle callbacks and direct commands still use existing manager APIs and **are not covered by the new actor/CAS admission**; migration of those paths is the next security gate, not silently claimed complete.
+
+Evidence: initial database tests failed for the missing admission API before implementation (an initial run without the DB variable skipped, then immediately rerun with disposable database). Nine permanent PG regressions cover two-pool concurrent admission, owner/controller-Owner refusal, stale revision/generation/replay, audit redaction, durable owner stop isolated from a second clone, start/restart/reconcile/stop through real reconciler/leases with synthetic Telegram clients, eligibility expiry, dashboard confirmation/run/replay and remote-stop/configuration/delete-recreate supersession both before construction and during application. No mocks stand in for DB concurrency or lease acknowledgement. Focused clone/worker/atomic-clone suite **278 passed in 4.12s**; final full working tree **1,987 passed in 23.42s**, exact staged-source export **1,900 passed in 28.22s**, no skips, disposable database. Compileall, Pyflakes and both diff checks passed. Export shares existing venv; no live Telegram/startup/visual proof. Unrelated pending Owner-Premium, Music, UI and config work preserved/excluded. No deployment, production access, PR merge or unsafe upstream execution.
+
+## database legacy lifecycle migration and fenced deletion
+
+Continued the previous security gate. database `clone:<id>:start|stop|restart|delete|delete_confirm` callbacks now only browse a fresh owner-private dashboard confirmation, never directly mutate using an unversioned saved message. Extra payload segments reject. The existing outer reload/legacy permission check is followed by the control centre's independent saved-owner/private-origin check, so deployment-Owner access does not substitute for clone ownership. `/delclone` now requires the saved owner in private chat and shows the same current revision/generation-bound confirmation; it no longer immediately deletes on database. Untracked records cannot receive an executable direct-command deletion confirmation.
+
+Extended the existing lifecycle-admission transaction with delete: under the same registry/revision locks, verify owner/revision/generation, increment existing lifecycle tombstone, remove the canonical record and write the non-secret admission receipt atomically, then request local cleanup through the manager. Dashboard Delete uses danger confirmation and a real completion/navigation card. The UI explicitly distinguishes managed-record removal from erasure of delivered copies, retained tenant data or encrypted revision/request history. Remote controllers must reconcile deletion. This retains previous managed-record deletion/retention scope; no destructive data purge or replacement configuration writer was added. A deleted/recreated bot cannot be targeted by an old versioned confirmation, even when token/owner match.
+
+Evidence: six initial new database cases failed before implementation. Seven permanent tests cover all five legacy lifecycle controls, foreign/deployment-Owner/group-origin denial, malformed suffix rejection, no mutation on browsing, `/delclone` private confirmation, stale configuration and deletion/recreation replay, and concurrent deletion versus canonical configuration update with exactly one winner and ciphertext redaction. Existing local JSON tests remain unchanged, not weakened. Focused clone/worker/atomic clone suite **285 passed in 4.28s**, full working tree **1,994 passed in 23.50s**, exact staged-source export **1,907 passed in 24.72s**, no skips, disposable database. Compileall, Pyflakes and both diff checks passed. Export shares existing venv; Telegram clients/visuals are synthetic. Only phase-specific initializer hunks staged; unrelated Owner-Premium, Music/UI/config changes preserved/excluded.
+
+Limits: existing local JSON compatibility behavior is unchanged and is not a database failure fallback. Internal creation, profile/configuration application and recovery manager calls retain their trusted service APIs; this is not blanket actor admission on every manager invocation. Generic configuration editors and their legacy authorization policy remain a separate gate. No full platform completion, total-data-erasure, fleet-wide immediate-stop or live Telegram claim. No production access, deployment or PR merge. Next complete slice: revision-aware non-secret configuration preview/validation/save using the canonical writer, before secret or feature-specific adapters.
+
+## Narrow configuration preview and canonical channel reset
+
+Added real configuration-card reset controls for saved log/archive destinations, each with current/proposed preview, consequence warning, Cancel and Save. UI saves only null for these two non-secret fields using the existing canonical writer; no credential/provider editing, plugin changes, moderation/approval policy changes, new schema or competing writer. Existing copies remain. The resulting card displays the saved desired revision and pending application rather than claiming an active worker changed. Existing automatic reconciliation remains enabled; explicit dashboard Reconcile is an additional application path, not a promise that a save waits indefinitely for manual approval.
+
+Added optional `owner_only` and `expected_generation` writer guards inside the existing registry transaction lock before revision persistence. Dashboard saves use both; deployment-Owner substitution, stale lifecycle assignments and stale revisions reject. Existing trusted callers retain previous policy. Preview/save callbacks independently reload canonical state and enforce saved-owner/private origin, bounded payload and allowed-field parsing. No destination exists -> no reset button; untracked/DB-unavailable state cannot mutate via this path. No local DB-outage fallback or Telegram channel/provider-readiness claim.
+
+Tests first: both new parameterized database cases failed for missing preview before implementation. Permanent tests cover each field, preview without write, two-clone isolation, owner/deployment-Owner/foreign/group denial, saved pending revision, stale/replay rejection, direct transaction guard denial and DB-unavailable fail-closed behavior. Full disposable-database working tree **1,996 passed in 22.65s** and exact staged source **1,909 passed in 24.20s**, no skips. Compileall, Pyflakes and diff checks passed. Exact export uses shared venv; no live Telegram/visual proof. Unrelated dirty files preserved/excluded. No deployment/production app calls or PR merge. Remaining: arbitrary non-secret field entry and validation, feature-specific editors, onboarding resume, richer help/search and retained-event navigation; this narrow reset is not a complete generic configuration editor.
+
+## Compact owner-private My Bots directory
+
+Added a separate read-only compact directory reachable from the existing panel's Browse My Bots button and each dashboard's My Bots navigation. Six clones/page, deterministic bot-ID order, direct dashboard links, All/Start eligible/Stop intent filters, refresh, bounded Previous/Next and controller-panel return. Two-button maximum row width in the directory; legacy panel first-row ordering untouched. Filters describe saved disabled intent, not entitlement validation or fleet-wide online status; local-worker observation is labeled separately. Empty results and stale pages have explicit responses.
+
+Every directory callback checks private origin, reloads canonical storage and filters by exact saved owner; controller Owner cannot enumerate another owner's entries. Database outage fails closed instead of showing a cached JSON list. No credentials/private configuration/destinations/raw error text rendered. No new writer, storage key or worker lifecycle operation. Search/grid/recent ordering remain incomplete; row-width assertions are not live mobile visual proof.
+
+Test-first two directory tests initially failed on missing routing. Three permanent tests cover pagination/filter counts, ownership/controller-Owner isolation, links/navigation and row width, empty/malformed/stale/group-origin denial, plus real two-pool database remote-intent refresh/deletion/outage. Initial PG fixture missed canonical-validator wiring, fixed by constructing both existing managers rather than bypassing the guard. Final disposable-database full working tree **1,999 passed in 27.15s**, exact staged export **1,912 passed in 28.60s**, no skips. Compileall/Pyflakes/diff checks passed. Shared-venv export; synthetic Telegram queries, no live deployment/production or PR merge. Only the single directory-link initializer hunk staged; unrelated Owner-Premium/Music/UI/config changes preserved and excluded.
+
+## Owner-scoped My Bots search
+
+Added `/mybots <name, @username or bot ID>` and shared `/panel <query>` support using the compact directory renderer; no-argument legacy behavior retained. Case-insensitive substring search only inspects saved names/usernames/IDs after exact-owner filtering. Private-origin command/callback guards remain mandatory. Query survives filters, refresh and pagination through bounded canonical URL-safe base64 callback data; Clear search removes it. Encoding is not encryption and query input is intended for non-secret identifiers. At most 24 UTF-8 bytes without control characters, explicit rejection instead of silent truncation. No DB draft/session, new writer/schema, credential search or search-term logging. Dynamic query/name markup stays escaped by native panel/table rendering.
+
+Two new test-first cases initially failed before command support. Permanent coverage includes name/@username/ID lookup, foreign-owner exclusion, filter/page query round trip, callback byte bounds, clear-search navigation, HTML escaping, overlong ASCII/Unicode input rejection, group-origin denial and malformed callback rejection. Extended real two-pool database directory test with owner-scoped search, canonical deletion visibility and callback bounds. Final full disposable-database working tree **2,001 passed in 24.03s**; exact staged source **1,914 passed in 25.84s**, no skips. The earlier narrow local run skipped the existing PG case without its environment; the full runs above execute it with disposable database. Compileall/Pyflakes/diff checks passed. Shared venv for export, synthetic Telegram clients, no live visual or production proof. Unrelated initializer/Premium/Music/UI/config work preserved and excluded via selective staging. Grid/recent events/full configuration entry remain incomplete. No merge or deployment.
+
+## Recent lifecycle admission activity — verified locally, not pushed
+
+Implemented owner-private Recent activity using existing durable lifecycle admission receipts, six entries/page with refresh/navigation. Read-only reader locks the canonical registry before saved-owner authorization and exact scoped bot-ID receipt query. No controller-Owner bypass, wildcard prefix matching, JSON fallback or new writer. Display allowlist includes action, admission time, expected revision and assigned generation only. Unsupported/malformed receipts render unavailable markers, never raw action/request/actor/error/credential values. Deleted records cannot be read. Bot-ID receipt history remains retained across recreation and is explicitly labeled as such; no incarnation-isolation or completion-event claim. Offset pages may shift under new admissions; bounded queries have timeouts, no deep-history performance guarantee. Worker completion/logs/configuration/internal-recovery events are outside this feed.
+
+Test-first database regression failed before the route existed. Permanent real-PG test covers retained receipts/pagination, cross-clone empty results, malformed receipt redaction, direct reader foreign/controller-Owner refusal, callback group refusal, stale pages, deletion/recreation and outage. Rebuilt missing local venv from requirements plus pytest-asyncio/pgserver/Pyflakes and no-deps Richgram. Final full working tree **2,002 passed in 20.38s**, no skips; fresh export of remote `5ea20cb` plus only this activity phase **1,915 passed in 21.81s**, no skips. Compileall/Pyflakes passed. No live Telegram/production/deploy/merge.
+
+Publication blocker: this resumed checkout has local HEAD at original base `388f0fb`, although persisted files include previous phases and remote session branch remains at `5ea20cb`. Normal staged-source export consequently failed collection because prior-phase modules were untracked relative to that local base. Fetched remote and verified clean remote-plus-phase export instead; no reset, branch-pointer rewrite, broad staging or force-push performed. Current phase remains uncommitted/unpushed until checkout-history mismatch is reconciled safely. All unrelated worktree files preserved. Phase files: `activity.py`, activity additions to `control_centre.py`, `test_clone_activity_pg.py`, capability-map/audit appendices.
+
+
+### Publication recovery
+
+Recovered publication using an isolated temporary Git index seeded from remote `5ea20cb`. Only the five activity-phase files differ from that parent. Exact candidate-tree export passed **1,915 tests in 21.61s**, no skips, with disposable database. Created a normal descendant commit with Git plumbing and compare-and-swap updated the existing session branch reference, then refreshed the index without checking out or modifying working files. No branch switch, reset, stash, force push or broad worktree staging. Working-file hashes verified unchanged except this explicit audit appendix. Earlier publication-blocker paragraph records the prior state; this recovery supersedes it. Full working-tree evidence remains **2,002 passed in 20.38s** from the immediately preceding phase verification. No implementation changes since that verification.
+
+## Current-registry command detail cards and copy actions
+
+Added enabled-command links on paginated Commands cards and owner-private per-command details. Every callback reloads saved ownership and reads the clone's actual local registry. Missing local registry, unknown command and newly disabled plugin reject, including on old saved callbacks. No saved-profile inference or cross-clone catalogue reuse. Display uses existing menu descriptions and declared plugin scope/permissions/dependencies/credential names/capabilities, not credentials or guessed argument examples/readiness. Actual Wzgram CopyTextButton copies only the bare `/command`, never executes it or grants permissions. Identifier/payload bounds and two-button row width retained. Back returns to command page one; origin page is not preserved. Diagnostics wording corrected: admission history is available, raw worker logs remain unavailable.
+
+Permanent test-first regression failed on missing links before implementation; now covers links, exact copy payload, declared requirements, back navigation, foreign/controller-Owner/group denial, second-clone absence, malformed/unknown command, disabled-plugin stale detail rejection, disabled listing exclusion and callback/row-width bounds. Full disposable-database working tree **2,003 passed in 19.80s**, exact staged-source export **1,916 passed in 21.67s**, no skips. Compileall/Pyflakes/diff checks passed. Shared venv and synthetic Telegram; clipboard/live client visuals unverified. No new mutation/storage schema, dependencies, provider calls or unsafe code. Unrelated dirty work preserved/excluded. No merge/deploy/production access. Command search, structured argument examples, feature editors and durable onboarding remain separate incomplete work.
+
+## Current-registry command scope filters
+
+Added All scopes / Private / Groups browsing to enabled-command cards. Scope matches declared plugin metadata; `all` commands participate in both Private and Group filters. Disabled plugins excluded on every fresh observation. Counts/pages recompute after filtering; filter switches reset page and Previous/Next preserve scope. Existing command-list links remain valid and detail-card Back intentionally returns to unfiltered page one. Saved-owner/private origin, bounded callback parsing and two-button rows preserved. No execution-authorization/provider-readiness/group-approval inference, writer/schema/provider operation or per-command toggle introduced.
+
+Test-first regression first caught missing handlers in the synthetic registry fixture (fixed without weakening the registry), then failed on the missing scope route. Permanent coverage includes 8-command pagination, all-scope inclusion, group/private exclusion, disabled/stale plugin visibility, malformed/out-of-range callbacks, owner/group denial and row width. Full disposable-database working tree **2,004 passed in 20.72s**, exact staged source **1,917 passed in 22.52s**, no skips; compileall/Pyflakes/diff checks passed. Shared venv and synthetic Telegram observations; no live visual claim. Unrelated dirty work preserved/excluded. No deployment, production app access or PR merge. Free-text command search/category browsing and broader feature/configuration/onboarding work remain incomplete.
+
+## Clone-owned help context and guide navigation
+
+Improved the worker bot itself, not just the controller: `/help command` and worker command callbacks now show selected-manifest tool/scope/permissions/dependencies/required credential names/capabilities after the existing active/discoverable intersection. Mandatory moderation uses the actual group-core command's manifest. Built-ins have an explicit no-feature-requirements declaration instead of guessed metadata. Added Get started beside the existing page-aware Back button; existing copy action preserved. Declared requirements explicitly are not readiness checks or access grants. Clone cards remain free of controller credit/link/IDs and show no credential values. No new handlers, authorization policy changes, config mutations, providers or schema.
+
+Four permanent cases cover Encoder/AI/Moderation metadata matching, declared permissions, absence of controller branding, guide links/row width, inactive-command hiding and unselected AI exclusion on Encoder. Three context cases failed before implementation (test-first). Existing 15 independent-worker UI tests also pass. Full disposable-database working tree **2,008 passed in 20.54s**, exact staged export **1,921 passed in 21.81s**, no skips. Compileall/Pyflakes/diff checks passed. Shared venv/synthetic UI; no live Telegram/visual proof. Only workers UI/test/docs staged, unrelated dirty files preserved. No deployment, production app access or PR merge. Richer argument examples, dependency health checks, generic configuration entry and resumable onboarding remain incomplete.
+
+## Clone-owned command search pagination
+
+Replaced worker help search's silent six-match truncation with six-result pages and bounded canonical query-bearing callbacks, preserving exact command/tool lookup priority. Every page re-evaluates the existing selected-tool/active-command intersection. Stale pages reject, no-match screen is explicit, fuzzy suggestions are labeled and separately capped. Free-text query byte bound keeps Telegram callbacks valid; no server-local search session, new storage/writer, controller credits, privilege changes or provider calls. Existing detail-card Back remains tool-page navigation, not search-session restoration.
+
+Two permanent tests cover real moderation-manifest multi-page matches, Previous/Next, payload/row width, current-active reduction invalidating a saved page, malformed callbacks, unselected AI exclusion on Encoder and explicit no-results. Initial fixture guessed too many `ban` matches and incorrectly treated mandatory moderation as unselected; corrected to actual `set` catalogue and optional AI, without changing policy. Missing new route then failed as expected before implementation. Full disposable-database working tree **2,010 passed in 22.17s**, exact staged export **1,923 passed in 23.38s**, no skips. Removed two obsolete imports flagged by Pyflakes; final static/diff checks passed. Shared venv/synthetic UI, no live Telegram/clipboard claim. Unrelated dirty files preserved/excluded; no deployment, production or PR merge.
+
+## Clone home quick-copy actions and actionable Availability
+
+Added at most two clone-home copy actions from selected/current registered quick-start commands; multi-tool homes prefer one first action per tool. Unknown/empty registries produce none, Help overview stays copy-free, and copy-versus-execute/argument/permission caveat is explicit. Availability now includes only resolvable active workspace links, retaining Refresh/Home/All tools. No controller credits, extra provider/Telegram calls, new permissions/config storage or auto-execution. Not a readiness check or resumable setup feature.
+
+Two test-first cases failed on missing home shortcuts, then passed covering selected/active isolation, unknown/empty registry, multi-tool first-action order, no credit, Help mode, row bounds and Availability links. Full-suite run caught 12 older assertions assuming callback-only home buttons/one exact copy payload/no workspace links. Updated those assertions to validate exclusive callback-or-copy shape, callback byte limits, selected active copy membership and actual read-only link resolution; no authorization/registration guard removed. Final full disposable-database working tree **2,012 passed in 23.88s**, exact staged source **1,925 passed in 22.05s**, no skips. Compileall/Pyflakes/diff checks passed. Shared venv/synthetic UI; live client clipboard/visuals unverified. Only worker UI/tests/docs staged; unrelated pending changes preserved. No production/deploy/PR merge.
+
+## Clone help description search and relevance
+
+Worker free-text help now searches selected/current-active command names plus existing non-secret menu descriptions. Deterministic relevance: name prefix, name substring, description-only, alphabetical tie-break. Exact tool/command lookup priority retained; fuzzy spelling fallback only without direct text matches. Case-fold query before byte-bound validation to avoid Unicode expansion exceeding callbacks. Six-result pages and live selected/active intersection unchanged. No provider/AI/network request, credential/config/history search, permission expansion or controller branding.
+
+Two new test-first cases failed for missing description search. Permanent tests cover real `smaller` -> `/compress`, uppercase description lookup, inactive/unknown registry denial, unselected tools, exact lookup preservation and name-before-description ordering. Existing stale-page fixture adjusted to six active candidates rather than assuming description search cannot add results; same stale-page guard retained. Full disposable-database working tree **2,014 passed in 21.54s**; exact staged export (including final Unicode normalization ordering) **1,927 passed in 24.33s**, no skips. Compileall/Pyflakes/diff checks passed. Shared venv/synthetic UI; live Telegram unverified. Unrelated dirt preserved/excluded. No production/deployment/merge.
+
+## Music queue theme and compact navigation
+
+Focused Music slice: queue-card keyboard now accepts the actual bot/clone Theme, uses reviewed native custom icons with Unicode fallback and explicit button styles, separates Previous/Next from Refresh/Close to maintain maximum two buttons per row. Close is danger-styled, still only card close, not playback stop. Only the theme-injection line staged in the shared dirty Music builder; existing runtime/source/controls/assistant/search changes preserved/excluded. Existing token/chat/message/requester identity and expiry/retention behavior unchanged; no worker lifecycle, voice engine, source fetching, Premium or approval changes.
+
+Three test-first cases failed on the absent theme API. Permanent tests cover custom/Unicode themes, one/first/middle/last-page exact callback sets, row/payload bounds/styles/no controller branding, and card user/chat/message/token identity plus expiry removal. Existing working-tree Music UI tests pass with new controls. Full disposable-database working tree **2,017 passed in 21.22s**, exact staged-source export **1,930 passed in 22.31s**, no skips. Compileall/Pyflakes/diff checks passed. Shared venv/synthetic Music/Telegram observations; no audible playback, remote-source or live UI proof. No remote playback enabled, production APIs, deployment or PR merge. Remaining Music runtime/session/source changes are still uncommitted work, not silently shipped or declared complete.
+
+## Music Stop preserves queue until engine acknowledgement
+
+Selected one existing pending runtime correction rather than shipping all dirty Music code: stop no longer clears the queue before awaiting engine.leave. On VoiceUnavailable the queue remains intact and user gets unconfirmed/retry guidance without raw error text. On successful engine API return, only that chat queue is dropped. Existing control authorization and serialization remain unchanged; no provider/source/remote-playback change.
+
+New standalone regression reproduced failure on a clean HEAD export (old code replied queue cleared), then passed with only the four-line stop diff. Synthetic successful leave fixture was corrected to remove acknowledged playback state rather than pretending an AsyncMock alone updates the engine. Permanent test covers current/waiting queue preservation, private error redaction/no false success, denied user making no engine call, successful retry clear, cross-group isolation and no track-start side effects. Full disposable-database working tree **2,018 passed in 20.97s**, exact staged export **1,931 passed in 22.24s**, no skips. Compileall/Pyflakes/diff checks passed. Shared venv/synthetic voice; no live Telegram/audible-playback proof. Only Stop hunk/new test/docs staged; all remaining Music/source/session and other dirty work preserved. No deployment, production calls or PR merge.
+
+## Music empty-queue transitions: preserve before leave, drop after acknowledgement
+
+Continued explicit fix/push request with a bounded recovery phase rather than broad-staging unrelated pending code. Queue exhaustion now restores last current/waiting state; Skip command/button and natural-end remove only after acknowledged engine leave. Failed leave retains recoverable current track, including explicit repeat-one recovery. Natural-end ignores callbacks after acknowledged cleanup and logs redacted category/type on transition failure. Existing locks/activation/control permission architecture retained; no remote playback/source/assistant/Premium changes. Extracted minimal recovery hunks from pending implementation without publishing the larger notifications/seek-refresh changes.
+
+Three standalone regression cases cover command Skip, natural end and transport-button Skip: failed final leave, explicit repeat recovery proving retained current, queued-next advance without unintended replay, successful empty leave cleanup and late completion making no playback attempt. Clean HEAD reproduction failed for command/natural cases at retained-current recovery; initial fixture lacked FakeEngine handler registration and was corrected using a synthetic method, not a runtime guard bypass. Working-tree and exact-source tests remain independent of pending transition tests. Full disposable-database working tree **2,021 passed in 20.95s**, exact staged export **1,934 passed in 22.99s**, no skips. Export compileall/Pyflakes/diff checks passed. Shared venv, synthetic voice/Telegram; not live audible playback or a claim every bug is fixed. Unrelated dirt preserved; no production, deployment or PR merge.
+
+
+## Single-icon button rendering correction
+
+User screenshot demonstrated premium icon plus Unicode fallback rendered together. Theme buttons now use plain text when a native custom icon is attached; Unicode prefix is used only without that icon. ScreenSender fallback copies the keyboard, restores one reviewed Unicode glyph before dropping rejected icons, and preserves source keyboard/actions/styles. Fallback mapping survives Theme.disable_custom_emoji, including configured icon-ID overrides; already prefixed legacy buttons are not prefixed twice. Every send/edit/photo retry path receives the same fallback mapping. No permission, callback identity, worker or data mutation changes.
+
+Two test-first regressions cover premium/plain label exclusivity, fallback idempotence, immutable source keyboard, preserved callback, unknown icon and disabled custom-mapping recovery. Full disposable-database working tree **2,023 passed in 26.77s**, isolated remote-parent patch export **1,936 passed in 25.74s**, no skips. Static checks pass. No live screenshot/Telegram proof yet. Recreated missing test venv; resumed local metadata was again at original base, so publication uses an isolated index based on the existing remote session branch, preserving unrelated working contents and pushing a normal descendant (no force push/branch switch). No deploy/merge/production calls.
+
+## Music natural-transition feedback without playback retries
+
+Selected pending transition-notification helper/handler independently from remaining dirty runtime changes. Natural next-track sends existing card only after acknowledged playback, final completion sends notice only after leave succeeds, failure sends generic recovery guidance and no raw engine/source details. Sends bounded to ten seconds; delivery failure cannot replay, re-advance or roll back acknowledged engine state. Redacted #Errors logs for transition/delivery failures. Existing per-chat lock retained across bounded send; potential same-chat delay is documented. Completion guidance does not advertise unshipped remote playback.
+
+Three standalone test-first cases failed against committed HEAD due to absent feedback. Now cover acknowledged next-track card, final completion/late duplicate suppression, delivery failure without extra native play, voice failure with preserved waiting track and redacted recovery message. Full disposable-database working tree **2,026 passed in 23.21s**, exact staged export **1,939 passed in 26.46s**, no skips. Export compileall/Pyflakes/diff checks passed; shared venv, synthetic voice and Telegram, no live/audible proof. Only helper/handler/new standalone tests/docs staged. Existing search/forceplay/seek-refresh/assistant/Premium/UI changes remain preserved and excluded. No production, deployment or PR merge; not all tasks complete.
+
+## Music replied-media download and file admission bounds
+
+Selected pending timeout/progress/actual-file checks from Music source resolver independently of search/origin/remote changes, and added strict advertised-size validation, symlink refusal and redacted #Errors logging. 45-second deadline, existing 20 MiB app limit checked both during progress and on returned file, require nonempty regular nonsymlink path. Preserve cancellation; never delete arbitrary returned paths. Not a filesystem isolation/TOCTOU guarantee or general temp-file cleanup.
+
+Reviewed/adopted seven existing pending bounds cases; clean HEAD export reproduced six failures/one pass before selection. Added six cases for invalid metadata, symlink nonadmission and private-error redaction. Thirteen target cases pass. Full disposable-database working tree **2,032 passed in 23.28s**, exact staged source **1,952 passed in 25.04s**, no skips. Export compileall/Pyflakes/diff checks passed. Shared venv/synthetic downloads/voice; no actual Telegram/media-provider proof. Only bounded source-tail/import hunks, focused tests and docs staged. Other pending Music/source-search/assistant/clone/Premium/UI changes preserved/excluded. No deployment, production or PR merge; broad tasks remain incomplete.
+
+## FileStore clone-specific /genlink front door (Videl1 reference)
+
+User clarified FileStore plugin/clone commands/features, not controller-wide renaming or a generic shared dispatcher. Inspected upstream read-only `Beasgohan-code/Videl1` at `6a00a55f6ad013c85e14c39a9b06922c1bb6f08c`: link_gen.py single-message and first/last batch prompting; extras.py command registrations inventoried. No upstream execution/copying or imported premium logic. Added concise parity map in docs/FILESTORE_CLONE_PARITY.md listing actual native support and missing feature gates.
+
+Specialized clones (clone scope, explicit FileStore selection without Linkshare/wildcard) now replace /get registration with /genlink. Controller and combined-suite ownership unchanged, avoiding Linkshare command collisions or renamed controller commands. Guided owner-private five-minute single-archive-reference conversation accepts one configured-archive forward/link, then delegates to existing canonical archive ticket creation/current bot+Owner channel-admin checks. Clear-before-create prevents duplicate input replay; cancellation/config-change/expiry semantics retained. Worker Home/Help discovers the runtime /genlink variant and shows FileStore-specific details. Existing files/tickets/deeplinks unchanged; raw new upload copying, mutable settings and broader upstream admin features remain missing, not fake buttons.
+
+Three initial new cases failed for absent runtime variant/one-message completion; four permanent cases now cover variant/controller/combined ownership, actual registry/worker home, owner-private no-argument entry/cancel, single-reference completion/no replay, plus real scoped database single-message ticket creation/current admin checks. Existing actual-worker registration assertion updated from /get to /genlink and now explicitly rejects /get; mandatory controls/permissions unchanged. Final full disposable-PG working tree **2,036 passed in 25.44s**, exact staged export **1,956 passed in 26.02s**, no skips. Compileall/Pyflakes/diff checks passed. Shared venv/synthetic Telegram; no live copy/visual proof. Unrelated pending changes preserved/excluded. No deployment, production or PR merge; not complete Videl1 parity.
+
+## Correct FileStore single genlink to ingest ordinary messages
+
+User correctly rejected archive-reference-only behavior as unlike upstream. Expanded pinned reference review to engine/link_gen/flink_logic/extras/helpers: AST-inventoried literal command registrations across four worker files and manually traced helper get_message_id reuse/copy path and worker registration/identity flow. Parity document now records that inventory and corrects earlier missing-ingestion status. This is not an exhaustive semantic audit of every upstream feature or imported backend.
+
+Original native helper now authorizes private saved Owner, connected DB, configured non-protected archive and current bot/Owner admin membership before copying one message. Bounded metadata operations/copy; no downloading. Reject protected/empty/service input and invalid IDs; recheck owner/channel/DB after copy. Conversation clears before copy to prevent repeated same-session creation, links only acknowledged destination ID through existing writer/current checks, and warns explicitly about possible retained copy when acknowledgement/persistence changes fail. Existing archive forward/reference reuse retained, modern forward-origin chat supported. Safe IngestError separated from raw API ValueError to prevent secret-bearing exceptions reaching replies; generic failures log type only. No automatic ambiguous retry or arbitrary archive deletion. Does not provide durable exactly-once sessions, batch new-message ingestion, combined-suite routing or full upstream parity.
+
+New regression initially failed successful-copy/linking, ambiguous-copy feedback and configuration-change consumption. Nine cases now include success/no duplicate copy, foreign/not-admin/protected/DB-down pre-copy refusal, RuntimeError/ValueError redaction, config change during copy and real disposable-PG copied-ID single-ticket creation. Full working tree **2,045 passed in 23.51s**, exact staged source **1,965 passed in 26.61s**, no skips. Compileall/Pyflakes/diff checks passed. Synthetic Telegram copy is not live Telegram evidence. Unrelated dirty changes preserved/excluded; no production/deploy/PR merge. Broader FileStore settings/admin features remain incomplete and documented.
+
+## FileStore clone exact custom-batch collection
+
+Reviewed upstream custom_batch loop and _contiguous helper. Native specialized FileStore clone now collects new/forwarded messages and existing archive references individually, finishes on /done and persists ordered explicit IDs using existing ticket backend instead of first-to-last range that could include unrelated posts. No extra re-copy of selected archive messages. Controller/combined custom_batch range behavior and ordinary /batch unchanged. Max 50, duplicate input/selected-ID guards, no copy after limit; ambiguous copy aborts before any partial link publication. In-memory sessions now explicitly bind owner as well as channel/expiry; cancellation states existing archive copies remain. No automatic deletion, durable resume, album or raw /batch ingestion claim.
+
+Three new test-first cases failed on missing selection behavior. Five permanent cases cover ordered noncontiguous archive selection, fresh copies/deduplicated input, clone/controller entrypoint separation, capacity/failure abort and real database exact IDs [12,10] excluding 11. Existing access/cancel/config/ingestion suites remain green. Full disposable-PG working tree **2,050 passed in 24.82s** before final owner-binding/cancel-copy wording; exact staged source including those final changes **1,970 passed in 26.94s**, no skips. Compileall/Pyflakes/diff checks passed. Synthetic Telegram, real disposable DB; no live copy/visual proof. Unrelated pending changes preserved/excluded. No production/deployment/merge; full upstream parity remains incomplete.
+
+## General/FileStore/welcome/moderation publication phase
+
+Reviewed actual runtime registrations and source versus existing branch tip 8ab517e. Preserved unrelated dirty changes; reconciled local stale HEAD to remote tip using ref/index only, without checkout/reset or replacing working files. Exact selected source includes main welcome contact buttons (@ouchro support/updates, @Godgohan owner, actual bot Add me), source-link hiding, native FileStore action styles/direct uploads/reply linking/check retirement, shared extended prefixes, guarded diagnostics/known chats/demo/profile links/massban/bounded PG broadcast, and rmwarn/resetwarn/resetrules/dwarn/swarn. No duplicate menu placeholders; manifest uniqueness/Help-description regression added. Review docs/GENERAL_FEATURES.md and docs/MODERATION_PARITY.md for supported behavior and unfinished features.
+
+Exact staged source exported to /tmp/agent-publication-verified before new warning strict-ack/consistency cases passed 2,037 tests, no skips. Final results recorded below after final export. Synthetic Telegram only; disposable database concurrency/tenant/history/outcome tests, no production API/database writes. No deployment or PR merge. Omitted independent pending Music/clone/premium/runtime changes, not broad staged.
+
+Final verification for this publication: exact staged runtime export **2,039 passed in 24.75s**; working-tree suite **2,118 passed in 22.45s**, both disposable database with no skips. Diff/compile checks clean. Different counts reflect intentionally excluded independent pending work. This is tested code publication, not live Telegram/provider verification or full requested-feature completion.
+
+## Group warning reset phase
+
+Implemented confirmed `/resetallwarns` via shared group advisory-lock ordering with all canonical warning operations, scoped unique reset audit and atomic history-preserving transaction. PG-only, max 10,000 members, import legacy history with canonical overrides, replay refusal and rollback on malformed data. Current-group/personal-admin guard; explicitly no Telegram unban/unmute effect. Tests cover rights/confirmation, scoped reset, audit/replay, transaction rollback, concurrent add preservation. Working suite **2,121 passed in 22.27s**; exact staged export `/tmp/agent-resetall-exact` **2,042 passed in 23.56s**, no skips. Diff/compile clean. No production changes/deployment/merge; unrelated pending changes excluded. Old warning writers must be quiesced at rollout to enforce the new group lock discipline.
+
+## User profile aliases without duplicate renderers
+
+Compared supplied Users/Stats, Mass Tagging and Admin lists to existing module registrations; explicit implemented/pending map in docs/USER_ADMIN_FEATURES.md. Added myinfo/userinfo and bounded explicit /info target lookup through single shared existing renderer, current moderator-only diagnostic details unchanged. No fabricated private/live account data or tagging/promotion placeholders. Four test-first regressions, 30 targeted passed. Full PG working **2,125 passed in 23.69s** and exact staged `/tmp/agent-user-profile-exact` **2,046 passed in 26.83s**, no skips. Compile/diff clean. Unrelated pending changes excluded; no production lookup, deployment or merge.
+
+## Supplied custom emoji theme phase
+
+Selected semantic icon IDs only from user's supplied catalogs; retained pre-existing IDs where no semantic match was supplied and kept unknowns Unicode-only. Migrated main start/navigation/help/profile controls to native Theme.button custom-icon fields while preserving styles/actions. FileStore heading uses Theme link glyph. Regression covers supplied IDs, URL/callback preservation, exactly-once Unicode fallback, explicit disabled theme, and unknown icons. Updated obsolete wave/trash Unicode-only expectations, kept negative coverage. No feature/menu placeholders or auth/storage changes. User catalog origin documented in docs/EMOJI_THEME.md, not clone UI credits.
+
+Sandbox snapshot had stale local HEAD again; fetched current published branch and reconciled ref/index only without replacing working files. No branch switch/reset/force push. Exact staged export `/tmp/agent-emoji-exact`: **2,049 passed in 22.30s**; working tree **2,128 passed in 20.76s**, no skips. Compile/Pyflakes/diff clean. New catalogs not live-resolved; no Telegram visual/provider/production proof. Unrelated pending Music/clone/premium/runtime changes preserved and excluded; no deployment/merge. Remaining literal emojis elsewhere explicitly not claimed migrated.
+
+## Security/consent icon migration
+
+Migrated verification I am human, federation Accept/Decline and public required-channel Join controls to supplied IDs using shared Theme.button, preserving exact callback binding, source URL checks and button styles. Verification/federation prompt delivery now shares existing explicit-icon-rejection-only Unicode downgrade; ambiguous network errors retain no-retry behavior. Existing security/consent/membership guards unchanged. Six tests include fallback immutability, delivery timeout no retry and action/URL integrity. Full disposable-PG exact source **2,055 passed in 22.80s**, working **2,134 passed in 20.98s**, no skips. Compile/Pyflakes/diff clean. No live Telegram actions, production changes, deployment or merge; unrelated dirty work excluded. Literal icons elsewhere remain a separate follow-up.
+
+## Missing group admin command phase
+
+Added five actual handlers /admincount /rights /setchatname /setchatdescription /setchatphoto, group-owned manifests/Help/group menu scopes, uniqueness checked. Shared existing target resolver and icon rendering; current personal admin and bot rights, final mutation authority recheck, bounded read/update deadlines, explicit Telegram True acknowledgement only, no retry after ambiguity. File photo codec/type validation and path/URL rejection; no downloads. Details and pending capability limits in docs/USER_ADMIN_FEATURES.md. Ten tests initially five registration failures, then green; final working suite **2,144 passed in 20.93s**, exact selected source `/tmp/agent-chat-admin-exact` **2,065 passed in 23.20s**, no skips. Compile/Pyflakes/diff clean. No live Telegram actions/production data/deployment/merge. Unrelated dirty Music/clone/premium/runtime changes excluded.
+
+## Group-scoped userstats/recentactivity
+
+Added actual admin-only group handlers and Help/menu registrations for live member-count/bot runtime stats and latest ten cached current-group moderation actions. No global tracking/other-group data, no reason/message-text exposure, no fabricated presence/activity. Existing shared authorization/rendering retained. Six regressions cover denied/no-network, scoped history/redaction, valid live call, missing API count, syntax and escaping. Full working PG **2,150 passed in 21.75s**; exact staged `/tmp/agent-group-stats-exact` **2,071 passed in 22.86s**, no skips. Compile/Pyflakes/diff clean. No live Telegram calls/deployment/merge; independent dirty work excluded. Documented cache/completeness limitations in docs/USER_ADMIN_FEATURES.md.
+
+## Durable self-service group AFK
+
+Added /afk and group-only watcher under existing plugin gate; no duplicate commands. PG-only per-bot/group/user state, advisory lock for toggle/clear, request-ID admission prevents duplicate toggle, atomic 30s per-away-user notification claim. Reasons <=500 characters and escaped; no reasons/raw message content logged. Clears on caller normal message, notices on reply/text mention/current resolved username, max three candidate entities/targets, bounded lookups. No parent credential/data inheritance or presence telemetry; explicit privacy/cache/ordering/cooldown limits in docs/USER_ADMIN_FEATURES.md. Six regression cases include real PG tenant/group isolation and concurrent notification claims, replay, safe output, prefix exclusion and DB-down refusal. Final exact staged source `/tmp/agent-afk-exact` **2,077 passed in 23.33s**, working **2,156 passed in 21.27s**, no skips. Compile/Pyflakes/diff clean. No live Telegram or production DB changes, deployment or merge. Unrelated pending work preserved/excluded.
+
+## Read-only group adminbox
+
+Added /adminbox with live caller/bot permission table and registry-intersected curated command families, native semantic icons/navigation, no mutate callbacks or unfinished commands advertised. Personal group administrator required; final caller permission recheck. Six regressions including denied-before-bot-fetch, args, registry absence, provider redaction and lost permission. Full working PG **2,162 passed in 21.70s**; exact selected `/tmp/agent-adminbox-exact` **2,083 passed in 25.21s**, no skips. Compile/Pyflakes/diff clean; no live Telegram calls, production writes, deployment or merge. Unrelated Music/runtime/clone dirty changes excluded.
+
+## Silent purge feature
+
+Added Moderation-owned /spurge [count] (1–100/default10), read-before-mutate live personal caller+bot Delete messages checks and final caller recheck. Explicit bounded deletion acknowledgement path, range/audit before command cleanup, no success reply; ambiguity/partial/audit failure explicit with no retry/raw provider exception. Upstream Wzgram delete_messages returns pts_count: never misrepresented as actual deletion count. Existing /purge unchanged, shares range limit only. 17 test-first cases, full working PG **2,179 passed in 21.55s**, exact selected `/tmp/agent-spurge-exact` **2,100 passed in 23.84s**, no skips. Compile/Pyflakes/diff clean. No live Telegram deletions/production writes/deploy/merge. Unrelated work excluded.
+
+## Owner-only full group promotion
+
+Added /fullpromote with explicit confirm, current Telegram group Owner check and final recheck, unrestricted member target and bot-held whitelist ceiling. No configured Owner bypass, no existing admin overwrite, no channel-only/anonymous grants. Shares RIGHTS baseline with existing limited promotion; existing /promote and /demote unchanged. Reads5s/mutation10s, exact True acknowledgement, audit after success and explicit audit-failure status; ambiguity not retried or raw API text exposed. Ten test-first cases. Working realPG **2,189 passed in 21.83s**; exact staged `/tmp/agent-fullpromote-exact` **2,110 passed in 24.09s**, no skips. Compile/Pyflakes/diff clean. No live Telegram promotions/production writes/deploy/merge. Unrelated dirty changes excluded.
+
+## Optional limited-promotion title parity
+
+Extended existing /promote with validated optional <=16 character title on explicit/reply targets; no duplicate handler/shared resolver broadening. Existing text-mention/no-title and /rights strict syntax preserved. Bounded identity/mutation calls and caller checks before both mutations. Confirm promotion before title; partial title failure explicit, no retry/rollback or raw errors, audit failure explicit. Eleven regressions, full working PG **2,200 passed in 24.21s**, exact staged `/tmp/agent-promotion-title-exact` **2,121 passed in 27.25s**, no skips. Compile/Pyflakes/diff clean. No live Telegram/production writes/deployment/merge; unrelated dirty work excluded.
+
+## Canonical warning escalation policy
+
+Added /warnmode and migrated /warnlimit to serialized tenant/group SQL policy+immutable history, one-time legacy document import, atomic field patches and fail-closed DB reads/writes. Updated every active warning-threshold consumer to await canonical state (base warnings/variants/blocklist/settings), read before recording new warnings, synchronous helper rejects PG. Input fully validated before mutation; fixes warnlimit invalid-action partial write. Current personal admin identity+Change info, final write auth recheck. Warntime intentionally not registered; expiry is separate from mute duration. Eight new regressions including concurrent PG field updates, stale document/restart/tenant/group isolation and no-change invalid/denied requests. Full working PG **2,208 passed in 22.08s**, exact staged `/tmp/agent-warnmode-exact` **2,129 passed in 24.66s**, no skips. Compile/Pyflakes/diff clean. Quiesce old warning-policy writers before rollout; no destructive/production migration or live Telegram/deployment/merge. Unrelated dirty work preserved/excluded.
+
+## Hashtag log safety and usability
+
+Improved existing event/logbook path, not parallel log transport: preserved searchable categories plus explicit severity/UTC, safe capped unknown hashtags, bounded escaped cards with labelled omission. Shared best-effort secret/content sanitizer before retention/listeners/direct+queued sends/no-destination console fallback; exception type-only rendering and no arbitrary object repr. Delivery/listener failures emit #Errors type-only with no automatic retry or raw provider traceback. Isolated event deep copies and reserved metadata; fixed recent(0). Nine test-first regressions. Final realPG exact selected `/tmp/agent-log-safety-exact` **2,138 passed in24.77s**, working **2,217 passed in22.53s**, no skips. Compile/Pyflakes/diff clean. Documented detection limits and no changes to routing/tenant configuration/incident storage in docs/LOG_SAFETY.md. No live Telegram/production/deployment/merge; unrelated dirty work excluded.
+
+## New-warning expiry /warntime
+
+Added real /warntime off|60s–366d to shared live-admin settings; canonical expiry_seconds default0 is backward compatible with earlier JSON policies. Snapshot expires_at for each new warning, never retroactively rewrite old warnings/policy snapshots. Shared member warning operations materialize due expiry (inactive/expired_at) retaining history, so threshold/read/profile/clear counts exclude expiry after restart; group-wide reset also excludes expired records from cleared count. No restriction undo, background writer, periodic scan or destructive schema/data migration. Existing retention cap unchanged. Eleven new regressions incl realPG persisted expiry/restart/policy-off/group-reset counts and invalid/denied/nonretroactive cases. Final full realPG exact staged `/tmp/agent-expiry-exact` **2,149 passed in24.00s**, working **2,228 passed in21.89s**, no skips. Compile/Pyflakes/diff clean. Rollout must quiesce older warning/policy writers; no live Telegram/production/deployment/merge. Unrelated dirty work excluded.
+
+## Missing startup log diagnostics
+
+Investigated startup path: destination hydration before Telegram connect; start event after successful connection, existing best-effort log transport. No deployment/runtime logs available, so no root-cause claim. Added process-local delivery status and Owner-only /log test under existing gate: awaited saved-destination post, no retry or destination mutation, explicit not-delivered result. /log distinguishes recorded events from sends/failures/suppression/queue status. Three regression cases (initial two absent-status failures) cover success/failure/no retry, suppressed stages, actual command send/nonowner denial. Exact realPG **2,152 passed in23.91s**, working **2,231 passed in22.05s**, no skips. Compile/Pyflakes/diff clean. No production calls/deploy/merge; request sanitized hosting error/phase to diagnose the user's missing startup post.
+
+## Startup-post failure visibility follow-up
+
+Kept startup delivery result independently from later events, added safe type-based Telegram failure hints to /log and /log test, required positive Message.id acknowledgement before delivery success. Actual EventLog→LogBook start bridge tested once without duplicate/retry; invalid ack and startup-failure-then-success covered (five new cases). Full realPG working **2,236 passed in19.14s**, exact selected **2,157 passed in20.61s**, no skips. Recreated sandbox venv after environment refresh; removed richgram's competing kurigram installation and restored pinned Wzgram3.1.7 per repository installation convention before final test runs. Git tracking reconciled to fetched current branch without overwriting working files. Compile/Pyflakes/diff clean. No deployed error line available, no root cause/live connectivity claim, deploy or merge.
+
+## Private rules delivery + shared rules-card polish
+
+Added group-owned /privaterules self-service DM current-group canonical rules to verified requester only. Shared public/private rules renderer, native semantic icons/escaping/Unicode chunks. Member read5s, rule read5s, DM10s/positive ack, no retry/content fallback/raw errors; partial part counts explicit. Not a persistent group-private-rules mode. Six test-first cases. Full working PG **2,242 passed in19.49s**, exact staged **2,163 passed in20.90s**, no skips. Compile/Pyflakes/diff clean. No live Telegram delivery/production/deploy/merge. Unrelated dirty work excluded; original missing startup-post deployment diagnosis still requires sanitized runtime error.
+
+## Base mute target/duration parity and authority
+
+Fixed numeric target parsed as duration in /mute. Existing handler registration now uses native dedicated builder/shared target_and_reason, supports username/ID/text-mention/reply and strict separate duration60s–366d/default10m. Live personal caller/bot rights, protected target, final caller recheck, read5s/mutate10s and exact True acknowledgement; no retry/raw-provider error/false audit. Existing other base moderation unchanged. Ten new test-first cases + existing regressions, updated fake bot identity/rights/ack not mock/live confusion. Full working realPG **2,252 passed in23.24s**, exact staged **2,173 passed in24.58s**, no skips. Compile/Pyflakes/diff clean. No live restrictions/production/deploy/merge; unrelated dirty work excluded.
+
+## Rich mute/unmute and guarded undo controls
+
+Addressed user's plain-card/no-unmute-control complaint: shared rich Panel/kv status card + semantic icons, working short-lived one-use opaque callback tied to bot/context/chat/message/target/original expiry. Live personal caller+bot rights/current group baseline/protected-target checks, final auth, consume before mutation, exact True, no retry/newer-restriction override. /unmute username parity/live checks/rich confirmed or false-ack card; no global Owner bypass. Explicit modern media permission flags replace deprecated aggregate flag; serialization tested. No blanket claim of live mute fix/all commands converted; deployed error still unknown. Six regressions with full actual router dispatch, expiry/replay/changed-state/denial/native permissions and command acknowledgement. Exact realPG **2,179 passed in24.43s**, working **2,258 passed in22.76s**, no skips. Compile/Pyflakes/diff clean; no live Telegram/production/deployment/merge. Restart expiry and same-timestamp external-state limitations documented. Unrelated dirty work excluded.
+
+## Complete command inventory + ban/unban review phase
+
+Generated docs/COMMAND_INVENTORY.md from exact selected source:243 declared names incl shell aliases, module/default scope/descriptions and explicit reviewed-vs-needs-review state. Lists real missing requested tagging/timed-promotion names, selection/capability/policy caveats and ordered improvement sequence. Reproducible tool checks duplicate names; regression confirms full manifest/shell coverage. Does not claim runtime/provider/live availability or blanket polish. Existing base ban/unban replaced with shared targeting and rich cards, live personal caller/bot rights, final auth/True ack, no raw-error/retry/false-success audit; explicit partial presentation failures. Seven new behavior cases plus inventory test, existing safety tests maintained. Final realPG exact **2,187 passed in24.85s**, working **2,266 passed in22.81s**, no skips. Compile/Pyflakes/diff clean. No live Telegram/production/deploy/merge; unrelated dirty work excluded.
+
+## Kick one-by-one rich command review
+
+Existing /kick now rich shared-target builder with live personal caller+bot rights,
+final recheck and exact two-step acknowledgement, shared kick_member retained as
+sole ban→unban helper with10s/step deadline. Partial unban safe recovery remains
+visible even if audit fails; no fake re-add button/retry or raw provider text.
+Six regression cases, inventory regenerated from exact selected source and review
+order updated. Full realPG working **2,272 passed in24.63s**, exact **2,193 passed
+in23.43s**, no skips. Compile/Pyflakes/diff clean. Sandbox Git/venv refreshed safely
+against current remote without working-file overwrite; unrelated dirty work
+excluded. No live Telegram/production/deployment/merge. Warning cards next.
+
+## Warning rich-card review and read-only control
+
+Existing /warn replaced by native rich-card builder with shared targets/current
+personal caller+bot Restrict rights/final write check. Canonical warning stores
+unchanged. Recorded/audit/escalation/card outcomes separated; confirm=True for
+escalation, no raw exceptions or automatic duplicate warning retry. Working View
+warnings callback validates group + current actor rights twice, latest3 bounded
+reason previews, no mutation/permission authority from payload. No fake clear or
+unmute control; removal UI remains pending. Seven new regressions; updated old
+fake bot and explicit Owner-bypass denial tests. Inventory regenerated from exact
+selected source. Full working realPG **2,279 passed in21.79s**, exact **2,200 passed
+in23.32s**, no skips. Compile/Pyflakes/diff clean. No live Telegram/production/
+deployment/merge; unrelated dirty work excluded.
+
+## Warning-removal rich-card review
+
+Consolidated /unwarn with /rmwarn strict shared target/store path; /resetwarn and
+/resetallwarns rich committed/no-op/confirmation/denied/uncertain cards. Final
+mutation-time auth now includes group reset. Provider lookup errors redacted and
+post-commit audit failures explicitly distinguished. No new destructive one-tap
+control, duplicate handlers or warning storage; no implied Telegram restriction
+undo. Seven regressions and existing group-reset/profile/expiry coverage. Full
+realPG working **2,286 passed in21.36s**, exact staged **2,207 passed in23.29s**,
+no skips. Inventory regenerated from selected source, Compile/Pyflakes/diff clean.
+No live Telegram/production/deployment/merge; unrelated dirty work excluded.
+
+## Exact warning-card removal control
+
+New /warn Remove this warning control uses pre-issued UUID history identity,
+canonical exact-ID member/group-locked clear and cleared_by/cleared_at retained
+history. No latest-row fallback, no new table/schema rewrite or competing warning
+writer. Personal current admin rechecks/protected target, opaque bounded15min
+one-use group/message/context token, no restart replay or automatic ambiguous retry.
+No Telegram unmute/unban side effect. Eight test-first cases incl realPG concurrent
+clear-once/restart/group+tenant isolation and actual callback/replay/forged/expired/
+nonadmin/legacy safety. Final full realPG exact staged **2,215 passed in22.37s**,
+working **2,294 passed in21.31s**, no skips. Inventory regenerated from selected
+source. Compile/Pyflakes/diff clean. No live Telegram/production/deploy/merge;
+unrelated dirty work excluded. Specific button is not general exactly-once warning
+command delivery; old/history-retention limits documented.
+
+## Warning read parity and pagination review
+
+/warnings and /warns share one new canonical rich-reader handler: self defaults,
+shared target forms, bounded page parsing,3 records/page and real group-scoped
+Previous/Next callbacks with fresh state. Current membership/self-vs-Restrict-admin
+access checked before and after reads; no other-member/notes disclosure on revoked
+or ordinary member requests. Cached note preview explicitly labelled admin-only
+request, replies still group-visible (not private admin transport). Expiry canonical
+semantics unchanged; no manual mutation/new command declaration. Six test-first
+regressions, full realPG exact **2,221 passed in22.25s**, working **2,300 passed
+in21.43s**, no skips. Inventory regenerated from exact selected source.
+Compile/Pyflakes/diff clean. No live Telegram/production/deployment/merge;
+unrelated dirty work excluded. Timed promotion/tagging and untouched inventory
+entries remain separate pending work, not claimed complete.
+
+## Member-note command and canonical storage review
+
+Fixed reply /note dropping first word, shared target resolution/live personal Manage
+chat rights/final write check, rich content-withheld commit card. Dedicated serialized
+tenant/group/member SQL notes with one-time authoritative legacy import, revisions
+and content-free change metadata; warning reader awaits canonical note. Sync PG
+note methods refuse stale access. Audit-after-commit failures explicit, no raw note
+body/provider logs/confirmation or DB-to-file fallback. Six regressions incl realPG
+legacy/concurrent revision+metadata/restart/member/group/tenant isolation/stale save,
+parser/rights/audit/DB-down. Full realPG exact selected **2,227 passed in22.36s**,
+working **2,306 passed in21.24s**, no skips. Inventory regenerated, Compile/Pyflakes/
+diff clean. Sandbox Git/venv refresh restored current branch tracking without file
+overwrite, richgram installed --no-deps. Quiesce old note writers for rollout;
+no live Telegram/production/deployment/merge; unrelated dirty work excluded.
+
+## Approval command rich-card and target-parity review
+
+Unified approve/unapprove/approval/approved builder, existing canonical trust store
+and PG atomic audit unchanged. Shared ID/username/text-mention/same-chat-reply
+resolution, strict no extras, current personal Manage chat admin before changes
+and reauthorized disclosure. Rich desired-state confirmations and20-ID live command
+pages; idempotent changes, no callbacks/dead controls/new aliases. Provider failures
+redacted and partial local audit unconfirmed.11 regression tests (initial7 failed,
+2 already passed), existing realPG trust lock/import/isolation/rollback tests rerun.
+Full exact selected suite **2,238 passed in22.57s**, full working **2,317 passed
+in22.13s**, no skips. Inventory regenerated; Compile/Pyflakes/diff checks clean.
+No deployment/merge/live provider/production access; unrelated dirty work excluded.
+
+## /antispam strict UI and honest saved-policy card
+
+Native command builder replaces legacy nested handler; canonical policy service,
+SQL audit and watcher unchanged. Personal current Manage chat rights before write
+and before disclosure. Strict no-extra grammar/ASCII bounded numeric settings, no
+silent command clamping. Phrase counts, not raw keyword text. Rich committed/current
+policy card shows additional flood modes and explicitly distinguishes saved settings
+from live enforcement. Redacted provider failures/no retries; known post-commit rights
+loss reports committed/details withheld.20 new regressions, initial14 failed/1 passed.
+Existing realPG policy import/concurrency/tenant/group isolation/audit rollback plus
+watcher cases rerun. Full exact selected **2,258 passed in22.62s**, full working
+**2,337 passed in21.42s**, no skips. Inventory regenerated; Compile/Pyflakes/diff
+checks clean. No deployment/merge/live Telegram/production calls; unrelated dirty
+work preserved and excluded. Other command gaps remain explicitly unclaimed.
+
+## /modlog bounded paginated audit reader review
+
+Replaced nested legacy reader with personal current-admin guarded builder; reauth
+before disclosure, no nonadmin/bot/anonymous reads. Existing sources retained,
+up to10 merged rows/3 per live command page, explicit bounds and actor/source/UTC/
+outcome labels,160-char reason previews. No complete-ledger/dedup/current Telegram
+state claim; overlapping local/canonical records acknowledged. Fail closed on
+source/permission errors, no partial log/provider leak/retry. Nine regressions
+(initial8 failed) incl realPG committed history/group+tenant isolation, final rights
+loss/strict pages/bounded payload/source outcomes. Full exact selected **2,267
+passed in22.48s**, full working **2,346 passed in22.03s**, no skips. Inventory
+regenerated; Compile/Pyflakes/diff checks clean. Unrelated dirty work preserved and
+excluded. No deployment/merge/live Telegram/production operations or broad command
+completion claim.
+
+## /cleancommand and /keepcommand in-place review
+
+Existing implementation and test file edited, no new modules. Simpler state/
+moderator/save-status card, complete eight-prefix help; personal bounded identity,
+bot denial, pre-save and post-read/save current Delete messages authority. Redacted
+unexpected errors/no retry, existing aliases/canonical store/cleanup wrapper unchanged.
+Two test-first regressions initially failed. Full realPG exact selected2269 passed
+in22.67s, working2348 passed in21.03s, no skips. Pyflakes/diff checks clean; inventory
+regenerated. No deployment/merge/live Telegram/production; unrelated work excluded.
+
+## Anti-spam usage copy simplification
+
+User clarified long bot usage paragraphs, not only assistant explanations. Existing
+normal antispam card footer shortened to line-separated examples and one permissions/
+watcher/exemption note; full validation grammar retained on invalid input. No new
+modules/commands or policy/rights changes. Updated regression failed first. Full
+realPG exact2269 passed23.94s, working2348 passed21.72s, no skips. Pyflakes/diff
+checks clean. No deployment/merge/live production; unrelated dirty work excluded.
+
+## Missing timed-promotion durable admission foundation
+
+Started /tpromote infrastructure; no command registration or claimed feature parity.
+Additive SQL intent schema/persistence with one unresolved target per tenant/group,
+limited rights/deadline/identity validation, atomic expected-state transitions and
+no offline fallback. Review state blocks regrant. No Telegram executor/claim/retry,
+startup/shutdown hook or automated demotion yet; these are required before enabling.
+Two tests initially failed; realPG concurrent admission/restart/group+tenant filtering/
+stale state transitions/closure/regrant tested. Full exact2271 passed23.59s,
+working2350 passed22.40s, no skips. Pyflakes/diff checks clean;243-command inventory
+regenerated and missing command honestly retained. New persistence module only,
+no duplicate command handler. No production/live Telegram/deployment/merge; unrelated
+work excluded. Next required phase is native reconciliation, not more cosmetic cards.
+
+## /lang initial picker and durable preferences
+
+Existing core file gains real /lang handler/callback,100 native names/9 pages,
+private self-service/current Manage chat group admin, owner+chat-bound buttons,
+pre-write and post-read/write authority. Worker allowlist/menu/help updated. New
+canonical language preference store, no plaintext provider credentials/external calls
+or offline PG fallback. Selection is not full translation: only picker headings/save
+copy en/ml/hi/ta; other messages remain English, explicit fallback label on all pages.
+No full50/100-language completion claim. Four regressions incl realPG restart/user/
+group/tenant scope and offline actor guard,100 reachable options, callback byte bound,
+forged controls and revoked rights. Initial3 tests failed before implementation.
+Full exact2275 passed23.24s, working2354 passed22.03s, no skips. Inventory regenerated
+244 commands. Pyflakes/compile/diff checks clean. Existing unrelated music Help edit
+excluded via selective index update; no broad staging. No production/live Telegram/
+deployment/merge. Timed promotion executor and remaining command reviews unfinished.
+
+Language staging correction: menu.py also contained pre-existing music descriptions/
+playforce metadata. Removed those unrelated hunks from published tree in a follow-up,
+retaining them unchanged in working files. Clean selected full realPG suite rerun:
+2275 passed23.56s, no skips. Language menu entry retained. No force-push/history rewrite.
+
+## Complete-only /lang correction (supersedes100-choice fallback design)
+
+User requires full translations, rejects English fallback/partial-language selector.
+Removed99 incomplete choices and picker-only translations from supported catalog.
+English remains sole complete source locale. Storage and callbacks reject non-enabled
+codes; stale buttons cannot save them. Reads of previously saved unsupported choices
+raise explicit UnsupportedLanguage, never silently replace with en; picker provides
+an explicit recovery selection without changing old record. No full non-English
+coverage claimed. Full-bot localization remains unfinished and required before adding
+languages. Dynamic page bounds, no100-language/fallback menu claims. Four existing
+tests updated first (two failed), realPG retained legacy/explicit recovery tested.
+Full realPG working2354 passed27.84s, exact2275 passed27.70s, no skips. Removed
+unused test import after full run; focused tests/Pyflakes/compile/diff clean. Unrelated
+music menu edits selectively excluded and retained locally. Ref/venv restored after
+sandbox refresh without overwriting files. No production/live Telegram/deploy/merge.
+
+## /tpromote conservative expiry reconciliation service
+
+Commands-first request honored: paused translation work unstaged, retained in files;
+existing timed_promotions.py extended, no competing handler or fake registration.
+Bounded due scan and atomic durable review-before-API claim: one action maximum per
+intent across concurrent callers/restarts. Current bot Promote/admin rights, matching
+bot/promoter/editability and every current privilege flag; final target recheck.
+Already-nonadmin closes without Telegram mutation. Changed/unknown/false/timeout/
+prepared/cancellation outcomes remain blocked in review, no blind retries. Strict
+all-False demotion/True ack then closed. Provider failures redacted. Review UI, grant
+command and runtime lifecycle still unfinished; this service is not registered/running.
+External Pyrogram pinned30de1e2 promote_chat_member source reviewed only (no execution),
+actual Wzgram ChatPrivileges signature inspected for modern fields.12 new regressions
+(initial9 failed before implementation; added bot-revoked/new-flag/timeout branches),
+realPG races and storage with simulated Telegram. Full exact2287 passed26.22s,
+working2369 passed25.40s, no skips. Working includes paused localization tests;
+selected exact tree excludes all paused localization and unrelated music work.
+Pyflakes/diff checks clean,244-command inventory updated. No deployment/merge/live
+Telegram/production changes. No claim automatic recovery is operational yet.
+
+## /tpromote native command and lifecycle integration
+
+Registered genuine missing /tpromote in existing group/admin command builder.
+Personal current supergroup Owner only, limited bot-capped rights, strict duration/
+target syntax, final live checks after durable reservation; no owner-ID bypass.
+Strict True ack activates durable record; uncertain dispatch enters review, known
+pre-dispatch failure cancels. New status/review-resolution subcommands current-owner
+and group/tenant scoped, no manual resolve while target remains admin. Bot-owned
+native scan task starts after connection under existing instance lease and is
+cancelled/awaited before teardown. RealPG full command->expiry->demotion exercised
+with simulated Telegram, false ack review/resolve and permission-loss cancel; worker
+stop/outage guard tested. Five new tests plus previous19? Current timed-promotion
+file19 total cases (previous14 + five); all rerun. Initial missing worker/command
+failures observed before implementation. Full exact2292 passed35.54s, working2374
+passed32.32s, no skips. Inventory245 names, remaining tagging commands still absent.
+Pyflakes/compile/diff checks clean. Bot/menu/help/docs index built selectively from
+HEAD plus this change, preserving paused localization and unrelated music/premium/
+clone edits unstaged. No deployment/merge/live Telegram/production calls. Expiry can
+be delayed by downtime/batches; uncertain or changed state intentionally blocks for
+manual review; Telegram/SQL not atomic, same-right external changes remain a race.
+
+## /allsettings and /tagstats with canonical self-service consent
+
+Registered2 genuine missing commands in existing admin builder; no duplicate module/
+handler. SQL settings+consent serialized per tenant/group,500 cap, idempotent personal
+join/leave, disable clears consent. Current personal Manage chat for configuration/
+stats and final disclosure; group-bound self-service callback, final current member
+join check, withdraw allowed for former members. No roster scraping/online claims/
+mass mention sends yet. Existing missing tagging send/abort aliases unregistered.
+Four realPG tests, initial3 failed; actual consent/scope/disable race/cap/storage and
+simulated Telegram authority. Full exact2296 passed31.08s, working2378 passed32.99s,
+no skips. Existing worker-search test assumed lexical page order although production
+ranks prefixes first; updated to check disjoint discoverable command pages, not false
+ordering assumption. Pyflakes/compile/diff clean. Inventory247 names regenerated.
+Paused localization and unrelated music/clone/premium work excluded with selective
+index edits; no deployment/merge/production/live Telegram calls.
+
+## Native manual /tagall (/all) and /tagabort
+
+Three missing commands registered in existing group/admin.py, existing SQL registry
+extended with durable one-open-run/snapshot cursor state. Opt-in1–500 only, slices5,
+group30s claim throttle, one winner across concurrent claims, live membership/final
+consent/admin checks. Positive message ID acknowledgement, uncertain claims/sends
+block retry; no background dispatch or fake full-group notification. Real Resume/
+Stop and tagabort, stop cannot recall in-flight send. Withdrawal scrubs snapshot IDs
+without shifting cursor; disable stops/scrubs runs. Explicit batch sent vs scanned
+progress. Five regressions added, initial2 missing APIs failed plus missing command
+failure; actual database concurrency/throttle/withdrawal/replay/scope/disable and
+simulated Telegram send/stop/timeout/redaction/final rights. Full exact2301 passed
+25.96s, working2383 passed24.32s, no skips. Inventory250 names, emoji variants still
+missing. Pyflakes/compile/diff clean. Paused localization/unrelated work preserved,
+only selected bot help/menu hunks staged. No deployment/merge/live Telegram/production.
+
+## Literal @all/@eall and persisted emoji mention variants
+
+Shared command parser gains narrow exact @all/@eall text aliases, not global @
+prefix, preserving original eight prefixes/scope/admin gates. Lexical command guard
+recognizes them too. Registered /etagall and /eall reuse existing dispatcher with
+persisted plain/emoji style; additive constrained SQL column/default for old runs,
+claim reads SQL style. No fake member lists, opt-in/manual5/30s unchanged. Telegram
+must deliver plain @ messages under privacy/admin settings; no live visibility claim.
+Two test-first regressions, initial literal filter failed; realPG emoji send/style
+with simulated Telegram and negative lexical cases. Existing store concurrency/style
+assertion expanded. Full exact2303 passed25.58s, working2385 passed23.65s, no skips.
+Inventory252 names regenerated; requested named gaps declared, no blanket upstream
+parity/completion claim. Pyflakes/compile/diff clean. Existing files edited; paused
+language and unrelated work selectively excluded. No deployment/merge/live provider/
+production changes.
+
+## Existing antiflood family in-place review
+
+No new module/aliases: existing five handlers share strict parser, personal current
+Manage chat checks before mutation and disclosure, safe input vs provider exception
+distinction. Simplified Off/readable durations/Saved vs read-only/moderator card,
+independent burst limiter action displayed, short examples, counters/watcher caveat.
+Canonical policy/audit/watcher unchanged. Three test-first regressions, initial2
+failed. Full realPG exact2306 passed25.92s, working2388 passed23.95s, no skips.
+Pyflakes/compile/diff clean,252-name inventory review states regenerated. Paused
+localization and unrelated dirty work retained/excluded via selected documentation
+index. No deployment/merge/live Telegram/production changes.
+
+## Remove tagging enable/disable prerequisite
+
+User requested always-available tagging. Removed group enabled gates from consent,
+run admission/claim and final delivery eligibility; fresh and legacy-disabled groups
+work without setup. Retained legacy DB column ignored, no destructive migration or
+restored/automatic consent. /allsettings info/Join/Leave only, retired on/off rejects
+without clearing consent. Personal consent/admin/member checks, manual5/30s, Stop/
+tagabort unchanged. Existing10 tagging regressions updated first (9 failed), realPG
+legacy disabled/consent preservation/scope/races/cap/uncertainty tests rerun. Full
+exact2306 passed21.34s, working2391 passed19.94s, no skips (working includes paused
+cleanservice/localization tests). Pyflakes/compile/diff clean;252-name inventory
+metadata updated. Interrupted cleanservice remains uncommitted/excluded, no broad
+staging. No live Telegram/production/deployment/merge operations.
+
+## Interrupted /cleanservice phase completed
+
+Existing cleaning.py now uses current personal Delete messages permission checks
+before read/write and before disclosure, strict notice allowlist grammar, readable
+labels/Saved vs current state/moderator and short usage. Provider exceptions redacted,
+known committed writes never reported rolled back; local audit failure unconfirmed.
+Watcher/SQL revision and delete semantics unchanged (no ordinary user-content/pin
+state changes). Four regressions, original3 failed before implementation; added
+post-save rights and standalone audit failure truth case. Full realPG exact2310
+passed21.94s, working2392 passed20.50s, no skips. Pyflakes/compile/diff clean.
+252-name inventory review state regenerated. Always-available tagging untouched;
+paused localization/other dirty work excluded via selective documentation staging.
+No production/live Telegram/deployment/merge. Sandbox tests not live deletion proof.
+
+## /pin and /unpin verified-state in-place review
+
+Existing group helper now personal current Pin permission + bot Pin permission,
+strict args/same-group reply validation, final authority before API, bounded calls.
+Actual installed Wzgram inspected: pin service Message or None, unpin True. Pin
+matching notice or exact pinned=True readback; unpin strict True, never assume None
+success. Rich short state/status, silent requested not delivered guarantee, separate
+post-commit local audit failure. No repeated action/provider body exposure. Five
+regressions, initial3 failed; test fakes updated to real method result shapes.
+Full realPG exact2315 passed21.63s, working2397 passed20.36s, no skips. Pyflakes/
+compile/diff clean;252-name inventory updated. No new module/commands; paused
+localization and unrelated dirty work excluded via selective docs index. Tagging
+always available unchanged. No deployment/merge/live Telegram/production changes.
+
+## /resetwarns shares the verified warning reset path
+
+Removed legacy group reset implementation and unused target/protection helpers.
+Existing warning_controls builder offers explicit group alias opt-in; group owns
+/resetwarns registration, preserves own audit/usage name, same rich/strict/live
+Restrict-authorized all-active clear as resetwarn. No new module/duplicate clearing
+writer/manifest collision. Two test-first regressions failed before implementation,
+username/history parity, final rights loss and committed/audit failure verified.
+Existing protected/empty/all-clear tests retained, changed wording expectations only.
+Full realPG exact2317 passed27.26s, working2399 passed26.83s, no skips. Pyflakes/
+compile/diff clean;252-name inventory review state updated. Paused localization and
+unrelated work excluded by selective docs staging. Tagging always available unchanged.
+No production/live Telegram/deployment/merge or full-command completion claim.
+
+## /admins live pages and member-authorized disclosure
+
+Existing reader now strict /admins [page],15 visible rows/page, bounded201 raw
+records/200 considered/15s, explicit cap notice, anonymous records hidden. Preserves
+ordinary current group-member access with personal identity and final membership
+recheck. No storage/mutation changes. No partial list/provider body exposure; long
+names visibly capped64 chars. Three regressions initially failed, existing list/
+overflow/role/failure tests retained. Full exact2320 passed26.69s, working2402
+passed25.23s, no skips; realPG enabled, Telegram listing simulated. Pyflakes/compile/
+diff clean;252-name inventory review state updated. Selective documentation stage
+excludes paused localization/unrelated work. No deployment/merge/production calls.
+Reported live startup failure remains unconfirmed: preflight and52 lifecycle tests
+previously passed, hosting traceback still required; this phase is not a startup fix.
+
+## Retrieved-member automatic mentions (supersedes opt-in UI)
+
+User-directed replacement: @all and /all /tagall retrieve Telegram group members;
+@eall /eall /etagall use randomized emoji labels. No joining or enable switch.
+Bounded 2001 raw reads/2000 considered/60s; excludes bots, deleted/noncurrent IDs,
+deduplicates, discloses incomplete roster. Native JobQueue advances durable group
+snapshots 20/message with 5s pauses, current admin/member checks before each send,
+Stop cancels local jobs plus durable state. FloodWait persists a future cooldown,
+leaves review, reports seconds; uncertain delivery never retries automatically.
+Legacy source migration additive/default optin; old runs require abort/restart.
+Settings/stats now information only; old Join/Leave buttons retire without writes.
+Real database suites and simulated Telegram tests recorded in this phase's commit;
+no live Telegram, deployment, merge, localization release or startup-fix claim.
+Validation: exact staged code2323 passed26.32s; working tree2405 passed24.62s,
+no skips, disposable realPG. Telegram provider mocked; pacing simulated in focused
+jobs tests (13 passed). Pyflakes and staged whitespace checks clean. Selective
+staging preserves unrelated localization/music/premium and other dirty work.
+
+## Clean first-name mention messages
+
+User correction: mention batches now contain clickable live first names, without
+"Member <id>" labels or an automatic heading. Escaped/capped names, username then
+person emoji fallback if missing. Emoji mode stays randomized. Optional command
+text (max500 characters) is escaped and saved with the durable run so every batch
+and Resume preserves it. Bare commands emit only mentions; no admission/completion
+cards. /tagabort remains available; errors/FloodWait still reported with controls.
+Roster completeness/cap information remains in /allsettings and /tagstats.
+Three new behavior cases failed before implementation, then focused14 passed;
+realPG used, Telegram mocked. No deployment or live Telegram validation.
+Validation: exact selectively staged suite2324 passed27.99s; working suite2406
+passed25.16s (before strengthening existing multibatch text/fallback assertions,
+which passed in exact suite). No skips. Pyflakes/staged whitespace checks clean.
+
+## Markdown review and /adminlist consolidation
+
+Scanned all48 project Markdown files (README, docs including29 per-reference
+indexes plus reference catalog, TypeTube README; excludes environment/dependencies).
+Reviewed requirement/ledger headings and unresolved-status signals across the set,
+and targeted current source paths rather than executing reference code. Added a
+current document map/precedence guide and chronological banners so historical
+missing lists/baseline counts are not mistaken for current status. Corrected README
+secret-write/no-key and required-DB claims, Richgram no-deps installation and native
+vs classic fallback wording; reconciled obsolete no-self-ping Music paragraph with
+ALWAYS_ON. This is not a fresh manual upstream/source audit or complete parity.
+
+/adminlist now delegates to the existing /admins reader, removing the older
+unbounded reader that exposed raw provider ValueError and lacked live membership
+checks. Both names keep ordinary personal current-member access, validate page
+before listing, cap at200 raw considered/201 fetched/15s,15 rows/page, recheck
+membership before disclosure, hide anonymous admins and redact provider failures.
+Usage/footer retain the invoked name. No new module/command/store or privilege
+change. /admincache remains separate and needs a bounded refresh review next.
+Three parameterized regressions failed first on adminlist; shared bound/nonmember
+coverage added. Provider calls simulated; no live Telegram or production changes.
+Validation: full exact selectively staged code2329 passed32.36s; working2411
+passed35.08s, no skips, disposable realPG; provider mocked. Initial standalone
+DB URI run lost its temporary PG server on parent exit (2 connection failures);
+rerun with pgserver lifetime enclosing pytest passed. Pyflakes/compile/staged
+whitespace checks and document-map local file links verified. Inventory regenerated
+from isolated patch:252 names, no unrelated pending Music command/description
+changes included. README/user-admin selective staging preserves unrelated edits.
+No deployment/merge/production calls; languages remain paused/English only.
+
+## Bounded /admincache and neutral storage presentation
+
+Replaced unbounded retained administrator records with an ephemeral bounded live
+snapshot check: strict no-argument command, personal nonbot current Manage chat
+admin before and after read,201 raw/200 considered/15s plus5s auth deadlines.
+Counts distinct valid returned administrator IDs, including anonymous/bot admins
+numerically without showing identities. Cap notice avoids claiming completeness;
+no permissions cache or identity retention. No changes to real permission checks.
+Local validation separate from provider ValueError; type-only errors, no partial
+result, cancellation propagates. Two new regressions failed before implementation;
+additional bot/anonymous/input/member/oversized-ID refusal coverage added. Removal
+of the obsolete snapshot cache also removes its unused promotion invalidation;
+existing title/partial-result tests retained and rerun after catching that reference.
+
+User requires neutral storage wording. Bot status, settings, clone setup/help,
+playlist persistence, provider-safe storage failures, setup docs and phase ledgers
+now use generic wording rather than implementation branding. Internal capability
+keys, connection schemes, SQL, drivers, redaction patterns, legacy backend enums,
+source/reference filenames and licensing remain unchanged for compatibility.
+Presentation maps the internal storage capability/backend label before rendering;
+structured selection fields still retain their machine IDs. No storage migration,
+connection/key change, persistence fallback or permission relaxation. Updates also
+avoid implementation branding. Historical test totals remain phase-specific.
+Validation: exact selectively staged suite2334 passed34.70s; final working suite
+2416 passed29.73s, no skips. Both use disposable database, Telegram mocked.
+No live delivery/production calls. Shared capabilities/connection protocols retain
+compatibility. Targeted changed command/UI/selection modules pyflakes and compile
+clean; broader lint scan reports existing unused imports/fixture-import warnings
+in unrelated FileStore/UI/fixture modules, not a repository-wide clean claim.
+Inventory regenerated from isolated patch252 names; admincache review flag updated.
+Selective index transformations excluded unrelated dirty Music/clone/premium changes.
+
+## Administrator-option mutation and disclosure checks
+
+Existing /anonadmin and /adminerror now share an in-place dedicated option
+handler, replacing their older branch in the promotion handler. Group/personal
+nonbot identity with valid positive ID required; strict optional yes/no/on/off
+syntax before network or storage reads. Five-second live Manage chat checks at
+admission, immediately before write, and before state disclosure. Reads also
+recheck after loading. Initial denials preserve configured adminerror behavior;
+final revoked-rights results withhold details. Confirmed writes followed by revoked
+rights or provider failure explicitly say setting saved, never imply rollback.
+Local validation distinct from provider ValueError; errors log type only and no
+raw provider body reaches replies. Anonymous-setting risk warning retained.
+
+Store transaction/history/scoping unchanged; no new module/command/schema/fallback.
+Authority checks cannot be atomic with external rights changes. Settings still
+use existing canonical writer; post-save reply failure does not reverse a write.
+Two test-first regressions failed before implementation, expanded to both commands
+plus invalid arguments/identity/uppercase alias and post-save timeout coverage.
+Existing real disposable database concurrency/isolation/audit-rollback tests rerun;
+Telegram permissions simulated, no production or live group changes.
+User's neutral implementation wording remains in force; no engine branding added.
+Validation: exact selective suite2340 passed31.45s; working2422 passed28.21s,
+no skips. Changed-handler/test pyflakes, compile and staged whitespace checks
+clean.252-name inventory updated only for the reviewed options. Unrelated dirty
+Music/clone/premium/localization edits preserved. No deployment/merge/live calls.
+
+## /promote and /demote target and outcome review
+
+Existing implementations edited in place. Shared resolver now validates strict
+positive64-bit IDs/usernames, bounds lookup5s, rejects cross-chat/sender-chat
+reply identities and ambiguous reply plus explicit target. /rights inherits safer
+target parsing. Promotion optional titles/entity compatibility retained. Personal
+nonbot bounded caller required. Initial rights check now bounded5s. After final
+moderator probe, bot/caller/target records are refreshed together with5s deadlines;
+explicit grant whitelist uses those final ceilings, without another stale-rights
+read between constructing privileges and mutation. Exact True acknowledgement,
+10s mutation bound, no Add administrators/anonymous grants remain unchanged.
+
+Authored AdminInputError is distinct from provider ValueError, so lookup/mutation
+failures never echo raw service bodies; type-only #Errors. Confirmed changes stay
+reported confirmed if result delivery fails; audit/title partial outcomes retained.
+External rights and Telegram effects are not transactional; no automatic retries.
+Eight regressions initially failed (provider errors, cross-group/invalid targeting,
+bot/oversized callers and final granular-right ceiling). Added post-ack reply-failure
+regression; existing title, false ack, protected target, rights and audit tests kept.
+No schema, persistence writer, module or command addition. No live Telegram calls.
+Validation: exact selective suite2349 passed26.95s; working2431 passed25.57s,
+no skips, disposable database. Telegram simulated; final granular-right regression
+and post-ack delivery regression included. Pyflakes/compile/staged whitespace clean.
+252-name inventory flags updated only for promote/demote. Recalled continuation
+order saved in existing requirements ledger; languages still deferred. Unrelated
+dirty work retained. No production/deployment/merge or full-completion claim.
+
+## Replied-message loading and full-promotion confirmation
+
+User reports replied commands not selecting the member. Source review found
+reply-ID-only updates were not resolved by shared target parsers, and bare reply
+/fullpromote only produced confirmation usage. Added bounded reply resolution in
+existing commands utility, shared by group target/title parsing, moderation target
+parsing, delete-restriction prechecks and warning variants. One5s get_messages read
+uses the actual command's reply reference (replies=0), verifies returned message
+ID and same chat, caches only on this update. Missing/deleted/external/mismatched
+replies fail closed rather than falling back to a different explicit target. Forum
+header-only references are not hydrated as personal targets. Provider bodies hidden;
+no background scan or message retention store. Already-populated replies avoid reads.
+
+/fullpromote bare reply or explicit target now selects a member and offers Confirm/
+Cancel; explicit confirm syntax remains supported. Preview requires current group
+Owner, and mutation still rechecks Owner, bot rights and target membership. Opaque
+one-use token bound to caller/group/card,120s expiry,128 pending cap, per-built-bot
+memory, no original message contents retained. Restart expires pending cards; no
+auto-resume/retry. Other users/copied/cross-group/expired cards cannot confirm.
+Cancel only consumes that card. No weaker authority or silent delegation changes.
+
+Two new regressions failed first, then reply hydration and bound confirmation
+worked in simulated Telegram tests. Added deleted/wrong-chat/wrong-ID/read-timeout/
+forum-header refusal, confirmation replay/actor/chat/card/expiry/cancel/ownership
+checks and loaded/missing reply warning-variant cases. No claim that every command
+or the reported deployed root cause is verified; deleted/anonymous messages may
+still require an explicit personal target. No live account, production or deploy.
+Validation: exact selective suite2361 passed28.58s; working2443 passed28.09s,
+no skips, disposable database. Changed-source/test pyflakes, compile and staged
+whitespace checks clean. Existing rights/scope/target/title/moderation regressions
+retained. No new command registration or unrelated dirty changes staged. No
+production, merge or deployment; user-facing storage wording remains neutral.
+
+## Group navigation, native temporary menus and reduced delivery overhead
+
+Actual /start (+restart_bot) and /help (+h) filters now accept private/groups,
+not channels. Published start/help group scope and source inventory aligned;
+ping retains private scope. Group start payloads never redeem private deep links.
+Group navigation requires personal nonbot identity. Group /start,/help,/menu use
+native recipient-only ephemeral parameters: absent from chat history, not an
+application-managed timer/delete loop. Library support inspected in installed
+send/edit implementations; delivery still depends on Telegram/client/online state.
+Unsupported/unconfirmed ephemeral delivery never retries a public copy; shell
+failure guidance points to DM. Moderation receipts and files unchanged.
+
+Sender preserves receiver on explicit rich/emoji format downgrade. Ephemeral
+callbacks require the receiver and use native ephemeral edits; explicit uneditable
+replacement retains receiver, no public downgrade. Missing send acknowledgement,
+transport/FloodWait/permission failures never justify resend. Existing public/private
+navigation retains normal edit semantics. No credentials or source payloads retained.
+
+Group welcome skips remote hero media and uses only already-loaded bot identity,
+including Home callbacks, eliminating image work/optional5s get_me wait there.
+Private welcome retains requested hero: per-sender bounded16-source acknowledgement
+cache reuses Telegram media ID; explicit stale-photo rejection drops cache before
+one original-source attempt, ambiguous timeout never reuploads. No permission,
+plugin-gate, moderation or tagging pacing bypass; no new dependency/lifecycle task.
+These are source-confirmed round-trip/media-work reductions, not live latency proof
+or an “everything fastest” claim. No global cache shared across bot tenants.
+
+Five initial tests failed before implementation. Added receiver-preserving format
+fallback/edit/replacement, foreign press refusal, missing-ack/no-retry, actual group
+filters/menu scopes, group deep-link refusal/no-hero/no-identity lookup and repeated
+private hero/no-reupload regressions. Existing menu-scope expectation updated to
+requested group behavior. No live Telegram, production, deploy or merge operation.
+Validation: exact selective suite2371 passed29.08s; working2453 passed26.03s,
+no skips, disposable database and simulated Telegram. Targeted pyflakes, compile
+and staged whitespace checks clean.252-name inventory retains aliases and reflects
+group navigation scope; unrelated Premium/Music/localization/bot-init edits excluded
+by selective staging. Hero cache applies only when a photo file ID is returned;
+cache clears on process restart. No measured live speed multiplier or universal
+UI/ephemeral compatibility claim. No deployment/merge/production operations.

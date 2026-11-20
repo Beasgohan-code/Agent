@@ -342,14 +342,16 @@ def test_the_store_keeps_tokens_out_of_sight_and_off_other_accounts(tmp_path):
 
 
 def test_a_record_survives_a_reload(tmp_path):
-    store = CloneStore(tmp_path)
+    from agent.platform.secrets import box_from
+    box = box_from(Settings.from_env(ENV))
+    store = CloneStore(tmp_path, box=box)
     store.add(Clone(bot_id=1, owner_id=2, token=TOKEN_A, username="demo"))
 
-    again = CloneStore(tmp_path)
+    again = CloneStore(tmp_path, box=box)
     assert again.get(1).username == "demo"
     assert again.by_owner(2)[0].bot_id == 1
     assert again.remove(1) is True
-    assert CloneStore(tmp_path).count() == 0
+    assert CloneStore(tmp_path, box=box).count() == 0
 
 
 # --- profiles --------------------------------------------------------------
@@ -445,3 +447,86 @@ def test_an_unknown_profile_button_is_refused(tmp_path):
 
     assert query.answers[0][1] is True          # an alert, not a silent no-op
     assert ctx.clones.record(111111111).profile == "standard"
+
+
+def test_unified_panel_lists_each_owned_clone_and_refreshes_privately(tmp_path):
+    ctx, manifest, handlers = build(tmp_path)
+    assert 'panel' in manifest.commands
+    run(handlers['clone'], ctx, FakeMessage(f'/clone {TOKEN_A}'))
+    run(handlers['clone'], ctx, FakeMessage(f'/clone {TOKEN_B}'))
+    message = FakeMessage('/panel')
+    run(handlers['panel'], ctx, message)
+    data = [button.callback_data for button in buttons(message.markups[0])]
+    for bot_id in (111111111, 222222222):
+        assert f'clone:{bot_id}:restart' in data
+        assert f'clone:{bot_id}:details' in data
+    assert 'clone:refresh' in data
+    query = FakeQuery('clone:refresh', uid=OWNER)
+    query.message.chat.id = OWNER
+    asyncio.run(ctx.actions.dispatch(None, query))
+    assert 'Controller refreshed' in query.answers[-1][0]
+    assert 'Clone controller' in query.edits[-1][0]
+    foreign = FakeMessage('/panel', uid=999)
+    run(handlers['panel'], ctx, foreign)
+    assert 'bot111111111' not in foreign.replies[-1]
+
+
+def test_panel_restart_reuses_real_manager_and_refuses_nonpremium(tmp_path):
+    ctx, _, handlers = build(tmp_path)
+    run(handlers['clone'], ctx, FakeMessage(f'/clone {TOKEN_A}'))
+    before = len(FakeBot.made)
+    result = press(ctx, '111111111:restart')
+    assert 'running' in result.answers[-1][0]
+    assert len(FakeBot.made) == before + 1
+    ctx.premium = None
+    before = len(FakeBot.made)
+    result = press(ctx, '111111111:restart')
+    assert 'premium' in result.answers[-1][0]
+    assert len(FakeBot.made) == before
+
+
+def test_controller_repeated_refresh_does_not_send_duplicate(tmp_path):
+    from pyrogram.errors import MessageNotModified
+    from unittest.mock import AsyncMock
+    ctx, _, handlers = build(tmp_path)
+    msg = FakeMessage('/panel')
+    run(handlers['panel'], ctx, msg)
+    assert 'clone:refresh' in [b.callback_data for b in buttons(msg.markups[0])]
+    query = FakeQuery('clone:refresh', uid=MEMBER)
+    query.message.chat.id = MEMBER
+    query.message.edit_text = AsyncMock(side_effect=MessageNotModified())
+    client = SimpleNamespace(send_message=AsyncMock())
+    asyncio.run(ctx.actions.dispatch(client, query))
+    client.send_message.assert_not_awaited()
+    assert query.answers[-1][0] == 'Controller refreshed.'
+
+
+def test_guided_profile_replacement_requires_confirmation_and_preserves_until_confirmed(tmp_path):
+    from agent.modules.clone.store import Clone
+    ctx, _, _ = build(tmp_path)
+    record = ctx.clones._store.add(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A,
+        selected_plugins=('ai_agent',), ai_api_key='own-private-key', ai_model='own-model'))
+    prompt = press(ctx, '111111111:p:tiny')
+    unchanged = ctx.clones.record(record.bot_id)
+    assert unchanged.selected_plugins == ('ai_agent',)
+    assert unchanged.ai_api_key == 'own-private-key'
+    data = [b.callback_data for b in buttons(prompt.edits[-1][1])]
+    assert 'clone:111111111:pc:tiny' in data
+    assert 'own-private-key' not in str(prompt.edits)
+    press(ctx, '111111111:profile')
+    assert ctx.clones.record(record.bot_id).ai_api_key == 'own-private-key'
+    press(ctx, '111111111:pc:tiny')
+    changed = ctx.clones.record(record.bot_id)
+    assert changed.selected_plugins == () and changed.profile == 'tiny'
+    assert changed.ai_api_key is None and changed.ai_model is None
+
+
+def test_confirmed_guided_replacement_still_requires_premium(tmp_path):
+    from agent.modules.clone.store import Clone
+    ctx, _, _ = build(tmp_path)
+    ctx.clones._store.add(Clone(bot_id=111111111, owner_id=MEMBER, token=TOKEN_A,
+        selected_plugins=('ai_agent',), ai_api_key='own-private-key', ai_model='own-model'))
+    ctx.premium = None
+    result = press(ctx, '111111111:pc:tiny')
+    assert 'premium' in result.answers[-1][0]
+    assert ctx.clones.record(111111111).ai_api_key == 'own-private-key'

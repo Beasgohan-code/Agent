@@ -1,6 +1,6 @@
 """How many clones a member may run, and why that number is not magic.
 
-Creation requires bot premium, sudo or bot Owner access. The deployment ceiling
+Creation requires bot premium, including for sudo and bot Owner users. The deployment ceiling
 still applies to all users, and existing ineligible clones can be stopped/deleted
 without granting permission to restart them.
 """
@@ -33,6 +33,6 @@ def allowance(premium, user_id: int | None) -> tuple[int, str]:
 def pitch() -> str:
     """The one sentence under the limit, said once."""
     return (
-        f"Cloning requires bot premium, sudo access or bot Owner access. Premium allows <b>{PREMIUM}</b> clones. "
+        f"Cloning requires bot premium, including for sudo and bot Owner users. Premium allows <b>{PREMIUM}</b> clones. "
         "<code>/premium</code> shows your tier."
     )

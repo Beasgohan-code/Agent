@@ -24,32 +24,41 @@ import asyncio
 import inspect
 import html
 import logging
+from ...platform.warning_policy import threshold as warning_threshold
 
-from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
+from pyrogram.enums import ChatMemberStatus, ChatMembersFilter, ChatType
 from pyrogram.types import ChatPermissions
 
 from ...platform.manifest import PluginManifest
+from ...platform.admin_settings import denied
+from ...platform.blocklists import operate as read_blocklist
+from ...platform.service_cleaning import operate as read_cleaning
+from .topics import COMMANDS as TOPIC_COMMANDS, build as build_topics
+from .private_rules import build as build_private_rules, rule_cards
+from .warning_settings import build as build_warning_settings, COMMANDS as WARNING_SETTINGS_COMMANDS
+from .fullpromote import build as build_fullpromote
+from .afk import build as build_afk, watch as watch_afk
+from .details import COMMANDS as DETAIL_COMMANDS, build as build_details
+from .admin import COMMANDS as ADMIN_COMMANDS, build as build_admin
 from ...ui.tables import Table, kv_table, panel
 from ..moderation import (
     DENIED,
-    WARN_ACTIONS,
     is_moderator,
-    parse_target,
-    target_is_protected,
-    warn_policy,
 )
 from ...utils.rich import reply
 
 logger = logging.getLogger(__name__)
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=True,
     slug="group",
     name="Group management",
     version="1.0.0",
     description="Group panel, rules, pinning, admin list, warn thresholds and lockdown.",
     commands=(
-        "settings", "rules", "setrules", "pin", "unpin",
-        "admins", "warnlimit", "resetwarns", "lockdown",
+        "fullpromote", "afk", "settings", "privaterules", "rules", "setrules", "resetrules", "pin", "unpin",
+        "admins", "warnlimit", "resetwarns", "lockdown", *ADMIN_COMMANDS, *TOPIC_COMMANDS, *DETAIL_COMMANDS, *WARNING_SETTINGS_COMMANDS,
     ),
     permissions=(
         "chats.read", "chats.restrict", "chats.pin", "messages.read", "messages.send",
@@ -85,27 +94,21 @@ def _on_off(flag: object) -> str:
     return "on" if flag else "off"
 
 
-def _plugin_keyboard():
-    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup([[InlineKeyboardButton("Optional plugins ›", callback_data="gplug:page:0")]])
-
-
 def build(ctx):
     """Wire the group-management commands to the shared chat store."""
 
     from .plugin_panel import build as build_plugin_panel
     ctx.group_plugin_panel = build_plugin_panel(ctx)
+    from ...platform import group_rules as rule_service
+    from ...platform.group_trust import trusted_members
+    from ...platform.group_filters import operate as read_filters
+    from .controls import register, keyboard as management_keyboard
+    register(ctx)
 
     async def _guard(client, message, need: str | None = None) -> bool:
-        if await is_moderator(client, message, need=need, owner_id=ctx.settings.owner_id):
+        if await is_moderator(client, message, need=need, ctx=ctx):
             return True
-        await reply(message, DENIED)
-        return False
-
-    async def _protected(client, message, target_id: int) -> bool:
-        if await target_is_protected(client, message.chat.id, target_id):
-            await reply(message, "I cannot act on an administrator or a target whose membership could not be verified. Action not attempted.")
-            return True
+        await denied(ctx, message, DENIED)
         return False
 
     # -- /settings ---------------------------------------------------------
@@ -114,12 +117,22 @@ def build(ctx):
         if not await _guard(client, message, need="can_change_info"):
             return
         chat_id = message.chat.id
-        policy = ctx.chats.antispam(chat_id)
-        limit, action = warn_policy(ctx.chats, chat_id)
-        greeting = ctx.chats.greeting(chat_id, "welcome")
-        goodbye = ctx.chats.greeting(chat_id, "goodbye")
-        rules = (ctx.chats.get(chat_id, "rules", "") or "").strip()
-        trusted = ctx.chats.trusted_count(chat_id)
+        from ..welcome import read_greeting
+        try:
+            limit, action = await warning_threshold(ctx.chats, chat_id)
+            from ...platform.antispam import read_policy
+            policy = await read_policy(ctx, chat_id)
+            greeting = await read_greeting(ctx, chat_id, "welcome")
+            goodbye = await read_greeting(ctx, chat_id, "goodbye")
+            rules = (await rule_service.read_rules(ctx, chat_id))["body"].strip()
+            current_filters = await read_filters(ctx, chat_id)
+            trusted = len(await trusted_members(ctx, chat_id))
+            blocklist = await read_blocklist(ctx, chat_id)
+            cleaning = await read_cleaning(ctx, chat_id)
+        except Exception as error:
+            logger.warning("Group settings state unavailable (%s)", type(error).__name__)
+            await reply(message, "Group settings could not be loaded. Please try again shortly; no changes were made.")
+            return
         # The log channel is switched at runtime by /setlog, so read the live
         # logbook rather than the value the process started with.
         logbook = getattr(ctx, "logbook", None)
@@ -135,25 +148,28 @@ def build(ctx):
         ) else "off"
         table = kv_table(
             [
+                ("Group", str(chat_id)),
                 ("Anti-spam", f"{policy_state} / {policy.get('action', 'warn')}"),
                 ("Flood", f"{policy.get('flood_messages')} per {policy.get('flood_window_seconds')}s"),
                 ("Links", "blocked" if policy.get("links_enabled") else "allowed"),
                 ("Invites", "blocked" if policy.get("invites_enabled") else "allowed"),
                 ("Keywords", str(len(policy.get("blocked_keywords") or []))),
+                ("Blocklist", f"{len(blocklist['entries'])} / {blocklist['mode']}"),
+                ("Service cleaning", ", ".join(cleaning) or "off"),
                 ("Warn limit", f"{limit} -> {action}" if limit else "off"),
                 ("Welcome", _on_off(greeting.get("enabled"))),
                 ("Goodbye", _on_off(goodbye.get("enabled"))),
-                ("Filters", str(len(ctx.chats.filters(chat_id)))),
+                ("Filters", str(len(current_filters))),
                 ("Rules", f"{len(rules)} chars" if rules else "not set"),
-                ("Trusted", str(trusted)),
+                ("Approved", str(trusted)),
                 ("Log channel", str(log_channel or "not set")),
             ]
         )
         await reply(message, 
             panel(
-                "Group settings",
+                "Group Management",
                 icon=ctx.theme.emoji("gear"),
-                subtitle=f"Chat <code>{chat_id}</code> — live values, nothing cached.",
+                subtitle="Protection, greetings and group tools in one place.",
                 table=table,
                 note=(
                     "Change them with <code>/antispam</code>, <code>/warnlimit</code>, "
@@ -162,15 +178,19 @@ def build(ctx):
                 ),
                 footer="Administrators with the change-info right only.",
             ),
-            reply_markup=_plugin_keyboard() if ctx.group_plugin_panel else None,
+            reply_markup=management_keyboard(ctx) if getattr(ctx, "actions", None) is not None else None,
         )
 
     # -- /rules and /setrules ---------------------------------------------
 
     async def rules(client, message):
         chat_id = message.chat.id
-        text = (ctx.chats.get(chat_id, "rules", "") or "").strip()
-        title = getattr(message.chat, "title", None) or "This group"
+        try:
+            text = (await rule_service.read_rules(ctx, chat_id))["body"].strip()
+        except rule_service.RulesError as error:
+            await reply(message, str(error))
+            return
+        title = html.escape(getattr(message.chat, "title", None) or "This group")
         if not text:
             await reply(message, 
                 panel(
@@ -181,15 +201,21 @@ def build(ctx):
                 )
             )
             return
-        await reply(message, 
-            panel(
-                "Rules",
-                icon=ctx.theme.emoji("shield"),
-                subtitle=f"<b>{title}</b>",
-                lines=[f"<blockquote>{_escaped_block(text)}</blockquote>"],
-                footer="Set by an administrator of this group.",
-            )
-        )
+        for card in rule_cards(ctx.theme,getattr(message.chat,'title',None) or 'This group',text):
+            await reply(message,card)
+
+    async def resetrules(client, message):
+        if not await _guard(client, message, need="can_change_info"):
+            return
+        if len((getattr(message, 'text', '') or '').split()) != 1:
+            await reply(message, 'Usage: <code>/resetrules</code> — clear rules in this group only.')
+            return
+        try:
+            await rule_service.save_rules(ctx, message.chat.id, '', actor=message.from_user.id)
+        except rule_service.RulesError as error:
+            await reply(message, str(error))
+            return
+        await reply(message, 'Group rules cleared. Revision history retained.')
 
     async def setrules(client, message):
         if not await _guard(client, message, need="can_change_info"):
@@ -207,8 +233,11 @@ def build(ctx):
             )
             return
         if body.lower() == "clear":
-            ctx.chats.put(chat_id, "rules", "")
-            ctx.chats.log(chat_id, "rules:clear", actor_id=message.from_user.id)
+            try:
+                await rule_service.save_rules(ctx, chat_id, "", actor=message.from_user.id)
+            except rule_service.RulesError as error:
+                await reply(message, str(error))
+                return
             await reply(message, "Group rules cleared.")
             return
         if len(body) > MAX_RULES:
@@ -216,188 +245,161 @@ def build(ctx):
                 f"Those rules are too long: {len(body)} characters, the limit is {MAX_RULES}."
             )
             return
-        ctx.chats.put(chat_id, "rules", body)
-        ctx.chats.log(
-            chat_id, "rules:set", actor_id=message.from_user.id, reason=f"{len(body)} chars"
-        )
+        try:
+            await rule_service.save_rules(ctx, chat_id, body, actor=message.from_user.id)
+        except rule_service.RulesError as error:
+            await reply(message, str(error))
+            return
         await reply(message, 
             f"Group rules saved ({len(body)} characters). Members can read them with <code>/rules</code>."
         )
 
     # -- /pin and /unpin ---------------------------------------------------
 
-    async def pin(client, message):
-        if not await _guard(client, message, need="can_pin_messages"):
-            return
-        replied = getattr(message, "reply_to_message", None)
-        if replied is None:
-            await reply(message, "Reply to the message you want pinned with <code>/pin</code>.")
-            return
-        silent = "silent" in [a.lower() for a in _args(message)[1:]]
-        try:
-            await client.pin_chat_message(
-                message.chat.id,
-                replied.id,
-                disable_notification=silent,
-                both_sides=True,
-            )
-        except Exception as exc:  # noqa: BLE001 - Telegram's refusal reaches the user
-            logger.exception("pin failed")
-            await reply(message, f"Could not pin: {type(exc).__name__}. Check my pin rights.")
-            return
-        ctx.chats.log(
-            message.chat.id, "pin", actor_id=message.from_user.id,
-            reason=f"message {replied.id}",
-        )
-        await reply(message, 
-            "Message pinned." + (" No notification was sent." if silent else "")
-        )
+    class PinInputError(ValueError):
+        """Safe locally authored pin validation."""
 
-    async def unpin(client, message):
-        if not await _guard(client, message, need="can_pin_messages"):
-            return
-        args = [a.lower() for a in _args(message)[1:]]
+    async def pin_action(client,message,*,unpin=False):
+        user,chat=getattr(message,'from_user',None),getattr(message,'chat',None)
+        committed=False
+        command='unpin' if unpin else 'pin'
+        async def authority():
+            if not await asyncio.wait_for(is_moderator(client,message,need='can_pin_messages'),5):
+                raise PinInputError('Pin messages permission missing or changed. No action attempted.')
+            me=await asyncio.wait_for(client.get_me(),5)
+            bot=await asyncio.wait_for(client.get_chat_member(chat.id,me.id),5)
+            if bot.status!=ChatMemberStatus.OWNER and not (bot.status==ChatMemberStatus.ADMINISTRATOR and getattr(getattr(bot,'privileges',None),'can_pin_messages',False) is True):
+                raise PinInputError('I need Pin messages permission. No action attempted.')
         try:
-            if args and args[0] == "all":
-                await client.unpin_all_chat_messages(message.chat.id)
-                ctx.chats.log(message.chat.id, "unpin:all", actor_id=message.from_user.id)
-                await reply(message, "All pinned messages were unpinned.")
+            if (getattr(chat,'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                    or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                    or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None
+                    or type(getattr(chat,'id',None)) is not int or not -(2**63)<chat.id<0):
+                raise PinInputError('Use your personal administrator account in a group.')
+            await authority()
+            args=[a.lower() for a in _args(message)[1:]]
+            if args not in (([],['all']) if unpin else ([],['silent'])):
+                raise PinInputError('Use /unpin or /unpin all.' if unpin else 'Reply to the message with /pin or /pin silent.')
+            all_pins=unpin and args==['all']
+            silent=not unpin and args==['silent']
+            replied=getattr(message,'reply_to_message',None)
+            if not unpin and replied is None:
+                raise PinInputError('Reply to the message you want pinned with /pin.')
+            mid=getattr(replied,'id',0) if replied is not None else 0
+            if replied is not None and not all_pins:
+                if (type(mid) is not int or not 0<mid<2**31
+                        or getattr(getattr(replied,'chat',None),'id',chat.id)!=chat.id):
+                    raise PinInputError('Reply to a valid message in this group.')
+            await authority()
+            if all_pins:
+                ack=await asyncio.wait_for(client.unpin_all_chat_messages(chat.id),15)
+                confirmed=ack is True
+            elif unpin:
+                ack=await asyncio.wait_for(client.unpin_chat_message(chat.id,mid),15)
+                confirmed=ack is True
+            else:
+                notice=await asyncio.wait_for(client.pin_chat_message(chat.id,mid,disable_notification=silent,both_sides=True),15)
+                pinned=getattr(notice,'pinned_message',None)
+                confirmed=(type(getattr(notice,'id',None)) is int and notice.id>0
+                    and getattr(getattr(notice,'chat',None),'id',None)==chat.id
+                    and type(getattr(pinned,'id',None)) is int and pinned.id==mid)
+                if not confirmed:
+                    target=await asyncio.wait_for(client.get_messages(chat.id,mid),5)
+                    confirmed=(type(getattr(target,'id',None)) is int and target.id==mid and getattr(getattr(target,'chat',None),'id',None)==chat.id and getattr(target,'pinned',None) is True)
+            if not confirmed:
+                await reply(message,f'{command.capitalize()} outcome unconfirmed. Check Telegram before retrying.')
                 return
-            replied = getattr(message, "reply_to_message", None)
-            await client.unpin_chat_message(
-                message.chat.id, replied.id if replied is not None else 0
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("unpin failed")
-            await reply(message, f"Could not unpin: {type(exc).__name__}. Check my pin rights.")
-            return
-        ctx.chats.log(message.chat.id, "unpin", actor_id=message.from_user.id)
-        await reply(message, "Message unpinned.")
+            committed=True
+            audit=''
+            try:
+                ctx.chats.log(chat.id,'unpin:all' if all_pins else command,actor_id=user.id,reason='all pinned messages' if all_pins else f'message {mid}' if mid else 'latest pinned message')
+            except Exception:
+                logger.warning('#Errors Pin operation local audit unconfirmed')
+                audit='Local audit unconfirmed.'
+            await reply(message,panel('All messages unpinned' if all_pins else 'Message unpinned' if unpin else 'Message pinned',
+                table=kv_table([('Moderator',str(user.id)),('Message','All pins' if all_pins else str(mid) if mid else 'Latest pinned message'),('Status','Telegram acknowledged' if unpin else 'Pinned state confirmed')]),
+                note=('Silent pin requested. ' if silent else '')+audit))
+        except PinInputError as error:
+            await reply(message,str(error))
+        except Exception as error:
+            logger.warning('#Errors Pin operation unavailable (%s)',type(error).__name__)
+            await reply(message,f'{command.capitalize()} confirmed; result delivery unconfirmed. Check Telegram.' if committed else f'Could not {command}; outcome unconfirmed. Check Telegram before retrying. No automatic retry.')
+
+    async def pin(client,message):
+        await pin_action(client,message)
+
+    async def unpin(client,message):
+        await pin_action(client,message,unpin=True)
 
     # -- /admins -----------------------------------------------------------
 
-    async def admins(client, message):
-        rows: list[tuple[str, str, str]] = []
-        extra = 0
+    class AdminListInputError(ValueError):
+        """Safe group-member reader validation."""
+
+    async def admins(client,message,*,command="admins"):
+        user,chat=getattr(message,'from_user',None),getattr(message,'chat',None)
+        async def membership():
+            current=await asyncio.wait_for(client.get_chat_member(chat.id,user.id),5)
+            if current.status not in (ChatMemberStatus.OWNER,ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.MEMBER) and not (current.status==ChatMemberStatus.RESTRICTED and getattr(current,'is_member',False) is True):
+                raise AdminListInputError('Current group membership required. Administrator list withheld.')
         try:
-            async for member in client.get_chat_members(
-                message.chat.id, filter=ChatMembersFilter.ADMINISTRATORS
-            ):
-                user = getattr(member, "user", None)
-                if user is None:
-                    continue
-                if len(rows) >= MAX_ADMIN_ROWS:
-                    extra += 1
-                    continue
-                role = (
-                    "creator"
-                    if getattr(member, "status", None) is ChatMemberStatus.OWNER
-                    else "admin"
-                )
-                name = " ".join(
-                    part
-                    for part in (
-                        getattr(user, "first_name", "") or "",
-                        getattr(user, "last_name", "") or "",
-                    )
-                    if part
-                ) or (getattr(user, "username", "") or "member")
-                rows.append((role, name, str(user.id)))
-        except Exception as exc:  # noqa: BLE001 - honest failure, not an empty list
-            logger.exception("could not list administrators")
-            await reply(message, 
-                f"Could not read the administrator list: {type(exc).__name__}. "
-                "I need to be an administrator to see it."
-            )
-            return
-        if not rows:
-            await reply(message, "No administrators were returned for this group.")
-            return
-        table = Table(
-            headers=("Role", "Name", "ID"),
-            rows=tuple(rows),
-            aligns=("left", "left", "right"),
-        )
-        lines = [f"Plus {extra} more."] if extra else []
-        await reply(message, 
-            panel(
-                "Administrators",
-                icon=ctx.theme.emoji("shield"),
-                table=table,
-                lines=lines,
-                footer="Read live from Telegram — nobody is cached.",
-            )
-        )
+            if (getattr(chat,'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
+                    or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                    or getattr(user,'is_bot',False) or getattr(message,'sender_chat',None) is not None):
+                raise AdminListInputError('Use your personal account inside the group.')
+            args=(getattr(message,'text','') or '').split()[1:]
+            if len(args)>1 or args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0])>2 or not 1<=int(args[0])<=14):
+                raise AdminListInputError(f'Use /{command} [page], for example /{command} 2.')
+            page=int(args[0]) if args else 1
+            await membership()
+            rows=[]
+            truncated=False
+            async def load():
+                nonlocal truncated
+                count=0
+                async for record in client.get_chat_members(chat.id,filter=ChatMembersFilter.ADMINISTRATORS,limit=201):
+                    count+=1
+                    if count>200:
+                        truncated=True
+                        break
+                    person=getattr(record,'user',None)
+                    uid=getattr(person,'id',None)
+                    if (type(uid) is not int or not 0<uid<2**63 or record.status not in (ChatMemberStatus.OWNER,ChatMemberStatus.ADMINISTRATOR)
+                            or getattr(getattr(record,'privileges',None),'is_anonymous',False)):
+                        continue
+                    name=' '.join(part for part in (getattr(person,'first_name','') or '',getattr(person,'last_name','') or '') if part) or getattr(person,'username',None) or 'member'
+                    name=' '.join(name.split())
+                    if len(name)>64:
+                        name=name[:64]+'…'
+                    rows.append(('creator' if record.status==ChatMemberStatus.OWNER else 'admin',name,str(uid)))
+            await asyncio.wait_for(load(),15)
+            await membership()
+            pages=max(1,(len(rows)+MAX_ADMIN_ROWS-1)//MAX_ADMIN_ROWS)
+            if page>pages:
+                raise AdminListInputError(f'Choose an administrator page from 1 to {pages}.')
+            current=rows[(page-1)*MAX_ADMIN_ROWS:page*MAX_ADMIN_ROWS]
+            extra=max(0,len(rows)-page*MAX_ADMIN_ROWS)
+            lines=[f'Plus {extra} more. /{command} {page+1}'] if extra else []
+            if truncated:
+                lines.append('Showing a bounded snapshot from the first 200 returned records.')
+            if not current:
+                lines.append('No visible administrators were returned for this group.')
+            await reply(message,panel('Administrators',icon=ctx.theme.emoji('shield'),
+                table=Table(headers=('Role','Name','ID'),rows=tuple(current),aligns=('left','left','right')) if current else None,
+                lines=lines,footer=f'Page {page}/{pages} · /{command} [page]',note='Live Telegram list. Anonymous admins hidden. Pages reload current state.'))
+        except AdminListInputError as error:
+            await reply(message,str(error))
+        except Exception as error:
+            logger.warning('#Errors Administrator list unavailable (%s)',type(error).__name__)
+            await reply(message,'Could not read the administrator list: service or membership unavailable. No partial list displayed.')
 
-    # -- /warnlimit --------------------------------------------------------
+    async def adminlist(client,message):
+        await admins(client,message,command='adminlist')
 
-    async def warnlimit(client, message):
-        if not await _guard(client, message, need="can_change_info"):
-            return
-        chat_id = message.chat.id
-        args = [a.lower() for a in _args(message)[1:]]
-        if args:
-            if args[0] in ("off", "0"):
-                ctx.chats.put(chat_id, "warn_limit", 0)
-            elif args[0].isdigit():
-                ctx.chats.put(chat_id, "warn_limit", max(1, min(20, int(args[0]))))
-            else:
-                await reply(message, 
-                    "Usage: <code>/warnlimit 3 [mute|kick|ban]</code> or <code>/warnlimit off</code>"
-                )
-                return
-            if len(args) > 1:
-                if args[1] not in WARN_ACTIONS:
-                    await reply(message, 
-                        f"Unknown action <code>{args[1]}</code>. Use one of: "
-                        + ", ".join(WARN_ACTIONS)
-                        + "."
-                    )
-                    return
-                ctx.chats.put(chat_id, "warn_action", args[1])
-            ctx.chats.log(
-                chat_id, "warnlimit", actor_id=message.from_user.id, reason=" ".join(args)
-            )
-
-        limit, action = warn_policy(ctx.chats, chat_id)
-        # "kick" + "d" is not a word.
-        past = {"mute": "muted", "kick": "kicked", "ban": "banned"}.get(action, action)
-        if not limit:
-            body = (
-                f"{ctx.theme.emoji('warn')} <b>Warnings do not escalate</b> in this group.\n"
-                "Set a threshold with <code>/warnlimit 3</code>."
-            )
-        else:
-            body = (
-                f"{ctx.theme.emoji('warn')} At <b>{limit}</b> active warnings the member is "
-                f"<b>{past}</b> automatically.\n"
-                "Change it with <code>/warnlimit &lt;n&gt; [mute|kick|ban]</code>."
-            )
-        await reply(message, panel("Warn threshold", icon=ctx.theme.emoji("warn"), lines=[body]))
-
-    # -- /resetwarns -------------------------------------------------------
-
-    async def resetwarns(client, message):
-        if not await _guard(client, message, need="can_restrict_members"):
-            return
-        target = parse_target(message)
-        if target is None:
-            await reply(message, "Reply to a member to clear all their warnings.")
-            return
-        target_id, mention = target
-        if await _protected(client, message, target_id):
-            return
-        cleared = ctx.chats.clear_all_warnings(message.chat.id, target_id)
-        if not cleared:
-            await reply(message, f"{mention} had no active warnings.")
-            return
-        ctx.chats.log(
-            message.chat.id, "resetwarns", actor_id=message.from_user.id,
-            target_id=target_id, reason=f"{cleared} cleared",
-        )
-        await reply(message, 
-            f"<b>Warnings cleared</b>\nMember: {mention}\nCleared: {cleared}"
-        )
+    # Reuse canonical warning-removal behavior; retain group command ownership
+    # and the resetwarns audit/usage name without a second clearing implementation.
+    from ..moderation.warning_controls import build as warning_removals
+    resetwarns=warning_removals(ctx,include_group_alias=True)['resetwarns']
 
     # -- /lockdown ---------------------------------------------------------
 
@@ -479,13 +481,21 @@ def build(ctx):
         await reply(message, panel("Lockdown", icon=ctx.theme.emoji("lock"), lines=[body]))
 
     return MANIFEST, {
+        **build_admin(ctx),
+        "adminlist": adminlist,
+        **build_details(ctx),
+        **build_warning_settings(ctx),
+        "afk": build_afk(ctx),
+        "fullpromote": build_fullpromote(ctx),
+        **build_topics(ctx),
         "settings": settings,
         "rules": rules,
+        "privaterules": build_private_rules(ctx),
         "setrules": setrules,
+        "resetrules": resetrules,
         "pin": pin,
         "unpin": unpin,
         "admins": admins,
-        "warnlimit": warnlimit,
         "resetwarns": resetwarns,
         "lockdown": lockdown,
     }
@@ -494,3 +504,9 @@ def build(ctx):
 def _escaped_block(text: str) -> str:
     """Rule text as HTML, preserving line breaks inside the quote."""
     return "<br/>".join(html.escape(line) for line in text.splitlines())
+
+
+def extra_handlers(ctx):
+    from pyrogram import filters
+    from pyrogram.handlers import MessageHandler
+    return [MessageHandler(watch_afk(ctx),filters.group)]

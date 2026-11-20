@@ -13,7 +13,7 @@ from agent.platform.db import Database
 
 def test_assistant_lease_refuses_unavailable_database():
     async def scenario():
-        with pytest.raises(AssistantBusy, match='PostgreSQL'):
+        with pytest.raises(AssistantBusy, match='Database'):
             await AssistantLease(None).acquire(123)
     asyncio.run(scenario())
 
@@ -50,7 +50,7 @@ def test_busy_assistant_releases_pool_connection():
     asyncio.run(scenario())
 
 
-@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Dedicated PostgreSQL required')
+@pytest.mark.skipif(not os.environ.get('AGENT_TEST_DATABASE_URL'), reason='Dedicated Database required')
 def test_real_postgres_assistant_lock_is_cross_tenant_and_reusable():
     async def scenario():
         url = os.environ['AGENT_TEST_DATABASE_URL']
