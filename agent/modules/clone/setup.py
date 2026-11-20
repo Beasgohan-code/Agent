@@ -9,6 +9,7 @@ from ...platform.commands import command_name
 
 import asyncio
 import html
+import logging
 import secrets
 import time
 from weakref import WeakValueDictionary
@@ -26,6 +27,9 @@ from ...platform.credentials import validate_ai_key, validate_ai_model, Credenti
 from ...platform.selection import SelectionError
 from .assistant import validate_session
 from ...platform.voice import capability
+
+
+logger = logging.getLogger(__name__)
 
 
 class SetupError(RuntimeError):
@@ -662,7 +666,13 @@ class CloneSetup:
                 try:
                     username = await self.manager.start(record)
                 except (Exception, asyncio.CancelledError) as exc:
-                    await self.store.aremove(record.bot_id)
+                    try:
+                        await self.store.aremove(record.bot_id)
+                    except Exception as cleanup_error:
+                        logger.warning('#Errors Clone startup cleanup unconfirmed (%s)', type(cleanup_error).__name__)
+                        if isinstance(exc, asyncio.CancelledError):
+                            raise exc from None
+                        raise
                     if isinstance(exc, asyncio.CancelledError):
                         self.cancel(user_id, expected=state)
                         raise
@@ -672,6 +682,11 @@ class CloneSetup:
                     lines=[f'Bot id: <code>{record.bot_id}</code>', f'Bot: @{html.escape(username or state.username)}',
                            f'Owner: <code>{user_id}</code>', f'{selection_label(self.plugins(state))} is configured. Manage it with /mybots.',
                            'Group use still requires approval and activation through /plugin and group /plugins.']))
+            except asyncio.CancelledError:
+                # Saving may have committed before cancellation reached us. Never
+                # retry/delete an uncertain save or keep an immortal starting draft.
+                self.cancel(user_id, expected=state)
+                raise
             except (SetupError, SelectionError, CloneError) as exc:
                 self.cancel(user_id, expected=state)
                 await reply(query.message, str(exc))

@@ -1270,3 +1270,54 @@ def test_final_validation_expiry_stops_before_channel_reads(tmp_path):
         assert not ctx.clones.current()
         assert state.token == '' and wizard.active(MEMBER) is None
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('committed', [False, True])
+def test_cancelled_save_clears_starting_draft_without_guessing_commit_state(tmp_path, committed):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        original = wizard.store.aadd
+        async def uncertain(record, **limits):
+            if committed:
+                await original(record, **limits)
+            raise asyncio.CancelledError
+        wizard.store.aadd = uncertain
+        wizard.store.aremove = AsyncMock()
+        wizard.manager.start = AsyncMock()
+        with pytest.raises(asyncio.CancelledError):
+            await wizard.press(None, query(state), state.nonce + ':create')
+        assert wizard.active(MEMBER) is None
+        assert state.token == '' and state.ai_api_key == '' and state.assistant_session == ''
+        assert bool(wizard.store.get(state.bot_id)) is committed
+        wizard.store.aremove.assert_not_awaited()
+        wizard.manager.start.assert_not_awaited()
+    asyncio.run(scenario())
+
+
+def test_start_cancellation_is_preserved_when_cleanup_storage_fails(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        wizard.manager.start = AsyncMock(side_effect=asyncio.CancelledError)
+        wizard.store.aremove = AsyncMock(side_effect=RuntimeError('storage unavailable'))
+        with pytest.raises(asyncio.CancelledError):
+            await wizard.press(None, query(state), state.nonce + ':create')
+        assert wizard.active(MEMBER) is None and state.token == ''
+        assert wizard.store.get(state.bot_id) is not None
+        assert wizard.store.aremove.await_count == 1
+    asyncio.run(scenario())
+
+
+def test_cancellation_during_failed_start_cleanup_clears_draft_without_retry(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        wizard.manager.start = AsyncMock(side_effect=RuntimeError('start failed'))
+        wizard.store.aremove = AsyncMock(side_effect=asyncio.CancelledError)
+        with pytest.raises(asyncio.CancelledError):
+            await wizard.press(None, query(state), state.nonce + ':create')
+        assert wizard.active(MEMBER) is None and state.token == ''
+        assert wizard.store.aremove.await_count == 1
+        assert wizard.store.get(state.bot_id) is not None
+    asyncio.run(scenario())

@@ -158,3 +158,57 @@ def test_committed_desired_survives_connection_loss_before_reconciliation(tmp_pa
                     await conn.execute('DELETE FROM agent_documents WHERE name LIKE $1', scope + ':%')
             await db.close()
     asyncio.run(scenario())
+
+
+def test_setup_cancel_after_committed_save_preserves_authoritative_encrypted_record(tmp_path):
+    """A lost save acknowledgement is not permission to delete or start a clone."""
+    from unittest.mock import AsyncMock
+    from agent.modules.clone.setup import CloneSetup, Setup
+    from test_clone_setup import api, query
+    async def scenario():
+        scope = 'setup-save-cancel:' + uuid.uuid4().hex
+        dbs = [Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=scope) for _ in range(2)]
+        task = None
+        try:
+            for db in dbs:
+                assert await db.connect()
+            ctx, _, _ = build(tmp_path / 'ctx')
+            store = CloneStore(tmp_path / 'writer', db=dbs[0], box=SecretBox(KEY))
+            manager = CloneManager(ctx.settings, store)
+            manager.start = AsyncMock()
+            wizard = CloneSetup(ctx, store, manager, AsyncMock(return_value=True), lambda uid: 3, api=api)
+            state = Setup(MEMBER, step='confirm', bot_id=111111111, token=TOKEN_A, template='leech')
+            wizard.sessions[MEMBER] = state
+            committed = asyncio.Event()
+            original = store.aadd
+            async def save_then_lose_ack(record, **limits):
+                await original(record, **limits)
+                committed.set()
+                await asyncio.Event().wait()
+            store.aadd = save_then_lose_ack
+            store.aremove = AsyncMock()
+            task = asyncio.create_task(wizard.press(None, query(state), state.nonce + ':create'))
+            await asyncio.wait_for(committed.wait(), timeout=10)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert wizard.active(MEMBER) is None and state.token == ''
+            manager.start.assert_not_awaited()
+            store.aremove.assert_not_awaited()
+            fresh = CloneStore(tmp_path / 'reader', db=dbs[1], box=SecretBox(KEY))
+            await fresh.aall()
+            assert fresh.get(111111111).owner_id == MEMBER
+            assert fresh.get(111111111).token == TOKEN_A
+            async with dbs[1]._pool.acquire() as conn:
+                raw = await conn.fetchval('SELECT string_agg(value::text,\' \') FROM agent_documents WHERE name LIKE $1', scope + ':%')
+            assert TOKEN_A not in raw
+        finally:
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            for db in dbs:
+                if db.connected:
+                    async with db._pool.acquire() as conn:
+                        await conn.execute('DELETE FROM agent_documents WHERE name LIKE $1', scope + ':%')
+                    await db.close()
+    asyncio.run(scenario())

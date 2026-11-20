@@ -197,3 +197,33 @@ configuration change or migration was performed.
 The restored checkout was again reconciled with the verified remote tip before
 this phase, preserving all 510 checked working paths byte-for-byte and leaving
 staging clean before selective edits.
+
+## Save/start cancellation and uncertain acknowledgements
+
+Cancellation during final persistence now clears only the expected setup draft
+and re-raises cancellation. A draft already marked `starting` therefore cannot
+remain indefinitely with its credential fields attached when its save wait is
+interrupted. Clearing fields is not a guarantee of zeroing Python process memory.
+
+A cancelled save has an uncertain commit outcome: this path does not retry the
+write, delete a possibly committed record, or invoke worker startup. A committed
+record remains authoritative and should be inspected through `/mybots` before
+retrying. Existing lifecycle recovery still owns any later reconciliation; this
+change does not promise rollback or that another authorized worker cannot act.
+
+Startup-failure cleanup retains its existing single removal attempt. If storage
+cleanup fails while startup was cancelled, the cancellation is no longer swallowed
+as a normal error response. A type-only `#Errors` warning reports unavailable
+cleanup without provider error text or credentials. Cancellation during cleanup
+also clears the expected draft and propagates, without retrying the deletion.
+Storage/worker lifecycle policies and encryption keys are unchanged.
+
+Validation: three regression failures reproduced before the fix. Final exact
+selective patch **2,476 passed** in 38.68 seconds; full working tree **2,558
+passed** in 35.88 seconds, no skips. Five new cases cover cancelled saves before
+and after commit, cancellation with cleanup failure, cancellation during cleanup,
+and a real two-connection disposable-database test that cancels after an actual
+commit and independently verifies the retained encrypted record. New worker and
+Telegram interactions were mocked; both full suites used disposable real storage.
+Static and staged whitespace checks passed. No live Telegram verification,
+deployment, merge, production configuration change or migration was performed.
