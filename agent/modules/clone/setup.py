@@ -82,7 +82,9 @@ class CloneSetup:
             return None
         return state
 
-    def cancel(self, user_id):
+    def cancel(self, user_id, *, expected=None):
+        if expected is not None and self.sessions.get(user_id) is not expected:
+            return
         state = self.sessions.pop(user_id, None)
         if state is not None:
             state.token = ''
@@ -609,9 +611,12 @@ class CloneSetup:
         if action != 'create' or state.step != 'confirm':
             await query.answer('Use the current setup step.', show_alert=True)
             return
+        snapshot = replace(state)
         await query.answer('Checking and starting your clone…')
         async with self._finish_lock:
-            if self.active(user_id) is not state or not await self.entitled(user_id):
+            if not self._at_step(state, 'confirm') or not await self._eligible_step(state, 'confirm'):
+                return
+            if state != snapshot:
                 return
             limit = self.quota(user_id)
             if len(self.store.by_owner(user_id)) >= limit or self.store.count() >= self.ctx.settings.clone_limit:
@@ -619,8 +624,9 @@ class CloneSetup:
                 return
             # Revalidate identity immediately before persisting/starting.
             try:
-                snapshot = replace(state)
                 me = await self.api(state.token, 'getMe')
+                if not self._at_step(state, 'confirm') or state != snapshot:
+                    return
                 if me.get('id') != state.bot_id or me.get('is_bot') is not True or self.store.get(state.bot_id):
                     raise SetupError('Bot identity or availability changed. Restart setup.')
                 for channel in (state.log_channel, state.storage_channel):
@@ -628,11 +634,13 @@ class CloneSetup:
                         continue
                     for uid in (state.bot_id, user_id):
                         member = await self.api(state.token, 'getChatMember', chat_id=channel, user_id=uid)
+                        if not self._at_step(state, 'confirm') or state != snapshot:
+                            return
                         if member.get('status') not in ('administrator', 'creator'):
                             raise SetupError('Channel administrator permissions changed. Restart setup.')
                         if uid == state.bot_id and member.get('status') != 'creator' and not member.get('can_post_messages'):
                             raise SetupError('The clone can no longer post in the configured channel.')
-                if self.active(user_id) is not state or not await self.entitled(user_id):
+                if not await self._eligible_step(state, 'confirm') or state != snapshot:
                     return
                 if self.store.get(state.bot_id):
                     raise SetupError('That bot was added while setup was running. No duplicate was created.')
@@ -641,10 +649,11 @@ class CloneSetup:
                     selected_plugins=self.plugins(state), ai_api_key=state.ai_api_key or None,
                     ai_model=state.ai_model or None, assistant_session=state.assistant_session or None)
                 self.manager.settings_for(candidate, premium=True)
-                if not await self.entitled(user_id):
-                    raise SetupError('Clone Premium eligibility changed. No clone was created.')
-                if self.active(user_id) is not state or state != snapshot:
-                    raise SetupError('Clone draft changed during validation. Restart setup; no clone was created.')
+                if not await self._eligible_step(state, 'confirm') or state != snapshot:
+                    return
+                limit = self.quota(user_id)
+                if len(self.store.by_owner(user_id)) >= limit or self.store.count() >= self.ctx.settings.clone_limit:
+                    raise SetupError('Clone capacity changed during validation. No clone was created.')
                 state.step = 'starting'
                 record = Clone(bot_id=state.bot_id, owner_id=user_id, token=state.token,
                     username=state.username, assistant_session=state.assistant_session or None, ai_api_key=state.ai_api_key or None, ai_model=state.ai_model or None, profile='tiny', selected_plugins=self.plugins(state), managed_owner=True,
@@ -655,17 +664,17 @@ class CloneSetup:
                 except (Exception, asyncio.CancelledError) as exc:
                     await self.store.aremove(record.bot_id)
                     if isinstance(exc, asyncio.CancelledError):
-                        self.cancel(user_id)
+                        self.cancel(user_id, expected=state)
                         raise
                     raise SetupError('The clone did not start. The draft was discarded; check bot credentials and deployment availability.') from None
-                self.cancel(user_id)
+                self.cancel(user_id, expected=state)
                 await reply(query.message, panel('Clone ready', icon=self.ctx.theme.emoji('sparkles'),
                     lines=[f'Bot id: <code>{record.bot_id}</code>', f'Bot: @{html.escape(username or state.username)}',
                            f'Owner: <code>{user_id}</code>', f'{selection_label(self.plugins(state))} is configured. Manage it with /mybots.',
                            'Group use still requires approval and activation through /plugin and group /plugins.']))
             except (SetupError, SelectionError, CloneError) as exc:
-                self.cancel(user_id)
+                self.cancel(user_id, expected=state)
                 await reply(query.message, str(exc))
             except Exception:
-                self.cancel(user_id)
+                self.cancel(user_id, expected=state)
                 await reply(query.message, 'Creation could not be confirmed. Check /mybots before retrying; the setup draft was discarded.')

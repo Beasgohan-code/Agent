@@ -167,3 +167,33 @@ Both full runs used disposable real database storage; Telegram, eligibility and
 session-format responses in the new race tests were controlled test doubles.
 Targeted static and staged whitespace checks passed. No live Telegram tests,
 deployment, merge, production changes or migration were performed.
+
+## Final confirmation snapshot and draft-specific cleanup
+
+Final clone creation now snapshots the reviewed configuration before callback
+acknowledgement. A draft that returns to editing or changes fields during that
+wait cannot proceed under the old Create press. The same live confirmation
+snapshot is checked after identity, channel-permission and eligibility waits;
+cancelled/expired validation stops before further channel reads. Current capacity
+is re-read immediately before persistence, in addition to atomic store limits.
+
+Setup cleanup can be constrained to the expected draft identity. Final-validation
+failures and start completion therefore cannot discard a newer draft for the
+same user. Changed drafts remain subject to a fresh review and Create press.
+This does not alter encrypted persistence, worker ownership, store atomicity,
+rollback policy or provider credentials. It does not claim to cancel an already
+committed creation or solve transport uncertainty during persistence/startup.
+
+Validation: six failing regressions reproduced before implementation. Final
+exact selective patch **2,471 passed** in 44.77 seconds; full working tree
+**2,553 passed** in 46.58 seconds, no skips. Nine new cases cover changes during
+acknowledgement, cancellation/replacement at validation boundaries, old-request
+failure cleanup, expiry before channel reads, and capacity lowered during
+validation. Both suites used disposable real database storage; Telegram
+responses and the new interleavings were test doubles. Static and staged
+whitespace checks passed. No live Telegram test, deployment, merge, production
+configuration change or migration was performed.
+
+The restored checkout was again reconciled with the verified remote tip before
+this phase, preserving all 510 checked working paths byte-for-byte and leaving
+staging clean before selective edits.

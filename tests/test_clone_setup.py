@@ -1163,3 +1163,110 @@ def test_channel_eligibility_revocation_during_validation_discards_secrets(tmp_p
         assert state.storage_channel is None and state.token == ''
         assert wizard.active(MEMBER) is None
     asyncio.run(scenario())
+
+
+async def confirmation_step(ctx):
+    wizard, state = await identity_step(ctx)
+    state.step = 'confirm'
+    return wizard, state
+
+
+def test_create_cannot_skip_review_if_draft_changes_during_acknowledgement(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        press = query(state)
+        async def edit_before_create(*args, **kwargs):
+            state.step = 'plugin'
+        press.answer.side_effect = edit_before_create
+        await wizard.press(None, press, state.nonce + ':create')
+        assert not ctx.clones.current()
+        assert wizard.active(MEMBER) is state and state.step == 'plugin'
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('boundary', ['getMe', 'getChatMember'])
+@pytest.mark.parametrize('replacement', [False, True])
+def test_final_validation_stops_when_cancelled_without_discarding_new_draft(tmp_path, boundary, replacement):
+    from agent.modules.clone.setup import Setup
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        state.log_channel = -100100
+        new = Setup(MEMBER)
+        calls = []
+        async def validate(token, method, **values):
+            calls.append(method)
+            result = await api(token, method, **values)
+            if method == boundary:
+                wizard.cancel(MEMBER)
+                if replacement:
+                    wizard.sessions[MEMBER] = new
+            return result
+        wizard.api = validate
+        await wizard.press(None, query(state), state.nonce + ':create')
+        assert len(calls) == (1 if boundary == 'getMe' else 2)
+        assert not ctx.clones.current()
+        assert wizard.active(MEMBER) is (new if replacement else None)
+    asyncio.run(scenario())
+
+
+def test_old_validation_failure_cannot_cancel_new_setup(tmp_path):
+    from agent.modules.clone.setup import Setup, SetupError
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        new = Setup(MEMBER)
+        async def fail(*args, **kwargs):
+            wizard.cancel(MEMBER)
+            wizard.sessions[MEMBER] = new
+            raise SetupError('Identity unavailable.')
+        wizard.api = fail
+        await wizard.press(None, query(state), state.nonce + ':create')
+        assert wizard.active(MEMBER) is new
+        assert not ctx.clones.current()
+    asyncio.run(scenario())
+
+
+def test_create_requires_fresh_confirmation_for_fields_changed_during_ack(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        press = query(state)
+        async def edit(*args, **kwargs):
+            state.log_channel = -100500
+        press.answer.side_effect = edit
+        await wizard.press(None, press, state.nonce + ':create')
+        assert not ctx.clones.current()
+        assert wizard.active(MEMBER) is state and state.log_channel == -100500
+    asyncio.run(scenario())
+
+
+def test_final_create_rechecks_lowered_capacity_after_network_validation(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        async def validate(token, method, **values):
+            wizard.quota = lambda uid: 0
+            return await api(token, method, **values)
+        wizard.api = validate
+        await wizard.press(None, query(state), state.nonce + ':create')
+        assert not ctx.clones.current()
+        assert wizard.active(MEMBER) is None
+    asyncio.run(scenario())
+
+
+def test_final_validation_expiry_stops_before_channel_reads(tmp_path):
+    async def scenario():
+        ctx, _, _ = build(tmp_path)
+        wizard, state = await confirmation_step(ctx)
+        state.log_channel = -100100
+        async def validate(token, method, **values):
+            state.expires = 0
+            return await api(token, method, **values)
+        wizard.api = AsyncMock(side_effect=validate)
+        await wizard.press(None, query(state), state.nonce + ':create')
+        wizard.api.assert_awaited_once()
+        assert not ctx.clones.current()
+        assert state.token == '' and wizard.active(MEMBER) is None
+    asyncio.run(scenario())
