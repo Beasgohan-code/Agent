@@ -114,8 +114,8 @@ async def test_delete_warning_cleanup_failure_records_partial_without_replay(fai
             stopped.set()
     original = asyncio.wait_for
     async def fast_timeout(awaitable, timeout):
-        assert timeout == 10
-        return await original(awaitable, timeout=0.01)
+        assert timeout in (5, 10)
+        return await original(awaitable, timeout=0.01 if timeout == 10 else timeout)
     if failure == 'blocked':
         monkeypatch.setattr(asyncio, 'wait_for', fast_timeout)
     value = NS(chats=NS(aadd_warning=AsyncMock(return_value=1), log=lambda *a, **k: None))
@@ -308,3 +308,38 @@ async def test_warning_outcome_uncertainty_with_independent_storage_connections(
     finally:
         await reader.close()
         await writer.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stage', ['identity', 'threshold'])
+async def test_warning_preaction_reads_have_deadlines_without_admission(warning_case, stage, monkeypatch, caplog):
+    import asyncio
+    value, message, client = warning_case
+    stopped = asyncio.Event()
+    async def blocked(*args):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+    threshold = AsyncMock(return_value=(3, 'mute'))
+    if stage == 'identity':
+        client.get_me = AsyncMock(side_effect=blocked)
+    else:
+        threshold.side_effect = blocked
+    original = asyncio.wait_for
+    async def fast_timeout(awaitable, timeout):
+        assert timeout == 5
+        return await original(awaitable, timeout=0.01)
+    monkeypatch.setattr(asyncio, 'wait_for', fast_timeout)
+    begin = AsyncMock(return_value='case')
+    with patch('agent.modules.moderation.is_moderator', AsyncMock(return_value=True)), \
+         patch('agent.modules.moderation.target_is_protected', AsyncMock(return_value=False)), \
+         patch('agent.modules.moderation.warning_variants.warning_threshold', threshold), \
+         patch('agent.modules.moderation.warning_variants.begin', begin):
+        from agent.modules.moderation.warning_variants import build
+        await original(build(value)['dwarn'](client, message), timeout=0.2)
+    assert stopped.is_set()
+    begin.assert_not_awaited()
+    value.chats.aadd_warning.assert_not_awaited()
+    client.delete_messages.assert_not_awaited()
+    message.reply.assert_awaited_once()

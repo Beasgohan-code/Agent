@@ -29,7 +29,7 @@ def build(ctx):
                         or type(getattr(user, 'id', None)) is not int or user.id <= 0
                         or getattr(message, 'sender_chat', None) is not None):
                     raise WarningInputError('Use your personal administrator identity in a group.')
-                if not await is_moderator(client, message, need='can_restrict_members'):
+                if not await asyncio.wait_for(is_moderator(client, message, need='can_restrict_members'), timeout=5):
                     raise WarningInputError('You need Restrict members permission.')
                 replied = await replied_message(client,message)
                 if command == 'dwarn' and (replied is None or getattr(replied, 'from_user', None) is None):
@@ -41,12 +41,12 @@ def build(ctx):
                     raise WarningInputError('Choose another personal member identity.')
                 if len(reason) > 1000:
                     raise WarningInputError('Reasons must be at most 1000 characters.')
-                if await target_is_protected(client, chat.id, target):
+                if await asyncio.wait_for(target_is_protected(client, chat.id, target), timeout=5):
                     raise WarningInputError('Cannot warn an administrator or an unverified target.')
-                me = await client.get_me()
+                me = await asyncio.wait_for(client.get_me(), timeout=5)
                 if target == me.id:
                     raise WarningInputError('I cannot warn myself.')
-                bot = await client.get_chat_member(chat.id, me.id)
+                bot = await asyncio.wait_for(client.get_chat_member(chat.id, me.id), timeout=5)
                 rights = getattr(bot, 'privileges', None)
                 if bot.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR) or not getattr(rights, 'can_restrict_members', False):
                     raise WarningInputError('I need Restrict members permission for warning escalation.')
@@ -54,13 +54,13 @@ def build(ctx):
                 if command == 'dwarn':
                     if type(delete_id) is not int or delete_id <= 0:
                         raise WarningInputError('The replied message has no usable identity.')
-                    if not getattr(rights, 'can_delete_messages', False) or not await is_moderator(client, message, need='can_delete_messages'):
+                    if not getattr(rights, 'can_delete_messages', False) or not await asyncio.wait_for(is_moderator(client, message, need='can_delete_messages'), timeout=5):
                         raise WarningInputError('Both you and this bot need Delete messages permission.')
-                limit, action = await warning_threshold(ctx.chats, chat.id)
+                limit, action = await asyncio.wait_for(warning_threshold(ctx.chats, chat.id), timeout=5)
                 # Configuration reads may yield while live authority changes.
-                if not await is_moderator(client, message, need='can_restrict_members'):
+                if not await asyncio.wait_for(is_moderator(client, message, need='can_restrict_members'), timeout=5):
                     raise WarningInputError('Your administrator permissions changed. No warning recorded.')
-                if command == 'dwarn' and not await is_moderator(client, message, need='can_delete_messages'):
+                if command == 'dwarn' and not await asyncio.wait_for(is_moderator(client, message, need='can_delete_messages'), timeout=5):
                     raise WarningInputError('Your Delete messages permissions changed. No warning recorded.')
                 identity = await begin(ctx, chat.id, message.id, user.id, target, command, 0, reason)
                 count = await ctx.chats.aadd_warning(chat.id, target, moderator_id=user.id, reason=reason or 'no reason given')

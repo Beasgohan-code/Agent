@@ -446,3 +446,22 @@ Final exact selective patch: **2,546 passed** in 32.95 seconds; full working tre
 storage. Telegram and injected failure boundaries use controlled doubles, not
 live Telegram. Changed-file static and staged whitespace checks passed. No
 production changes, deployment or merge.
+
+## Warning pre-action read deadlines
+
+Warning variants now bound each pre-action authority, protected-target, bot
+identity/membership and threshold-configuration read to five seconds. A stalled
+read therefore does not indefinitely retain an unadmitted command. These are
+per-read bounds, not a whole-command deadline; warning/outcome writes and
+escalation semantics are unchanged.
+
+Two new blocked-read tests failed before implementation. They now confirm timeout
+cleanup and no intent admission, warning write or deletion when bot identity or
+threshold reads stall. The existing cleanup deadline test was adjusted to allow
+the new five-second reads while still accelerating only its ten-second deletion
+bound. Focused run without storage: 30 passed, three storage-dependent skips.
+Final exact selective patch: **2,548 passed** in 32.88 seconds; full working tree:
+**2,630 passed** in 31.48 seconds, no skips, both with disposable real database
+storage. Changed-file static and staged whitespace checks passed. New blocked
+reads use controlled doubles; no live Telegram, deployment, merge or production
+changes.
