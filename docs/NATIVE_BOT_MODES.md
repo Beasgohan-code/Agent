@@ -521,3 +521,31 @@ passed** in 28.73 seconds; full working tree: **2,657 passed** in 25.97 seconds,
 no skips, both with disposable real database storage. New provider and deadline
 cases use controlled doubles, not live Telegram. Changed-file static and staged
 whitespace checks passed. No deployment, merge or production changes.
+
+## Purge validation, bounded batch deletion and honest receipts
+
+`/purge` now validates a personal group administrator identity, positive ASCII
+count (default 10, retained 100-ID cap), command message ID and argument count
+before deletion. Invalid counts no longer fall back to deleting ten messages.
+Live caller Delete messages permission is checked twice around bot-rights reads;
+all permission reads are bounded to five seconds. One batch request for the
+preceding IDs replaces up to 100 sequential requests and has a ten-second bound.
+This is fewer client calls, not a live latency or server-performance claim.
+
+The installed client's implementation was inspected: `delete_messages` returns
+`r.pts_count`. A positive integer acknowledgement is not treated as an exact
+removal count; the native rich receipt and audit explicitly state that the exact
+count is unknown. Missing/false/zero acknowledgements are unconfirmed and not
+audited as success. Acknowledged receipt failure never triggers a second deletion
+or fallback result message. Cancellation propagates, secondary audit failures are
+disclosed, and existing receipt cleanup timing remains unchanged.
+
+Seventeen new regression cases cover invalid counts, missing acknowledgements,
+identity rejection, final permission loss, request timeout, receipt failure and
+cancellation. Nine failed before implementation. Existing range tests now assert
+one batch and the honest receipt instead of a fictional exact removal count.
+Final exact selective patch: **2,592 passed** in 30.04 seconds; full working tree:
+**2,674 passed** in 26.18 seconds, no skips, both with disposable real database
+storage. New deletion tests use controlled doubles, not live Telegram. Changed-
+file static and staged whitespace checks passed. No deployment, merge or
+production changes.

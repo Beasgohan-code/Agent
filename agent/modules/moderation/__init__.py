@@ -511,31 +511,64 @@ def build(ctx):
             logger.warning('#Errors Unmute notification unconfirmed (%s)',type(error).__name__)
 
     async def purge(client, message):
-        if not await _guard(client, message, need="can_delete_messages"):
+        user, chat = getattr(message, 'from_user', None), getattr(message, 'chat', None)
+        if (getattr(chat, 'type', None) not in (ChatType.GROUP, ChatType.SUPERGROUP)
+                or type(getattr(user, 'id', None)) is not int or not 0 < user.id < 2**63
+                or getattr(user, 'is_bot', False) or getattr(message, 'sender_chat', None) is not None):
+            await reply(message, 'Use your personal administrator identity in a group.')
             return
-        args = _args(message)
-        count = min(int(args[1]), MAX_PURGE) if len(args) > 1 and args[1].isdigit() else 10
-        base = getattr(message, "id", None) or getattr(message, "message_id", 0)
-        ids = [base - offset for offset in range(1, count + 1) if base - offset > 0]
-        deleted = 0
-        for message_id in ids:
+        args = (getattr(message, 'text', '') or '').split()
+        raw = args[1] if len(args) == 2 else '10'
+        base = getattr(message, 'id', None)
+        if (len(args) > 2 or not raw.isascii() or not raw.isdecimal()
+                or len(raw) > 8 or int(raw) < 1 or type(base) is not int or not 1 < base < 2**31):
+            await reply(message, f'Usage: /purge [positive count] — default 10, capped at {MAX_PURGE} preceding message IDs.')
+            return
+        count = min(int(raw), MAX_PURGE)
+        ids = list(range(base - 1, max(0, base - count - 1), -1))
+        attempted = acknowledged = False
+        try:
+            if not await asyncio.wait_for(is_moderator(client, message, need='can_delete_messages'), 5):
+                await denied(ctx, message, 'Current Delete messages administrator permission required.')
+                return
+            me = await asyncio.wait_for(client.get_me(), 5)
+            bot = await asyncio.wait_for(client.get_chat_member(chat.id, me.id), 5)
+            if bot.status != ChatMemberStatus.OWNER and not (bot.status == ChatMemberStatus.ADMINISTRATOR
+                    and getattr(getattr(bot, 'privileges', None), 'can_delete_messages', False)):
+                await reply(message, 'This bot needs Delete messages administrator permission.')
+                return
+            if not await asyncio.wait_for(is_moderator(client, message, need='can_delete_messages'), 5):
+                await reply(message, 'Your Delete messages permission changed. No deletion requested.')
+                return
+            attempted = True
+            result = await asyncio.wait_for(client.delete_messages(chat.id, ids), 10)
+            # The native return value is an update acknowledgement, not a count
+            # of messages removed. Booleans are not native count acknowledgements.
+            if type(result) is not int or result <= 0:
+                raise RuntimeError('Deletion acknowledgement unavailable')
+            acknowledged = True
+            audit = ''
             try:
-                await client.delete_messages(message.chat.id, message_id)
-                deleted += 1
-            except Exception:  # noqa: BLE001 - already deleted / too old
-                continue
-        ctx.chats.log(
-            message.chat.id, "purge", actor_id=message.from_user.id, reason=f"{deleted} removed"
-        )
-        confirmation = await reply(message, 
-            f"<b>Purged</b>\nMessages removed: {deleted}\nOf requested: {count}"
-        )
-        if PURGE_CONFIRM_TTL and confirmation is not None:
-            await asyncio.sleep(PURGE_CONFIRM_TTL)
-            try:
-                await confirmation.delete()
-            except Exception:  # noqa: BLE001
-                pass
+                ctx.chats.log(chat.id, 'purge', actor_id=user.id,
+                    reason=f'Deletion request acknowledged for {len(ids)} preceding message IDs; exact deletion count unknown')
+            except Exception:
+                logger.warning('#Errors Purge local audit unconfirmed')
+                audit = ' Local audit unconfirmed.'
+            confirmation = await reply(message, panel('Purge request acknowledged',
+                table=kv_table([('Requested message IDs', str(len(ids))), ('Removed messages', 'Exact count unknown')]),
+                note='Telegram acknowledged the deletion request; some IDs may already have been absent.' + audit))
+            if PURGE_CONFIRM_TTL and confirmation is not None:
+                await asyncio.sleep(PURGE_CONFIRM_TTL)
+                try:
+                    await confirmation.delete()
+                except Exception:
+                    logger.warning('#Errors Purge receipt cleanup unconfirmed')
+        except Exception as error:
+            logger.warning('#Errors Purge unavailable (%s)', type(error).__name__)
+            if acknowledged:
+                return  # Receipt delivery failure cannot undo an acknowledged request.
+            await reply(message, 'Deletion unconfirmed; some messages may have been removed. Inspect the group before retrying. No automatic retry.'
+                if attempted else 'Permissions unavailable. No deletion requested.')
 
     def report_api_failure(handler):
         @wraps(handler)
