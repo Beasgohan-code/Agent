@@ -148,3 +148,82 @@ async def test_confirmed_unmute_callback_does_not_claim_uncertainty_on_notificat
     query.answer.side_effect = None
     await ctx.actions.dispatch(client, query)
     assert client.restrict_chat_member.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', [RuntimeError, TimeoutError, 'rpc', 'cancel'])
+async def test_confirmed_unmute_command_card_failure_does_not_resend_or_reapply(tmp_path, failure, caplog):
+    import asyncio
+    from pyrogram.errors import ChatAdminRequired
+    ctx, client, message = setup(tmp_path, '/unmute 22')
+    client.get_chat = AsyncMock(return_value=NS(permissions=NS(can_send_messages=True)))
+    error = (asyncio.CancelledError() if failure == 'cancel' else
+             ChatAdminRequired() if failure == 'rpc' else failure('SECRET_UNMUTE_CARD'))
+    message.reply = AsyncMock(side_effect=error)
+    if failure == 'cancel':
+        with pytest.raises(asyncio.CancelledError):
+            await moderation.build(ctx)[1]['unmute'](client, message)
+    else:
+        await moderation.build(ctx)[1]['unmute'](client, message)
+    message.reply.assert_awaited_once()
+    client.restrict_chat_member.assert_awaited_once()
+    assert ctx.chats.history(message.chat.id)[0]['action'] == 'unmute'
+    assert 'SECRET_UNMUTE_CARD' not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['bot', 'oversized'])
+async def test_unmute_rejects_invalid_actor_before_authority_lookup(tmp_path, kind):
+    ctx, client, message = setup(tmp_path, '/unmute 22')
+    if kind == 'bot':
+        message.from_user.is_bot = True
+    else:
+        message.from_user.id = 2**63
+    await moderation.build(ctx)[1]['unmute'](client, message)
+    client.get_chat_member.assert_not_awaited()
+    client.restrict_chat_member.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unmute_generic_provider_failure_is_redacted_without_mutation(tmp_path, caplog):
+    ctx, client, message = setup(tmp_path, '/unmute 22')
+    client.get_me.side_effect = RuntimeError('SECRET_PROVIDER_TEXT')
+    await moderation.build(ctx)[1]['unmute'](client, message)
+    client.restrict_chat_member.assert_not_awaited()
+    assert 'unconfirmed' in str(message.replies).lower()
+    assert 'SECRET_PROVIDER_TEXT' not in str(message.replies) + caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stage', ['protection', 'final_authority'])
+async def test_unmute_remaining_preaction_reads_are_bounded(tmp_path, stage, monkeypatch):
+    import asyncio
+    ctx, client, message = setup(tmp_path, '/unmute 22')
+    client.get_chat = AsyncMock(return_value=NS(permissions=NS(can_send_messages=True)))
+    stopped = asyncio.Event()
+    async def blocked(*args, **kwargs):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+    if stage == 'protection':
+        monkeypatch.setattr(moderation, 'target_is_protected', blocked)
+    else:
+        calls = 0
+        async def authority(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return True
+            return await blocked()
+        monkeypatch.setattr(moderation, 'is_moderator', authority)
+        monkeypatch.setattr(moderation, 'target_is_protected', AsyncMock(return_value=False))
+    original = asyncio.wait_for
+    async def fast_timeout(awaitable, timeout):
+        assert timeout == 5
+        return await original(awaitable, timeout=0.01)
+    monkeypatch.setattr(asyncio, 'wait_for', fast_timeout)
+    await original(moderation.build(ctx)[1]['unmute'](client, message), timeout=0.3)
+    assert stopped.is_set()
+    client.restrict_chat_member.assert_not_awaited()
+    assert 'unconfirmed' in str(message.replies).lower()

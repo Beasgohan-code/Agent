@@ -502,3 +502,22 @@ patch: **2,566 passed** in 28.69 seconds; full working tree: **2,648 passed** in
 26.65 seconds, no skips, both with disposable real database storage. New callback
 cases use controlled doubles, not live Telegram. Changed-file static and staged
 whitespace checks passed. No deployment, merge or production changes.
+
+## Explicit unmute command: actor validation, bounds and notifications
+
+`/unmute` now rejects bot and out-of-range actor identities before authority
+reads. Protected-target and final authority reads have five-second bounds.
+Generic provider failures are handled by the existing local moderation responder
+with type-only diagnostics and safe uncertainty guidance. Once Telegram confirms
+unmute, failure delivering its result card is contained and does not generate a
+misleading API-failure reply, replay a restriction or undo its audit. Cancellation
+continues to propagate.
+
+Nine regression cases cover delivery error/timeout/API-error/cancellation,
+invalid actors, redacted generic provider failure and blocked pre-action reads.
+Six initial cases failed before implementation. Focused tests: **72 passed**
+before adding the two blocked-read cases. Final exact selective patch: **2,575
+passed** in 28.73 seconds; full working tree: **2,657 passed** in 25.97 seconds,
+no skips, both with disposable real database storage. New provider and deadline
+cases use controlled doubles, not live Telegram. Changed-file static and staged
+whitespace checks passed. No deployment, merge or production changes.

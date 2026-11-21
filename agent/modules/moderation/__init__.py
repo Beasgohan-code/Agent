@@ -463,7 +463,8 @@ def build(ctx):
         from .restrictions import target_and_reason
         user=getattr(message,'from_user',None)
         if (getattr(getattr(message,'chat',None),'type',None) not in (ChatType.GROUP,ChatType.SUPERGROUP)
-                or type(getattr(user,'id',None)) is not int or user.id<=0
+                or type(getattr(user,'id',None)) is not int or not 0<user.id<2**63
+                or getattr(user,'is_bot',False)
                 or getattr(message,'sender_chat',None) is not None):
             await reply(message,panel('Unmute not applied',lines=['Use your personal administrator identity inside a group.']))
             return
@@ -477,7 +478,7 @@ def build(ctx):
         except ValueError:
             await reply(message,panel('Unmute usage',lines=['Use /unmute @username or positive ID, or reply without arguments.']))
             return
-        if await _protected(client, message, target_id):
+        if await asyncio.wait_for(_protected(client, message, target_id),5):
             return
         me=await asyncio.wait_for(client.get_me(),5)
         bot=await asyncio.wait_for(client.get_chat_member(message.chat.id,me.id),5)
@@ -489,7 +490,7 @@ def build(ctx):
         if permissions is None:
             await reply(message, "Cannot read the group's current permissions; no member permissions were changed.")
             return
-        if not await is_moderator(client,message,need='can_restrict_members'):
+        if not await asyncio.wait_for(is_moderator(client,message,need='can_restrict_members'),5):
             await reply(message,panel('Unmute not applied',lines=['Your Restrict members permission changed. No change requested.']))
             return
         result=await asyncio.wait_for(client.restrict_chat_member(message.chat.id, target_id, permissions),10)
@@ -502,7 +503,12 @@ def build(ctx):
         except Exception:
             logger.warning('#Errors Unmute local audit unconfirmed')
             audit=' Local audit unconfirmed.'
-        await reply(message,panel('Member unmuted',icon=ctx.theme.emoji('unlock'),table=kv_table([('Member',str(target_id)),('Moderator',str(message.from_user.id)),('Status','Telegram confirmed')]),note='Current group permissions restored, not unrestricted rights.'+audit))
+        try:
+            await reply(message,panel('Member unmuted',icon=ctx.theme.emoji('unlock'),table=kv_table([('Member',str(target_id)),('Moderator',str(message.from_user.id)),('Status','Telegram confirmed')]),note='Current group permissions restored, not unrestricted rights.'+audit))
+        except Exception as error:
+            # Telegram confirmed the mutation; notification failure is not an
+            # action failure and must not enter the outer API-error responder.
+            logger.warning('#Errors Unmute notification unconfirmed (%s)',type(error).__name__)
 
     async def purge(client, message):
         if not await _guard(client, message, need="can_delete_messages"):
@@ -543,6 +549,10 @@ def build(ctx):
             except RPCError as exc:
                 logger.warning("Moderation action %s failed: %s", handler.__name__, type(exc).__name__)
                 await reply(message, f"Telegram could not complete this action ({type(exc).__name__}). Check my administrator rights and the target member. The action was not confirmed.")
+            except Exception as error:
+                logger.warning('#Errors Moderation action %s unavailable (%s)',handler.__name__,type(error).__name__)
+                await reply(message, panel('Moderation status',lines=[
+                    f'Action unconfirmed ({type(error).__name__}). Inspect Telegram before retrying; no automatic retry.']))
         return guarded
 
     warning_reader=build_warning_read(ctx)
