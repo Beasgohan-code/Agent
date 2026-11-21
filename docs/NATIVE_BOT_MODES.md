@@ -484,3 +484,21 @@ passed** in 28.48 seconds; full working tree: **2,642 passed** in 29.49 seconds,
 no skips, both with disposable real database storage. New delivery cases use
 controlled doubles, not live Telegram. Changed-file static and staged whitespace
 checks passed. No deployment, merge or production changes.
+
+## Mute undo callback: preserve confirmed unmute on notification failure
+
+The one-use mute undo callback now tracks Telegram acknowledgement separately
+from its callback answer and result card. Once unmute is acknowledged, failure
+in either notification no longer triggers a misleading “Unmute unconfirmed”
+alert or an additional callback answer. The control remains consumed and the
+audit remains intact. Cancellation propagates; no unmute or notification retry
+is added. Pre-acknowledgement errors retain existing uncertainty guidance.
+
+Six new regression cases cover callback-answer versus result-card failures,
+timeouts and cancellations, including no duplicate answer, no raw error logging,
+retained audit and replay refusal without another restriction request. Four
+failed before implementation. Focused tests: **31 passed**. Exact selective
+patch: **2,566 passed** in 28.69 seconds; full working tree: **2,648 passed** in
+26.65 seconds, no skips, both with disposable real database storage. New callback
+cases use controlled doubles, not live Telegram. Changed-file static and staged
+whitespace checks passed. No deployment, merge or production changes.

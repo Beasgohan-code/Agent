@@ -34,7 +34,7 @@ def setup(ctx):
             await query.answer('This control is invalid or expired. Use /unmute explicitly.',show_alert=True)
             return
         proxy=SimpleNamespace(chat=chat,from_user=actor,sender_chat=None)
-        attempted=False
+        attempted=confirmed=False
         try:
             if not await asyncio.wait_for(is_moderator(client,proxy,need='can_restrict_members'),5):
                 await query.answer('Current Restrict members permission required.',show_alert=True)
@@ -70,6 +70,7 @@ def setup(ctx):
             result=await asyncio.wait_for(client.restrict_chat_member(chat.id,target,permissions),10)
             if result is not True:
                 raise RuntimeError('Unmute acknowledgement unavailable')
+            confirmed=True
             audit=''
             try:
                 ctx.chats.log(chat.id,'unmute',actor_id=actor.id,target_id=target,reason='Confirmed mute-card undo; current group permissions restored')
@@ -80,6 +81,9 @@ def setup(ctx):
         except Exception as error:
             import logging
             logging.getLogger(__name__).warning('#Errors Mute undo unavailable (%s)',type(error).__name__)
+            if confirmed:
+                # Notification failure does not undo the acknowledged unmute.
+                return
             await query.answer('Unmute unconfirmed. Inspect Telegram before using /unmute; no automatic retry.' if attempted else 'Permissions or member state unavailable. No change requested.',show_alert=True)
     if not router.handles(PREFIX+':x'):
         router.register(PREFIX,undo)
