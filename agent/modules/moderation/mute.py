@@ -84,11 +84,18 @@ def build(ctx):
             card=panel('Member muted',icon=ctx.theme.emoji('lock'),
                 table=kv_table([('Member',str(uid)),('Moderator',str(user.id)),('Duration',duration_label(seconds)),('Reason',reason[:500] or 'No reason supplied'),('Status','Telegram confirmed')]),
                 note='Unmute restores current group permissions. Button expires in 15 minutes or after a bot restart; current admin rights required. You can also use /unmute '+str(uid)+'.'+audit)
-            sent=await reply(message,card,reply_markup=keyboard)
-            bind(ctx,token,sent)
+            sent=None
+            try:
+                sent=await reply(message,card,reply_markup=keyboard)
+            finally:
+                # Discard unbound controls on failed delivery or cancellation.
+                bind(ctx,token,sent)
         except MuteInputError as error:
             await reply(message,panel('Mute not applied',icon=ctx.theme.emoji('warn'),lines=[str(error)],note='Use /mute @username or ID [duration] [reason], or reply with /mute 2m reason.'))
         except Exception as error:
             logger.warning('#Errors Mute unavailable (%s)',type(error).__name__)
-            await reply(message,panel('Mute status',icon=ctx.theme.emoji('warn'),lines=['Mute confirmed by Telegram; result card delivery failed. Inspect /rights or member state before any further action.' if confirmed else f'Mute unconfirmed ({type(error).__name__}). Inspect Telegram before retrying; no automatic retry.' if attempted else 'Target or permissions unavailable. Action not attempted.']))
+            if confirmed:
+                # Delivery or local presentation failure cannot undo the action.
+                return
+            await reply(message,panel('Mute status',icon=ctx.theme.emoji('warn'),lines=[f'Mute unconfirmed ({type(error).__name__}). Inspect Telegram before retrying; no automatic retry.' if attempted else 'Target or permissions unavailable. Action not attempted.']))
     return mute

@@ -67,9 +67,11 @@ def build(ctx):
                 await reply(message,panel('Action not applied',icon=ctx.theme.emoji('warn'),lines=[str(error)]))
             except Exception as error:
                 logger.warning('#Errors Ban/unban unavailable (%s)',type(error).__name__)
+                if confirmed:
+                    # Delivery or local presentation failure cannot undo the action.
+                    return
                 wait=f' Telegram asks you to wait {int(error.value)} seconds.' if isinstance(error,FloodWait) else ''
                 await reply(message,panel('Moderation status',icon=ctx.theme.emoji('warn'),note=wait or None,lines=[
-                    'Telegram confirmed the membership change; result card delivery failed. Inspect member state before further action.' if confirmed else
                     f'Action unconfirmed ({type(error).__name__}). Inspect Telegram before retrying; no automatic retry.' if attempted else
                     'Target or permissions unavailable. Action not attempted.']))
         return call

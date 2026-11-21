@@ -64,3 +64,48 @@ async def test_ban_final_caller_rights_loss_never_mutates(tmp_path):
     await moderation.build(ctx)[1]['ban'](client,message)
     client.ban_chat_member.assert_not_awaited()
     assert 'changed' in str(message.replies[-1])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('command', ['ban', 'unban', 'kick', 'mute'])
+@pytest.mark.parametrize('failure', [RuntimeError, TimeoutError])
+async def test_confirmed_base_moderation_does_not_resend_after_card_failure(tmp_path, command, failure, caplog):
+    ctx, client, message = setup(tmp_path, '/' + command + ' 22')
+    from agent.platform.actions import ActionRouter
+    ctx.actions = ActionRouter()
+    client.ban_chat_member = AsyncMock(return_value=True)
+    client.unban_chat_member = AsyncMock(return_value=True)
+    message.reply = AsyncMock(side_effect=[failure('SECRET_DELIVERY_TEXT'), None])
+    await moderation.build(ctx)[1][command](client, message)
+    message.reply.assert_awaited_once()
+    if command in ('ban', 'kick'):
+        client.ban_chat_member.assert_awaited_once()
+    else:
+        client.ban_chat_member.assert_not_awaited()
+    if command in ('unban', 'kick'):
+        client.unban_chat_member.assert_awaited_once()
+    else:
+        client.unban_chat_member.assert_not_awaited()
+    assert client.restrict_chat_member.await_count == (1 if command == 'mute' else 0)
+    assert ctx.chats.history(message.chat.id)[0]['action'] == command
+    assert 'SECRET_DELIVERY_TEXT' not in caplog.text
+    if command == 'mute':
+        assert not ctx._mute_undo_entries
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('command', ['ban', 'unban', 'kick', 'mute'])
+async def test_confirmed_base_moderation_card_cancellation_propagates(tmp_path, command):
+    import asyncio
+    ctx, client, message = setup(tmp_path, '/' + command + ' 22')
+    from agent.platform.actions import ActionRouter
+    ctx.actions = ActionRouter()
+    client.ban_chat_member = AsyncMock(return_value=True)
+    client.unban_chat_member = AsyncMock(return_value=True)
+    message.reply = AsyncMock(side_effect=asyncio.CancelledError)
+    with pytest.raises(asyncio.CancelledError):
+        await moderation.build(ctx)[1][command](client, message)
+    message.reply.assert_awaited_once()
+    assert ctx.chats.history(message.chat.id)[0]['action'] == command
+    if command == 'mute':
+        assert not ctx._mute_undo_entries

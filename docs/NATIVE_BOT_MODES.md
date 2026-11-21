@@ -465,3 +465,22 @@ Final exact selective patch: **2,548 passed** in 32.88 seconds; full working tre
 storage. Changed-file static and staged whitespace checks passed. New blocked
 reads use controlled doubles; no live Telegram, deployment, merge or production
 changes.
+
+## Base moderation: confirmed actions versus result-card delivery
+
+Ban, unban, kick and mute no longer attempt a fallback result card after an error
+in local presentation or notification following Telegram acknowledgement. Their
+confirmed action and audit remain intact; no membership/restriction operation is
+replayed. Cancellation still propagates. Mute discards any unbound process-local
+undo control if result-card delivery fails or is cancelled, rather than retaining
+an unusable control until expiry. No claim of Telegram message delivery is made.
+
+Twelve regression cases cover error/timeout and cancellation for all four
+commands, with no resend, no action replay, retained audits, secret-safe logs and
+mute-control cleanup. Initial targeted run reproduced eight resend failures and
+a test-fixture issue (no action router); router-enabled coverage verifies actual
+control cleanup. Focused suite: **35 passed**. Exact selective patch: **2,560
+passed** in 28.48 seconds; full working tree: **2,642 passed** in 29.49 seconds,
+no skips, both with disposable real database storage. New delivery cases use
+controlled doubles, not live Telegram. Changed-file static and staged whitespace
+checks passed. No deployment, merge or production changes.

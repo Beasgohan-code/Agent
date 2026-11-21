@@ -65,9 +65,11 @@ def build(ctx):
             await reply(message,panel('Kick incomplete',icon=ctx.theme.emoji('warn'),lines=[str(error)],note='No automatic retry. Inspect the member before explicit recovery.'))
         except Exception as error:
             logger.warning('#Errors Kick unavailable (%s)',type(error).__name__)
+            if confirmed:
+                # Delivery or local presentation failure cannot undo the action.
+                return
             wait=f' Wait {int(error.value)} seconds.' if isinstance(error,FloodWait) else ''
             await reply(message,panel('Kick status',icon=ctx.theme.emoji('warn'),lines=[
-                'Telegram confirmed kick; result card delivery failed. Inspect member state before further action.' if confirmed else
                 f'Kick unconfirmed ({type(error).__name__}). Inspect Telegram before retrying; no automatic retry.'+wait if attempted else
                 'Target or permissions unavailable. Action not attempted.']))
     return kick
