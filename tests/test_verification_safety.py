@@ -176,3 +176,32 @@ def test_failed_membership_lookup_does_not_restrict_joiner(tmp_path):
         assert not client.calls
         assert not verifier.pending
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('stage', ['watcher', 'prompt_edit'])
+def test_verification_diagnostics_never_log_provider_secrets(tmp_path, caplog, stage):
+    import logging
+    secret = 'private-token-and-signed-url'
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        ctx.chats.put(CHAT, 'verify_enabled', True)
+        verifier = Verifier(ctx)
+        client = FakeClient()
+        if stage == 'watcher':
+            client.get_chat_member = AsyncMock(side_effect=RuntimeError(secret))
+            await verifier.on_member_update(client, join_update())
+            assert not client.calls
+        else:
+            task = await pending(verifier)
+            client.edit_message_text = AsyncMock(side_effect=RuntimeError(secret))
+            await verifier.on_press(client, FakeQuery('', USER), f'{CHAT}:{USER}')
+            await asyncio.gather(task, return_exceptions=True)
+            assert not verifier.pending
+            assert ctx.chats.history(CHAT)[0]['action'] == 'verify'
+        await verifier.shutdown()
+    with caplog.at_level(logging.DEBUG, logger='agent.modules.security.verify'):
+        asyncio.run(scenario())
+    assert secret not in caplog.text
+    records = [r for r in caplog.records if r.name == 'agent.modules.security.verify']
+    assert records and all(r.exc_info is None for r in records)
+    assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text

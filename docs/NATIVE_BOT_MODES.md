@@ -787,3 +787,24 @@ seconds; full working tree: **2,718 passed** in 29.98 seconds, no skips, both
 with disposable real database storage. Offline preview includes Group management
 and Music hubs. Static/whitespace checks passed; unrelated music catalogue work
 remains unstaged. No live Telegram, deployment, production changes or PR merge.
+
+### Verification diagnostic redaction
+
+Removed raw exception bodies and tracebacks from verification join-watcher errors
+and post-verification prompt-edit failures. Diagnostics retain operation, exception
+type and #Errors without provider bodies. Membership checks, permissions, pending
+sessions and timeout behavior are unchanged; an edit failure does not undo an
+acknowledged verification. Two regressions failed before the fix and now prove
+both paths omit the injected secret and traceback while preserving outcomes.
+
+Focused verification: **27 passed**. Exact selective patch: **2,638 passed** in
+34.83 seconds; full working tree: **2,720 passed** in 32.62 seconds. Both full runs
+used disposable real storage, with no skips. Changed-file static checks and
+whitespace checks passed. New Telegram failures are mocked, not live proof.
+Wider diagnostic hardening remains incremental. No production calls, deployment
+or PR merge. Unrelated working-tree work remains untouched.
+
+The user cancelled appearance customization. All uncommitted typography, owner
+appearance controls, custom taglines and associated tests/preview/docs were removed
+before this phase; none was committed or pushed. Existing module-first Help and
+plain native cards remain intact.

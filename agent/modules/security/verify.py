@@ -142,8 +142,8 @@ class Verifier:
             await query.answer("Verified — welcome!")
             try:
                 await client.edit_message_text(chat_id, location[1], "Verified. Welcome to the group.")
-            except Exception:
-                logger.debug("could not edit the verification prompt", exc_info=True)
+            except Exception as error:
+                logger.warning("#Errors Verification prompt edit unconfirmed (%s)", type(error).__name__)
 
     # -- timer -------------------------------------------------------------
 
@@ -322,5 +322,5 @@ class Verifier:
                 user.id,
                 minutes,
             )
-        except Exception:  # noqa: BLE001 - a watcher must never break the client
-            logger.exception("verification watcher failed")
+        except Exception as error:  # noqa: BLE001 - a watcher must never break the client
+            logger.error("#Errors Verification watcher failed (%s)", type(error).__name__)

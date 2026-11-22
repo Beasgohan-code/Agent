@@ -197,3 +197,8 @@ work/round trips without bypassing rights or server flood limits, and preserve
 moderation receipts/files. Current slice uses recipient-only native temporary
 group menus, not bulk timed deletion. Never silently turn a temporary/private
 response into a public copy. No unsupported fastest-ever or live latency claim.
+
+- Latest direction: skip and remove appearance customization entirely. Removed the
+  uncommitted font renderer, appearance panel, tagline preferences and associated
+  tests/docs/preview additions. Keep the completed module-first Help navigation;
+  continue other pending functional and safety work. Do not merge the PR.
