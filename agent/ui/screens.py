@@ -316,9 +316,61 @@ def help_visible(commands, active: set[str] | None) -> list[str]:
 HELP_CATEGORY_PAGE_SIZE = 8
 
 
+GROUP_HELP_MODULES = ('Group management', 'Moderation', 'Warnings', 'Administrator tools',
+                      'Mentions', 'Approvals', 'Blacklist', 'Welcome & goodbye',
+                      'Federations', 'Locks', 'Anti-flood', 'Filters', 'Topics')
+
+
 def _help_categories(active):
-    return [(icon, title, commands) for icon, title, commands in HELP_SECTIONS
-            if help_visible(commands, active)]
+    group_commands = tuple(dict.fromkeys(command for _, title, commands in HELP_SECTIONS
+                                        if title in GROUP_HELP_MODULES for command in commands))
+    return [(icon, title, group_commands if title == 'Group management' else commands)
+            for icon, title, commands in HELP_SECTIONS
+            if (title == 'Group management' or title not in GROUP_HELP_MODULES)
+            and help_visible(group_commands if title == 'Group management' else commands, active)]
+
+
+def help_module_screen(title, user, theme, *, active=None):
+    """Read-only task navigation between the module root and command guides."""
+    if theme.worker_plugins is not None:
+        from .workers import overview
+        return overview(user, theme, active=active, help_mode=True)
+    rows, buttons = [], []
+    if title == 'Group management':
+        for icon, child, commands in HELP_SECTIONS:
+            if child not in GROUP_HELP_MODULES:
+                continue
+            visible = help_visible(commands, active)
+            if not visible:
+                continue
+            label = 'Group settings' if child == title else child
+            route = 'help:group-management:0' if child == title else f'help:{section_slug(child)}'
+            rows.append((label, str(len(visible))))
+            buttons.append(theme.button(label, icon=icon, callback_data=route))
+        heading, icon = 'Group management', 'shield'
+        note = 'Choose a feature, then a command. Opening help does not change settings or grant administrator rights.'
+    else:
+        music = next(commands for _, section, commands in HELP_SECTIONS if section == 'Music (voice chat)')
+        visible = help_visible(music, active)
+        tasks = (('play', 'Playback'), ('queue', 'Queue'), ('playlists', 'Playlists'),
+                 ('loop', 'Repeat'), ('volume', 'Volume'), ('voicehealth', 'Player health'),
+                 ('pause', 'Pause'), ('resume', 'Resume'), ('stop', 'Stop'))
+        for command, label in tasks:
+            if command in visible:
+                rows.append((label, '/' + command))
+                buttons.append(theme.button(label, icon='music', callback_data=f'help:command:{command}'))
+        if visible:
+            buttons.append(theme.button('All music commands', icon='search', callback_data='help:music-voice-chat:0'))
+        heading, icon = 'Music', 'music'
+        note = 'Choose a task to read its help. Opening this page does not start playback, stop the player or change the queue. Live plugin and permission checks still apply.'
+    keys = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    keys.append([theme.button('All modules', icon='back', callback_data='help:all', style=ButtonStyle.PRIMARY)])
+    keys.append([theme.button('Menu', icon='home', callback_data=keyboards.CB_HOME)])
+    from .tables import panel
+    body = panel(heading, icon=theme.emoji(icon), subtitle='Choose what you want to do',
+                 table=kv_table(rows, headers=('Feature', 'Commands')) if rows else None,
+                 lines=[] if rows else ['No commands in this module are currently registered.'], note=note)
+    return Screen(body, InlineKeyboardMarkup(keys))
 
 
 def help_screen(user, theme: Theme, *, active: set[str] | None = None, page: int = 0) -> Screen:
@@ -350,7 +402,7 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None, page: int
         rich_heading(f"{theme.emoji('sparkles')} Help", 2),
         rich_note(
             "<b>What would you like to do?</b>\n"
-            "Choose a category, then tap a command for its details.\n"
+            "Choose a module, then a feature or command for its details.\n"
             "<b>All commands accept / ! . # $ % &amp; ?</b> — for example, "
             "<code>!help</code>, <code>.play</code>, <code>?settings</code>. "
             "Permissions and plugin availability still apply."
@@ -358,12 +410,12 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None, page: int
     ]
     if rows:
         blocks.append("")
-        blocks.append(kv_table(rows, headers=("Section", "Commands")).block())
+        blocks.append(kv_table(rows, headers=("Module", "Commands")).block())
     blocks.append("")
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"Page {page + 1} of {pages} · {len(categories)} categories · Tap a category below or use <code>/help command</code>."
+            f"Page {page + 1} of {pages} · {len(categories)} modules · Tap a module below or use <code>/help command</code>."
         )
     )
     return Screen("\n".join(blocks), _help_keyboard(active, theme=theme, page=page))
@@ -385,9 +437,9 @@ def _help_keyboard(active: set[str] | None, *, theme=None, page=0) -> InlineKeyb
         rows.append(row)
     paging = []
     if page:
-        paging.append(theme.button('Previous categories', icon='back', callback_data=f'help:categories:{page - 1}'))
+        paging.append(theme.button('Previous modules', icon='back', callback_data=f'help:categories:{page - 1}'))
     if page + 1 < pages:
-        paging.append(theme.button('Next categories', icon='arrow', callback_data=f'help:categories:{page + 1}', style=ButtonStyle.PRIMARY))
+        paging.append(theme.button('Next modules', icon='arrow', callback_data=f'help:categories:{page + 1}', style=ButtonStyle.PRIMARY))
     if paging:
         rows.append(paging)
     rows.append([theme.button("Back to menu", icon="back", callback_data=keyboards.CB_HOME)])
@@ -474,6 +526,10 @@ def _section_keyboard(title=None, page=0, pages=1, *, theme=None, commands=(), a
         if page + 1 < pages:
             buttons.append(theme.button("Next", icon="arrow", callback_data=f"help:{slug}:{page + 1}", style=ButtonStyle.PRIMARY))
         navigation.append(buttons)
+    if title in GROUP_HELP_MODULES:
+        navigation.append([theme.button('Back to Group management', icon='back', callback_data='help:group-management')])
+    elif title == 'Music (voice chat)':
+        navigation.append([theme.button('Back to Music', icon='back', callback_data='help:music-voice-chat')])
     categories = [category for _, category, _ in _help_categories(active)]
     if title in categories:
         overview_page = categories.index(title) // HELP_CATEGORY_PAGE_SIZE
@@ -559,6 +615,8 @@ def help_lookup_screen(
         return lookup(argument, user, theme, active=active)
     for _icon, title, commands in HELP_SECTIONS:
         if query and query in {title.lower(), section_slug(title)}:
+            if title in ('Group management', 'Music (voice chat)'):
+                return help_module_screen(title, user, theme, active=active)
             return _section_builder(title)(user, theme, active=active)
     if query and query not in DESCRIPTIONS:
         # Short category names should work without knowing the display title.
@@ -567,6 +625,8 @@ def help_lookup_screen(
                    "federation": "Federations", "greetings": "Welcome & goodbye"}
         title = aliases.get(query)
         if title:
+            if title in ('Group management', 'Music (voice chat)'):
+                return help_module_screen(title, user, theme, active=active)
             return help_section_screen(title, user, theme, active=active)
         candidates = sorted(name for name in DESCRIPTIONS
                             if help_visible((name,), active) and _section_of(name))
@@ -667,6 +727,10 @@ for _icon, _title, _commands in HELP_SECTIONS:
     SCREENS[f"help:{section_slug(_title)}"] = _section_builder(_title)
     for _page in range(max(1, (len(_commands) + HELP_PAGE_SIZE - 1) // HELP_PAGE_SIZE)):
         SCREENS[f"help:{section_slug(_title)}:{_page}"] = _section_builder(_title, _page)
+
+
+SCREENS['help:group-management'] = lambda user, theme, active=None: help_module_screen('Group management', user, theme, active=active)
+SCREENS['help:music-voice-chat'] = lambda user, theme, active=None: help_module_screen('Music (voice chat)', user, theme, active=active)
 
 
 def _category_builder(page):

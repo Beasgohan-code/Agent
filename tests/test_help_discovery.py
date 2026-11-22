@@ -58,7 +58,9 @@ def test_profile_does_not_confuse_entitlements_or_claim_no_storage():
 def test_help_has_dedicated_blacklist_federation_and_welcome_modules():
     from agent.ui.screens import help_screen
     active = {'blocklist', 'addblocklist', 'blocklistmode', 'welcome', 'setwelcome', 'newfed', 'fedinfo'}
-    screen = help_screen(None, Theme(), active=active)
+    root = help_screen(None, Theme(), active=active)
+    assert 'help:group-management' in str(root.keyboard)
+    screen = SCREENS['help:group-management'](None, Theme(), active=active)
     routes = [b.callback_data for row in screen.keyboard.inline_keyboard for b in row]
     for slug in ('blacklist', 'federations', 'welcome-goodbye'):
         assert 'help:' + slug in routes
@@ -177,3 +179,24 @@ def test_approval_command_detail_explains_no_administrator_grant():
     screen = SCREENS['help:command:approve'](None, Theme(), active={'approve'})
     assert 'Syntax' in screen.rich_text
     assert 'does not grant Telegram administrator rights' in screen.rich_text
+
+
+def test_help_root_shows_modules_not_group_subfeatures():
+    from agent.ui.screens import help_screen
+    screen = help_screen(None, Theme(), active={'play', 'queue', 'blocklist', 'welcome', 'newfed'})
+    routes = [b.callback_data for row in screen.keyboard.inline_keyboard for b in row]
+    assert 'help:group-management' in routes and 'help:music-voice-chat' in routes
+    assert not {'help:blacklist', 'help:welcome-goodbye', 'help:federations'} & set(routes)
+    group = SCREENS['help:group-management'](None, Theme(), active={'blocklist', 'welcome', 'newfed'})
+    routes = [b.callback_data for row in group.keyboard.inline_keyboard for b in row]
+    assert {'help:blacklist', 'help:welcome-goodbye', 'help:federations'} <= set(routes)
+    assert 'help:warnings' not in routes
+
+
+def test_music_module_has_read_only_task_buttons():
+    screen = SCREENS['help:music-voice-chat'](None, Theme(), active={'play', 'queue', 'playlists'})
+    routes = [b.callback_data for row in screen.keyboard.inline_keyboard for b in row]
+    assert {'help:command:play', 'help:command:queue', 'help:command:playlists'} <= set(routes)
+    assert 'help:command:volume' not in routes
+    assert 'does not start playback' in screen.rich_text
+    assert all(route in SCREENS for route in routes)

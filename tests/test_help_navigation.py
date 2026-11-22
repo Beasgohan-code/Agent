@@ -109,9 +109,9 @@ def test_ephemeral_replacement_keeps_recipient_and_rejects_foreign_press():
 
 
 def test_help_overview_is_paged_with_matching_tables_and_buttons():
-    from agent.ui.screens import HELP_CATEGORY_PAGE_SIZE, help_screen, help_visible, section_slug
+    from agent.ui.screens import HELP_CATEGORY_PAGE_SIZE, help_screen, _help_categories, section_slug
     from agent.utils.sender import to_safe_html, _visible_text
-    visible = [(icon, title, commands) for icon, title, commands in HELP_SECTIONS if help_visible(commands, None)]
+    visible = _help_categories(None)
     seen = []
     for page in range((len(visible) + HELP_CATEGORY_PAGE_SIZE - 1) // HELP_CATEGORY_PAGE_SIZE):
         screen = help_screen(None, Theme(), page=page)
@@ -138,4 +138,4 @@ def test_stale_category_page_clamps_after_registry_changes():
 def test_later_feature_can_return_to_its_overview_page():
     screen = help_section_screen('Approvals', None, Theme())
     routes = [button.callback_data for row in screen.keyboard.inline_keyboard for button in row]
-    assert any(route.startswith('help:categories:') for route in routes)
+    assert 'help:group-management' in routes

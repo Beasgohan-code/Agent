@@ -47,10 +47,10 @@ Buttons (row order):
 ✨ Help
 
 What would you like to do?
-Choose a category, then tap a command for its details.
+Choose a module, then a feature or command for its details.
 All commands accept / ! . # $ % & ? — for example, !help, .play, ?settings. Permissions and plugin availability still apply.
 
-Section  Commands
+Module  Commands
 ✨ AI Agent  2
 ⚡ Essentials  4
 📦 Vault & downloads  2
@@ -58,7 +58,7 @@ Section  Commands
 
 ─────
 
-Page 1 of 1 · 4 categories · Tap a category below or use /help command.
+Page 1 of 1 · 4 modules · Tap a module below or use /help command.
 ```
 
 Buttons (row order):
@@ -110,6 +110,59 @@ Buttons (row order):
 - ⬅️ Back to AI Agent
 - 📁 All sections · 🏡 Menu
 
+## Group management hub (explicit feature fixture)
+
+```text
+🛡 Group management
+
+Choose what you want to do
+Feature  Commands
+Group settings  1
+Blacklist  1
+Welcome & goodbye  1
+Federations  1
+Warnings  1
+
+Choose a feature, then a command. Opening help does not change settings or grant administrator rights.
+
+─────
+
+Meiko · /help · Prefixes / ! . # $ % & ?
+```
+
+Buttons (row order):
+- 🛡 Group settings · 🔒 Blacklist
+- 👋 Welcome & goodbye · 🛡 Federations
+- ⚠️ Warnings
+- ⬅️ All modules
+- 🏡 Menu
+
+## Music hub (explicit feature fixture)
+
+```text
+🎵 Music
+
+Choose what you want to do
+Feature  Commands
+Playback  /play
+Queue  /queue
+Playlists  /playlists
+Player health  /voicehealth
+
+Choose a task to read its help. Opening this page does not start playback, stop the player or change the queue. Live plugin and permission checks still apply.
+
+─────
+
+Meiko · /help · Prefixes / ! . # $ % & ?
+```
+
+Buttons (row order):
+- 🎵 Playback · 🎵 Queue
+- 🎵 Playlists · 🎵 Player health
+- 🔍 All music commands
+- ⬅️ All modules
+- 🏡 Menu
+
 ## Mentions module (explicit feature fixture)
 
 ```text
@@ -138,6 +191,7 @@ Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ 
 Buttons (row order):
 - 💡 /tagall · 💡 /eall
 - 💡 /tagabort
+- ⬅️ Back to Group management
 - 📁 All sections
 - ⬅️ Back to menu
 
@@ -170,6 +224,7 @@ Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ 
 Buttons (row order):
 - 💡 /approve · 💡 /unapprove
 - 💡 /approval · 💡 /approved
+- ⬅️ Back to Group management
 - 📁 All sections
 - ⬅️ Back to menu
 
@@ -202,6 +257,7 @@ Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ 
 Buttons (row order):
 - 💡 /warn · 💡 /warns
 - 💡 /warnlimit · 💡 /warntime
+- ⬅️ Back to Group management
 - 📁 All sections
 - ⬅️ Back to menu
 
@@ -236,6 +292,7 @@ Buttons (row order):
 - 💡 /blocklist · 💡 /addblocklist
 - 💡 /rmblocklist · 💡 /blocklistmode
 - 💡 /blocklistdelete
+- ⬅️ Back to Group management
 - 📁 All sections
 - ⬅️ Back to menu
 
@@ -267,6 +324,7 @@ Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ 
 Buttons (row order):
 - 💡 /setwelcome · 💡 /welcome
 - 💡 /goodbye
+- ⬅️ Back to Group management
 - 📁 All sections
 - ⬅️ Back to menu
 
@@ -299,6 +357,7 @@ Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ 
 Buttons (row order):
 - 💡 /newfed · 💡 /myfeds
 - 💡 /joinfed · 💡 /chatfed
+- ⬅️ Back to Group management
 - 📁 All sections
 - ⬅️ Back to menu
 

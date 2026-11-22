@@ -761,3 +761,29 @@ seconds, no skips, both with disposable real database storage. The offline
 preview was regenerated; it is not a Telegram screenshot. Static and staged
 whitespace checks passed; unrelated music catalogue work remains unstaged.
 No live Telegram, deployment, production changes or PR merge.
+
+## Corrected Help hierarchy: modules first, group features inside
+
+Following the user's clarification, top-level controller Help now lists broad
+modules rather than every group subfeature. Group management aggregates the
+registered commands of its child features for visibility/counting, so the hub
+still appears when only Blacklist, Welcome or Federations is registered. Opening
+it shows only live group-feature buttons, including a separate Group settings
+command list. Each child guide returns to Group management. Existing direct
+command Help, section links and paginated raw command lists remain available.
+
+The Music entry now opens read-only task buttons for registered playback, queue,
+playlist, repeat, volume and player-health commands, plus an all-commands link.
+Opening a task displays command Help; it never starts/stops playback or mutates
+the queue. Both module hubs have explicit all-modules/menu return paths. Live
+registration is not activation/authorization evidence. Worker-owned navigation
+and its controller-route guard remain unchanged.
+
+Two new regressions failed before implementation and now cover root-versus-child
+visibility and Music's filtered read-only task buttons. Existing tests were
+updated to the user-corrected hierarchy rather than flat categories. Focused UI
+suites: **73 passed**. Final exact selective patch: **2,636 passed** in 32.74
+seconds; full working tree: **2,718 passed** in 29.98 seconds, no skips, both
+with disposable real database storage. Offline preview includes Group management
+and Music hubs. Static/whitespace checks passed; unrelated music catalogue work
+remains unstaged. No live Telegram, deployment, production changes or PR merge.

@@ -353,7 +353,7 @@ def test_help_copy_is_user_facing_not_deployment_instructions():
         assert 'OWNER_ID' not in screen.rich_text
         assert 'group commands need moderator rights' not in screen.rich_text
         assert 'command(s) ready here' not in screen.rich_text
-    assert 'Choose a category' in screens[0].rich_text
+    assert 'Choose a module' in screens[0].rich_text
     essentials = help_section_screen('Essentials', make_user(), Theme())
     assert 'owner-only ones need' not in essentials.rich_text
 
