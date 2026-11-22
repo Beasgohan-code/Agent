@@ -18,6 +18,7 @@ import logging
 import shutil
 
 from ...platform.attachments import attachment_kwargs
+from ...platform.jobs import JobAdmissionError
 from ...platform.manifest import PluginManifest
 from ...platform.net import LinkError, check_target, human_bytes, parse_url
 from ...ui.tables import kv_table, panel
@@ -113,6 +114,13 @@ def build(ctx):
             await reply(message, "<b>Not fetching that</b>\nUse one public HTTP(S) URL without embedded credentials; the address could not be validated.")
             return
 
+        # Keep preflight, quota take and submit in one event-loop turn. Progress
+        # is emitted by the admitted runner, never before a capacity refusal.
+        try:
+            ctx.jobs.ensure_capacity()
+        except JobAdmissionError:
+            await reply(message, "No transfer job was admitted. The queue is full or shutting down. Wait for active work to finish and try again; your transfer allowance was not used.")
+            return
         book = getattr(ctx, "premium", None)
         user_id = message.from_user.id
         if book is not None and not book.take(user_id, "leech"):
@@ -139,12 +147,11 @@ def build(ctx):
             return
         # Avoid persisting source URLs/query tokens in task labels or logs.
         label = 'Mirror transfer' if keep else 'Leech transfer'
-        logger.info('transfer queued user=%s kind=%s', user_id, 'mirror' if keep else 'leech')
-        _message_id, report = await _progress_message(client, message, label)
 
         async def runner(job):
             destination = None
             try:
+                _message_id, report = await _progress_message(client, message, label)
                 source, suggested = url, _destination_name(url)
                 if youtube:
                     job.detail = "resolving YouTube audio with TypeTube"
@@ -245,6 +252,7 @@ def build(ctx):
                             logger.warning("#Errors Transfer cleanup notice unconfirmed (%s)", type(error).__name__)
 
         job = ctx.jobs.submit("leech", message.from_user.id, runner, label=label[:60])
+        logger.info('transfer admitted user=%s kind=%s', user_id, 'mirror' if keep else 'leech')
         await reply(message,
             f"Job <code>{job.id}</code> started. "
             "Use <code>/cancel</code> to stop it."

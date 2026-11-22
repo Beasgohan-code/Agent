@@ -16,6 +16,10 @@ from typing import Any, Awaitable, Callable
 logger = logging.getLogger(__name__)
 
 
+class JobAdmissionError(RuntimeError):
+    """No work admitted because the local queue is closed or at capacity."""
+
+
 class JobState(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -75,6 +79,16 @@ class JobQueue:
         self._max_history = max_history
         self._tasks: set[asyncio.Task] = set()
 
+    def ensure_capacity(self) -> None:
+        """Synchronous preflight; submit rechecks. Do not await before admission."""
+        if self._closed:
+            raise JobAdmissionError("Job queue is shut down")
+        # Count live tasks, not logical job states: cancellation may still be
+        # cleaning up. No await between admission and task creation, so this
+        # budget includes running, queued and cancelling work on this loop.
+        if sum(not task.done() for task in self._tasks) >= self._max_active:
+            raise JobAdmissionError("Job queue capacity reached; wait for active work to finish")
+
     def submit(
         self,
         module: str,
@@ -83,13 +97,7 @@ class JobQueue:
         *,
         label: str = "",
     ) -> Job:
-        if self._closed:
-            raise RuntimeError("Job queue is shut down")
-        # Count live tasks, not logical job states: cancellation may still be
-        # cleaning up. No await between admission and task creation, so this
-        # budget includes running, queued and cancelling work on this loop.
-        if sum(not task.done() for task in self._tasks) >= self._max_active:
-            raise RuntimeError("Job queue capacity reached; wait for active work to finish")
+        self.ensure_capacity()
         self._counter += 1
         job = Job(id=f"{module}-{self._counter}", module=module, owner_id=owner_id, label=label)
         from .execution import GROUP_EXECUTION

@@ -327,3 +327,63 @@ def test_interrupted_upload_remains_unconfirmed_without_resend(tmp_path, monkeyp
         assert 'private-upload-token' not in text
     asyncio.run(scenario())
     assert 'private-upload-token' not in caplog.text
+
+
+@pytest.mark.parametrize('closed', [False, True])
+@pytest.mark.parametrize('kind', ['leech', 'mirror'])
+def test_transfer_capacity_refused_before_quota_progress_or_download(tmp_path, monkeypatch, closed, kind):
+    from agent.platform.jobs import JobQueue
+    from unittest.mock import Mock
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        ctx.jobs = JobQueue(max_active=1)
+        blocker = asyncio.Event()
+        async def wait(job):
+            await blocker.wait()
+        if closed:
+            await ctx.jobs.shutdown()
+        else:
+            ctx.jobs.submit('encoder', 99, wait)
+        ctx.premium = SimpleNamespace(take=Mock(return_value=True))
+        monkeypatch.setattr(leech, 'check_target', AsyncMock())
+        download = AsyncMock()
+        monkeypatch.setattr(leech, 'download', download)
+        request = FakeMessage(f'/{kind} https://example.com/audio')
+        try:
+            await leech.build(ctx)[1][kind](None, request)
+            ctx.premium.take.assert_not_called()
+            download.assert_not_awaited()
+            assert not ctx.jobs.for_owner(OWNER)
+            assert len(request.replies) == 1
+            assert 'No transfer job was admitted' in str(request.replies[0])
+            assert 'Starting' not in str(request.replies[0])
+        finally:
+            blocker.set()
+            await ctx.jobs.shutdown()
+    asyncio.run(scenario())
+
+
+def test_concurrent_transfer_admission_charges_only_admitted_work(tmp_path, monkeypatch):
+    from agent.platform.jobs import JobQueue
+    from unittest.mock import Mock
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        ctx.jobs = JobQueue(max_active=1)
+        ctx.premium = SimpleNamespace(take=Mock(return_value=True))
+        monkeypatch.setattr(leech, 'check_target', AsyncMock())
+        gate = asyncio.Event()
+        async def download(*args, **kwargs):
+            await gate.wait()
+            raise asyncio.CancelledError()
+        monkeypatch.setattr(leech, 'download', download)
+        requests = [FakeMessage('/leech https://example.com/audio') for _ in range(2)]
+        handler = leech.build(ctx)[1]['leech']
+        try:
+            await asyncio.gather(*(handler(None, request) for request in requests))
+            ctx.premium.take.assert_called_once_with(OWNER, 'leech')
+            assert len(ctx.jobs.for_owner(OWNER)) == 1
+            assert sum(any('No transfer job was admitted' in str(t) for t in r.replies) for r in requests) == 1
+        finally:
+            gate.set()
+            await ctx.jobs.shutdown()
+    asyncio.run(scenario())

@@ -908,3 +908,23 @@ validate invalid budgets. Exact selective patch: **2,667 passed** in 32.59 secon
 full working tree: **2,749 passed** in 29.04 seconds, no skips, disposable real
 storage enabled. Static/whitespace checks passed. No live Telegram/provider or
 production calls, deployment or PR merge. Unrelated dirty work remains unstaged.
+
+### Transfer admission before allowance/progress
+
+Leech/Mirror now catch typed local queue-admission refusals before consuming
+transfer allowance or emitting progress. Queue preflight, synchronous allowance
+take and submit have no intervening await; submit still independently enforces
+the limit. Actual progress starts inside the admitted runner. Full/shutting-down
+queues give a clear no-job-admitted response, without download/upload, fake job
+success, allowance consumption or automatic retry. URL validation still precedes
+admission. This is same-event-loop safety, not a durable quota reservation or
+cross-instance fairness policy; other modules need their own admission UX review.
+
+Four refusal cases failed before the fix; final cases cover Leech/Mirror with
+full/closed queues plus concurrent requests admitting and charging only one job.
+Focused transfer/job/source suites before the final concurrency case: **66 passed**.
+Exact selective patch: **2,672 passed** in 32.13 seconds; full working tree:
+**2,754 passed** in 30.29 seconds. Both full runs used disposable real storage,
+no skips. Static/whitespace checks passed. New transfer effects are mocked; no
+live provider calls, production changes, deployment or PR merge. Appearance stays
+removed and unrelated work remains unstaged.
