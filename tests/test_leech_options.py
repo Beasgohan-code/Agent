@@ -178,3 +178,36 @@ def test_transfer_failure_and_cancel_notify_without_exposing_secrets(tmp_path, m
         assert 'secret-source-value' not in text
         assert job.state.value == ('cancelled' if failure is asyncio.CancelledError else 'failed')
     asyncio.run(scenario())
+
+
+def test_transfer_progress_edit_failure_is_safe_and_nonfatal(tmp_path, monkeypatch, caplog):
+    import logging
+    secret = 'private-transfer-token-and-url'
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        request = FakeMessage('/leech https://example.com/audio')
+        async def response(text, **kwargs):
+            request.replies.append(text)
+            return SimpleNamespace(id=123)
+        request.reply = response
+        monkeypatch.setattr(leech, 'check_target', AsyncMock())
+        target = tmp_path / 'transfer' / 'audio'
+        target.parent.mkdir()
+        monkeypatch.setattr(leech, '_destination', lambda *args: target)
+        async def download(url, destination, **kwargs):
+            await kwargs['on_progress'](3, 7, 1)
+            destination.write_bytes(b'payload')
+            return 7
+        monkeypatch.setattr(leech, 'download', download)
+        client = SimpleNamespace(edit_message_text=AsyncMock(side_effect=RuntimeError(secret)), send_document=AsyncMock())
+        await leech.build(ctx)[1]['leech'](client, request)
+        job = ctx.jobs.for_owner(OWNER)[0]
+        await job.task
+        assert job.state.value == 'done'
+        client.send_document.assert_awaited_once()
+        assert not target.exists() and not target.parent.exists()
+    with caplog.at_level(logging.DEBUG, logger='agent.modules.leech'):
+        asyncio.run(scenario())
+    assert secret not in caplog.text
+    assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
+    assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.modules.leech')

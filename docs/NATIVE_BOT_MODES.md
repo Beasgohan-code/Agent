@@ -823,3 +823,22 @@ seconds; full working tree: **2,723 passed** in 28.72 seconds. Both full suites
 used disposable real storage, no skips. Changed-file static and whitespace checks
 passed. Telegram errors are mocked; no live provider calls, deployment, production
 changes or PR merge. Unrelated music/premium/language work remains unstaged.
+
+### Transfer-progress and player diagnostic redaction
+
+Removed raw exception bodies/tracebacks from transfer progress edits, player-card
+redraws and empty-queue leave failures (command and button). Type/operation-only
+#Errors diagnostics retain existing best-effort progress/redraw behavior and
+unconfirmed-leave replies. This does not change playback, queue mutation, transfer
+admission, native media restrictions, permissions or retries. Wider music and
+transfer changes in the working tree are not part of this patch.
+
+New regression coverage injects secret-bearing provider errors in all four paths:
+transfer still uploads and cleans its temporary files after a failed progress
+edit; acknowledged pause survives card-redraw failure; command/button leave
+failures remain unconfirmed. Initial two regression tests failed before fixes.
+Focused suites: **106 passed**. Exact selective patch: **2,643 passed** in 35.17
+seconds; full working tree: **2,725 passed** in 30.94 seconds. Full suites used
+disposable real storage, no skips. Changed-file static and whitespace checks
+passed. New Telegram/native failures are mocked, not live transport/visual proof.
+No production calls, deployment or PR merge. Appearance remains removed.

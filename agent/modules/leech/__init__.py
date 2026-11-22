@@ -95,8 +95,8 @@ def build(ctx):
             )
             try:
                 await client.edit_message_text(chat_id, message_id, text)
-            except Exception:  # noqa: BLE001 - edits are best effort
-                logger.debug("progress edit failed", exc_info=True)
+            except Exception as error:  # noqa: BLE001 - edits are best effort
+                logger.debug("#Errors Transfer progress edit unconfirmed (%s)", type(error).__name__)
 
         return message_id, report
 

@@ -307,8 +307,8 @@ def build(ctx):
                 if started is None:
                     try:
                         await engine.leave(chat_id)
-                    except VoiceUnavailable:
-                        logger.debug("leave after an empty skip failed", exc_info=True)
+                    except VoiceUnavailable as error:
+                        logger.warning("#Errors Music empty-queue leave unconfirmed (%s)", type(error).__name__)
                         await query.answer("Queue finished, but leaving was not confirmed. Check /voicehealth.", show_alert=True)
                         return
                     queues.drop(chat_id)
@@ -329,8 +329,8 @@ def build(ctx):
         keyboard = _transport(chat_id) if engine.playback(chat_id) is not None else None
         try:
             await rich_ui.edit(query, card, reply_markup=keyboard)
-        except Exception:  # noqa: BLE001 - a stale card is not a failed control
-            logger.debug("could not redraw the player card", exc_info=True)
+        except Exception as error:  # noqa: BLE001 - a stale card is not a failed control
+            logger.debug("#Errors Music player redraw unconfirmed (%s)", type(error).__name__)
         await query.answer(said)
 
     async def _can_control(client, message) -> bool:
@@ -449,8 +449,8 @@ def build(ctx):
         if started is None:
             try:
                 await engine.leave(message.chat.id)
-            except Exception:  # noqa: BLE001 - leaving is best effort here
-                logger.debug("leave after empty skip failed", exc_info=True)
+            except Exception as error:  # noqa: BLE001 - leaving is best effort here
+                logger.warning("#Errors Music empty-queue leave unconfirmed (%s)", type(error).__name__)
                 await reply(message, "Queue finished, but leaving the voice chat was not confirmed. Check /voicehealth and retry /leave.")
                 return
             queues.drop(message.chat.id)
