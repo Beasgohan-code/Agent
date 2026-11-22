@@ -41,6 +41,10 @@ async def begin(ctx, chat, message, actor, target, action, seconds, reason):
     if (
         action
         not in (
+            "unwarn",
+            "rmwarn",
+            "resetwarn",
+            "resetwarns",
             "dwarn",
             "swarn",
             "tban",

@@ -1,5 +1,6 @@
 """New warning removal commands reuse the authoritative member warning store."""
 import asyncio
+import pytest
 import test_moderation as fixtures
 from agent.modules import moderation
 
@@ -31,7 +32,7 @@ def test_warning_removal_denied_caller_cannot_clear(tmp_path):
 
 
 def test_pg_warning_removal_is_scoped_and_history_retained(tmp_path):
-    import os, uuid, json, pytest
+    import os, uuid, json
     from agent.platform.db import Database
     from agent.platform.chats import ChatStore
     if not os.environ.get('AGENT_TEST_DATABASE_URL'):
@@ -71,4 +72,53 @@ def test_resetrules_uses_authoritative_writer_and_guard(tmp_path, monkeypatch):
         writer.assert_not_awaited()
         await command(group_fixtures.FakeClient(),group_fixtures.FakeMessage('/resetrules'))
         writer.assert_awaited_once_with(ctx,group_fixtures.CHAT,'',actor=11)
+    asyncio.run(scenario())
+
+
+def test_committed_warning_removal_card_failure_does_not_resend(tmp_path):
+    from unittest.mock import AsyncMock
+    async def scenario():
+        ctx = fixtures.ctx.__wrapped__(tmp_path)
+        item = fixtures.FakeMessage('/rmwarn 22')
+        await ctx.chats.aadd_warning(item.chat.id, 22, moderator_id=11, reason='first')
+        await ctx.chats.aadd_warning(item.chat.id, 22, moderator_id=11, reason='second')
+        item.reply = AsyncMock(side_effect=[RuntimeError('SECRET_CARD_TEXT'), None])
+        await moderation.build(ctx)[1]['rmwarn'](fixtures.FakeClient(), item)
+        item.reply.assert_awaited_once()
+        assert await ctx.chats.aactive_warning_count(item.chat.id, 22) == 1
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('command', ['rmwarn', 'unwarn', 'resetwarn', 'resetwarns'])
+def test_warning_removal_command_replay_is_admitted_once_across_connections(tmp_path, command):
+    import os, uuid
+    from agent.platform.db import Database
+    from agent.platform.chats import ChatStore
+    if not os.environ.get('AGENT_TEST_DATABASE_URL'):
+        pytest.skip('Disposable database required')
+    async def scenario():
+        scope = 'removal-replay:' + uuid.uuid4().hex
+        dbs = [Database(os.environ['AGENT_TEST_DATABASE_URL'], scope=scope, required=True) for _ in range(2)]
+        try:
+            for db in dbs:
+                assert await db.connect()
+            contexts = [fixtures.ctx.__wrapped__(tmp_path / str(i)) for i in range(2)]
+            for i, ctx in enumerate(contexts):
+                ctx.db = dbs[i]
+                ctx.chats = ChatStore(tmp_path / str(i), db=dbs[i])
+            for reason in ('first', 'second', 'third'):
+                await contexts[0].chats.aadd_warning(-100500, 22, moderator_id=11, reason=reason)
+            from agent.modules.moderation.warning_controls import build
+            messages = [fixtures.FakeMessage('/' + command + ' 22') for _ in range(2)]
+            await asyncio.gather(*(build(ctx, include_group_alias=True)[command](fixtures.FakeClient(), message)
+                                  for ctx, message in zip(contexts, messages)))
+            remaining = 2 if command in ('rmwarn', 'unwarn') else 0
+            assert await contexts[1].chats.aactive_warning_count(-100500, 22) == remaining
+            await contexts[0].chats.aadd_warning(-100500, 22, moderator_id=11, reason='new after clear')
+            # A redelivery after acknowledgement must not remove the next warning.
+            await build(contexts[1], include_group_alias=True)[command](fixtures.FakeClient(), messages[1])
+            assert await contexts[0].chats.aactive_warning_count(-100500, 22) == remaining + 1
+        finally:
+            for db in dbs:
+                await db.close()
     asyncio.run(scenario())

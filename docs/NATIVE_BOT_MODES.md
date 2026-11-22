@@ -571,3 +571,30 @@ passed** in 28.73 seconds; full working tree: **2,680 passed** in 29.83 seconds,
 no skips, both with disposable real database storage. New Telegram/notification
 cases use controlled doubles, not live Telegram. Changed-file static and staged
 whitespace checks passed. No deployment, merge or production changes.
+
+## Warning removals: durable replay admission and committed delivery
+
+Member warning-removal commands `/rmwarn`, `/unwarn`, `/resetwarn` and the group
+alias `/resetwarns` now use the existing tenant/group/message-scoped durable
+intent admission before clearing warnings. Concurrent or redelivered copies of
+one command cannot clear another warning or remove warnings added after the
+original clear. This reuses the existing intent table; no schema migration or
+new store is introduced. Normal service database mode has durable admission;
+legacy standalone test compatibility does not acquire new replay guarantees.
+
+The outcome is recorded once after the clear. Outcome-write uncertainty is
+reported without retrying that write or the clear. Committed result-card failure
+is logged without a fallback resend. Group-wide `/resetallwarns` retains its
+existing atomic reset admission and also benefits from committed-delivery
+separation. No Telegram ban or mute is changed by warning removal. Unfinished
+admissions are not automatically retried or rolled back.
+
+Initial regressions reproduced duplicate clearing across two independent real
+storage connections and a duplicate notification. Five new cases overall cover
+committed-card failure and concurrent/replayed delivery of all four member-clear
+commands. Each real-storage case adds a new warning after the original clear and
+verifies redelivery preserves it. Exact selective patch: **2,603 passed** in
+32.20 seconds; full working tree: **2,685 passed** in 27.60 seconds, no skips,
+both with disposable real database storage. Telegram calls use controlled
+doubles, not live verification. Changed-file static and staged whitespace checks
+passed. No deployment, merge or production changes.

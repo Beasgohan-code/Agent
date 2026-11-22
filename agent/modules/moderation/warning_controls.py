@@ -2,6 +2,7 @@
 import asyncio
 import logging
 from pyrogram.enums import ChatType
+from ...platform.restriction_cases import begin, finish, CaseError
 from ...platform.warnings import WarningStoreError
 from ...ui.tables import panel,kv_table
 from ...utils.rich import reply
@@ -59,6 +60,7 @@ def build(ctx,*,include_group_alias=False):
                 if not await asyncio.wait_for(is_moderator(client,message,need='can_restrict_members'),5):
                     raise RemovalInputError('Administrator permissions changed. No warnings cleared.')
                 single=command in ('unwarn','rmwarn')
+                identity=await begin(ctx,chat.id,message.id,user.id,target,command,0,'Warning removal; Telegram restrictions unchanged')
                 cleared=(await ctx.chats.aclear_warning(chat.id,target) if single else await ctx.chats.aclear_all_warnings(chat.id,target))
                 committed=True
                 audit=''
@@ -67,16 +69,22 @@ def build(ctx,*,include_group_alias=False):
                 except Exception:
                     logger.warning('#Errors Warning removal local audit unconfirmed')
                     audit=' Local audit unconfirmed.'
+                try:
+                    await finish(ctx,identity,'partial' if audit else 'applied')
+                except Exception as error:
+                    logger.warning('#Errors Warning removal outcome recording unconfirmed (%s)',type(error).__name__)
+                    audit+=' Outcome recording unconfirmed. Inspect /warns before further action; no automatic retry.'
                 await reply(message,panel('Warning cleared' if cleared and single else 'Warnings cleared' if cleared else 'No warning removed',icon=ctx.theme.emoji('check' if cleared else 'info'),
                     table=kv_table([('Member',str(target)),('Moderator',str(user.id)),('Warnings cleared',str(int(cleared))),('Operation','Latest active warning' if single else 'All active warnings for this member'),('Status','Committed')]),
                     lines=[] if cleared else ['That member has no active warnings.'],
                     note='History retained. No Telegram ban or mute was changed.'+audit))
-            except (RemovalInputError,WarningStoreError) as error:
+            except (RemovalInputError,WarningStoreError,CaseError) as error:
                 await reply(message,panel('Warning removal status',icon=ctx.theme.emoji('warn'),lines=[str(error)]))
             except Exception as error:
                 logger.warning('#Errors Warning removal unavailable (%s)',type(error).__name__)
+                if committed:
+                    return  # Notification failure cannot undo or replay the clear.
                 await reply(message,panel('Warning removal status',icon=ctx.theme.emoji('warn'),lines=[
-                    'Warning clear committed; result delivery unconfirmed. Check /warns before further action.' if committed else
                     'Warning removal unconfirmed. Check /warns before retrying; no automatic retry.']))
         return call
     commands=('unwarn',*COMMANDS,*(('resetwarns',) if include_group_alias else ()))
