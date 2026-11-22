@@ -949,3 +949,24 @@ Exact selective patch **2,687 passed** in 34.44 seconds; full working tree
 skips. Static/whitespace checks passed. New Telegram downloads are mocked, not
 live provider proof. No production calls, deployment or PR merge; appearance
 remains removed and unrelated working-tree changes remain unstaged.
+
+### Group mention worker admission
+
+Group mention commands now check the shared queue before roster retrieval and
+again before durable run creation. Launch/Resume recheck capacity immediately
+before submission. Full/closed queues return an explicit no-mention-job-admitted
+response instead of a generic uncertain failure. If capacity fills during the
+awaited durable start, the saved paused snapshot/cursor is left unchanged; no
+worker or batch is started and `/tagabort` remains available under saturation.
+This is local queue admission, not a durable capacity reservation or automatic
+restart mechanism. Existing personal-admin checks, plain first-name/emoji labels,
+optional custom message, 20/message and 5-second pacing are unchanged.
+
+Two early-refusal regressions failed before the fix. Final focused mention suite:
+**17 passed**, including a disposable real-storage scenario for post-save capacity
+loss, refused Resume, unchanged paused cursor, no send and successful abort.
+Exact selective patch: **2,690 passed** in 35.57 seconds; full working tree:
+**2,772 passed** in 39.70 seconds. Full suites used disposable real storage,
+no skips. Static/whitespace checks passed. Telegram roster/sends are mocked; no
+live Telegram/provider calls, production changes, deployment or PR merge.
+Appearance remains removed; unrelated working-tree changes remain unstaged.

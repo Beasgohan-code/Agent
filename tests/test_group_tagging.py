@@ -306,3 +306,87 @@ async def test_retrieved_member_job_20_per_message_auto_pause_and_stop(tmp_path,
     finally:
         await ctx.jobs.shutdown()
         await db.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('closed', [False, True])
+async def test_mention_queue_refusal_precedes_roster_and_run_creation(tmp_path, monkeypatch, closed):
+    from agent.modules.group.admin import build_tag_runs
+    from agent.platform.jobs import JobQueue
+    from agent.platform import group_tagging
+    from test_mute_target_parity import setup
+    from unittest.mock import Mock
+    ctx, client, message = setup(tmp_path, '/tagall')
+    ctx.jobs = JobQueue(max_active=1)
+    gate = asyncio.Event()
+    async def wait(job):
+        await gate.wait()
+    if closed:
+        await ctx.jobs.shutdown()
+    else:
+        ctx.jobs.submit('encoder', 99, wait)
+    client.get_chat_members = Mock()
+    create = AsyncMock()
+    monkeypatch.setattr(group_tagging, 'start_run', create)
+    try:
+        await build_tag_runs(ctx)['tagall'](client, message)
+        client.get_chat_members.assert_not_called()
+        create.assert_not_awaited()
+        assert 'No mention job was admitted' in str(message.replies[-1])
+        assert not ctx.jobs.for_owner(message.from_user.id)
+    finally:
+        gate.set()
+        await ctx.jobs.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_mentions_saved_run_survives_capacity_race_and_abort_stays_available(tmp_path, monkeypatch):
+    from agent.modules.group.admin import build_tag_runs
+    from agent.platform.jobs import JobQueue
+    from agent.platform.actions import ActionRouter
+    from agent.platform import group_tagging
+    from test_mute_target_parity import setup
+    from pyrogram.enums import ChatMemberStatus as S
+    url = os.environ.get('AGENT_TEST_DATABASE_URL')
+    if not url:
+        pytest.skip('Disposable storage required')
+    db = Database(url, scope='tagadmit:' + uuid.uuid4().hex, required=True)
+    assert await db.connect()
+    ctx, client, message = setup(tmp_path, '/tagall')
+    ctx.db, ctx.actions, ctx.jobs = db, ActionRouter(), JobQueue(max_active=1)
+    gate = asyncio.Event()
+    async def blocker(job):
+        await gate.wait()
+    original = group_tagging.start_run
+    async def create(*args, **kwargs):
+        request = await original(*args, **kwargs)
+        ctx.jobs.submit('encoder', 99, blocker)
+        return request
+    monkeypatch.setattr(group_tagging, 'start_run', create)
+    def listing(*args, **kwargs):
+        async def stream():
+            yield NS(user=NS(id=22, is_bot=False, is_deleted=False), status=S.MEMBER)
+        return stream()
+    client.get_chat_members = listing
+    client.send_message = AsyncMock()
+    try:
+        commands = build_tag_runs(ctx)
+        await commands['tagall'](client, message)
+        assert 'No mention job was admitted' in str(message.replies[-1])
+        async with db._pool.acquire() as conn:
+            row = await conn.fetchrow('SELECT id,state,cursor FROM agent_tag_runs WHERE tenant=$1', db.scope)
+        assert row['state'] == 'paused' and row['cursor'] == 0
+        query = NS(message=message, from_user=message.from_user,
+                   data=f"tagrun:{row['id']}:resume", answer=AsyncMock())
+        await ctx.actions.dispatch(client, query)
+        assert 'No mention job was admitted' in query.answer.await_args.args[0]
+        client.send_message.assert_not_awaited()
+        message.text = '/tagabort'
+        await commands['tagabort'](client, message)
+        assert 'run stopped' in str(message.replies[-1])
+        async with db._pool.acquire() as conn:
+            assert await conn.fetchval('SELECT state FROM agent_tag_runs WHERE tenant=$1', db.scope) == 'stopped'
+    finally:
+        gate.set()
+        await ctx.jobs.shutdown()
+        await db.close()

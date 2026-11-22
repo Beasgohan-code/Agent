@@ -522,6 +522,16 @@ def build_tag_runs(ctx):
 
     running={}
 
+    def capacity():
+        from ...platform.jobs import JobAdmissionError
+        jobs = getattr(ctx, 'jobs', None)
+        if jobs is None:
+            raise TagError('Mention worker unavailable. No mention job was admitted.')
+        try:
+            jobs.ensure_capacity()
+        except JobAdmissionError:
+            raise TagError('No mention job was admitted. The queue is full or shutting down. Wait for active work to finish. Any saved run remains unchanged; use /tagabort before starting again.') from None
+
     async def report(message,request,state,sent,scanned,total,detail=''):
         rows=[]
         if state=='paused':
@@ -599,8 +609,7 @@ def build_tag_runs(ctx):
                     str(error) if isinstance(error,TagError) else 'Delivery or permissions unconfirmed. No automatic retry; use /tagabort.')
             finally:
                 running.pop(key,None)
-        if getattr(ctx,'jobs',None) is None:
-            raise TagError('Mention worker unavailable. No message sent.')
+        capacity()
         running[key]=ctx.jobs.submit('group',user.id,runner,label='Group mentions')
 
     async def stop_local(group,request=None):
@@ -623,6 +632,7 @@ def build_tag_runs(ctx):
                     await stop_local(message.chat.id)
                     await reply(message,'Mention run stopped. An in-flight message may still arrive.')
                     return
+                capacity()
                 members=[]
                 seen=set()
                 raw=0
@@ -643,6 +653,7 @@ def build_tag_runs(ctx):
                 await authorized(client,message)
                 if not members:
                     raise TagError('Telegram returned no eligible members. Check my member-list access.')
+                capacity()
                 request=await start_run(getattr(ctx,'db',None),message.chat.id,actor=user.id,style='emoji' if command in ('etagall','eall') else 'plain',members=members,mention_text=mention_text)
                 await launch(client,message,request,user)
             except TagError as error:
