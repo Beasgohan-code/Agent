@@ -209,11 +209,30 @@ def build(ctx):
                 raise
             finally:
                 if destination is not None:
-                    destination.unlink(missing_ok=True)
+                    cleanup_failed = False
+                    # Cleanup is secondary to delivery/failure/cancellation. Only
+                    # touch this transfer's file and newly owned directory; never
+                    # recurse or let a filesystem error replace the runner outcome.
+                    try:
+                        destination.unlink(missing_ok=True)
+                    except OSError as error:
+                        cleanup_failed = True
+                        logger.warning("#Errors Transfer file cleanup unconfirmed (%s)", type(error).__name__)
                     try:
                         destination.parent.rmdir()
-                    except OSError:
-                        logger.warning("Could not remove transfer temporary directory")
+                    except FileNotFoundError:
+                        pass  # already absent is a confirmed clean directory
+                    except OSError as error:
+                        cleanup_failed = True
+                        logger.warning("#Errors Transfer directory cleanup unconfirmed (%s)", type(error).__name__)
+                    if cleanup_failed:
+                        job.detail = (job.detail + "; " if job.detail else "") + "Temporary cleanup unconfirmed"
+                        try:
+                            await asyncio.wait_for(reply(message,
+                                "Temporary cleanup is unconfirmed; a local temporary file or directory may remain. "
+                                "This does not change the transfer outcome. Check /jobs; do not resend just to clean up."), timeout=5)
+                        except Exception as error:
+                            logger.warning("#Errors Transfer cleanup notice unconfirmed (%s)", type(error).__name__)
 
         job = ctx.jobs.submit("leech", message.from_user.id, runner, label=label[:60])
         await reply(message,

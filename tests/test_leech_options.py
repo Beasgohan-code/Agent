@@ -211,3 +211,61 @@ def test_transfer_progress_edit_failure_is_safe_and_nonfatal(tmp_path, monkeypat
     assert secret not in caplog.text
     assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
     assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.modules.leech')
+
+
+@pytest.mark.parametrize('outcome', ['success', 'failure', 'cancel'])
+@pytest.mark.parametrize('cleanup', ['unlink', 'rmdir'])
+@pytest.mark.parametrize('notice_fails', [False, True])
+def test_transfer_cleanup_preserves_original_outcome(tmp_path, monkeypatch, caplog, outcome, cleanup, notice_fails):
+    from pathlib import Path
+    captured = []
+    error = asyncio.CancelledError('private-original') if outcome == 'cancel' else RuntimeError('private-original')
+    target = tmp_path / 'owned-transfer' / 'audio'
+    target.parent.mkdir()
+    unrelated = tmp_path / 'unrelated'
+    unrelated.write_bytes(b'keep')
+    original = getattr(Path, cleanup)
+    def refuse(path, *args, **kwargs):
+        if path == (target if cleanup == 'unlink' else target.parent):
+            raise PermissionError('private-local-path-and-token')
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, cleanup, refuse)
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        def submit(module, owner_id, runner, **kwargs):
+            captured.append(runner)
+            return SimpleNamespace(id='test-transfer')
+        monkeypatch.setattr(ctx.jobs, 'submit', submit)
+        monkeypatch.setattr(leech, 'check_target', AsyncMock())
+        monkeypatch.setattr(leech, '_destination', lambda *args: target)
+        async def download(*args, **kwargs):
+            target.write_bytes(b'payload')
+            if outcome != 'success':
+                raise error
+            return 7
+        monkeypatch.setattr(leech, 'download', download)
+        client = SimpleNamespace(send_document=AsyncMock())
+        message = FakeMessage('/leech https://example.com/audio')
+        async def response(text, **kwargs):
+            message.replies.append(text)
+            if notice_fails and 'cleanup is unconfirmed' in str(text):
+                raise RuntimeError('private-notice-token')
+        message.reply = response
+        await leech.build(ctx)[1]['leech'](client, message)
+        job = SimpleNamespace(progress=0, detail='')
+        if outcome == 'success':
+            await captured[0](job)
+            client.send_document.assert_awaited_once()
+        else:
+            with pytest.raises(type(error)) as caught:
+                await captured[0](job)
+            assert caught.value is error
+            client.send_document.assert_not_awaited()
+        assert 'cleanup unconfirmed' in job.detail.lower()
+        assert unrelated.read_bytes() == b'keep'
+        assert any('cleanup' in str(text).lower() and 'unconfirmed' in str(text).lower() for text in message.replies)
+    asyncio.run(scenario())
+    assert 'private-original' not in caplog.text and 'private-local-path-and-token' not in caplog.text
+    assert 'private-notice-token' not in caplog.text
+    assert '#Errors' in caplog.text and 'PermissionError' in caplog.text
+    assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.modules.leech')

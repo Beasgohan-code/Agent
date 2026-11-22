@@ -842,3 +842,25 @@ seconds; full working tree: **2,725 passed** in 30.94 seconds. Full suites used
 disposable real storage, no skips. Changed-file static and whitespace checks
 passed. New Telegram/native failures are mocked, not live transport/visual proof.
 No production calls, deployment or PR merge. Appearance remains removed.
+
+### Transfer cleanup preserves the original outcome
+
+Temporary-file unlink failures no longer replace a transfer's original failure or
+cancellation, or turn a completed upload into a failed job. File and empty-directory
+cleanup are attempted independently; an already missing directory is acceptable.
+Only the transfer's owned path and its directory are touched, with no recursive
+removal. Cleanup failures append a stable “Temporary cleanup unconfirmed” job
+detail and trigger a bounded best-effort notice without leaking paths/provider
+errors. Notice failure does not replace the original outcome. No automatic
+resend, cleanup retry service or durable cleanup recovery is claimed; a failed
+cleanup may leave temporary data for operator attention.
+
+Six cases failed before implementation. Final twelve cases cover unlink/rmdir
+failure across successful delivery, failure and cancellation, with delivered or
+failed cleanup notices; original exception identity and unrelated files are
+preserved. Focused transfer suites: **36 passed**. Exact selective patch:
+**2,655 passed** in 36.05 seconds; full working tree: **2,737 passed** in 31.81
+seconds, both with disposable real storage and no skips. Static and whitespace
+checks passed. Filesystem/Telegram failures are injected fixtures, not live
+provider proof. Unrelated work remains unstaged; no production calls, deployment
+or PR merge. Appearance remains removed.
