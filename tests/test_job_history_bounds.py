@@ -1,6 +1,8 @@
 """Completion-time history pruning must not evict active work."""
 import asyncio
 
+import pytest
+
 from agent.platform.jobs import JobQueue, JobState
 
 
@@ -99,3 +101,46 @@ def test_admission_budget_requires_positive_integer():
     for invalid in (0, -1, True, 1.5, '2', None):
         with pytest.raises(ValueError, match='positive integer'):
             JobQueue(max_active=invalid)
+
+
+@pytest.mark.parametrize("mode", ["cancel", "shutdown"])
+def test_cancelled_job_cannot_start_after_eligibility_suppresses_cancellation(mode):
+    from unittest.mock import AsyncMock
+    from agent.platform.execution import GROUP_EXECUTION
+    async def scenario():
+        queue = JobQueue()
+        checking, finish_check, cancellation_seen = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        async def eligibility(group, module):
+            checking.set()
+            while not finish_check.is_set():
+                try:
+                    await finish_check.wait()
+                except asyncio.CancelledError:
+                    # A provider wrapper can absorb cancellation while finishing
+                    # its read. Logical cancellation/shutdown must still win.
+                    cancellation_seen.set()
+            return True
+        queue.eligibility_check = eligibility
+        runner = AsyncMock(return_value='should not run')
+        token = GROUP_EXECUTION.set((-100, 'group'))
+        try:
+            job = queue.submit('group', 11, runner)
+        finally:
+            GROUP_EXECUTION.reset(token)
+        await checking.wait()
+        shutdown = None
+        if mode == 'cancel':
+            assert queue.cancel(job.id, owner_id=11)
+        else:
+            shutdown = asyncio.create_task(queue.shutdown())
+        await cancellation_seen.wait()
+        finish_check.set()
+        await job.task
+        runner.assert_not_awaited()
+        assert job.state is JobState.CANCELLED
+        assert job.started_at is None and job.result is None
+        assert job.finished_at is not None
+        if shutdown is not None:
+            await shutdown
+        await queue.shutdown()
+    asyncio.run(scenario())

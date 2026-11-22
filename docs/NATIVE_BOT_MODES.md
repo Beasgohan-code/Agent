@@ -970,3 +970,21 @@ Exact selective patch: **2,690 passed** in 35.57 seconds; full working tree:
 no skips. Static/whitespace checks passed. Telegram roster/sends are mocked; no
 live Telegram/provider calls, production changes, deployment or PR merge.
 Appearance remains removed; unrelated working-tree changes remain unstaged.
+
+### Cancellation fence after queued eligibility checks
+
+JobQueue now rechecks logical cancellation and shutdown after the awaited group
+eligibility read and immediately before invoking the runner. A provider wrapper
+which absorbs CancelledError can no longer cause cancelled work to start after
+that read returns. Cancelled state/finished timestamp remain intact; started_at
+and result stay unset. This is a local pre-run fence, not a transactional link
+between permission reads and later Telegram effects or forced interruption of
+already-running work.
+
+Initial cancellation regression failed because the runner was awaited once.
+Final cancellation and shutdown cases both assert no runner invocation after a
+cancellation-suppressing eligibility check. Focused job-history suite: **7 passed**.
+Exact selective patch: **2,692 passed** in 38.33 seconds; full working tree:
+**2,774 passed** in 30.56 seconds, disposable real storage enabled, no skips.
+Static/whitespace checks passed. No live provider/production calls, deployment
+or PR merge; appearance remains removed and unrelated changes remain unstaged.

@@ -140,6 +140,13 @@ class JobQueue:
                     job.state = JobState.CANCELLED
                     job.finished_at = time.time()
                     return
+            # Eligibility is awaited: cancellation/shutdown may have happened
+            # while the provider was reading, even if it swallowed CancelledError.
+            # No await between this final fence and invoking the runner.
+            if job.state is JobState.CANCELLED or self._closed:
+                job.state = JobState.CANCELLED
+                job.finished_at = job.finished_at or time.time()
+                return
             job.state = JobState.RUNNING
             job.started_at = time.time()
             try:
