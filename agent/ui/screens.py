@@ -313,7 +313,15 @@ def help_visible(commands, active: set[str] | None) -> list[str]:
     ]
 
 
-def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen:
+HELP_CATEGORY_PAGE_SIZE = 8
+
+
+def _help_categories(active):
+    return [(icon, title, commands) for icon, title, commands in HELP_SECTIONS
+            if help_visible(commands, active)]
+
+
+def help_screen(user, theme: Theme, *, active: set[str] | None = None, page: int = 0) -> Screen:
     """The command reference: one table, one button per section.
 
     *active* is the set of commands the registry actually registered. A plugin
@@ -327,8 +335,11 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
     if theme.worker_plugins is not None:
         from .workers import overview
         return overview(user, theme, active=active, help_mode=True)
+    categories = _help_categories(active)
+    pages = max(1, (len(categories) + HELP_CATEGORY_PAGE_SIZE - 1) // HELP_CATEGORY_PAGE_SIZE)
+    page = min(max(0, page), pages - 1)
     rows: list[tuple[str, str]] = []
-    for icon, title, commands in HELP_SECTIONS:
+    for icon, title, commands in categories[page * HELP_CATEGORY_PAGE_SIZE:(page + 1) * HELP_CATEGORY_PAGE_SIZE]:
         visible = help_visible(commands, active)
         if not visible:
             continue
@@ -352,25 +363,33 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            "Tap a category below · <code>/help play</code> finds a command directly."
+            f"Page {page + 1} of {pages} · {len(categories)} categories · Tap a category below or use <code>/help command</code>."
         )
     )
-    return Screen("\n".join(blocks), _help_keyboard(active, theme=theme))
+    return Screen("\n".join(blocks), _help_keyboard(active, theme=theme, page=page))
 
 
-def _help_keyboard(active: set[str] | None, *, theme=None) -> InlineKeyboardMarkup:
+def _help_keyboard(active: set[str] | None, *, theme=None, page=0) -> InlineKeyboardMarkup:
     theme = theme or Theme()
     rows: list[list[Button]] = []
     row: list[Button] = []
-    for icon, title, commands in HELP_SECTIONS:
-        if not help_visible(commands, active):
-            continue
+    categories = _help_categories(active)
+    pages = max(1, (len(categories) + HELP_CATEGORY_PAGE_SIZE - 1) // HELP_CATEGORY_PAGE_SIZE)
+    page = min(max(0, page), pages - 1)
+    for icon, title, commands in categories[page * HELP_CATEGORY_PAGE_SIZE:(page + 1) * HELP_CATEGORY_PAGE_SIZE]:
         row.append(theme.button(title, icon=icon, callback_data=f"help:{section_slug(title)}"))
         if len(row) == 2:
             rows.append(row)
             row = []
     if row:
         rows.append(row)
+    paging = []
+    if page:
+        paging.append(theme.button('Previous categories', icon='back', callback_data=f'help:categories:{page - 1}'))
+    if page + 1 < pages:
+        paging.append(theme.button('Next categories', icon='arrow', callback_data=f'help:categories:{page + 1}', style=ButtonStyle.PRIMARY))
+    if paging:
+        rows.append(paging)
     rows.append([theme.button("Back to menu", icon="back", callback_data=keyboards.CB_HOME)])
     return InlineKeyboardMarkup(rows)
 
@@ -438,10 +457,10 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
             f"Page {page + 1} of {pages} · Tap a command below for details · All commands accept / ! . # $ % &amp; ? · Choose another category or return to your workspace."
         )
     )
-    return Screen("\n".join(blocks), _section_keyboard(title, page, pages, theme=theme, commands=selected))
+    return Screen("\n".join(blocks), _section_keyboard(title, page, pages, theme=theme, commands=selected, active=active))
 
 
-def _section_keyboard(title=None, page=0, pages=1, *, theme=None, commands=()) -> InlineKeyboardMarkup:
+def _section_keyboard(title=None, page=0, pages=1, *, theme=None, commands=(), active=None) -> InlineKeyboardMarkup:
     theme = theme or Theme()
     navigation = []
     for offset in range(0, len(commands), 2):
@@ -455,6 +474,11 @@ def _section_keyboard(title=None, page=0, pages=1, *, theme=None, commands=()) -
         if page + 1 < pages:
             buttons.append(theme.button("Next", icon="arrow", callback_data=f"help:{slug}:{page + 1}", style=ButtonStyle.PRIMARY))
         navigation.append(buttons)
+    categories = [category for _, category, _ in _help_categories(active)]
+    if title in categories:
+        overview_page = categories.index(title) // HELP_CATEGORY_PAGE_SIZE
+        if overview_page:
+            navigation.append([theme.button('Back to categories', icon='back', callback_data=f'help:categories:{overview_page}')])
     return InlineKeyboardMarkup(
         navigation + [
             [
@@ -643,6 +667,16 @@ for _icon, _title, _commands in HELP_SECTIONS:
     SCREENS[f"help:{section_slug(_title)}"] = _section_builder(_title)
     for _page in range(max(1, (len(_commands) + HELP_PAGE_SIZE - 1) // HELP_PAGE_SIZE)):
         SCREENS[f"help:{section_slug(_title)}:{_page}"] = _section_builder(_title, _page)
+
+
+def _category_builder(page):
+    def build(user, theme, *, active=None):
+        return help_screen(user, theme, active=active, page=page)
+    return build
+
+
+for _page in range(max(1, (len(HELP_SECTIONS) + HELP_CATEGORY_PAGE_SIZE - 1) // HELP_CATEGORY_PAGE_SIZE)):
+    SCREENS[f'help:categories:{_page}'] = _category_builder(_page)
 
 
 def _command_help_builder(command):

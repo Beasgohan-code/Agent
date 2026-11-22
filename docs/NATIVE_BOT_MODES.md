@@ -736,3 +736,28 @@ seconds, no skips, both with disposable real database storage. Offline preview
 includes Mentions and Approvals. Static and staged whitespace checks passed;
 unrelated music catalogue changes remain unstaged. No live Telegram, deployment,
 production changes or PR merge.
+
+## Mobile Help polish: bounded category overview and contextual return
+
+As feature guides expanded, the controller overview became a long keyboard.
+It now shows at most eight visible categories per page, in two-column button
+rows with matching native-table rows, total category count and page number.
+Previous/Next category controls use finite read-only screen routes. Each screen
+rebuilds the filtered category list from current registration, so stale page
+links clamp safely when the catalogue shrinks. Existing direct section/command
+links and legacy All sections controls remain valid.
+
+Later feature sections provide a contextual Back to categories control for their
+current live overview page, reducing unnecessary taps through earlier pages.
+Worker Help still uses its separate overview and controller-only page routes
+remain blocked by the existing worker callback guard. No command execution,
+authorization changes, live availability claims or provider calls are added.
+
+Three regressions failed before implementation. They now cover every category
+page's table/button agreement and callback bounds, stale-page clamping and
+contextual return. Focused UI suites: **71 passed**. Final exact selective patch:
+**2,634 passed** in 30.28 seconds; full working tree: **2,716 passed** in 28.38
+seconds, no skips, both with disposable real database storage. The offline
+preview was regenerated; it is not a Telegram screenshot. Static and staged
+whitespace checks passed; unrelated music catalogue work remains unstaged.
+No live Telegram, deployment, production changes or PR merge.

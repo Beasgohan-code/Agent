@@ -106,3 +106,36 @@ def test_ephemeral_replacement_keeps_recipient_and_rejects_foreign_press():
         sender.edit.assert_not_awaited()
         sender.send.assert_not_awaited()
     asyncio.run(scenario())
+
+
+def test_help_overview_is_paged_with_matching_tables_and_buttons():
+    from agent.ui.screens import HELP_CATEGORY_PAGE_SIZE, help_screen, help_visible, section_slug
+    from agent.utils.sender import to_safe_html, _visible_text
+    visible = [(icon, title, commands) for icon, title, commands in HELP_SECTIONS if help_visible(commands, None)]
+    seen = []
+    for page in range((len(visible) + HELP_CATEGORY_PAGE_SIZE - 1) // HELP_CATEGORY_PAGE_SIZE):
+        screen = help_screen(None, Theme(), page=page)
+        titles = [title for _, title, _ in visible[page * HELP_CATEGORY_PAGE_SIZE:(page + 1) * HELP_CATEGORY_PAGE_SIZE]]
+        routes = [button.callback_data for row in screen.keyboard.inline_keyboard for button in row]
+        for title in titles:
+            assert 'help:' + section_slug(title) in routes
+        seen.extend(titles)
+        assert len(titles) <= HELP_CATEGORY_PAGE_SIZE
+        assert all(route in SCREENS for route in routes)
+        assert all(len(row) <= 2 for row in screen.keyboard.inline_keyboard)
+        assert len(_visible_text(to_safe_html(screen.rich_text))) < 4000
+    assert seen == [title for _, title, _ in visible]
+
+
+def test_stale_category_page_clamps_after_registry_changes():
+    from agent.ui.screens import help_screen
+    screen = help_screen(None, Theme(), active={'help'}, page=999)
+    assert 'Page 1 of 1' in screen.rich_text
+    assert 'Essentials' in screen.rich_text
+    assert 'help:categories:1' not in str(screen.keyboard)
+
+
+def test_later_feature_can_return_to_its_overview_page():
+    screen = help_section_screen('Approvals', None, Theme())
+    routes = [button.callback_data for row in screen.keyboard.inline_keyboard for button in row]
+    assert any(route.startswith('help:categories:') for route in routes)

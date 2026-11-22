@@ -58,7 +58,7 @@ Section  Commands
 
 ─────
 
-Tap a category below · /help play finds a command directly.
+Page 1 of 1 · 4 categories · Tap a category below or use /help command.
 ```
 
 Buttons (row order):
