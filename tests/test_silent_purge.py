@@ -90,3 +90,55 @@ async def test_spurge_command_cleanup_failure_not_reported_as_range_failure(tmp_
     assert 'command cleanup unconfirmed' in str(message.replies[-1])
     assert 'SECRET' not in str(message.replies[-1])
     assert ctx.chats.history(message.chat.id)[0]['action']=='spurge'
+
+
+@pytest.mark.asyncio
+async def test_spurge_rechecks_authority_before_deleting_command(tmp_path, monkeypatch):
+    ctx, client, message = setup(tmp_path)
+    authority = AsyncMock(side_effect=[True, True, False])
+    monkeypatch.setattr(moderation, 'is_moderator', authority)
+    await moderation.build(ctx)[1]['spurge'](client, message)
+    client.delete_messages.assert_awaited_once_with(message.chat.id, [99, 98, 97])
+    assert 'command retained' in str(message.replies).lower()
+    assert 'permission' in str(message.replies).lower()
+    assert ctx.chats.history(message.chat.id)[0]['action'] == 'spurge'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', [RuntimeError, TimeoutError, 'cancel'])
+async def test_spurge_audit_notice_failure_never_resends_or_deletes_command(tmp_path, failure, caplog):
+    import asyncio
+    from unittest.mock import Mock
+    ctx, client, message = setup(tmp_path)
+    ctx.chats.log = Mock(side_effect=RuntimeError('SECRET_AUDIT_TEXT'))
+    error = asyncio.CancelledError() if failure == 'cancel' else failure('SECRET_NOTICE_TEXT')
+    message.reply = AsyncMock(side_effect=error)
+    if failure == 'cancel':
+        with pytest.raises(asyncio.CancelledError):
+            await moderation.build(ctx)[1]['spurge'](client, message)
+    else:
+        await moderation.build(ctx)[1]['spurge'](client, message)
+    client.delete_messages.assert_awaited_once_with(message.chat.id, [99, 98, 97])
+    message.reply.assert_awaited_once()
+    assert 'Local audit unconfirmed; command retained' in str(message.reply.await_args.args[0])
+    assert 'SECRET_AUDIT_TEXT' not in caplog.text and 'SECRET_NOTICE_TEXT' not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_spurge_oversized_actor_is_rejected_before_any_lookups(tmp_path):
+    ctx, client, message = setup(tmp_path)
+    message.from_user.id = 2**63
+    await moderation.build(ctx)[1]['spurge'](client, message)
+    client.get_chat_member.assert_not_awaited()
+    client.delete_messages.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_spurge_lost_bot_rights_retains_command_after_acknowledged_range(tmp_path, monkeypatch):
+    ctx, client, message = setup(tmp_path)
+    monkeypatch.setattr(moderation, 'is_moderator', AsyncMock(return_value=True))
+    client.get_chat_member = AsyncMock(side_effect=[fixtures.member(fixtures.ADMIN), fixtures.member(fixtures.MEMBER)])
+    await moderation.build(ctx)[1]['spurge'](client, message)
+    client.delete_messages.assert_awaited_once_with(message.chat.id, [99, 98, 97])
+    assert 'bot Delete messages permission changed' in str(message.replies)
+    assert 'Command retained' in str(message.replies)

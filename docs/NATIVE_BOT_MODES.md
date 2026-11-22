@@ -549,3 +549,25 @@ Final exact selective patch: **2,592 passed** in 30.04 seconds; full working tre
 storage. New deletion tests use controlled doubles, not live Telegram. Changed-
 file static and staged whitespace checks passed. No deployment, merge or
 production changes.
+
+## Silent purge cleanup authority and notification separation
+
+`/spurge` now validates the actor's signed-64-bit personal identity and rechecks
+caller and bot Delete messages authority after the range acknowledgement/audit
+and before deleting the command. Lost rights retain the command and disclose
+that cleanup was not requested. Failures during those reads are distinguished
+from uncertain command deletion requests. These live checks do not provide an
+atomic permission guarantee across Telegram calls.
+
+Notification failures are contained with type-only diagnostics rather than
+entering another responder. In particular, failed delivery of the secondary
+audit warning does not produce a misleading command-cleanup warning or second
+reply; no range or command deletion is retried. Cancellation still propagates.
+
+Six added regression cases cover caller/bot rights loss, oversized actor, and
+audit-notice error/timeout/cancellation. Four initial cases failed before
+implementation. Focused tests: **23 passed**. Exact selective patch: **2,598
+passed** in 28.73 seconds; full working tree: **2,680 passed** in 29.83 seconds,
+no skips, both with disposable real database storage. New Telegram/notification
+cases use controlled doubles, not live Telegram. Changed-file static and staged
+whitespace checks passed. No deployment, merge or production changes.
