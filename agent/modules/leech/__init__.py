@@ -182,7 +182,8 @@ def build(ctx):
                         )
                     )
                     return
-                await client.send_document(
+                job.detail = "Downloaded; Telegram delivery unconfirmed"
+                sent = await client.send_document(
                     message.chat.id,
                     str(destination),
                     file_name=destination.name,
@@ -194,16 +195,25 @@ def build(ctx):
                         apply_rules=False,
                     ),
                 )
+                if type(getattr(sent, 'id', None)) is not int or sent.id <= 0:
+                    raise RuntimeError("Delivery acknowledgement unavailable")
+                job.detail = "Telegram delivery acknowledged"
 
             except asyncio.CancelledError:
                 try:
-                    await reply(message, "Transfer cancelled. Temporary files are being removed.")
+                    text = "Transfer cancelled. Temporary files are being removed."
+                    if 'delivery unconfirmed' in job.detail.lower():
+                        text += " Delivery may already have happened. Check this chat before retrying; no automatic resend was attempted."
+                    await reply(message, text)
                 except Exception:
                     logger.warning("Transfer cancellation notice could not be delivered")
                 raise
             except Exception:
                 try:
-                    await reply(message, "Transfer failed. The download, storage or Telegram delivery could not be confirmed. Temporary files are being removed. Check /jobs before retrying.")
+                    if 'delivery unconfirmed' in job.detail.lower():
+                        await reply(message, "Telegram delivery was not confirmed. Check this chat before retrying; no automatic resend was attempted. Temporary files are being removed. Check /jobs.")
+                    else:
+                        await reply(message, "Transfer failed. The download, storage or Telegram delivery could not be confirmed. Temporary files are being removed. Check /jobs before retrying.")
                 except Exception:
                     logger.warning("Transfer failure notice could not be delivered")
                 raise

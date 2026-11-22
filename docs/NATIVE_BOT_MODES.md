@@ -864,3 +864,24 @@ seconds, both with disposable real storage and no skips. Static and whitespace
 checks passed. Filesystem/Telegram failures are injected fixtures, not live
 provider proof. Unrelated work remains unstaged; no production calls, deployment
 or PR merge. Appearance remains removed.
+
+### Leech upload acknowledgement and ambiguous delivery
+
+Leech now requires a positive, non-boolean integer message ID from Telegram's
+upload result before marking delivery acknowledged. Missing/false/malformed
+results fail the job instead of reporting success. Job details distinguish
+unconfirmed upload from acknowledged delivery. Upload errors and cancellation
+keep delivery unconfirmed, advise checking the chat before retrying, and never
+automatically resend. Temporary cleanup and its independent warning remain intact.
+An acknowledgement is not proof the recipient downloaded/read the file; ambiguous
+uploads may already have posted. Mirror storage semantics are unchanged.
+
+Six acknowledgement cases failed before the fix. Nine new cases cover malformed
+and valid results, provider errors and upload cancellation, with one upload
+attempt, cleanup and secret-safe user feedback. Older successful-upload fixtures
+now return explicit message acknowledgements instead of empty mocks. Focused
+transfer suites: **45 passed**. Exact selective patch: **2,664 passed** in 29.55
+seconds; full working tree: **2,746 passed** in 29.05 seconds. Both full runs used
+disposable real storage with no skips. Static and whitespace checks passed.
+Telegram uploads remain mocked; no live provider calls, production changes,
+deployment or PR merge. Unrelated work preserved; appearance remains removed.

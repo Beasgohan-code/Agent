@@ -50,7 +50,7 @@ def test_youtube_audio_reaches_existing_job_delivery_and_cleanup(tmp_path, monke
             assert url.startswith('https://rr1.googlevideo.com/')
             target.write_bytes(b'audio'); paths.append(target); return 5
         monkeypatch.setattr(leech, 'download', download)
-        client = NS(send_document=AsyncMock(), edit_message_text=AsyncMock())
+        client = NS(send_document=AsyncMock(return_value=NS(id=123)), edit_message_text=AsyncMock())
         msg = FakeMessage('/leech https://youtu.be/dQw4w9WgXcQ')
         await leech.build(ctx)[1]['leech'](client, msg)
         job = ctx.jobs.for_owner(OWNER)[0]

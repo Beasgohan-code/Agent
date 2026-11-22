@@ -74,7 +74,7 @@ def test_named_transfer_and_media_rules_keep_final_copy_only(
         monkeypatch.setattr(leech, "check_target", AsyncMock())
         monkeypatch.setattr(leech, "download", download)
         client = SimpleNamespace(
-            send_document=AsyncMock(), edit_message_text=AsyncMock()
+            send_document=AsyncMock(return_value=SimpleNamespace(id=123)), edit_message_text=AsyncMock()
         )
         await leech.build(ctx)[1][kind](
             client, FakeMessage(f"/{kind} https://example.com/a -n Old.mkv")
@@ -146,7 +146,7 @@ def test_replied_url_reaches_real_transfer_submission(tmp_path, monkeypatch):
 
         monkeypatch.setattr(leech, "download", download)
         client = SimpleNamespace(
-            send_document=AsyncMock(), edit_message_text=AsyncMock()
+            send_document=AsyncMock(return_value=SimpleNamespace(id=123)), edit_message_text=AsyncMock()
         )
         request = FakeMessage('/leech -n "Movie.mkv"')
         request.reply_to_message = SimpleNamespace(text=source)
@@ -199,7 +199,7 @@ def test_transfer_progress_edit_failure_is_safe_and_nonfatal(tmp_path, monkeypat
             destination.write_bytes(b'payload')
             return 7
         monkeypatch.setattr(leech, 'download', download)
-        client = SimpleNamespace(edit_message_text=AsyncMock(side_effect=RuntimeError(secret)), send_document=AsyncMock())
+        client = SimpleNamespace(edit_message_text=AsyncMock(side_effect=RuntimeError(secret)), send_document=AsyncMock(return_value=SimpleNamespace(id=123)))
         await leech.build(ctx)[1]['leech'](client, request)
         job = ctx.jobs.for_owner(OWNER)[0]
         await job.task
@@ -244,7 +244,7 @@ def test_transfer_cleanup_preserves_original_outcome(tmp_path, monkeypatch, capl
                 raise error
             return 7
         monkeypatch.setattr(leech, 'download', download)
-        client = SimpleNamespace(send_document=AsyncMock())
+        client = SimpleNamespace(send_document=AsyncMock(return_value=SimpleNamespace(id=123)))
         message = FakeMessage('/leech https://example.com/audio')
         async def response(text, **kwargs):
             message.replies.append(text)
@@ -269,3 +269,61 @@ def test_transfer_cleanup_preserves_original_outcome(tmp_path, monkeypatch, capl
     assert 'private-notice-token' not in caplog.text
     assert '#Errors' in caplog.text and 'PermissionError' in caplog.text
     assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.modules.leech')
+
+
+@pytest.mark.parametrize('ack,confirmed', [
+    (None, False), (False, False), (True, False),
+    (SimpleNamespace(id=0), False), (SimpleNamespace(id=True), False),
+    (SimpleNamespace(id='123'), False), (SimpleNamespace(id=123), True),
+])
+def test_leech_requires_uploaded_message_acknowledgement(tmp_path, monkeypatch, ack, confirmed):
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        target = tmp_path / 'transfer' / 'audio'
+        target.parent.mkdir()
+        monkeypatch.setattr(leech, 'check_target', AsyncMock())
+        monkeypatch.setattr(leech, '_destination', lambda *args: target)
+        async def download(*args, **kwargs):
+            target.write_bytes(b'payload')
+            return 7
+        monkeypatch.setattr(leech, 'download', download)
+        client = SimpleNamespace(send_document=AsyncMock(return_value=ack))
+        message = FakeMessage('/leech https://example.com/audio')
+        await leech.build(ctx)[1]['leech'](client, message)
+        job = ctx.jobs.for_owner(OWNER)[0]
+        await job.task
+        assert job.state.value == ('done' if confirmed else 'failed')
+        client.send_document.assert_awaited_once()
+        assert not target.exists() and not target.parent.exists()
+        if not confirmed:
+            assert 'delivery unconfirmed' in job.detail.lower()
+            assert any('Check this chat' in str(t) and 'no automatic resend' in str(t) for t in message.replies)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('error', [RuntimeError('private-upload-token'), asyncio.CancelledError('private-upload-token')])
+def test_interrupted_upload_remains_unconfirmed_without_resend(tmp_path, monkeypatch, caplog, error):
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        target = tmp_path / 'transfer' / 'audio'
+        target.parent.mkdir()
+        monkeypatch.setattr(leech, 'check_target', AsyncMock())
+        monkeypatch.setattr(leech, '_destination', lambda *args: target)
+        async def download(*args, **kwargs):
+            target.write_bytes(b'payload')
+            return 7
+        monkeypatch.setattr(leech, 'download', download)
+        client = SimpleNamespace(send_document=AsyncMock(side_effect=error))
+        message = FakeMessage('/leech https://example.com/audio')
+        await leech.build(ctx)[1]['leech'](client, message)
+        job = ctx.jobs.for_owner(OWNER)[0]
+        await asyncio.gather(job.task, return_exceptions=True)
+        assert job.state.value == ('cancelled' if isinstance(error, asyncio.CancelledError) else 'failed')
+        assert 'delivery unconfirmed' in job.detail.lower()
+        client.send_document.assert_awaited_once()
+        assert not target.exists() and not target.parent.exists()
+        text = '\n'.join(str(t) for t in message.replies)
+        assert 'Check this chat' in text and 'no automatic resend' in text
+        assert 'private-upload-token' not in text
+    asyncio.run(scenario())
+    assert 'private-upload-token' not in caplog.text
