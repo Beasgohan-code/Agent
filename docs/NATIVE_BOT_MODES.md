@@ -598,3 +598,32 @@ verifies redelivery preserves it. Exact selective patch: **2,603 passed** in
 both with disposable real database storage. Telegram calls use controlled
 doubles, not live verification. Changed-file static and staged whitespace checks
 passed. No deployment, merge or production changes.
+
+## Help UI: direct command discovery and contextual return navigation
+
+Controller Help categories now expose up to eight direct command-detail buttons
+in two-column rows, alongside existing pagination and menu navigation. Search
+matches open exact command details instead of requiring another category search.
+Detail screens return to the command's current page computed from the live
+registered catalogue, not a fixed first page. Finite read-only callback routes
+never dispatch command actions; worker navigation remains separate and rejects
+controller category/detail routes through the existing worker guard.
+
+Detail tables distinguish registration from activation/permission checks and no
+longer guess that an unregistered plugin was switched off. Unknown registries are
+labelled not checked. Viewing Help does not execute a command or grant access.
+Description/section cells are escaped once, preserving readable ampersands and
+safe markup. Native rich tables, themed buttons, controller contact links and
+worker branding remain in place. The existing reproducible offline UI preview
+now includes a category page and reflects the updated navigation; it is not a
+Telegram screenshot or a live delivery claim.
+
+Six added regressions cover direct detail routes, live-page return, unavailable
+wording, search navigation, all category/page callback routes and one-pass HTML
+escaping. Four initial tests failed before implementation; older expectations
+were updated for intentional navigation changes. First full runs identified the
+outdated generated preview; it was regenerated and both suites rerun. Final
+exact selective patch: **2,609 passed** in 27.42 seconds; full working tree:
+**2,691 passed** in 28.70 seconds, no skips, both with disposable real database
+storage. Static/whitespace checks passed. Unrelated music catalogue changes were
+excluded from staging. No live Telegram, deployment, merge or production changes.

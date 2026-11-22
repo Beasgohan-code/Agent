@@ -47,7 +47,7 @@ Buttons (row order):
 ✨ Help
 
 What would you like to do?
-Choose a category to explore its tools and how to use them.
+Choose a category, then tap a command for its details.
 All commands accept / ! . # $ % & ? — for example, !help, .play, ?settings. Permissions and plugin availability still apply.
 
 Section  Commands
@@ -66,6 +66,30 @@ Buttons (row order):
 - 📦 Vault & downloads · 🤖 Operations (owner)
 - ⬅️ Back to menu
 
+## /help essentials
+
+```text
+⚡ Essentials
+
+Your everyday shortcuts. Start here, check your status or get help.
+
+Command  What it does
+/start  Open the main menu
+/help  Every command, one screen per section
+/ping  Health and latency of this instance
+/gu  Live card demo; /gu fail previews failure (group admin)
+
+─────
+
+Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ % & ? · Choose another category or return to your workspace.
+```
+
+Buttons (row order):
+- 💡 /start · 💡 /help
+- 💡 /ping · 💡 /gu
+- 📁 All sections
+- ⬅️ Back to menu
+
 ## /help autochat
 
 ```text
@@ -74,23 +98,23 @@ Buttons (row order):
 Command  /autochat
 What it does  Opt-in private chat and group mention/reply AI mode
 Section  AI Agent
-Available here  yes
+Registered here  yes — permissions and activation still apply
 
 Tap AI Agent for the rest of its commands.
 
 ─────
-💡 /help lists every section.
+💡 Viewing help does not run a command or grant permissions. /help lists every section.
 ```
 
 Buttons (row order):
-- 📁 AI Agent
+- ⬅️ Back to AI Agent
 - 📁 All sections · 🏡 Menu
 
 ## Runtime behavior
 
 - The Telegram menu is capped at 100 commands. Overflow prioritizes cross-feature entry points; Help retains the active catalogue. Registration does not prove group approval or health.
 
-- `/start`, `/help`, and `/ping` are private-only. Group plugin controls retain Owner approval, admin activation and the three-optional-plugin limit; moderation is slot-free.
+- Menu delivery follows the command scope and supported recipient-only group navigation; this offline render does not verify Telegram delivery. Group plugin controls retain Owner approval, admin activation and the three-optional-plugin limit; moderation is slot-free.
 
 - AI requires a configured key and model. `/ask` sends an explicit question. `/autochat on|off|status` controls default-off private text replies or group mention/reply triggers. Group configuration requires an administrator. Only the triggering text is sent to the external provider, without chat history; charges may apply.
 

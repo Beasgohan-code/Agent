@@ -257,7 +257,7 @@ def help_screen(user, theme: Theme, *, active: set[str] | None = None) -> Screen
         rich_heading(f"{theme.emoji('sparkles')} Help", 2),
         rich_note(
             "<b>What would you like to do?</b>\n"
-            "Choose a category to explore its tools and how to use them.\n"
+            "Choose a category, then tap a command for its details.\n"
             "<b>All commands accept / ! . # $ % &amp; ?</b> — for example, "
             "<code>!help</code>, <code>.play</code>, <code>?settings</code>. "
             "Permissions and plugin availability still apply."
@@ -333,7 +333,7 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
         table = Table(
             headers=("Command", "What it does"),
             rows=tuple(
-                (markup(f"<code>/{rich_esc(name)}</code>"), rich_esc(DESCRIPTIONS[name]))
+                (markup(f"<code>/{rich_esc(name)}</code>"), DESCRIPTIONS[name])
                 for name in selected
             ),
             aligns=("left", "left"),
@@ -346,15 +346,18 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
     blocks.append(rich_hr())
     blocks.append(
         rich_footer(
-            f"Page {page + 1} of {pages} · All commands accept / ! . # $ % &amp; ? · Choose another category or return to your workspace."
+            f"Page {page + 1} of {pages} · Tap a command below for details · All commands accept / ! . # $ % &amp; ? · Choose another category or return to your workspace."
         )
     )
-    return Screen("\n".join(blocks), _section_keyboard(title, page, pages, theme=theme))
+    return Screen("\n".join(blocks), _section_keyboard(title, page, pages, theme=theme, commands=selected))
 
 
-def _section_keyboard(title=None, page=0, pages=1, *, theme=None) -> InlineKeyboardMarkup:
+def _section_keyboard(title=None, page=0, pages=1, *, theme=None, commands=()) -> InlineKeyboardMarkup:
     theme = theme or Theme()
     navigation = []
+    for offset in range(0, len(commands), 2):
+        navigation.append([theme.button('/' + name, icon='help', callback_data=f'help:command:{name}')
+                           for name in commands[offset:offset + 2]])
     if title and pages > 1:
         buttons = []
         slug = section_slug(title)
@@ -465,9 +468,8 @@ def help_lookup_screen(
                     (markup(f"<code>/{name}</code>"), DESCRIPTIONS[name]) for name in matches
                 )).block()
             )
-            titles = list(dict.fromkeys(_section_of(name) for name in matches))
-            buttons = [[theme.button(title, icon="folder", callback_data=f"help:{section_slug(title)}")]
-                       for title in titles if title]
+            buttons = [[theme.button('/' + name, icon='help', callback_data=f'help:command:{name}')
+                        for name in matches[offset:offset + 2]] for offset in range(0, len(matches), 2)]
             buttons.append([theme.button("All categories", icon="folder", callback_data=f"help:{ALL_SECTIONS}"),
                             theme.button("Menu", icon="home", callback_data=keyboards.CB_HOME)])
             return Screen(body, InlineKeyboardMarkup(buttons))
@@ -494,11 +496,12 @@ def help_lookup_screen(
     section = _section_of(query)
     rows = [
         ("Command", markup(f"<code>/{rich_esc(query)}</code>")),
-        ("What it does", rich_esc(DESCRIPTIONS[query])),
-        ("Section", rich_esc(section or "unfiled")),
+        ("What it does", DESCRIPTIONS[query]),
+        ("Section", section or "unfiled"),
         (
-            "Available here",
-            "yes" if available else "no — the plugin is switched off",
+            "Registered here",
+            ("yes — permissions and activation still apply" if active is not None else "not checked — permissions and activation still apply")
+            if available else "no — command not registered in this instance",
         ),
     ]
     body = (
@@ -514,12 +517,16 @@ def help_lookup_screen(
         + "\n"
         + rich_hr()
         + rich_footer(
-            f"{theme.emoji('help')} <code>/help</code> lists every section."
+            f"{theme.emoji('help')} Viewing help does not run a command or grant permissions. <code>/help</code> lists every section."
         )
     )
     rows: list[list[Button]] = []
     if section and available:
-        rows.append([theme.button(section, icon="folder", callback_data=f"help:{section_slug(section)}")])
+        from ..platform.menu import DESCRIPTIONS
+        section_commands = next(commands for _, title, commands in HELP_SECTIONS if title == section)
+        visible = [name for name in help_visible(section_commands, active) if name in DESCRIPTIONS]
+        page = visible.index(query) // HELP_PAGE_SIZE if query in visible else 0
+        rows.append([theme.button('Back to ' + section, icon="back", callback_data=f"help:{section_slug(section)}:{page}")])
     rows.append(
         [
             theme.button("All sections", icon="folder", callback_data=f"help:{ALL_SECTIONS}"),
@@ -542,6 +549,18 @@ for _icon, _title, _commands in HELP_SECTIONS:
     SCREENS[f"help:{section_slug(_title)}"] = _section_builder(_title)
     for _page in range(max(1, (len(_commands) + HELP_PAGE_SIZE - 1) // HELP_PAGE_SIZE)):
         SCREENS[f"help:{section_slug(_title)}:{_page}"] = _section_builder(_title, _page)
+
+
+def _command_help_builder(command):
+    def build(user, theme, *, active=None):
+        return help_lookup_screen(command, user, theme, active=active)
+    return build
+
+
+# Finite, read-only callbacks. Unknown command bytes never become executable routes.
+for _icon, _title, _commands in HELP_SECTIONS:
+    for _command in _commands:
+        SCREENS[f'help:command:{_command}'] = _command_help_builder(_command)
 
 
 def ping_screen(monitor, theme: Theme) -> Screen:

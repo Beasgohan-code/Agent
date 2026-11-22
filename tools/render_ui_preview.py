@@ -21,6 +21,7 @@ def render_preview():
     theme = Theme(custom_emoji={})
     screens = [('/start', welcome_screen(user, theme, active=COMMANDS)),
                ('/help', help_screen(user, theme, active=COMMANDS)),
+               ('/help essentials', help_lookup_screen('essentials', user, theme, active=COMMANDS)),
                ('/help autochat', help_lookup_screen('autochat', user, theme, active=COMMANDS))]
     parts = ['# UI preview',
              'Offline render of the real screen builders with a deliberately small command fixture. '
@@ -38,7 +39,7 @@ def render_preview():
                          for row in screen.keyboard.inline_keyboard))
     parts.extend(['## Runtime behavior',
                   '- The Telegram menu is capped at 100 commands. Overflow prioritizes cross-feature entry points; Help retains the active catalogue. Registration does not prove group approval or health.',
-                  '- `/start`, `/help`, and `/ping` are private-only. Group plugin controls retain Owner approval, admin activation and the three-optional-plugin limit; moderation is slot-free.',
+                  '- Menu delivery follows the command scope and supported recipient-only group navigation; this offline render does not verify Telegram delivery. Group plugin controls retain Owner approval, admin activation and the three-optional-plugin limit; moderation is slot-free.',
                   '- AI requires a configured key and model. `/ask` sends an explicit question. `/autochat on|off|status` controls default-off private text replies or group mention/reply triggers. Group configuration requires an administrator. Only the triggering text is sent to the external provider, without chat history; charges may apply.',
                   '- FileStore clones use `/genlink`, `/batch`, and `/custom_batch`; the controller retains `/get`. Retired `/check` and vault commands `/fsave`, `/files`, and `/del` are not restored.',
                   '- Provider, music, FileStore transfer and control-panel actions are not exercised by this preview. Verify them separately; no online, latency or deployment claim is implied.'])

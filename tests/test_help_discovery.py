@@ -13,7 +13,7 @@ def test_short_category_name_opens_music():
 def test_partial_command_finds_available_matches():
     screen = help_lookup_screen("encod", None, Theme(), active={"encode", "help"})
     assert "/encode" in screen.rich_text
-    assert "help:encoding-files" in [
+    assert "help:command:encode" in [
         b.callback_data for row in screen.keyboard.inline_keyboard for b in row
     ]
 
