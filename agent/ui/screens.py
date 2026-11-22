@@ -174,19 +174,12 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "lock",
         "Moderation",
-        (
-            "mute", "unmute", "kick", "ban", "unban",
-            "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme",
-            "fullpromote", "adminbox", "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto", "privaterules", "resetrules", "purge", "spurge", "approve", "unapprove", "approval", "approved", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", ),
+        ('mute', 'unmute', 'kick', 'ban', 'unban', 'tban', 'tmute', 'dban', 'dmute', 'dkick', 'sban', 'smute', 'skick', 'kickme', 'afk', 'userstats', 'recentactivity', 'setchatname', 'setchatdescription', 'setchatphoto', 'privaterules', 'resetrules', 'purge', 'spurge', 'cleanservice', 'cleancommand', 'keepcommand', 'antispam', 'modlog'),
     ),
     (
         "shield",
         "Group management",
-        (
-            "settings", "rules", "setrules", "pin", "unpin", "admins",
-            "etagall", "eall", "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
-            "lockdown",
-            ),
+        ('settings', 'rules', 'setrules', 'pin', 'unpin', 'admins', 'lockdown'),
     ),
     (
         "fire",
@@ -218,12 +211,33 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ('shield', 'Anti-flood', ('flood', 'setflood', 'setfloodtimer', 'floodmode', 'clearflood')),
     ('filter', 'Filters', ('filter', 'filters', 'stopfilter')),
     ('folder', 'Topics', ('newtopic', 'renametopic', 'closetopic', 'reopentopic', 'actiontopic', 'setactiontopic')),
+    ('crown', 'Administrator tools', ('promote', 'demote', 'tpromote', 'fullpromote', 'adminlist', 'admincache', 'anonadmin', 'adminerror', 'adminbox', 'admincount', 'rights')),
+    ('user', 'Mentions', ('tagall', 'all', 'etagall', 'eall', 'tagabort', 'allsettings', 'tagstats')),
+    ('check', 'Approvals', ('approve', 'unapprove', 'approval', 'approved')),
 )
 
 
 
 # Feature-level guidance follows the actual native handlers, not upstream aliases.
 MODULE_HELP = {
+    'Administrator tools': {
+        'intro': 'Inspect group administration and manage administrator privileges with live Telegram permission checks. Read the scope before granting authority.',
+        'usage': {'promote': '/promote <member> [title] or reply /promote [title]', 'demote': '/demote <member>', 'tpromote': '/tpromote <member> <duration> or /tpromote status', 'fullpromote': '/fullpromote <member> then explicit confirmation', 'adminlist': '/adminlist', 'admincache': '/admincache', 'admincount': '/admincount', 'adminbox': '/adminbox', 'rights': '/rights [member]', 'anonadmin': '/anonadmin [on|off]', 'adminerror': '/adminerror [on|off]'},
+        'notes': 'Ordinary promotion grants limited rights capped by the caller and bot; it does not grant delegation or anonymous identity. Custom titles allow up to 16 characters, with no control/format characters; Telegram may reject emoji. Full promotion is group-owner-only and can grant delegation, including Add administrators, only after explicit confirmation and capped by bot rights. Temporary promotion needs durable tracking and a running recovery worker; expiry is not an offline guarantee. Administrator snapshots describe the current Telegram response, never a cached permission grant. Inspect current state before retrying unconfirmed operations.',
+        'examples': (('promote', '/promote @member Team lead'), ('adminlist', '/adminlist'), ('tpromote', '/tpromote status')),
+    },
+    'Mentions': {
+        'intro': 'Mention the members returned by Telegram in paced batches, or inspect and stop the current mention run. No enrollment or opt-in is required.',
+        'usage': {'tagall': '/tagall [optional message]', 'all': '/all [optional message] or @all', 'etagall': '/etagall [optional message]', 'eall': '/eall [optional message] or @eall', 'tagabort': '/tagabort', 'allsettings': '/allsettings', 'tagstats': '/tagstats'},
+        'notes': 'Current Manage chat administrator permission is required. Normal mentions use clickable first names, not member IDs; emoji variants use emoji labels. Without custom text there is no automatic heading. Requests use 20 mentions per message with a pause of 5 seconds. Telegram may return only part of the group: this is not a complete member roster. The snapshot is capped at 2000 returned entries. Stop cannot recall a message already in flight; Resume/Stop controls check current permissions.',
+        'examples': (('tagall', '/tagall'), ('eall', '@eall'), ('tagabort', '/tagabort')),
+    },
+    'Approvals': {
+        'intro': 'Manage automatic anti-spam exemptions for individual members and inspect this group’s approved-member list.',
+        'usage': {'approve': '/approve <member>', 'unapprove': '/unapprove <member>', 'approval': '/approval <member>', 'approved': '/approved [page]'},
+        'notes': 'Current Manage chat permission is required. Use a positive ID, @username, text mention or visible personal reply, without extra arguments. Approval exempts a member from automatic anti-spam actions, not manual moderation. It does not grant Telegram administrator rights. Removing approval does not ban, kick or mute the member. Status and lists are visible to the chat; successful confirmation describes stored state, not live enforcement readiness.',
+        'examples': (('approve', '/approve @member'), ('approval', '/approval @member'), ('approved', '/approved 1')),
+    },
     'Warnings': {
         'intro': 'Record and review member warnings, remove active warnings and configure future escalation. Warning history and Telegram bans or mutes are separate state.',
         'usage': {'warn': '/warn <member> [reason] or reply /warn [reason]', 'warns': '/warns <member>', 'warnings': '/warnings <member>', 'warnlimit': '/warnlimit <1–20> [mute|kick|ban] or /warnlimit off', 'warnmode': '/warnmode mute|kick|ban', 'warntime': '/warntime off or <duration>', 'rmwarn': '/rmwarn <member>', 'unwarn': '/unwarn <member>', 'resetwarn': '/resetwarn <member>', 'resetwarns': '/resetwarns <member>', 'resetallwarns': '/resetallwarns confirm', 'dwarn': 'Reply /dwarn [reason]', 'swarn': '/swarn <member> [reason]', 'note': '/note <member> <text>'},

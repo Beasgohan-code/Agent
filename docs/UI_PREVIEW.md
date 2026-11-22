@@ -110,6 +110,69 @@ Buttons (row order):
 - ⬅️ Back to AI Agent
 - 📁 All sections · 🏡 Menu
 
+## Mentions module (explicit feature fixture)
+
+```text
+👤 Mentions
+
+Mention the members returned by Telegram in paced batches, or inspect and stop the current mention run. No enrollment or opt-in is required.
+
+Command  What it does
+/tagall [optional message]  Mention retrieved group members, 20 per message (admin)
+/eall [optional message] or @eall  Alias of etagall; also @eall
+/tagabort  Stop an open mention run (admin)
+
+How it works
+Current Manage chat administrator permission is required. Normal mentions use clickable first names, not member IDs; emoji variants use emoji labels. Without custom text there is no automatic heading. Requests use 20 mentions per message with a pause of 5 seconds. Telegram may return only part of the group: this is not a complete member roster. The snapshot is capped at 2000 returned entries. Stop cannot recall a message already in flight; Resume/Stop controls check current permissions.
+Examples
+/tagall
+@eall
+/tagabort
+Group-visible help only. Opening this page does not change settings; administrator permissions are checked when you send a command.
+
+─────
+
+Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ % & ? · Choose another category or return to your workspace.
+```
+
+Buttons (row order):
+- 💡 /tagall · 💡 /eall
+- 💡 /tagabort
+- 📁 All sections
+- ⬅️ Back to menu
+
+## Approvals module (explicit feature fixture)
+
+```text
+✅ Approvals
+
+Manage automatic anti-spam exemptions for individual members and inspect this group’s approved-member list.
+
+Command  What it does
+/approve <member>  Exempt a member from automatic anti-spam
+/unapprove <member>  Remove a member approval
+/approval <member>  Check a member approval
+/approved [page]  List approved members
+
+How it works
+Current Manage chat permission is required. Use a positive ID, @username, text mention or visible personal reply, without extra arguments. Approval exempts a member from automatic anti-spam actions, not manual moderation. It does not grant Telegram administrator rights. Removing approval does not ban, kick or mute the member. Status and lists are visible to the chat; successful confirmation describes stored state, not live enforcement readiness.
+Examples
+/approve @member
+/approval @member
+/approved 1
+Group-visible help only. Opening this page does not change settings; administrator permissions are checked when you send a command.
+
+─────
+
+Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ % & ? · Choose another category or return to your workspace.
+```
+
+Buttons (row order):
+- 💡 /approve · 💡 /unapprove
+- 💡 /approval · 💡 /approved
+- 📁 All sections
+- ⬅️ Back to menu
+
 ## Warnings module (explicit feature fixture)
 
 ```text

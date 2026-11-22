@@ -712,3 +712,27 @@ seconds, no skips, both with disposable real database storage. Offline preview
 includes a warning guide. Static/whitespace checks passed; unrelated music
 catalogue changes remain unstaged. No live Telegram, deployment, production
 changes or PR merge.
+
+## Help feature separation: administrator tools, mentions and approvals
+
+Three further feature guides move commands out of broad group lists while
+retaining one category home per command and contextual detail links.
+Administrator tools distinguishes limited promotion from owner-confirmed full
+delegation, temporary promotion recovery requirements, title limits and live
+permission snapshots. Mentions documents clickable first names versus emoji
+labels, optional custom text, no enrollment, 20/message with five-second pacing,
+the 2000-returned-entry cap and incomplete-roster/in-flight-stop limitations.
+Approvals explains Manage chat requirements, personal targeting and automatic
+anti-spam exemptions without claiming Telegram admin access or exemption from
+manual moderation. Examples remain filtered to registered commands.
+
+Three regressions failed before implementation and now cover all three feature
+guides, explicit mention limits, and direct approval detail safety notes.
+Existing exhaustive tests continue to check unique category ownership, message
+limits, read-only callbacks and live-filtered navigation. Focused suites: **68
+passed** before the last copy/preview update. Final exact selective patch:
+**2,631 passed** in 31.85 seconds; full working tree: **2,713 passed** in 32.12
+seconds, no skips, both with disposable real database storage. Offline preview
+includes Mentions and Approvals. Static and staged whitespace checks passed;
+unrelated music catalogue changes remain unstaged. No live Telegram, deployment,
+production changes or PR merge.

@@ -146,3 +146,34 @@ def test_home_protection_shortcut_follows_the_registered_warning_command():
     assert 'help:warnings' in controls
     screen = SCREENS['help:warnings'](None, Theme(), active={'warn'})
     assert '/warn' in screen.rich_text and 'Nothing in this section' not in screen.rich_text
+
+
+def test_admin_mention_and_approval_help_have_distinct_safety_boundaries():
+    from agent.ui.screens import help_section_screen
+    cases = [
+        ('Administrator tools', {'promote', 'demote', 'fullpromote'}, '/promote', 'delegation'),
+        ('Mentions', {'tagall', 'eall', 'tagabort'}, '/tagall', '20'),
+        ('Approvals', {'approve', 'unapprove', 'approval', 'approved'}, '/approve', 'manual moderation'),
+    ]
+    for title, active, example, boundary in cases:
+        screen = help_section_screen(title, None, Theme(), active=active)
+        assert example in screen.rich_text and boundary in screen.rich_text
+        assert 'Examples' in screen.rich_text
+        for row in screen.keyboard.inline_keyboard:
+            for button in row:
+                assert button.callback_data in SCREENS
+
+
+def test_mention_help_never_claims_complete_roster_or_requires_enrollment():
+    from agent.ui.screens import help_section_screen
+    screen = help_section_screen('Mentions', None, Theme(), active={'tagall', 'eall'})
+    assert 'not a complete member roster' in screen.rich_text
+    assert 'No enrollment' in screen.rich_text
+    assert '5 seconds' in screen.rich_text
+    assert 'first names' in screen.rich_text
+
+
+def test_approval_command_detail_explains_no_administrator_grant():
+    screen = SCREENS['help:command:approve'](None, Theme(), active={'approve'})
+    assert 'Syntax' in screen.rich_text
+    assert 'does not grant Telegram administrator rights' in screen.rich_text
