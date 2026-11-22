@@ -175,10 +175,9 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "lock",
         "Moderation",
         (
-            "warn", "warnings", "unwarn", "mute", "unmute", "kick", "ban", "unban",
-            "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme",
-            "fullpromote", "adminbox", "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto", "warntime", "warnmode", "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "privaterules", "resetrules", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
-        ),
+            "mute", "unmute", "kick", "ban", "unban",
+            "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme",
+            "fullpromote", "adminbox", "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto", "privaterules", "resetrules", "purge", "spurge", "approve", "unapprove", "approval", "approved", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", ),
     ),
     (
         "shield",
@@ -186,8 +185,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (
             "settings", "rules", "setrules", "pin", "unpin", "admins",
             "etagall", "eall", "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
-            "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "warnlimit", "resetwarns", "lockdown",
-            "filter", "filters", "stopfilter",
+            "lockdown",
             ),
     ),
     (
@@ -215,12 +213,47 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ('lock', 'Blacklist', ('blocklist', 'addblocklist', 'rmblocklist', 'unblocklistall', 'rmblocklistall', 'blocklistmode', 'blocklistdelete', 'setblocklistreason', 'resetblocklistreason')),
     ('wave', 'Welcome & goodbye', ('setwelcome', 'welcome', 'goodbye')),
     ('shield', 'Federations', ('fedreason', 'fednotif', 'quietfed', 'fedpromote', 'feddemote', 'feddemoteme', 'fedtransfer', 'newfed', 'renamefed', 'delfed', 'myfeds', 'fedinfo', 'fedadmins', 'joinfed', 'leavefed', 'chatfed')),
+    ('warn', 'Warnings', ('warn', 'warnings', 'warns', 'unwarn', 'dwarn', 'swarn', 'rmwarn', 'resetwarn', 'resetwarns', 'resetallwarns', 'warnlimit', 'warnmode', 'warntime', 'note')),
+    ('lock', 'Locks', ('lock', 'unlock', 'locks', 'locktypes', 'allowlist', 'rmallowlist', 'rmallowlistall')),
+    ('shield', 'Anti-flood', ('flood', 'setflood', 'setfloodtimer', 'floodmode', 'clearflood')),
+    ('filter', 'Filters', ('filter', 'filters', 'stopfilter')),
+    ('folder', 'Topics', ('newtopic', 'renametopic', 'closetopic', 'reopentopic', 'actiontopic', 'setactiontopic')),
 )
 
 
 
 # Feature-level guidance follows the actual native handlers, not upstream aliases.
 MODULE_HELP = {
+    'Warnings': {
+        'intro': 'Record and review member warnings, remove active warnings and configure future escalation. Warning history and Telegram bans or mutes are separate state.',
+        'usage': {'warn': '/warn <member> [reason] or reply /warn [reason]', 'warns': '/warns <member>', 'warnings': '/warnings <member>', 'warnlimit': '/warnlimit <1–20> [mute|kick|ban] or /warnlimit off', 'warnmode': '/warnmode mute|kick|ban', 'warntime': '/warntime off or <duration>', 'rmwarn': '/rmwarn <member>', 'unwarn': '/unwarn <member>', 'resetwarn': '/resetwarn <member>', 'resetwarns': '/resetwarns <member>', 'resetallwarns': '/resetallwarns confirm', 'dwarn': 'Reply /dwarn [reason]', 'swarn': '/swarn <member> [reason]', 'note': '/note <member> <text>'},
+        'notes': 'Use a positive ID, @username or a visible personal reply for a member. Restrict members permission is required for warning changes; delete variants also require Delete messages. Removing warnings retains history and never unbans or unmutes. Expiry affects new warnings only; expired warnings stop counting but remain in history. Group resets require explicit confirmation. Partial or unconfirmed results must be inspected before a new request.',
+        'examples': (('warnlimit', '/warnlimit 3 mute'), ('warntime', '/warntime 7d'), ('warns', '/warns 123456789')),
+    },
+    'Locks': {
+        'intro': 'Choose which supported message types should be removed from this group. Inspect the current locks and available types before changing protection.',
+        'usage': {'lock': '/lock <type> [type ...]', 'unlock': '/unlock <type> [type ...]', 'locks': '/locks', 'locktypes': '/locktypes'},
+        'notes': 'Administrators are exempt. Matching non-admin messages are deleted before blacklist handling; locks do not apply custom punishments or warning modes. The all selector includes only supported types. Invite-link detection covers explicit private invites, not every public username. Live rights and configuration checks still apply.',
+        'examples': (('lock', '/lock gif video sticker'), ('unlock', '/unlock video'), ('locktypes', '/locktypes')),
+    },
+    'Anti-flood': {
+        'intro': 'Configure consecutive-message and timed-window flood limits, the member action and optional message cleanup.',
+        'usage': {'flood': '/flood', 'setflood': '/setflood <2–1000>|off', 'setfloodtimer': '/setfloodtimer <2–1000> <30s–1d> or /setfloodtimer off', 'floodmode': '/floodmode ban|mute|kick or /floodmode tban|tmute <duration>', 'clearflood': '/clearflood on|off'},
+        'notes': 'Counters are bounded and process-local; restarts do not preserve the current counting window. Staff and approved members are exempt. Timed punishments accept 30s–365d; window length is limited to one day. Live administrator rights are required for settings changes, and Telegram rights are required for enforcement. Enabling cleanup does not prove every deletion succeeded.',
+        'examples': (('setfloodtimer', '/setfloodtimer 10 30s'), ('floodmode', '/floodmode tmute 5m'), ('flood', '/flood')),
+    },
+    'Filters': {
+        'intro': 'Save a named reply, browse this group’s filters, preview the full reply and remove filters that are no longer needed.',
+        'usage': {'filter': '/filter <name> <reply text>', 'filters': '/filters [page] or /filters show <name>', 'stopfilter': '/stopfilter <name>'},
+        'notes': 'Saved replies are plain text, not executable templates or arbitrary HTML. Previewing a reply shows it in the current chat. Administrator checks protect changes; storing a reply is not proof that it was delivered to any member.',
+        'examples': (('filter', '/filter hello Welcome!'), ('filters', '/filters show hello'), ('stopfilter', '/stopfilter hello')),
+    },
+    'Topics': {
+        'intro': 'Create, rename, close and reopen forum topics, or choose where welcome and goodbye messages should go.',
+        'usage': {'newtopic': '/newtopic <name>', 'renametopic': '/renametopic <name>', 'closetopic': '/closetopic', 'reopentopic': '/reopentopic', 'actiontopic': '/actiontopic', 'setactiontopic': '/setactiontopic'},
+        'notes': 'Use a forum supergroup with Manage topics permission for both caller and bot. Run topic changes in the relevant topic. Names allow 1–128 UTF-16 units without control characters. Settings remain shared across topics. Set the greeting destination from the desired topic; use General to return there. Failed delivery does not fall back into another topic. Topic deletion is not implemented.',
+        'examples': (('newtopic', '/newtopic Announcements'), ('actiontopic', '/actiontopic'), ('setactiontopic', '/setactiontopic')),
+    },
     'Blacklist': {
         'intro': 'Manage blocked text, filenames and sender-name patterns in this group. Administrators choose triggers, the member action and whether matching messages are deleted.',
         'usage': {
@@ -547,10 +580,14 @@ def help_lookup_screen(
             if available else "no — command not registered in this instance",
         ),
     ]
+    guide = MODULE_HELP.get(section)
+    if guide and available and query in guide['usage']:
+        rows.insert(1, ('Syntax', guide['usage'][query]))
     body = (
         rich_heading(f"/{query}", 2)
         + "\n\n"
         + kv_table(rows).block()
+        + ("\n" + rich_note(rich_esc(guide['notes'])) if guide and available else '')
         + "\n"
         + (
             "\n" + rich_note(f"Tap <b>{rich_esc(section)}</b> for the rest of its commands.")

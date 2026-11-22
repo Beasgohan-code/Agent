@@ -47,7 +47,7 @@ def home_keyboard(*, active=None, theme=None) -> Keyboard:
     ]]
     shortcuts = []
     if active is None or "warn" in active:
-        shortcuts.append(theme.button("Group protection", icon="shield", callback_data="help:moderation", style=ButtonStyle.SUCCESS))
+        shortcuts.append(theme.button("Group protection", icon="shield", callback_data="help:warnings", style=ButtonStyle.SUCCESS))
     if active is None or "get" in active:
         shortcuts.append(theme.button("Vault & downloads", icon="folder", callback_data="help:vault-downloads"))
     if shortcuts:

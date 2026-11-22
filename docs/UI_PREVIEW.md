@@ -110,6 +110,38 @@ Buttons (row order):
 - ⬅️ Back to AI Agent
 - 📁 All sections · 🏡 Menu
 
+## Warnings module (explicit feature fixture)
+
+```text
+⚠️ Warnings
+
+Record and review member warnings, remove active warnings and configure future escalation. Warning history and Telegram bans or mutes are separate state.
+
+Command  What it does
+/warn <member> [reason] or reply /warn [reason]  Warn a member
+/warns <member>  Alias of /warnings
+/warnlimit <1–20> [mute|kick|ban] or /warnlimit off  Warnings needed to trigger an action
+/warntime off or <duration>  Set expiry for new warnings: off or 1m–366d
+
+How it works
+Use a positive ID, @username or a visible personal reply for a member. Restrict members permission is required for warning changes; delete variants also require Delete messages. Removing warnings retains history and never unbans or unmutes. Expiry affects new warnings only; expired warnings stop counting but remain in history. Group resets require explicit confirmation. Partial or unconfirmed results must be inspected before a new request.
+Examples
+/warnlimit 3 mute
+/warntime 7d
+/warns 123456789
+Group-visible help only. Opening this page does not change settings; administrator permissions are checked when you send a command.
+
+─────
+
+Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ % & ? · Choose another category or return to your workspace.
+```
+
+Buttons (row order):
+- 💡 /warn · 💡 /warns
+- 💡 /warnlimit · 💡 /warntime
+- 📁 All sections
+- ⬅️ Back to menu
+
 ## Blacklist module (explicit feature fixture)
 
 ```text

@@ -104,3 +104,45 @@ def test_feature_help_commands_have_one_home_and_fit_message_limits():
             for row in screen.keyboard.inline_keyboard:
                 for button in row:
                     assert button.callback_data in SCREENS
+
+
+def test_more_group_features_have_focused_routes_and_real_examples():
+    from agent.ui.screens import help_section_screen
+    cases = [
+        ('Warnings', {'warn', 'warnlimit', 'warntime'}, '/warnlimit 3 mute', 'history'),
+        ('Locks', {'lock', 'unlock', 'locktypes'}, '/lock gif video sticker', 'Administrators'),
+        ('Anti-flood', {'flood', 'setfloodtimer', 'floodmode'}, '/setfloodtimer 10 30s', 'process-local'),
+        ('Filters', {'filter', 'filters', 'stopfilter'}, '/filter hello Welcome!', 'plain text'),
+        ('Topics', {'newtopic', 'closetopic', 'setactiontopic'}, '/newtopic Announcements', 'Manage topics'),
+    ]
+    for title, active, example, limit in cases:
+        screen = help_section_screen(title, None, Theme(), active=active)
+        assert example in screen.rich_text
+        assert limit in screen.rich_text
+        assert 'Examples' in screen.rich_text
+        assert any(b.callback_data.startswith('help:command:') for row in screen.keyboard.inline_keyboard for b in row)
+
+
+def test_module_guides_omit_examples_for_commands_missing_from_registry():
+    from agent.ui.screens import help_section_screen
+    screen = help_section_screen('Warnings', None, Theme(), active={'warns'})
+    assert '/warnlimit' not in screen.rich_text
+    assert '/warntime' not in screen.rich_text
+    assert '/warns' in screen.rich_text
+
+
+def test_direct_feature_command_help_includes_syntax_and_safety_notes():
+    screen = SCREENS['help:command:warnlimit'](None, Theme(), active={'warnlimit'})
+    assert 'Syntax' in screen.rich_text and '/warnlimit' in screen.rich_text
+    assert 'never unbans or unmutes' in screen.rich_text
+    unavailable = SCREENS['help:command:warnlimit'](None, Theme(), active={'help'})
+    assert 'not registered' in unavailable.rich_text
+    assert 'Syntax' not in unavailable.rich_text
+
+
+def test_home_protection_shortcut_follows_the_registered_warning_command():
+    from agent.ui.keyboards import home_keyboard
+    controls = [button.callback_data for row in home_keyboard(active={'warn'}).inline_keyboard for button in row]
+    assert 'help:warnings' in controls
+    screen = SCREENS['help:warnings'](None, Theme(), active={'warn'})
+    assert '/warn' in screen.rich_text and 'Nothing in this section' not in screen.rich_text

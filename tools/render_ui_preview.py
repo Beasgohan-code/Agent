@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from types import SimpleNamespace
 
-from agent.ui.screens import welcome_screen, help_screen, help_lookup_screen
+from agent.ui.screens import welcome_screen, help_screen, help_lookup_screen, help_section_screen
 from agent.ui.theme import Theme
 from agent.utils.sender import to_safe_html
 
@@ -23,6 +23,8 @@ def render_preview():
                ('/help', help_screen(user, theme, active=COMMANDS)),
                ('/help essentials', help_lookup_screen('essentials', user, theme, active=COMMANDS)),
                ('/help autochat', help_lookup_screen('autochat', user, theme, active=COMMANDS)),
+               ('Warnings module (explicit feature fixture)',
+                help_section_screen('Warnings', user, theme, active={'warn', 'warns', 'warnlimit', 'warntime'})),
                ('Blacklist module (explicit feature fixture)',
                 help_lookup_screen('blacklist', user, theme, active={'blocklist', 'addblocklist', 'rmblocklist', 'blocklistmode', 'blocklistdelete'})),
                ('Welcome module (explicit feature fixture)',

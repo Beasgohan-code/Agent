@@ -683,3 +683,32 @@ passed** in 27.49 seconds, no skips, both with disposable real database storage.
 Offline preview includes the three feature pages. Static/whitespace checks passed.
 Unrelated music catalogue changes remain unstaged. No live Telegram, deployment,
 production changes or PR merge; the user explicitly corrected the merge request.
+
+## Focused group Help: warnings, locks, anti-flood, filters and topics
+
+Five additional feature categories replace their entries in broad group lists:
+Warnings, Locks, Anti-flood, Filters and Topics. Each has a purpose, handler-
+reviewed syntax, behavior limits and registration-filtered examples. Warning
+history is distinguished from restrictions; locks do not advertise custom
+punishments; flood counters are explicitly process-local; filter replies are
+plain text; topic management explains forum/Manage topics requirements and the
+absence of topic deletion. Existing expiry/confirmation and routing limits are
+retained. No new commands or enforcement behaviors are introduced by Help.
+
+Direct command detail pages for feature guides now include their syntax and
+module safety notes when registered, instead of only a brief menu description.
+The Home protection shortcut follows its actual warning entry point. Category
+ownership remains unique; native rich tables, copyable commands, pagination,
+contextual navigation and controller/worker separation remain unchanged.
+
+Four added regressions cover all five module examples, unavailable-example
+filtering, direct feature detail syntax and the Home warning route. Two initial
+cases failed before implementation. Existing exhaustive tests also validate
+unique feature ownership, message-size limits and callbacks for every page.
+An intermediate category edit dropped an icon tuple field; targeted tests caught
+it before full validation and it was repaired. Final exact selective patch:
+**2,628 passed** in 30.45 seconds; full working tree: **2,710 passed** in 28.16
+seconds, no skips, both with disposable real database storage. Offline preview
+includes a warning guide. Static/whitespace checks passed; unrelated music
+catalogue changes remain unstaged. No live Telegram, deployment, production
+changes or PR merge.
