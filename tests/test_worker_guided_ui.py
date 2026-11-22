@@ -64,3 +64,41 @@ def test_real_callback_dispatches_guide_and_rechecks_stale_state():
         sender.edit.assert_not_awaited()
         assert query.answer.await_args.kwargs['show_alert'] is True
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('slug,command,syntax', [
+    ('encoder', 'encode', '/encode balanced'),
+    ('encoder', 'compress', '/compress'),
+    ('postmaker', 'post', '/post Title | body'),
+    ('leech', 'leech', '/leech <public_http_url>'),
+    ('ai_agent', 'ask', '/ask <question>'),
+    ('renamer', 'rename', '/rename'),
+    ('music', 'play', '/play'),
+    ('moderation', 'settings', '/settings'),
+])
+def test_worker_command_details_show_reviewed_usage_and_preparation(slug, command, syntax):
+    theme = Theme(worker_plugins=(slug,))
+    screen = callback('worker:cmd:' + command, None, theme, active={command})
+    assert screen is not None
+    from agent.utils.sender import to_safe_html
+    import html
+    text = html.unescape(to_safe_html(screen.rich_text))
+    assert syntax in text
+    assert 'How to use' in text and 'Before sending' in text
+    assert 'Registered here' in text and 'not a readiness check' in text
+    assert 'Meiko' not in text
+
+
+def test_archive_genlink_usage_is_not_confused_with_linkshare_media_reply():
+    file = callback('worker:cmd:genlink', None, Theme(worker_plugins=('filestore',)), active={'genlink'})
+    share = callback('worker:cmd:genlink', None, Theme(worker_plugins=('linkshare',)), active={'genlink'})
+    assert 'Send the command without arguments' in file.rich_text
+    assert 'Reply to a file you own' in share.rich_text
+    assert 'Owner, private chat' in file.rich_text
+
+
+def test_usage_guides_are_not_shown_for_unselected_or_stale_commands():
+    theme = Theme(worker_plugins=('encoder',))
+    assert callback('worker:cmd:ask', None, theme, active={'ask', 'encode'}) is None
+    assert callback('worker:cmd:encode', None, theme, active=set()) is None
+    assert callback('worker:cmd:encode', None, theme, active=None) is None

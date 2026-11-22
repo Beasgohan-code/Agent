@@ -22,7 +22,11 @@ def render_preview():
     screens = [('/start', welcome_screen(user, theme, active=COMMANDS)),
                ('/help', help_screen(user, theme, active=COMMANDS)),
                ('/help essentials', help_lookup_screen('essentials', user, theme, active=COMMANDS)),
-               ('/help autochat', help_lookup_screen('autochat', user, theme, active=COMMANDS))]
+               ('/help autochat', help_lookup_screen('autochat', user, theme, active=COMMANDS)),
+               ('Encoder clone · /help encode (encode-only fixture)',
+                help_lookup_screen('encode', user, Theme(custom_emoji={}, worker_plugins=('encoder',)), active={'encode'})),
+               ('FileStore clone · /help genlink (archive-only fixture)',
+                help_lookup_screen('genlink', user, Theme(custom_emoji={}, worker_plugins=('filestore',)), active={'genlink'}))]
     parts = ['# UI preview',
              'Offline render of the real screen builders with a deliberately small command fixture. '
              'This is not a Telegram screenshot, a live health check, or a deployment-wide command count. '

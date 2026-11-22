@@ -110,6 +110,66 @@ Buttons (row order):
 - ⬅️ Back to AI Agent
 - 📁 All sections · 🏡 Menu
 
+## Encoder clone · /help encode (encode-only fixture)
+
+```text
+⚙️ /encode
+
+Command details
+Detail  Information
+/encode  Encode a replied video
+How to use  /encode balanced
+Before sending  Reply to a supported video or document. Choose fast, balanced or quality; the original is not modified.
+Registered here  Yes · registration does not prove activation or permission
+Tool  Encoder
+Chat scope  private
+Permissions  messages.read, files.write, process.spawn
+Dependencies  None declared
+Required credential names  None declared
+Required capabilities  None declared
+
+Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Copying does not run this command; add required arguments before sending.
+
+─────
+
+Send the command for its current usage. Never include passwords or secret tokens.
+```
+
+Buttons (row order):
+- 📌 Copy /encode
+- ⬅️ Back to commands · ⚡ Get started
+- 🤖 Home · 🔍 All tools
+
+## FileStore clone · /help genlink (archive-only fixture)
+
+```text
+🔒 /genlink
+
+Command details
+Detail  Information
+/genlink  Create a single-message archive delivery link (Owner, private chat).
+How to use  /genlink
+Before sending  Send the command without arguments in private chat as this bot’s Owner, then send or forward one message. Follow any access/configuration checks shown.
+Registered here  Yes · registration does not prove activation or permission
+Tool  FileStore
+Chat scope  all
+Permissions  messages.read, messages.send, storage.read, storage.write
+Dependencies  None declared
+Required credential names  None declared
+Required capabilities  None declared
+
+Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Copying does not run this command; add required arguments before sending.
+
+─────
+
+Send the command for its current usage. Never include passwords or secret tokens.
+```
+
+Buttons (row order):
+- 📌 Copy /genlink
+- ⬅️ Back to commands · ⚡ Get started
+- 🤖 Home · 🔍 All tools
+
 ## Runtime behavior
 
 - The Telegram menu is capped at 100 commands. Overflow prioritizes cross-feature entry points; Help retains the active catalogue. Registration does not prove group approval or health.

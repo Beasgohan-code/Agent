@@ -20,7 +20,7 @@ PROFILES = {
     'leech': ('Leech', 'link', 'Bring a public download into Telegram. Send a supported public file link, then personalise uploads with your own caption and thumbnail. Private-network addresses are blocked.'),
     'music': ('Music', 'music', 'Music controls for your group call. A configured assistant and active group plugin are required. Remote URL, YouTube and search playback remain disabled; supported downloaded local media only.'),
     'ai_agent': ('AI Agent', 'bot', 'A place for your questions. Use /ask to talk to the configured AI provider. Private auto-chat is opt-in; group replies require a mention or reply to this bot. Never send secrets.'),
-    'renamer': ('Renamer', 'gear', 'Give your files a fresh name. Reply to supported media, choose a filename and manage your caption or thumbnail preferences.'),
+    'renamer': ('Renamer', 'gear', 'Give your files a fresh name. Reply to supported media to apply this chat’s filename template, and manage your caption or thumbnail preferences.'),
     'utilities': ('Utilities', 'info', 'Useful details, without the clutter. Find the identity, time and information commands available in this bot below.'),
 }
 
@@ -47,8 +47,21 @@ WORKFLOWS = {
     'leech': ('Choose a supported public file URL; do not include secrets.', 'Send /leech followed by the URL, or reply to one URL with /leech.', 'Receive the file here. Use /cancel to stop your own active transfer.'),
     'music': ('Ask the Owner to configure this bot’s own assistant.', 'An admin must activate the approved Music plugin for the group.', 'Use only supported downloaded local media. Remote URL, YouTube and search playback remain disabled.'),
     'ai_agent': ('Write a question without credentials or private secrets.', 'Send /ask followed by your question. Only that message goes to the configured provider.', 'Verify important answers. Auto-chat is opt-in; the assistant cannot perform Telegram actions.'),
-    'renamer': ('Send supported media to this bot.', 'Reply with the rename command; open /help rename for its syntax.', 'Check the resulting filename. Manage caption and thumbnail preferences with the installed tools.'),
+    'renamer': ('Send supported media to this bot.', 'Review this chat’s filename template, then reply with /rename; open /help rename for details.', 'Check the resulting filename. Manage caption and thumbnail preferences with the installed tools.'),
     'utilities': ('Choose the detail you need from the commands below.', 'Copy a command and send it in this chat.', 'Use /help command to check usage. Private and administrator-only actions stay restricted.'),
+}
+# Reviewed against the existing handlers, not executable command templates.
+# Placeholders are explanatory text and never supplied to Telegram methods here.
+COMMAND_GUIDES = {
+    'encode': ('/encode balanced', 'Reply to a supported video or document. Choose fast, balanced or quality; the original is not modified.'),
+    'compress': ('/compress', 'Reply to a supported video. This requests the fast compression workflow; output size is not guaranteed.'),
+    'post': ('/post Title | body', 'Use a group where you have moderator permission. Prepare the text, or reply to a message; review any destination before publishing.'),
+    'leech': ('/leech <public_http_url>', 'Replace the placeholder with a supported public file URL. Never include credentials or private-network addresses.'),
+    'mirror': ('/mirror <public_http_url>', 'Replace the placeholder with a supported public file URL. Normal transfer limits and access checks apply.'),
+    'ask': ('/ask <question>', 'Replace the placeholder with your question. Only the triggering text goes to the configured external AI provider; never send secrets.'),
+    'rename': ('/rename', 'Reply to a supported file. The current chat filename template is used; review template settings before sending.'),
+    'play': ('/play', 'Use a group with Music active and its assistant configured. Reply to supported downloaded local media; remote URL, YouTube and search playback remain disabled.'),
+    'settings': ('/settings', 'Open this in the group you administer. Inspect settings before changing protection or greetings.'),
 }
 PAGE_SIZE = 8
 
@@ -305,6 +318,14 @@ def command_screen(user, theme, name, *, active=None):
     description = ('Create a single-message archive delivery link (Owner, private chat).'
                    if owner == 'filestore' and name == 'genlink' else DESCRIPTIONS[name])
     rows = [(markup(f'<code>/{name}</code>'), description)]
+    guide = COMMAND_GUIDES.get(name)
+    if name == 'genlink' and owner == 'filestore':
+        guide = ('/genlink', 'Send the command without arguments in private chat as this bot’s Owner, then send or forward one message. Follow any access/configuration checks shown.')
+    elif name == 'genlink' and owner == 'linkshare':
+        guide = ('/genlink', 'Reply to a file you own. Optional expiry and use limits are checked by the handler before a link is issued.')
+    if guide:
+        rows.extend([('How to use', guide[0]), ('Before sending', guide[1])])
+    rows.append(('Registered here', 'Yes · registration does not prove activation or permission'))
     if manifest is not None:
         rows.extend([('Tool', PROFILES[owner][0]), ('Chat scope', manifest.scope),
                      ('Permissions', ', '.join(manifest.permissions) or 'None declared'),

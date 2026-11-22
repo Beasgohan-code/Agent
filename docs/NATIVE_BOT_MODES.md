@@ -627,3 +627,29 @@ exact selective patch: **2,609 passed** in 27.42 seconds; full working tree:
 **2,691 passed** in 28.70 seconds, no skips, both with disposable real database
 storage. Static/whitespace checks passed. Unrelated music catalogue changes were
 excluded from staging. No live Telegram, deployment, merge or production changes.
+
+## Clone command Help: preparation and reviewed usage
+
+Selected, registered clone command-detail screens now put reviewed “How to use”
+and “Before sending” guidance before their existing declared requirements. Main
+encoding, compression, posting, transfer, AI, rename, music and group-settings
+entry points have guidance checked against the existing handlers. FileStore
+`/genlink` explicitly describes its Owner/private guided ingestion, separately
+from Linkshare's media-reply link creation. Renamer onboarding now correctly
+explains application of the current chat filename template, not arbitrary filename
+arguments. Unknown commands retain their existing description/requirement detail;
+this is not a claim that every command has a complete usage guide.
+
+All details label registration separately from activation/readiness/access.
+Existing selection/live-registry checks, contextual back navigation, read-only
+copy controls, native tables and clone branding boundaries remain unchanged.
+No command execution, access grant, provider call or credential lookup is added.
+The offline preview now includes isolated Encoder and FileStore detail fixtures;
+it is not a Telegram screenshot or live readiness verification.
+
+Ten new cases cover eight entry-point guidance variants, FileStore versus
+Linkshare behavior, and selection/stale-registry boundaries. Nine failed before
+implementation. Focused worker UI suites: **45 passed**. Exact selective patch:
+**2,619 passed** in 31.50 seconds; full working tree: **2,701 passed** in 28.22
+seconds, no skips, both with disposable real database storage. Static and staged
+whitespace checks passed. No live Telegram, deployment, merge or production changes.
