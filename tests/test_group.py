@@ -768,3 +768,25 @@ def test_admin_lists_bound_raw_records_and_reject_nonmembers(ctx,command):
     run(handlers(ctx)[command],client,message)
     client.get_chat_members.assert_not_called()
     assert 'membership' in str(message.replies[-1])
+
+
+@pytest.mark.parametrize('unlocking', [False, True])
+def test_lockdown_failure_diagnostics_preserve_recovery_without_secrets(ctx, caplog, unlocking):
+    secret = 'private-provider-token-and-url'
+    saved = {'can_send_messages': True, 'can_send_photos': False}
+    if unlocking:
+        ctx.chats.put(CHAT, 'lockdown', True)
+        ctx.chats.put(CHAT, 'lockdown_permissions', saved)
+    class Refusing(FakeClient):
+        async def set_chat_permissions(self, chat_id, permissions):
+            raise RuntimeError(secret)
+    message = FakeMessage('/lockdown off' if unlocking else '/lockdown on')
+    run(handlers(ctx)['lockdown'], Refusing(), message)
+    assert bool(ctx.chats.get(CHAT, 'lockdown')) is unlocking
+    assert ctx.chats.get(CHAT, 'lockdown_permissions')
+    if unlocking:
+        assert ctx.chats.get(CHAT, 'lockdown_permissions') == saved
+    assert 'Could not change group permissions' in message.replies[-1]
+    assert secret not in caplog.text and secret not in message.replies[-1]
+    assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
+    assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.modules.group')

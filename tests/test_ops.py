@@ -410,3 +410,22 @@ def test_failed_handler_compensation_is_logged_without_claiming_success(tmp_path
         runtime.enable('demo')
     assert not registry.is_enabled('demo')
     assert '#Errors' in caplog.text and 'reconciliation needed' in caplog.text
+
+
+def test_new_group_watcher_redacts_event_sink_failure(ctx, caplog):
+    from unittest.mock import Mock
+    from pyrogram.enums import ChatMemberStatus
+    secret = 'private-provider-token-and-url'
+    ctx.events = SimpleNamespace(emit=Mock(side_effect=RuntimeError(secret)))
+    client = SimpleNamespace(me=SimpleNamespace(id=123))
+    update = SimpleNamespace(
+        chat=SimpleNamespace(id=-123, title='Private group'),
+        new_chat_member=SimpleNamespace(user=SimpleNamespace(id=123), status=ChatMemberStatus.MEMBER),
+        old_chat_member=SimpleNamespace(status=ChatMemberStatus.LEFT),
+    )
+    handler = ops.extra_handlers(ctx)[0].callback
+    asyncio.run(handler(client, update))
+    ctx.events.emit.assert_called_once()
+    assert secret not in caplog.text
+    assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
+    assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.modules.ops')

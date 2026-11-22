@@ -808,3 +808,18 @@ The user cancelled appearance customization. All uncommitted typography, owner
 appearance controls, custom taglines and associated tests/preview/docs were removed
 before this phase; none was committed or pushed. Existing module-first Help and
 plain native cards remain intact.
+
+### New-group and lockdown diagnostic redaction
+
+New-group event-sink failures and lockdown permission-change failures now log only
+operation/type and #Errors, without provider exception bodies or tracebacks.
+Lockdown state transitions, authority checks, saved recovery permissions and
+failure replies remain unchanged. Three new cases failed before the fix; they
+cover event-sink failures and both locking/unlocking failures, preserving recovery
+state without reporting success.
+
+Focused suites: **83 passed**. Exact selective patch: **2,641 passed** in 33.20
+seconds; full working tree: **2,723 passed** in 28.72 seconds. Both full suites
+used disposable real storage, no skips. Changed-file static and whitespace checks
+passed. Telegram errors are mocked; no live provider calls, deployment, production
+changes or PR merge. Unrelated music/premium/language work remains unstaged.

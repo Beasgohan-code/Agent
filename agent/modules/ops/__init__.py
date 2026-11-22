@@ -129,8 +129,8 @@ def extra_handlers(ctx):
                     id=chat.id,
                     added_by=getattr(getattr(update, "from_user", None), "id", None),
                 )
-        except Exception:  # noqa: BLE001 - a watcher must never break the client
-            logger.exception("new-group watcher failed")
+        except Exception as error:  # noqa: BLE001 - a watcher must never break the client
+            logger.error("#Errors New-group watcher failed (%s)", type(error).__name__)
 
     return [ChatMemberUpdatedHandler(on_member_update)]
 

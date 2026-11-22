@@ -456,7 +456,7 @@ def build(ctx):
                 permissions = ChatPermissions(**saved)
             await client.set_chat_permissions(chat_id, permissions)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("lockdown failed")
+            logger.error("#Errors Group permission change unconfirmed (%s)", type(exc).__name__)
             await reply(message, 
                 f"Could not change group permissions: {type(exc).__name__}. "
                 "I need the restrict-members right."
