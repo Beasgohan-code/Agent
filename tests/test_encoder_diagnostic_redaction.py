@@ -153,3 +153,45 @@ def test_cancelled_upload_does_not_retry_or_claim_delivery(tmp_path, monkeypatch
         finally:
             await ctx.jobs.shutdown()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('command', ['/encode', '/compress', '/sample', '/toaudio', '/screens'])
+@pytest.mark.parametrize('stage', ['full', 'closed', 'during_download'])
+def test_encoder_queue_refusal_is_honest_and_preserves_source(tmp_path, monkeypatch, command, stage):
+    async def scenario():
+        queue = JobQueue(max_active=1)
+        ctx = SimpleNamespace(theme=Theme(), jobs=queue)
+        source = tmp_path / 'original.mp4'
+        source.write_bytes(b'keep-source')
+        gate = asyncio.Event()
+        async def blocker(job):
+            await gate.wait()
+        if stage == 'full':
+            queue.submit('leech', 99, blocker)
+        elif stage == 'closed':
+            await queue.shutdown()
+        async def download():
+            if stage == 'during_download':
+                queue.submit('leech', 99, blocker)
+            return str(source)
+        message = FakeMessage(command)
+        media = SimpleNamespace(video=True, download=AsyncMock(side_effect=download))
+        message.reply_to_message = media
+        encode = AsyncMock()
+        tool = AsyncMock()
+        monkeypatch.setattr(encoder, 'encode_job', encode)
+        monkeypatch.setattr(encoder, 'run_tool', tool)
+        try:
+            await encoder.build(ctx)[1][command[1:]](None, message)
+            assert 'No Encoder job was admitted' in str(message.replies[-1])
+            assert not queue.for_owner(message.from_user.id)
+            encode.assert_not_awaited()
+            tool.assert_not_awaited()
+            assert source.read_bytes() == b'keep-source'
+            if stage != 'during_download':
+                media.download.assert_not_awaited()
+                assert 'Downloading' not in str(message.replies)
+        finally:
+            gate.set()
+            await queue.shutdown()
+    asyncio.run(scenario())

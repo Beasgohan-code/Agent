@@ -928,3 +928,24 @@ Exact selective patch: **2,672 passed** in 32.13 seconds; full working tree:
 no skips. Static/whitespace checks passed. New transfer effects are mocked; no
 live provider calls, production changes, deployment or PR merge. Appearance stays
 removed and unrelated work remains unstaged.
+
+### Encoder capacity refusals
+
+Encoder conversion commands (`encode`, `compress`, `sample`, `toaudio`, `screens`)
+now check local job capacity before download/progress and catch typed admission
+refusal at submit if another request fills the queue while download is awaited.
+Refusal gives an explicit no-job-admitted/no-conversion-started reply. Downloaded
+source paths are not blindly removed: their ownership is not guaranteed. This
+phase does not introduce source cleanup ownership or a download reservation;
+concurrent downloads can still occur while capacity is available. Info-only
+`mediainfo` remains outside the conversion queue, and invalid-option/missing-media
+usage paths are preserved. These handlers do not charge transfer allowance.
+
+Fifteen regressions failed before the fix, covering all five queued commands
+against full/closed queues and a queue filled during download; no conversion is
+run and source bytes survive refusal. Focused Encoder suites **140 passed**.
+Exact selective patch **2,687 passed** in 34.44 seconds; full working tree
+**2,769 passed** in 30.30 seconds. Full runs used disposable real storage, no
+skips. Static/whitespace checks passed. New Telegram downloads are mocked, not
+live provider proof. No production calls, deployment or PR merge; appearance
+remains removed and unrelated working-tree changes remain unstaged.

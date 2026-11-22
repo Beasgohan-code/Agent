@@ -16,7 +16,7 @@ import tempfile
 from pathlib import Path
 
 from ...platform.attachments import attachment_kwargs
-from ...platform.jobs import Job
+from ...platform.jobs import Job, JobAdmissionError
 from ...platform.manifest import PluginManifest
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
@@ -648,7 +648,18 @@ def build(ctx):
                 await reply(message, panel('Check Encoder options', icon=ctx.theme.emoji('info'),
                     lines=[html.escape(problem)], footer='/encode fast|balanced|quality · /help'))
                 return
-            return await handler(client, message)
+            try:
+                # Info-only probing does not submit a conversion job. Preserve
+                # missing-media usage replies, but reject queued tools before
+                # download/progress when capacity is already unavailable.
+                if name != 'mediainfo' and _source_media(message) is not None:
+                    ctx.jobs.ensure_capacity()
+                return await handler(client, message)
+            except JobAdmissionError:
+                # Submit rechecks after download: another request may have used
+                # the last slot. The returned source may be caller-owned, so do
+                # not guess ownership and unlink it on rejection.
+                await reply(message, "No Encoder job was admitted. The queue is full or shutting down. Wait for active work to finish before retrying. No conversion started; any downloaded source was left unchanged.")
         return wrapped
 
     handlers = {
