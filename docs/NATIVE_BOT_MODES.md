@@ -653,3 +653,33 @@ implementation. Focused worker UI suites: **45 passed**. Exact selective patch:
 **2,619 passed** in 31.50 seconds; full working tree: **2,701 passed** in 28.22
 seconds, no skips, both with disposable real database storage. Static and staged
 whitespace checks passed. No live Telegram, deployment, merge or production changes.
+
+## Feature-oriented Help: Blacklist, Welcome and Federations
+
+At the user's request, controller Help now separates Blacklist, Welcome & goodbye
+and Federations from broad Moderation/Group management lists. Each feature has
+an overview, actual command syntax, behavior/permission notes and practical
+examples. Existing native tables, themed two-column command buttons, pagination,
+contextual detail navigation and live-registration filtering remain. Commands
+have one category home. `/help groups`, `/help federation` and `/help greetings`
+provide natural entry points. Copyable ASCII commands are retained rather than
+nonfunctional mathematical-alphabet slash commands.
+
+The Blacklist page documents native `/blocklist` commands and parenthesized
+batches, separate message deletion, actual modes and approved/staff exemptions.
+It does not invent the sample's `/addblacklist` or sticker-specific commands.
+Welcome documents real placeholders and membership-update limits. Federation
+Help explicitly states that ban synchronization is unavailable. Feature examples
+are filtered by registration and do not execute settings changes. Worker-owned
+navigation and branding stay separate; these feature pages are controller Help.
+
+Five new tests cover module routes, real syntax, behavior limits, filtered
+examples, unique category ownership and conservative message lengths. Three
+initial cases failed before implementation. A full-run navigation test was
+updated to measure actionable command routes instead of assuming command-only
+code spans; feature pages now contain syntax and examples too. Final exact
+selective patch: **2,624 passed** in 26.93 seconds; full working tree: **2,706
+passed** in 27.49 seconds, no skips, both with disposable real database storage.
+Offline preview includes the three feature pages. Static/whitespace checks passed.
+Unrelated music catalogue changes remain unstaged. No live Telegram, deployment,
+production changes or PR merge; the user explicitly corrected the merge request.

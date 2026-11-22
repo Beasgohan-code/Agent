@@ -1,7 +1,6 @@
 """Mobile pagination and confirmed-only navigation retries."""
 
 import asyncio
-import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -20,7 +19,9 @@ def test_every_command_remains_reachable_once_across_pages():
         seen = []
         for page in range(pages):
             screen = help_section_screen(title, None, Theme(), page=page)
-            seen += re.findall(r"<code>/([a-z_0-9]+)</code>", screen.rich_text)
+            seen += [button.callback_data.removeprefix('help:command:')
+                     for row in screen.keyboard.inline_keyboard for button in row
+                     if button.callback_data.startswith('help:command:')]
             for row in screen.keyboard.inline_keyboard:
                 for button in row:
                     assert button.callback_data in SCREENS

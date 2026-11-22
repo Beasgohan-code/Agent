@@ -177,7 +177,7 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (
             "warn", "warnings", "unwarn", "mute", "unmute", "kick", "ban", "unban",
             "lock", "unlock", "locks", "locktypes", "allowlist", "rmallowlist", "rmallowlistall", "tban", "tmute", "dban", "dmute", "dkick", "sban", "smute", "skick", "kickme",
-            "fullpromote", "adminbox", "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto", "warntime", "warnmode", "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "privaterules", "resetrules", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "addblocklist", "rmblocklist", "unblocklistall", "rmblocklistall", "blocklist", "blocklistmode", "blocklistdelete", "setblocklistreason", "resetblocklistreason", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
+            "fullpromote", "adminbox", "afk", "userstats", "recentactivity", "admincount", "rights", "setchatname", "setchatdescription", "setchatphoto", "warntime", "warnmode", "resetallwarns", "dwarn", "swarn", "rmwarn", "resetwarn", "privaterules", "resetrules", "purge", "spurge", "note", "approve", "unapprove", "approval", "approved", "cleanservice", "cleancommand", "keepcommand", "antispam", "modlog", "flood", "setflood", "setfloodtimer", "floodmode", "clearflood", "warns",
         ),
     ),
     (
@@ -186,11 +186,9 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (
             "settings", "rules", "setrules", "pin", "unpin", "admins",
             "etagall", "eall", "tagall", "all", "tagabort", "allsettings", "tagstats", "tpromote", "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
-            "fedreason", "fednotif", "quietfed", "fedpromote", "feddemote", "feddemoteme", "fedtransfer", "newfed", "renamefed", "delfed", "myfeds", "fedinfo", "fedadmins", "joinfed", "leavefed", "chatfed",
             "actiontopic", "setactiontopic", "newtopic", "renametopic", "closetopic", "reopentopic", "warnlimit", "resetwarns", "lockdown",
             "filter", "filters", "stopfilter",
-            "setwelcome", "welcome", "goodbye",
-        ),
+            ),
     ),
     (
         "fire",
@@ -214,7 +212,44 @@ HELP_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
             "setlog", "log", "sudo", "addsudo", "delsudo", "sudolist", "sudoperms",
         ),
     ),
+    ('lock', 'Blacklist', ('blocklist', 'addblocklist', 'rmblocklist', 'unblocklistall', 'rmblocklistall', 'blocklistmode', 'blocklistdelete', 'setblocklistreason', 'resetblocklistreason')),
+    ('wave', 'Welcome & goodbye', ('setwelcome', 'welcome', 'goodbye')),
+    ('shield', 'Federations', ('fedreason', 'fednotif', 'quietfed', 'fedpromote', 'feddemote', 'feddemoteme', 'fedtransfer', 'newfed', 'renamefed', 'delfed', 'myfeds', 'fedinfo', 'fedadmins', 'joinfed', 'leavefed', 'chatfed')),
 )
+
+
+
+# Feature-level guidance follows the actual native handlers, not upstream aliases.
+MODULE_HELP = {
+    'Blacklist': {
+        'intro': 'Manage blocked text, filenames and sender-name patterns in this group. Administrators choose triggers, the member action and whether matching messages are deleted.',
+        'usage': {
+            'blocklist': '/blocklist',
+            'addblocklist': '/addblocklist <trigger> [reason] or /addblocklist (word "quoted phrase") [reason]',
+            'rmblocklist': '/rmblocklist <trigger> or /rmblocklist (word "quoted phrase")',
+            'blocklistmode': '/blocklistmode nothing|warn|ban|mute|kick|tban|tmute [duration]',
+            'blocklistdelete': '/blocklistdelete on|off',
+            'setblocklistreason': '/setblocklistreason <reason>',
+            'resetblocklistreason': '/resetblocklistreason',
+            'unblocklistall': '/unblocklistall confirm',
+            'rmblocklistall': '/rmblocklistall confirm',
+        },
+        'notes': 'Automatic detection: matching messages use the configured action. Staff and approved members are exempt. Modes: nothing means no member punishment; warn adds a warning; ban, mute and kick act on the member; tban and tmute require a duration such as 1h. Message deletion is controlled separately. Triggers support case/accent-insensitive globs; quote phrases and use parentheses for batches of up to 20. Sticker-specific blacklist commands are not implemented.',
+        'examples': (('addblocklist', '/addblocklist (spam rude) Unwanted content'), ('blocklistmode', '/blocklistmode warn'), ('blocklistdelete', '/blocklistdelete on')),
+    },
+    'Welcome & goodbye': {
+        'intro': 'Configure greetings for real membership joins and farewells for leaves. Group administrators control the text and whether each greeting is enabled.',
+        'usage': {'setwelcome': '/setwelcome <text>', 'welcome': '/welcome [on|off]', 'goodbye': '/goodbye [on|off|text]'},
+        'notes': 'Placeholders: {mention} links to the member, {name} is their first name, {chat} is the group title and {count} is the available member count. Templates are plain text; arbitrary HTML is not enabled. Greetings depend on supported membership updates and current permissions.',
+        'examples': (('setwelcome', '/setwelcome Welcome {mention} to {chat}!'), ('welcome', '/welcome on'), ('goodbye', '/goodbye Goodbye {name}!')),
+    },
+    'Federations': {
+        'intro': 'Organize federation ownership, administrators and group enrollment. Only the current Telegram chat owner can join or leave a federation for that group.',
+        'usage': {'newfed': '/newfed <name>', 'renamefed': '/renamefed <name>', 'joinfed': '/joinfed <federation_id>', 'leavefed': '/leavefed', 'chatfed': '/chatfed', 'myfeds': '/myfeds [page]'},
+        'notes': 'Federation ownership and delegated roles are checked for each operation. Ban synchronization is not available: these tools manage metadata and enrollment, not network-wide bans. Notification preferences do not mean delivery is implemented.',
+        'examples': (('newfed', '/newfed My community'), ('myfeds', '/myfeds'), ('chatfed', '/chatfed')),
+    },
+}
 
 
 def section_slug(title: str) -> str:
@@ -311,10 +346,11 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
     pages = max(1, (len(visible) + HELP_PAGE_SIZE - 1) // HELP_PAGE_SIZE)
     page = min(max(0, page), pages - 1)
     selected = visible[page * HELP_PAGE_SIZE:(page + 1) * HELP_PAGE_SIZE]
+    guide = MODULE_HELP.get(title)
     blocks = [
-        rich_heading(f"{theme.emoji(icon)} {title}", 2),
+        rich_heading(f"{theme.emoji(icon)} {rich_esc(title)}", 2),
         rich_note(
-            {
+            guide['intro'] if guide and visible else {
                 "Essentials": "Your everyday shortcuts. Start here, check your status or get help.",
                 "Moderation": "Keep your community safe. Moderation actions require the appropriate group permissions.",
                 "Group management": "Shape your group’s rules and welcome experience. Settings changes require group-admin permissions.",
@@ -333,7 +369,7 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
         table = Table(
             headers=("Command", "What it does"),
             rows=tuple(
-                (markup(f"<code>/{rich_esc(name)}</code>"), DESCRIPTIONS[name])
+                (markup(f"<code>{rich_esc(guide['usage'].get(name, '/' + name) if guide else '/' + name)}</code>"), DESCRIPTIONS[name])
                 for name in selected
             ),
             aligns=("left", "left"),
@@ -342,6 +378,12 @@ def help_section_screen(title: str, user, theme: Theme, *, active: set[str] | No
         )
         blocks.append("")
         blocks.append(table.block())
+        if guide:
+            blocks.append("<b>How it works</b>\n" + rich_esc(guide['notes']))
+            examples = [example for name, example in guide['examples'] if name in visible]
+            if examples:
+                blocks.append('<b>Examples</b>\n' + '\n'.join('<code>' + rich_esc(example) + '</code>' for example in examples))
+            blocks.append(rich_note('Group-visible help only. Opening this page does not change settings; administrator permissions are checked when you send a command.'))
     blocks.append("")
     blocks.append(rich_hr())
     blocks.append(
@@ -450,7 +492,8 @@ def help_lookup_screen(
     if query and query not in DESCRIPTIONS:
         # Short category names should work without knowing the display title.
         aliases = {"music": "Music (voice chat)", "vault": "Vault & downloads",
-                   "media": "Encoding & files", "groups": "Group management"}
+                   "media": "Encoding & files", "groups": "Group management",
+                   "federation": "Federations", "greetings": "Welcome & goodbye"}
         title = aliases.get(query)
         if title:
             return help_section_screen(title, user, theme, active=active)

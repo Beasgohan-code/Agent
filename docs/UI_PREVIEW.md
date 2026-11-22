@@ -110,6 +110,103 @@ Buttons (row order):
 - ⬅️ Back to AI Agent
 - 📁 All sections · 🏡 Menu
 
+## Blacklist module (explicit feature fixture)
+
+```text
+🔒 Blacklist
+
+Manage blocked text, filenames and sender-name patterns in this group. Administrators choose triggers, the member action and whether matching messages are deleted.
+
+Command  What it does
+/blocklist  Show blocklist settings and triggers
+/addblocklist <trigger> [reason] or /addblocklist (word "quoted phrase") [reason]  Add a text or filename blocklist trigger
+/rmblocklist <trigger> or /rmblocklist (word "quoted phrase")  Remove a blocklist trigger
+/blocklistmode nothing|warn|ban|mute|kick|tban|tmute [duration]  Set the blocklist action
+/blocklistdelete on|off  Toggle blocked-message deletion
+
+How it works
+Automatic detection: matching messages use the configured action. Staff and approved members are exempt. Modes: nothing means no member punishment; warn adds a warning; ban, mute and kick act on the member; tban and tmute require a duration such as 1h. Message deletion is controlled separately. Triggers support case/accent-insensitive globs; quote phrases and use parentheses for batches of up to 20. Sticker-specific blacklist commands are not implemented.
+Examples
+/addblocklist (spam rude) Unwanted content
+/blocklistmode warn
+/blocklistdelete on
+Group-visible help only. Opening this page does not change settings; administrator permissions are checked when you send a command.
+
+─────
+
+Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ % & ? · Choose another category or return to your workspace.
+```
+
+Buttons (row order):
+- 💡 /blocklist · 💡 /addblocklist
+- 💡 /rmblocklist · 💡 /blocklistmode
+- 💡 /blocklistdelete
+- 📁 All sections
+- ⬅️ Back to menu
+
+## Welcome module (explicit feature fixture)
+
+```text
+👋 Welcome & goodbye
+
+Configure greetings for real membership joins and farewells for leaves. Group administrators control the text and whether each greeting is enabled.
+
+Command  What it does
+/setwelcome <text>  Set the welcome message
+/welcome [on|off]  Show or toggle the welcome message
+/goodbye [on|off|text]  Set or toggle the goodbye message
+
+How it works
+Placeholders: {mention} links to the member, {name} is their first name, {chat} is the group title and {count} is the available member count. Templates are plain text; arbitrary HTML is not enabled. Greetings depend on supported membership updates and current permissions.
+Examples
+/setwelcome Welcome {mention} to {chat}!
+/welcome on
+/goodbye Goodbye {name}!
+Group-visible help only. Opening this page does not change settings; administrator permissions are checked when you send a command.
+
+─────
+
+Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ % & ? · Choose another category or return to your workspace.
+```
+
+Buttons (row order):
+- 💡 /setwelcome · 💡 /welcome
+- 💡 /goodbye
+- 📁 All sections
+- ⬅️ Back to menu
+
+## Federations module (explicit feature fixture)
+
+```text
+🛡 Federations
+
+Organize federation ownership, administrators and group enrollment. Only the current Telegram chat owner can join or leave a federation for that group.
+
+Command  What it does
+/newfed <name>  Create your federation
+/myfeds [page]  List federations you administer
+/joinfed <federation_id>  Join this chat to a federation (chat owner)
+/chatfed  Show this chat federation
+
+How it works
+Federation ownership and delegated roles are checked for each operation. Ban synchronization is not available: these tools manage metadata and enrollment, not network-wide bans. Notification preferences do not mean delivery is implemented.
+Examples
+/newfed My community
+/myfeds
+/chatfed
+Group-visible help only. Opening this page does not change settings; administrator permissions are checked when you send a command.
+
+─────
+
+Page 1 of 1 · Tap a command below for details · All commands accept / ! . # $ % & ? · Choose another category or return to your workspace.
+```
+
+Buttons (row order):
+- 💡 /newfed · 💡 /myfeds
+- 💡 /joinfed · 💡 /chatfed
+- 📁 All sections
+- ⬅️ Back to menu
+
 ## Encoder clone · /help encode (encode-only fixture)
 
 ```text
