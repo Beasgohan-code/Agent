@@ -885,3 +885,26 @@ seconds; full working tree: **2,746 passed** in 29.05 seconds. Both full runs us
 disposable real storage with no skips. Static and whitespace checks passed.
 Telegram uploads remain mocked; no live provider calls, production changes,
 deployment or PR merge. Unrelated work preserved; appearance remains removed.
+
+### Markdown reconciliation and bounded job admission
+
+Scanned all 49 tracked Markdown files for pending/completion markers and local
+inline file links, preserving historical/reference provenance. Recorded scope
+and unresolved areas in CODEBASE_AUDIT; corrected current Music command counts,
+seek/voicehealth status and resolver-versus-native-admission wording in MUSIC_PARITY.
+Zero missing local file-link targets; external links/anchors were not validated.
+
+JobQueue now defaults to 100 live admitted tasks per instance (`max_active` accepts
+positive integers). Running work, semaphore waiters and tasks still doing cancellation
+cleanup all consume capacity. Rejection happens before task/history/ID allocation;
+completed tasks release capacity even before their done callback runs. Existing
+concurrency/history pruning, shutdown and outcome behavior remain unchanged.
+Per-owner/group fairness, cross-instance budgeting, durable job recovery and
+bounds on other in-memory services remain open. Callers must handle capacity
+rejection; no per-command progress-card redesign is claimed.
+
+Two admission scenarios failed before implementation; final regressions also
+validate invalid budgets. Exact selective patch: **2,667 passed** in 32.59 seconds;
+full working tree: **2,749 passed** in 29.04 seconds, no skips, disposable real
+storage enabled. Static/whitespace checks passed. No live Telegram/provider or
+production calls, deployment or PR merge. Unrelated dirty work remains unstaged.

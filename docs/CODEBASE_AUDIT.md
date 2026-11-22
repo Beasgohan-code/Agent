@@ -107,12 +107,12 @@ Pool maximum is four connections **per Database instance**; clones create additi
 | CLONE-02 | P0 correctness / **R, fixed in lifecycle follow-up** | Delete then recreate the same bot fails despite free capacity: `aremove` leaves the revision and fixed `creation` receipt; `_persist` replays the old creation result or conflicts with expected zero. Failed initial setup also removes only the registry entry. Next: lifecycle/generation-aware creation and retry, preserving monotonic revisions/old receipts and rejecting stale workers. Do not blindly delete receipts or reset counters. |
 | DATA-01 | P0 integrity / **R, warnings fixed; other document races open** | Two independent ChatStore/Database snapshots each added a warning and flushed; only **1 of 2** warnings persisted. `chats._save -> save_document -> Database.save -> whole-row UPSERT` has no cross-process CAS. Warnings, report numbering/closure, notes and shared storage/runtime documents need an operation-by-operation migration, not a generic blind flush. |
 | NET-01 | P0 security review / **S, fail-closed mitigation implemented; native exploitation U** | Arbitrary Music media URLs receive DNS preflight then are handed to native `MediaStream`; native redirect/DNS resolution is not pinned to `PublicResolver`. Leech's connector is pinned and validates every redirect, so its tests do not prove native streaming safety. Next: reproduce with a local controlled redirect/rebinding fixture; design bounded mediated fetching or a restricted source policy before adding Music breadth. |
-| SEC-02 | P0 security review / **S, open** | Lease query/release/heartbeat diagnostics and JobQueue retained exceptions are fixed in follow-ups below; encoder download/delivery/cleanup logs are fixed in a further follow-up; remaining service/transport producers still require review (including Leech progress edits). Job history now retains a stable failure code, not exception bodies. No universal secret-safe logging policy is enforced. Add sentinel tests at each producer/sink; do not log raw updates. |
+| SEC-02 | P0 security review / **S, open** | Lease query/release/heartbeat diagnostics and JobQueue retained exceptions are fixed in follow-ups below; encoder download/delivery/cleanup logs are fixed in a further follow-up; remaining service/transport producers still require review (verification, group/lockdown, Leech progress and player diagnostic fixes are recorded in NATIVE_BOT_MODES.md). Job history now retains a stable failure code, not exception bodies. No universal secret-safe logging policy is enforced. Add sentinel tests at each producer/sink; do not log raw updates. |
 | LIFE-01 | P1 / **S, open** | Main `_run` starts `plugin_gate.watch`; clone `_start_assigned` does not run that lifecycle. New clone invocations check approval, but cross-instance revocation of already-running optional work lacks the same periodic cancellation path. Clone supervision checks connection flags, not a full health probe. Unify owned-service startup/shutdown without calling the main polling lifecycle twice. |
 | DATA-02 | P1 / **S, open** | `Database.close()` makes one final flush attempt then closes; a failed flush remains only in memory. Process-local jobs/events/drafts cannot be treated as durable. Retry/backoff is not an outbox or restart-safe delivery. |
 | CLEAN-01 | P1 / **S, open** | Plugin resource cleanup markers exist; PluginGate only reconciles locally seen scopes. No general durable cleanup/dead-letter/replay worker was found. Storage/clone deletion does not provide a transactional, durable remote-resource cleanup ledger. Never claim local deletion means remote cleanup completed. |
 | HEALTH-01 | P1 / **S, open** | `/health/ready` derives from Telegram HealthMonitor only; no current database probe, required-plugin status or worker readiness aggregate. `/health` exposes operational details without authentication; minimize public fields. Liveness is intentionally independent. |
-| RESOURCE-01 | P1 / **S, open** | JobQueue limits running jobs with a semaphore but does not bound admitted pending tasks. Verification timers, flood/queue/draft state are memory-resident. Add admission bounds, per-user/group limits and restart semantics before scaling. |
+| RESOURCE-01 | P1 / **S, open** | JobQueue now bounds live admitted tasks to 100 per instance by default, including running, waiting and cancellation cleanup. Per-user/group fairness, other timer/draft bounds and restart semantics remain open. This is not a deployment-wide quota. |
 | PLUGIN-01 | P1 / **S, open** | Runtime enable/disable queues document persistence and compensates synchronous handler calls; it is not a durable cross-process dispatcher acknowledgement. Modules are eagerly imported before optional-build failure handling. Callback/watcher cleanup hooks are not a universal unload protocol. |
 | POLICY-01 | P0 decision gate / **S, open** | Explicit Owner-Premium behavior differs between dirty code and committed baseline and historical docs. New requirements prohibit silent exceptions. Make the intended policy explicit and reconcile all entry points/tests in a separately authorized phase; do not silently stage the existing local Premium changes. |
 | DOC-01 | P2 / **S, open** | Config/Render/env comments still describe optional database/plaintext/feature availability in places where current runtime refuses fallback or writes. Historical audits contain superseded pending/completed statements. This document supersedes totals as evidence, not all product documentation. |
@@ -1129,3 +1129,36 @@ group navigation scope; unrelated Premium/Music/localization/bot-init edits excl
 by selective staging. Hero cache applies only when a photo file ID is returned;
 cache clears on process restart. No measured live speed multiplier or universal
 UI/ephemeral compatibility claim. No deployment/merge/production operations.
+
+
+## Markdown reconciliation pass
+
+Reviewed all 49 tracked Markdown files (8,547 lines before this pass) for explicit
+pending/completion markers and checked inline relative file-link targets: zero
+missing local files. This is a repository documentation consistency pass, not
+proof of external URL reachability, anchor validity, reference behavior or live
+Telegram operation. Read current requirements and priority findings alongside
+chronological ledgers; their historical test counts are not current totals.
+
+- Runtime/operator ledgers: README, ALWAYS_ON, CLONE_CONTROL_CENTRE,
+  CODEBASE_AUDIT, COMMAND_INVENTORY, EMOJI_THEME, FILESTORE_CLONE_PARITY,
+  GENERAL_FEATURES, GROUP_MANAGEMENT, LOG_SAFETY, MODERATION_PARITY, MUSIC_PARITY,
+  NATIVE_BOT_MODES, REFERENCE_ADOPTION, REFERENCE_INVENTORY, UI_PREVIEW,
+  USER_ADMIN_FEATURES, USER_REQUIREMENTS and tools/typetube/README.
+- All 30 files under docs/references are reference catalog/index material, not
+  runtime feature promises. Kept revision/hash/license provenance intact; did not
+  execute or copy reference code or regenerate inventories from unreviewed code.
+- Corrected stale Music command totals and seek/voicehealth pending rows, and
+  separated resolver support from fail-closed native playback admission. Dirty
+  Music search/session/force-play work is not promoted to published functionality.
+- Earlier General missing-command statements are explicitly historical; later
+  massban/broadcast/profile-link phases supersede them. Broadcast recorded-copy
+  cleanup and translation parity are still open. FileStore opaque-source limits,
+  clone durable onboarding, moderation restart recovery, native remote-media
+  mediation and full plugin parity remain open, not completed by documentation.
+- Appearance cancellation and no-merge requirements remain binding. Current
+  module-first Help is preserved. No language-completeness or live-provider claim.
+
+Continued RESOURCE-01 with bounded JobQueue admission, not an unrelated feature:
+rejected work allocates no task/history/ID; cancellation holds capacity until its
+actual task finishes cleanup. This does not add durable jobs or per-owner fairness.

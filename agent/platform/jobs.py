@@ -63,7 +63,10 @@ class Job:
 class JobQueue:
     """Bounded-concurrency runner with cancellation."""
 
-    def __init__(self, *, concurrency: int = 2, max_history: int = 200) -> None:
+    def __init__(self, *, concurrency: int = 2, max_history: int = 200, max_active: int = 100) -> None:
+        if type(max_active) is not int or max_active < 1:
+            raise ValueError("max_active must be a positive integer")
+        self._max_active = max_active
         self._closed = False
         self.eligibility_check = None
         self._limit = asyncio.Semaphore(max(1, concurrency))
@@ -82,6 +85,11 @@ class JobQueue:
     ) -> Job:
         if self._closed:
             raise RuntimeError("Job queue is shut down")
+        # Count live tasks, not logical job states: cancellation may still be
+        # cleaning up. No await between admission and task creation, so this
+        # budget includes running, queued and cancelling work on this loop.
+        if sum(not task.done() for task in self._tasks) >= self._max_active:
+            raise RuntimeError("Job queue capacity reached; wait for active work to finish")
         self._counter += 1
         job = Job(id=f"{module}-{self._counter}", module=module, owner_id=owner_id, label=label)
         from .execution import GROUP_EXECUTION
