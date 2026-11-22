@@ -153,9 +153,17 @@ class JobQueue:
                 job.result = await runner(job)
             except asyncio.CancelledError:
                 job.state = JobState.CANCELLED
-                job.finished_at = time.time()
+                job.finished_at = job.finished_at or time.time()
                 raise
             except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
+                if job.state is JobState.CANCELLED:
+                    # A runner can replace CancelledError with a cleanup error.
+                    # Preserve requested cancellation, but disclose uncertainty.
+                    job.result = None
+                    job.finished_at = job.finished_at or time.time()
+                    job.detail = (job.detail + "; " if job.detail else "") + "Cancelled runner ended with error"
+                    logger.warning("#Errors Cancelled job runner ended with error (%s).", type(exc).__name__)
+                    return
                 job.state = JobState.FAILED
                 job.error = "runner_failed"
                 job.finished_at = time.time()
@@ -212,7 +220,10 @@ class JobQueue:
         for job in self.active():
             self.cancel(job.id)
         for task in list(self._tasks):
-            task.cancel()
+            # cancel() above (or an earlier caller) may already have started
+            # cleanup. A second cancellation would interrupt that cleanup.
+            if not task.done() and not task.cancelling():
+                task.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
 

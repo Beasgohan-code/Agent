@@ -227,3 +227,60 @@ def test_group_cancellation_does_not_touch_other_group_or_module():
         await asyncio.gather(*(job.task for job in jobs), return_exceptions=True)
         await queue.shutdown()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('shutdown_calls', [1, 2])
+def test_shutdown_does_not_interrupt_already_cancelled_cleanup(shutdown_calls):
+    async def scenario():
+        queue = JobQueue()
+        started, cleaning, release, cleaned, interrupted = (asyncio.Event() for _ in range(5))
+        async def work(job):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaning.set()
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    interrupted.set()
+                    raise
+                cleaned.set()
+        job = queue.submit('encoder', 11, work)
+        await started.wait()
+        queue.cancel(job.id)
+        await cleaning.wait()
+        stops = [asyncio.create_task(queue.shutdown()) for _ in range(shutdown_calls)]
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        returned_early = any(stop.done() for stop in stops)
+        release.set()
+        await asyncio.gather(*stops)
+        assert not interrupted.is_set() and cleaned.is_set()
+        assert not returned_early
+        assert job.state is JobState.CANCELLED and job.task.done()
+    asyncio.run(scenario())
+
+
+def test_cleanup_error_does_not_replace_requested_cancellation(caplog):
+    async def scenario():
+        queue = JobQueue()
+        started = asyncio.Event()
+        async def work(job):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                raise RuntimeError('private-cleanup-path-and-token')
+        job = queue.submit('encoder', 11, work)
+        await started.wait()
+        queue.cancel(job.id)
+        cancelled_at = job.finished_at
+        await job.task
+        assert job.state is JobState.CANCELLED
+        assert job.finished_at == cancelled_at
+        assert job.error is None and job.result is None
+        await queue.shutdown()
+    asyncio.run(scenario())
+    assert 'private-cleanup-path-and-token' not in caplog.text
+    assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text

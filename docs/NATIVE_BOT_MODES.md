@@ -1006,3 +1006,24 @@ Exact selective patch: **2,695 passed** in 37.76 seconds; full working tree:
 skips. Changed-file static/whitespace checks passed. New cleanup boundaries use
 local task fixtures; no live Telegram/provider or production calls, deployment
 or PR merge. Appearance remains removed; unrelated changes remain unstaged.
+
+### Shutdown and cancellation outcome preservation
+
+JobQueue shutdown no longer injects a second cancellation into tasks already
+handling cancellation; it awaits them, including concurrent shutdown callers.
+Tasks not yet cancelling are still cancelled. An ordinary runner error raised
+after logical cancellation now preserves the cancelled state, original finish
+timestamp and empty result/error fields, while adding a stable generic detail
+and type-only #Errors diagnostic. Ordinary non-cancelled runner failures retain
+the existing failed/runner_failed behavior. Cancellation cleanup may still fail;
+this is not a guarantee of resource removal or durable cleanup recovery. Outer
+shutdown deadlines/forced process termination remain separate limits.
+
+Three regressions failed before implementation: single/concurrent shutdown
+interrupting cleanup and a cleanup error replacing requested cancellation.
+Focused job/platform suites: **35 passed, one storage-dependent skip** without a
+storage URL. Final full exact selective patch: **2,698 passed** in 35.22 seconds;
+full working tree: **2,780 passed** in 32.02 seconds, both with disposable real
+storage and no skips. Static/whitespace checks passed. No live provider calls,
+production changes, deployment or PR merge. Appearance stays removed and
+unrelated working-tree work remains unstaged.
