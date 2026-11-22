@@ -988,3 +988,21 @@ Exact selective patch: **2,692 passed** in 38.33 seconds; full working tree:
 **2,774 passed** in 30.56 seconds, disposable real storage enabled, no skips.
 Static/whitespace checks passed. No live provider/production calls, deployment
 or PR merge; appearance remains removed and unrelated changes remain unstaged.
+
+### Retain and await cancelled-job cleanup
+
+Job-history trimming now requires actual task completion, not only a terminal
+logical state, before evicting a record. The history target may temporarily be
+exceeded while bounded live tasks finish cleanup. Completion callbacks still
+prune finished history. Group cancellation includes matching already-cancelled
+but unfinished tasks, waiting for their cleanup without injecting cancellation
+a second time. Other group/module tasks remain untouched. This does not add
+cleanup deadlines, durable jobs or permission to delete unrelated resources.
+
+Two regressions failed before implementation (early history eviction and early
+group-cancellation return). Final third regression verifies group/module isolation.
+Exact selective patch: **2,695 passed** in 37.76 seconds; full working tree:
+**2,777 passed** in 33.07 seconds. Both suites used disposable real storage, no
+skips. Changed-file static/whitespace checks passed. New cleanup boundaries use
+local task fixtures; no live Telegram/provider or production calls, deployment
+or PR merge. Appearance remains removed; unrelated changes remain unstaged.

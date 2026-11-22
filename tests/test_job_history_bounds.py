@@ -144,3 +144,86 @@ def test_cancelled_job_cannot_start_after_eligibility_suppresses_cancellation(mo
             await shutdown
         await queue.shutdown()
     asyncio.run(scenario())
+
+
+def test_history_pruning_keeps_cancelled_job_while_cleanup_is_running():
+    async def scenario():
+        queue = JobQueue(concurrency=2, max_history=1)
+        started, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        async def work(job):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaning.set()
+                await release.wait()
+        job = queue.submit('encoder', 11, work)
+        await started.wait()
+        queue.cancel(job.id)
+        await cleaning.wait()
+        async def done(job):
+            return None
+        other = queue.submit('leech', 22, done)
+        await other.task
+        await asyncio.sleep(0)
+        retained = queue.get(job.id)
+        release.set()
+        await asyncio.gather(job.task, return_exceptions=True)
+        await queue.shutdown()
+        assert retained is job
+    asyncio.run(scenario())
+
+
+def test_group_cancellation_waits_for_already_cancelled_cleanup():
+    from agent.platform.execution import GROUP_EXECUTION
+    async def scenario():
+        queue = JobQueue()
+        started, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        async def work(job):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaning.set()
+                await release.wait()
+        token = GROUP_EXECUTION.set((-100, 'group'))
+        try:
+            job = queue.submit('group', 11, work)
+        finally:
+            GROUP_EXECUTION.reset(token)
+        await started.wait()
+        queue.cancel(job.id)
+        await cleaning.wait()
+        barrier = asyncio.create_task(queue.cancel_group(-100, 'group'))
+        await asyncio.sleep(0)
+        returned_early = barrier.done()
+        release.set()
+        await barrier
+        await asyncio.gather(job.task, return_exceptions=True)
+        await queue.shutdown()
+        assert not returned_early
+    asyncio.run(scenario())
+
+
+def test_group_cancellation_does_not_touch_other_group_or_module():
+    from agent.platform.execution import GROUP_EXECUTION
+    async def scenario():
+        queue = JobQueue(concurrency=3)
+        gate = asyncio.Event()
+        async def work(job):
+            await gate.wait()
+        jobs = []
+        for group, module in ((-100, 'group'), (-200, 'group'), (-100, 'leech')):
+            token = GROUP_EXECUTION.set((group, module))
+            try:
+                jobs.append(queue.submit(module, 11, work))
+            finally:
+                GROUP_EXECUTION.reset(token)
+        await asyncio.sleep(0)
+        await queue.cancel_group(-100, 'group')
+        assert jobs[0].state is JobState.CANCELLED and jobs[0].task.done()
+        assert all(job.state is JobState.RUNNING and not job.task.done() for job in jobs[1:])
+        gate.set()
+        await asyncio.gather(*(job.task for job in jobs), return_exceptions=True)
+        await queue.shutdown()
+    asyncio.run(scenario())

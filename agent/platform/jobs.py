@@ -185,10 +185,14 @@ class JobQueue:
 
     async def cancel_group(self, group_id: int, module: str) -> None:
         tasks = []
-        for job in self.active():
+        # Logical cancellation can precede actual task completion. Include
+        # already-cancelled work, without cancelling its cleanup a second time.
+        for job in list(self._jobs.values()):
             if job.group_id == group_id and job.module == module:
-                self.cancel(job.id)
-                if job.task is not None and job.task is not asyncio.current_task():
+                if not job.finished:
+                    self.cancel(job.id)
+                if (job.task is not None and not job.task.done()
+                        and job.task is not asyncio.current_task()):
                     tasks.append(job.task)
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -216,7 +220,8 @@ class JobQueue:
         if len(self._jobs) <= self._max_history:
             return
         finished = sorted(
-            (j for j in self._jobs.values() if j.finished), key=lambda j: j.created_at
+            (j for j in self._jobs.values()
+             if j.finished and (j.task is None or j.task.done())), key=lambda j: j.created_at
         )
         for job in finished[: len(self._jobs) - self._max_history]:
             self._jobs.pop(job.id, None)
