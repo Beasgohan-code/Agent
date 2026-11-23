@@ -132,7 +132,7 @@ def test_cancel_actually_cancels_the_callers_job(tmp_path):
     job, message = asyncio.run(scenario())
 
     assert job.state is JobState.CANCELLED
-    assert "Cancelled 1 job(s)." in message.replies[0]
+    assert "Cancellation requested for 1 job(s)." in message.replies[0]
 
 
 def test_cancel_says_when_nothing_is_running(tmp_path):
@@ -302,7 +302,7 @@ def test_cancel_by_id_is_selective_owner_bound_and_honest(tmp_path):
                 assert 'No matching job belongs to you' in request.replies[-1]
             done = FakeMessage('/cancel ' + first.id)
             await command(None, done)
-            assert 'already finished' in done.replies[-1]
+            assert 'already requested' in done.replies[-1]
             malformed = FakeMessage('/cancel one two')
             await command(None, malformed)
             assert 'Use /cancel' in malformed.replies[-1]
@@ -371,3 +371,45 @@ def test_status_uses_attached_identity_and_requires_boolean_capability_flags(tmp
         body = str(message.replies[0])
         expected = 'Reported enabled' if value is True else 'Reported disabled' if value is False else 'Not reported'
         assert body.count(expected) == 3
+
+
+def test_cancel_and_jobs_distinguish_requested_from_finished_cleanup(tmp_path):
+    async def scenario():
+        ctx = make_ctx(tmp_path)
+        started, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        async def work(job):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaning.set()
+                await release.wait()
+        job = ctx.jobs.submit('encoder', 11, work)
+        await started.wait()
+        commands = handlers(ctx)
+        try:
+            request = FakeMessage('/cancel ' + job.id)
+            await commands['cancel'](None, request)
+            assert 'Cancellation requested' in str(request.replies[-1])
+            await cleaning.wait()
+            for text in ('/cancel ' + job.id, '/cancel'):
+                repeat = FakeMessage(text)
+                await commands['cancel'](None, repeat)
+                assert 'already requested' in str(repeat.replies[-1])
+            listing = FakeMessage('/jobs')
+            listing.chat.id = 11
+            await commands['jobs'](None, listing)
+            assert 'cancelling' in str(listing.replies[-1])
+            assert not job.task.done()
+            release.set()
+            await asyncio.gather(job.task, return_exceptions=True)
+            done = FakeMessage('/cancel ' + job.id)
+            await commands['cancel'](None, done)
+            assert 'already finished' in done.replies[-1]
+            await commands['jobs'](None, listing)
+            assert 'cancelling' not in str(listing.replies[-1])
+            assert 'cancelled' in str(listing.replies[-1])
+        finally:
+            release.set()
+            await ctx.jobs.shutdown()
+    asyncio.run(scenario())

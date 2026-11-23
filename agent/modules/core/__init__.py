@@ -2,10 +2,10 @@
 
 ``/menu`` redraws the start screen, ``/about`` says what is loaded and how much
 each module adds, ``/status`` reads this process's live counters, ``/cancel``
-stops the caller's own jobs, and ``/owner`` is the owner's panel.
+requests cancellation of the caller's own jobs, and ``/owner`` is the owner's panel.
 
 Two of them are stricter than a placeholder would be: ``/cancel`` reports only
-what it actually stopped, and ``/status`` reads the health monitor instead of
+which cancellation requests were accepted, and ``/status`` reads the health monitor instead of
 quoting numbers nobody measured. ``/owner`` needs ``OWNER_ID`` and says so
 rather than guessing.
 """
@@ -192,6 +192,10 @@ def build(ctx):
             note="Measured since this process started; restarts reset uptime. Not a 24/7 availability percentage.",
         ))
 
+    def cancelling(job):
+        return (job.state.value == 'cancelled' and job.task is not None
+                and not job.task.done())
+
     async def cancel(_client, message):
         user = getattr(message, "from_user", None)
         if user is None or ctx.jobs is None:
@@ -208,9 +212,9 @@ def build(ctx):
                 await reply(message, "No matching job belongs to you. Open /jobs privately to check your IDs.")
                 return
             if not ctx.jobs.cancel(job_id, owner_id=user.id):
-                await reply(message, "That job has already finished. Nothing was cancelled.")
+                await reply(message, "Cancellation already requested; cleanup is still in progress. Check /jobs privately." if cancelling(job) else "That job has already finished. Nothing was cancelled.")
                 return
-            await reply(message, "Cancelled the selected job. Your other jobs are unchanged.")
+            await reply(message, "Cancellation requested for the selected job. Cleanup may still be running. Your other jobs are unchanged.")
             return
         setup = getattr(ctx, "clone_setup", None)
         if setup is not None and setup.active(user.id) is not None and message.chat.id == user.id:
@@ -222,7 +226,9 @@ def build(ctx):
                 continue
             stopped += bool(ctx.jobs.cancel(job.id, owner_id=user.id))
         if stopped:
-            await reply(message, f"Cancelled {stopped} job(s).")
+            await reply(message, f"Cancellation requested for {stopped} job(s). Cleanup may still be running. Check /jobs privately.")
+        elif any(cancelling(job) for job in ctx.jobs.for_owner(user.id)):
+            await reply(message, "Cancellation already requested; cleanup is still in progress. Check /jobs privately.")
         else:
             await reply(message, "Nothing was running, so nothing was cancelled.")
 
@@ -285,9 +291,9 @@ def build(ctx):
                         key=lambda job: job.created_at, reverse=True)[:20]
         await reply(message, panel("Your recent jobs" + (f" · {module}" if module else ""), icon=ctx.theme.emoji("gear"),
             table=Table(headers=("Job", "Module", "State", "Progress"), rows=tuple(
-                (job.id, job.module, job.state.value, f"{max(0, min(100, int(job.progress * 100)))}%") for job in recent)),
+                (job.id, job.module, "cancelling" if cancelling(job) else job.state.value, f"{max(0, min(100, int(job.progress * 100)))}%") for job in recent)),
             lines=[] if recent else ["No matching jobs are recorded for you in this process session."],
-            note="Latest 20 jobs in this bot only. Source links, local paths and raw error details are hidden. /cancel &lt;job-id&gt; stops one job; /cancel stops all your active jobs.",
+            note="Latest 20 jobs in this bot only. Source links, local paths and raw error details are hidden. /cancel &lt;job-id&gt; requests cancellation of one job; /cancel requests cancellation of all your active jobs. Cleanup may still be running.",
             footer="Process memory only; history does not survive restart."))
 
     language_handler = build_language_picker(ctx)

@@ -1027,3 +1027,23 @@ full working tree: **2,780 passed** in 32.02 seconds, both with disposable real
 storage and no skips. Static/whitespace checks passed. No live provider calls,
 production changes, deployment or PR merge. Appearance stays removed and
 unrelated working-tree work remains unstaged.
+
+### Honest cancellation command status
+
+`/cancel` now acknowledges a cancellation request rather than claiming the job
+has already stopped. Repeated selected/all cancellation while owned cleanup is
+still running reports that cancellation was already requested, without injecting
+another cancellation or claiming completion. Private `/jobs` displays `cancelling`
+for logically cancelled jobs with unfinished tasks and `cancelled` after the task
+finishes. Existing job ownership, private job-list scope, clone-draft cancellation
+precedence and finished/unknown-job behavior remain intact. No cleanup-success or
+remote-effect rollback guarantee is implied.
+
+New end-to-end regression failed on old success wording, then verified initial
+request, repeated selected/all commands, live private status, and finished status
+using a blocked cleanup fixture. Existing assertions updated to truthful request
+semantics. Core suite: **20 passed**. Exact selective patch: **2,699 passed** in
+30.54 seconds; full working tree: **2,781 passed** in 30.93 seconds, both with
+disposable real storage and no skips. Static/whitespace checks passed. No live
+Telegram/provider or production calls, deployment or PR merge. Appearance stays
+removed; unrelated working-tree changes remain unstaged.
