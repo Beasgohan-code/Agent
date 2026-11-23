@@ -114,7 +114,7 @@ async def test_channel_mode_and_add_require_live_invite_rights(monkeypatch):
     client.get_chat_member.return_value.privileges.can_invite_users = True
     await command(client, msg)
     store.configure.assert_awaited_once_with(-100123, actor=11, auto_approve=True)
-    assert 'approval worker' in str(msg.reply.await_args.args[0])
+    assert 'Auto mode approves' in str(msg.reply.await_args.args[0])
 
 
 @pytest.mark.asyncio
@@ -159,3 +159,84 @@ async def test_existing_genlink_routes_channel_management_without_new_command(tm
     await commands['genlink'](None, request('/genlink channels'))
     store.list.assert_awaited_once()
     assert set(commands) == set(linkshare.MANIFEST.commands)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['auto', 'manual', 'disabled', 'unmanaged', 'storage', 'rights', 'actor', 'spoof'])
+async def test_join_approval_only_for_enabled_managed_opt_in_channels(monkeypatch, mode, caplog):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType, ChatMemberStatus as S
+    from agent.modules.linkshare.subscription import approve_request
+    row = {'channel_id': -100123, 'enabled': mode != 'disabled', 'auto_approve': mode != 'manual'}
+    store = NS(get=AsyncMock(return_value=None if mode == 'unmanaged' else row))
+    if mode == 'storage':
+        store.get.side_effect = RuntimeError('private-storage-secret')
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    ctx = NS(db=None, settings=NS(owner_id=11, bot_id=99))
+    user = NS(id=True if mode == 'actor' else 22, is_bot=False)
+    update = NS(chat=NS(id=-100123, type=ChatType.CHANNEL), from_user=user)
+    client = NS(get_chat=AsyncMock(return_value=NS(id=-100999 if mode == 'spoof' else -100123, type=ChatType.CHANNEL)),
+                get_chat_member=AsyncMock(return_value=NS(status=S.ADMINISTRATOR, privileges=NS(can_invite_users=mode != 'rights'))),
+                approve_chat_join_request=AsyncMock(return_value=True))
+    await approve_request(ctx, client, update)
+    assert client.approve_chat_join_request.await_count == (1 if mode == 'auto' else 0)
+    assert 'private-storage-secret' not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_join_approval_rechecks_policy_and_never_retries_unknown_result(monkeypatch, caplog):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType, ChatMemberStatus as S
+    from agent.modules.linkshare.subscription import approve_request
+    row = {'channel_id': -100123, 'enabled': True, 'auto_approve': True}
+    store = NS(get=AsyncMock(side_effect=[row, {**row, 'auto_approve': False}]))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    ctx = NS(db=None, settings=NS(owner_id=11, bot_id=99))
+    update = NS(chat=NS(id=-100123, type=ChatType.CHANNEL), from_user=NS(id=22, is_bot=False))
+    client = NS(get_chat=AsyncMock(return_value=NS(id=-100123, type=ChatType.CHANNEL)),
+                get_chat_member=AsyncMock(return_value=NS(status=S.OWNER)),
+                approve_chat_join_request=AsyncMock(side_effect=RuntimeError('private-request-secret')))
+    await approve_request(ctx, client, update)
+    client.approve_chat_join_request.assert_not_awaited()
+    store.get.side_effect = None
+    store.get.return_value = row
+    await approve_request(ctx, client, update)
+    client.approve_chat_join_request.assert_awaited_once_with(-100123, 22)
+    assert 'private-request-secret' not in caplog.text
+
+
+def test_linkshare_join_request_watcher_is_owned_by_plugin():
+    from agent.modules import linkshare
+    from pyrogram.handlers import ChatJoinRequestHandler
+    from types import SimpleNamespace as NS
+    watchers = linkshare.extra_handlers(NS())
+    assert len(watchers) == 1
+    assert isinstance(watchers[0], ChatJoinRequestHandler)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('untrusted', [1, 'true', None, [], {}])
+async def test_join_approval_requires_exact_boolean_policy(monkeypatch, untrusted):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType
+    from agent.modules.linkshare.subscription import approve_request
+    store = NS(get=AsyncMock(return_value={'enabled': True, 'auto_approve': untrusted}))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    client = NS(get_chat=AsyncMock(), approve_chat_join_request=AsyncMock())
+    await approve_request(NS(db=None), client, NS(chat=NS(id=-100123, type=ChatType.CHANNEL), from_user=NS(id=22)))
+    client.get_chat.assert_not_awaited()
+    client.approve_chat_join_request.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_linkshare_never_approves_native_security_guard_queries():
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from agent.modules.linkshare.subscription import approve_request
+    client = NS(approve_chat_join_request=AsyncMock(), get_chat=AsyncMock())
+    await approve_request(NS(), client, NS(query_id=123))
+    client.get_chat.assert_not_awaited()
+    client.approve_chat_join_request.assert_not_awaited()

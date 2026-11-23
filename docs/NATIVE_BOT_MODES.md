@@ -1170,3 +1170,23 @@ invite operations are mocked; no live invite creation/approval or production cal
 deployment or PR merge. Automatic approval worker, reference-style bot deep links,
 shared settings/batch command routing and legacy command removal remain unfinished.
 Appearance stays removed; unrelated work remains unstaged.
+
+### Linkshare per-channel automatic approval activated
+
+Wired the saved auto/manual policy through a Linkshare-owned join-request watcher,
+managed by existing runtime/gate infrastructure. Defaults stay manual; ordinary
+requests only for enabled registered channels. Checks personal applicant identity,
+actual channel identity, current bot Owner and bot invite authority, and re-reads
+policy before approval. Native Security guard queries are never auto-admitted.
+No blind retries or unsolicited invite messages; error diagnostics are type-only.
+
+Ten new approval tests failed before implementation; subsequent full suites caught
+the expected watcher-count change, and wiring assertions now check both Security
+and Linkshare request watchers. Sixteen new cases cover opt-in/manual/disabled/
+unmanaged/storage/rights/identity refusals, policy race, exact boolean flags,
+unknown remote effects, watcher registration and guard-query noninterference.
+Exact selective patch: **2,763 passed** in 35.22 seconds; working tree: **2,845
+passed** in 37.74 seconds, disposable real storage and no skips. Telegram approval
+is mocked, not live proof. Static/whitespace checks passed. No production calls,
+deployment or merge. Reference command/deep-link parity is still pending; old
+file-link commands remain during migration. Appearance stays removed.

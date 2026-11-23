@@ -173,7 +173,7 @@ def build_channels(ctx):
                     raise ValueError('Owner changed')
                 body = '<b>Managed Linkshare channels</b>\n' + '\n'.join(
                     f'<code>{row["channel_id"]}</code> · {"enabled" if row["enabled"] else "disabled"} · {"auto preference" if row["auto_approve"] else "manual"}' for row in rows)
-                await reply(message, body + '\nUse /genlink add ID, /genlink mode ID manual|auto, /genlink disable ID, or /genlink ID. Auto mode is a saved preference only until the approval worker is wired.')
+                await reply(message, body + '\nUse /genlink add ID, /genlink mode ID manual|auto, /genlink disable ID, or /genlink ID. Auto mode approves requests only for enabled, managed channels while Linkshare is active; manual mode leaves approval to administrators.')
                 return
             operation = args[0] if args and args[0] in ('add', 'mode', 'disable') else 'invite'
             valid = (operation == 'invite' and len(args) == 1 or operation in ('add', 'disable') and len(args) == 2
@@ -197,7 +197,7 @@ def build_channels(ctx):
             if operation in ('mode', 'disable'):
                 await authority(channel)
                 await store.configure(channel, actor=uid, **({'auto_approve': args[2] == 'auto'} if operation == 'mode' else {'enabled': False}))
-                await reply(message, 'Channel preference saved. The automatic approval worker is not wired yet; request links still need manual approval. Disabling stops new generation but does not revoke existing Telegram invites.')
+                await reply(message, 'Channel preference saved. Auto mode approves join requests only while this channel is enabled and both the Owner and bot retain invite authority. Manual mode leaves requests for administrators. Disabling stops generation and automatic approval but does not revoke existing Telegram invites.')
                 return
             if not row['enabled']:
                 await reply(message, 'This channel is disabled. No invite was requested.')
@@ -221,10 +221,57 @@ def build_channels(ctx):
                     # not retry it, or proceed to another request after failure.
                     break
             text = '<b>Temporary channel invites</b>\n' + '\n'.join(f'{label}: <code>{html.escape(url)}</code>' for label, url in links)
-            text += '\n15-minute expiry. Normal invite: one use. Request invite: manual approval. These are direct Telegram invites, not bot redemption links.'
+            text += '\n15-minute expiry. Normal invite: one use. Request approval follows this channel’s current manual/auto policy while Linkshare is active. These are direct Telegram invites, not bot redemption links.'
             if len(links) != 2:
                 text += '\nOne or more invite creations were not confirmed. No automatic retry. Inspect channel invites before retrying.'
             await reply(message, text)
         except Exception:
             await reply(message, 'Channel operation was not confirmed. Check storage and current invite permissions for you and this bot; no automatic retry was attempted.')
     return command
+
+
+async def approve_request(ctx, client, update):
+    """Opt-in channel approval only; no global approval, retry or unsolicited DM."""
+    import logging
+    from ...platform.channel_shares import ChannelShares, personal_id, channel_id
+    try:
+        # Native guard queries belong exclusively to Security's human-review
+        # path. Never let an opt-in channel policy bypass that decision.
+        if getattr(update, 'query_id', None):
+            return
+        user = getattr(update, 'from_user', None)
+        uid = getattr(user, 'id', None)
+        channel = getattr(getattr(update, 'chat', None), 'id', None)
+        if not personal_id(uid) or getattr(user, 'is_bot', False):
+            return
+        channel_id(channel)
+        if getattr(update.chat, 'type', None) != ChatType.CHANNEL:
+            return
+        store = ChannelShares(getattr(ctx, 'db', None))
+        row = await store.get(channel)
+        def automatic(value):
+            return isinstance(value, dict) and value.get('enabled') is True and value.get('auto_approve') is True
+        if not automatic(row):
+            return
+        owner = ctx.settings.owner_id
+        bot = ctx.settings.bot_id
+        if not personal_id(owner) or not personal_id(bot):
+            return
+        chat = await asyncio.wait_for(client.get_chat(channel), API_TIMEOUT)
+        if chat.id != channel or chat.type != ChatType.CHANNEL:
+            return
+        for who in (owner, bot):
+            member = await asyncio.wait_for(client.get_chat_member(channel, who), API_TIMEOUT)
+            if member.status != ChatMemberStatus.OWNER and not (
+                    member.status == ChatMemberStatus.ADMINISTRATOR
+                    and getattr(getattr(member, 'privileges', None), 'can_invite_users', None) is True):
+                return
+        # Read through storage again immediately before the remote effect. There
+        # is no atomic transaction spanning Telegram and local policy changes.
+        if not automatic(await store.get(channel)) or ctx.settings.owner_id != owner or ctx.settings.bot_id != bot:
+            return
+        result = await asyncio.wait_for(client.approve_chat_join_request(channel, uid), API_TIMEOUT)
+        if result is not True:
+            logging.getLogger(__name__).warning('#Errors Channel join approval acknowledgement unavailable; no retry')
+    except Exception as error:
+        logging.getLogger(__name__).warning('#Errors Channel join approval unconfirmed (%s); no retry', type(error).__name__)

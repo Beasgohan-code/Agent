@@ -9,6 +9,7 @@ from pyrogram import Client
 from pyrogram.handlers import (
     CallbackQueryHandler,
     ChatMemberUpdatedHandler,
+    ChatJoinRequestHandler,
     ErrorHandler,
     MessageHandler,
 )
@@ -89,7 +90,7 @@ def test_build_creates_client_and_registers_handlers():
     assert isinstance(client, Client)
     # Music registers nothing without SESSION_STRING. Count command handlers,
     # callback/error routing and isolated background watchers separately.
-    assert bot.handler_count == 229
+    assert bot.handler_count == 230
 
     handlers = client.dispatcher.groups[0]
     assert sum(isinstance(h, MessageHandler) for h in handlers) == 215
@@ -105,9 +106,11 @@ def test_build_creates_client_and_registers_handlers():
             continue
         assert len(client.dispatcher.groups[group]) == 1
     # Four group-message watchers plus the private FileStore conversation;
-    # three membership watchers. Assert the mix, not module-order positions.
+    # three membership watchers, security and Linkshare join-request watchers.
+    # Assert the mix, not module-order positions.
     assert sum(isinstance(w, MessageHandler) for w in watchers) == 6
     assert sum(isinstance(w, ChatMemberUpdatedHandler) for w in watchers) == 3
+    assert sum(isinstance(w, ChatJoinRequestHandler) for w in watchers) == 2
 
 
 def test_duplicate_initialisation_is_prevented():

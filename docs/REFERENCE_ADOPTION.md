@@ -108,3 +108,20 @@ Auto/manual mode is a saved preference only: no join-request approval worker is
 wired yet, and the interface says so. No blanket auto-approval, base64-only bot
 redemption, incoming-content import or upstream source copy is introduced. Legacy
 file sharing/redemption is retained during this explicitly incomplete migration.
+
+### Scoped channel automatic approval
+
+Supersedes the earlier preference-only limitation: the Linkshare runtime now owns
+a join-request watcher. Enabled managed channels explicitly set to auto approve
+ordinary channel requests after current actor identity, channel identity and bot
+Owner/bot invite-right checks, then a fresh policy read. Manual, disabled,
+unregistered and unavailable-storage paths never approve. Native guard queries
+remain exclusively Security's human-review queue; group requests are untouched.
+No retries, invite export, unsolicited DMs or raw provider error logging. A failed
+or unacknowledged remote response is unknown, not proof of rejection. Plugin
+runtime/gate controls own the watcher just like commands; no competing global
+approval loop is installed. Telegram permission/effect and policy checks are not
+one atomic transaction. Simultaneous Telegram update redelivery is not claimed to
+be exactly-once. Existing outstanding Telegram invites are not revoked by mode
+changes. Command parity, bot-mediated deep links and legacy command retirement
+remain unfinished.

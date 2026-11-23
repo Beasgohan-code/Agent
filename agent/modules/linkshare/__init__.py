@@ -494,3 +494,14 @@ def build(ctx):
         "revoke": revoke,
     }
     return MANIFEST, {name: identified(handler) for name, handler in handlers.items()}
+
+
+def extra_handlers(ctx):
+    """Runtime-owned watcher: disabling Linkshare detaches/gates approval too."""
+    from pyrogram.handlers import ChatJoinRequestHandler
+    from .subscription import approve_request
+
+    async def on_request(client, update):
+        await approve_request(ctx, client, update)
+
+    return [ChatJoinRequestHandler(on_request)]
