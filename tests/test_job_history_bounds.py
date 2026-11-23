@@ -284,3 +284,56 @@ def test_cleanup_error_does_not_replace_requested_cancellation(caplog):
     asyncio.run(scenario())
     assert 'private-cleanup-path-and-token' not in caplog.text
     assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
+
+
+@pytest.mark.parametrize('approval', [True, False, None, 1, 0, 'true', '', object()],
+                         ids=['approved', 'denied', 'unknown', 'one', 'zero', 'text', 'empty', 'object'])
+def test_group_jobs_require_explicit_boolean_approval(approval):
+    from unittest.mock import AsyncMock
+    from agent.platform.execution import GROUP_EXECUTION
+    async def scenario():
+        queue = JobQueue(max_active=1)
+        queue.eligibility_check = AsyncMock(return_value=approval)
+        runner = AsyncMock(return_value='done')
+        token = GROUP_EXECUTION.set((-100, 'group'))
+        try:
+            job = queue.submit('group', 11, runner)
+        finally:
+            GROUP_EXECUTION.reset(token)
+        await asyncio.gather(job.task, return_exceptions=True)
+        queue.eligibility_check.assert_awaited_once_with(-100, 'group')
+        assert job.state is (JobState.DONE if approval is True else JobState.CANCELLED)
+        assert runner.await_count == (1 if approval is True else 0)
+        if approval is not True:
+            assert job.started_at is None and job.result is None and job.finished_at is not None
+        # Denial must release capacity rather than poison subsequent work.
+        next_job = queue.submit('encoder', 22, runner)
+        await next_job.task
+        assert next_job.state is JobState.DONE
+        await queue.shutdown()
+    asyncio.run(scenario())
+
+
+def test_group_approval_objects_are_not_coerced_or_rendered(caplog):
+    from unittest.mock import AsyncMock
+    from agent.platform.execution import GROUP_EXECUTION
+    class UnsafeApproval:
+        def __bool__(self):
+            raise AssertionError('private-approval-value')
+        def __str__(self):
+            raise AssertionError('private-approval-value')
+    async def scenario():
+        queue = JobQueue()
+        queue.eligibility_check = AsyncMock(return_value=UnsafeApproval())
+        runner = AsyncMock()
+        token = GROUP_EXECUTION.set((-100, 'group'))
+        try:
+            job = queue.submit('group', 11, runner)
+        finally:
+            GROUP_EXECUTION.reset(token)
+        await asyncio.gather(job.task, return_exceptions=True)
+        assert job.state is JobState.CANCELLED and job.finished_at is not None
+        runner.assert_not_awaited()
+        await queue.shutdown()
+    asyncio.run(scenario())
+    assert 'private-approval-value' not in caplog.text

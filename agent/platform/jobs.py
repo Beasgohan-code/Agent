@@ -136,7 +136,9 @@ class JobQueue:
                     eligible = await self.eligibility_check(job.group_id, job.module)
                 except Exception:
                     eligible = False
-                if not eligible:
+                # The authority contract is an explicit boolean, not truthiness:
+                # malformed provider values must never authorize queued work.
+                if eligible is not True:
                     job.state = JobState.CANCELLED
                     job.finished_at = time.time()
                     return

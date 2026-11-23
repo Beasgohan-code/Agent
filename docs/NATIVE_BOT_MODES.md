@@ -1068,3 +1068,23 @@ patch: **2,702 passed** in 29.82 seconds; full working tree: **2,784 passed** in
 28.01 seconds, both with disposable real storage and no skips. Static/whitespace
 checks passed. No live provider/production calls, deployment or PR merge.
 Appearance stays removed; unrelated working-tree changes remain unstaged.
+
+### Explicit queued group-job approval
+
+Queued group jobs now start only when their eligibility callback returns exactly
+True. Truthy numbers, text and arbitrary objects are not authority; false, missing
+and malformed results leave the job cancelled before runner invocation. Unknown
+objects are neither truth-tested nor rendered. Existing exception denial,
+cancellation fence, queue-capacity release and non-group behavior are unchanged.
+This is the queued-job boundary, not a claim every dispatcher/provider contract
+has been hardened or that eligibility reads and remote actions are atomic.
+
+Four of nine new cases failed before the fix, including an unsafe boolean
+coercion that left a job without a proper terminal outcome. Final tests cover
+explicit approval/denial, malformed results, no object coercion/secret echo and
+subsequent queue usability. Focused job/platform suites: **44 passed, one storage
+skip** without a URL. Full exact selective patch: **2,711 passed** in 32.34 seconds;
+full working tree: **2,793 passed** in 29.66 seconds. Both full runs used disposable
+real storage, no skips. Static/whitespace checks passed. No live provider calls,
+production changes, deployment or PR merge; unrelated work stays unstaged and
+appearance remains removed.
