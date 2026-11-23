@@ -54,3 +54,33 @@ and the optional Telethon parser installed. Static compilation, pyflakes and
 whitespace checks passed. Pending log tasks are capped at 200 per bot and track
 dropped excess notifications. No production redeploy or live Telegram validation
 has been performed.
+
+## LINK-SHAREBOT channel-invite replacement request
+
+User explicitly requested replacing the current file-link Linkshare command
+surface with `abhinai2244/LINK-SHAREBOT` behavior. Clarification: channel-invite
+workflow, with both manual approval and per-channel opt-in auto-approval. Manual
+is the default; do not install a blanket join-request auto-approver.
+
+Read-only review pinned upstream revision
+`265f2acbe720571e7c514cd32eea600292656fe2`: plugins/start.py, settings.py,
+approve.py, route.py and bot.py. Declared commands are start, broadcast, settings,
+genlink and batch. Upstream generates normal and request channel-invite deep links;
+it is not the existing Agent vault-file bearer-link workflow. GitHub reports no
+license identifier; no upstream code was copied/imported/executed. Its raw-error
+logging, blanket approval listener and base64-only channel references are not
+security patterns to import.
+
+Current implementation phase is storage only: new scoped channel configuration,
+manual/default and explicit boolean auto-approval preference, enabled state,
+updated-by identity, awaited atomic writes and serialized 20-channel quota.
+Independent concurrent field patches merge rather than overwrite. No disk/cache
+fallback and no invite/approval/network effect is triggered by configuration.
+Handler authority checks remain required before exposing writes.
+
+Command migration remains unfinished: retain existing /start and /broadcast
+owners, contextually extend existing /settings and /batch rather than duplicate
+registrations, adapt /genlink to verified managed channels, and replace old
+Linkshare creation controls after the new workflow is usable. Preserve existing
+file-link redemption/storage and FileStore archive flows. No commands are removed
+or rerouted by this storage phase; no full parity/working invites claim.

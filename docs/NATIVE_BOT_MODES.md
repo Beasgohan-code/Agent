@@ -1132,3 +1132,21 @@ full working tree: **2,817 passed** in 40.91 seconds, both with disposable real
 storage and no skips. Static/whitespace checks passed. No live provider calls,
 production changes, deployment or PR merge. Appearance remains removed and
 unrelated working-tree changes remain unstaged.
+
+### Channel-invite Linkshare replacement: storage foundation
+
+Reviewed the user-selected reference at revision recorded in REFERENCE_ADOPTION.
+Added an isolated channel-share configuration table/API, manual-approval default,
+per-channel opt-in automatic preference, explicit boolean validation, awaited
+transactional field patches and tenant-serialized 20-channel admission quota.
+No command wiring, invite generation, auto-approval listener, source copy or
+legacy-link deletion is included. This phase is infrastructure, not usable
+replacement parity; old commands remain until their replacements are verified.
+
+Three tests failed before implementation. Disposable real-storage tests cover
+concurrent edits, restart reads, tenant isolation and competing final quota slots;
+validation/storage-unavailable refusals are also covered. Exact selective patch:
+**2,738 passed** in 40.72 seconds; full working tree: **2,820 passed** in 33.80
+seconds, no skips. Static/whitespace checks passed. No production schema/network
+calls, deployment or PR merge; unrelated work preserved and appearance stays
+removed. Telegram authority/invite/approval behavior remains the next phase.

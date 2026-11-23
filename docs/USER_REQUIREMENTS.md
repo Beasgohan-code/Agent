@@ -202,3 +202,10 @@ response into a public copy. No unsupported fastest-ever or live latency claim.
   uncommitted font renderer, appearance panel, tagline preferences and associated
   tests/docs/preview additions. Keep the completed module-first Help navigation;
   continue other pending functional and safety work. Do not merge the PR.
+
+- New Linkshare direction: replace file-link creation command surface with the
+  channel-invite workflow of abhinai2244/LINK-SHAREBOT. Reuse/edit existing command
+  owners where names overlap; no duplicate registrations or deletion of unrelated
+  modules. User confirmed channel workflow and both manual and automatic approval:
+  manual default, automatic opt-in per managed channel. Preserve already-issued
+  file-link redemption and stored files. Command migration is not yet complete.
