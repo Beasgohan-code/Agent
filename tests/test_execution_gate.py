@@ -297,3 +297,36 @@ def test_reconcile_watch_failure_retries_without_private_diagnostics(caplog):
     assert 'private-reconcile-token' not in caplog.text
     assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
     assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.platform.execution')
+
+
+@pytest.mark.asyncio
+async def test_explicit_linkshare_channel_watcher_uses_runtime_not_group_slots():
+    from pyrogram.enums import ChatType
+    execution, access, _ = gate()
+    access.eligible.return_value = False
+    handler = AsyncMock()
+    update = message()
+    update.chat.type = ChatType.CHANNEL
+    await execution.wrap('linkshare', handler, silent=True, channel_requests=True)(None, update)
+    handler.assert_awaited_once()
+    access.eligible.assert_not_awaited()
+    execution.runtime.wants_disabled = lambda slug: True
+    await execution.wrap('linkshare', handler, silent=True, channel_requests=True)(None, update)
+    assert handler.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('slug,kind,silent,callback', [
+    ('linkshare', 'SUPERGROUP', True, False), ('encoder', 'CHANNEL', True, False),
+    ('linkshare', 'CHANNEL', False, False), ('linkshare', 'CHANNEL', True, True)])
+async def test_channel_watcher_exception_never_bypasses_group_or_other_routes(slug, kind, silent, callback):
+    from pyrogram.enums import ChatType
+    execution, access, _ = gate()
+    access.eligible.return_value = False
+    handler = AsyncMock()
+    update = message()
+    update.chat.type = getattr(ChatType, kind)
+    target = SimpleNamespace(message=update, answer=AsyncMock()) if callback else update
+    await execution.wrap(slug, handler, silent=silent, callback=callback, channel_requests=True)(None, target)
+    handler.assert_not_awaited()
+    access.eligible.assert_awaited_once()

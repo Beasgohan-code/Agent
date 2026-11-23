@@ -309,7 +309,10 @@ class AgentBot:
             if factory is None:
                 continue
             for watcher in factory(self.modules):
-                watcher.callback = self.plugin_gate.wrap(slug, watcher.callback, silent=True)
+                from pyrogram.handlers import ChatJoinRequestHandler
+                watcher.callback = self.plugin_gate.wrap(
+                    slug, watcher.callback, silent=True,
+                    channel_requests=slug == "linkshare" and isinstance(watcher, ChatJoinRequestHandler))
                 self._watchers.append(watcher)
                 self.runtime.track(slug, watcher, len(self._watchers))
 

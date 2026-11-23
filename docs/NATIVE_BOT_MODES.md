@@ -1190,3 +1190,27 @@ passed** in 37.74 seconds, disposable real storage and no skips. Telegram approv
 is mocked, not live proof. Static/whitespace checks passed. No production calls,
 deployment or merge. Reference command/deep-link parity is still pending; old
 file-link commands remain during migration. Appearance stays removed.
+
+### Repository review: channel watcher/runtime integration correction
+
+Reviewed plugin dispatch, watcher wiring, execution gates and channel settings;
+ran the full working-tree suite and repository-wide static analysis. Found a real
+integration defect: negative channel IDs were treated as groups by PluginGate,
+so Linkshare's channel-only join watcher required incompatible group activation.
+Added an explicit watcher-registration capability used only for Linkshare's
+ChatJoinRequestHandler. Only silent non-callback Linkshare updates whose chat
+actually is a channel take deployment/runtime gating without group slots.
+Commands, callbacks, groups and other plugin routes keep approval/slot checks.
+Runtime off still blocks channel approval. This corrects the previous phase's
+runtime reachability; it does not add any global approval behavior.
+
+Five tests failed before implementation; they now verify runtime on/off channel
+execution and non-bypass for groups, other plugins, nonsilent commands and
+callbacks. Exact selective patch **2,768 passed** in 45.85 seconds; full working
+tree **2,850 passed** in 39.86 seconds, disposable real storage and no skips.
+Repository static analysis reports one unrelated pre-existing unused kv_table
+import in FileStore; changed execution/test files pass static analysis. No live
+Telegram approvals, production calls, deployment or merge. Existing unrelated
+bot.py edits preserved; only the watcher-wiring hunk is published. This is a
+bounded review, not an exhaustive full-repository security certification. Remaining
+Linkshare command migration and reference-style deep links are still pending.

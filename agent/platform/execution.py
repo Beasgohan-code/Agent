@@ -71,7 +71,7 @@ class PluginGate:
                 return  # retain scope so the next reconciliation retries
         self._seen.discard((group_id, slug))
 
-    def wrap(self, slug, handler, *, callback=False, silent=False):
+    def wrap(self, slug, handler, *, callback=False, silent=False, channel_requests=False):
         if slug in PROTECTED_PLUGINS:
             return handler
 
@@ -86,7 +86,14 @@ class PluginGate:
                 if callback:
                     await update.answer('This control has no verifiable chat context.', show_alert=True)
                 return
-            is_group = group_id < 0
+            # Only the explicitly wired Linkshare request watcher supports
+            # channels at deployment scope. Commands/callbacks/other plugins keep
+            # their existing group approval and slot requirements.
+            from pyrogram.enums import ChatType
+            managed_channel = (channel_requests is True and silent is True
+                               and callback is False and slug == 'linkshare'
+                               and getattr(chat, 'type', None) == ChatType.CHANNEL)
+            is_group = group_id < 0 and not managed_channel
             runtime_enabled = self.runtime_enabled(slug)
             if not runtime_enabled or (is_group and not await self.allowed(group_id, slug)):
                 if is_group:
