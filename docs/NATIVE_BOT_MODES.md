@@ -1047,3 +1047,24 @@ semantics. Core suite: **20 passed**. Exact selective patch: **2,699 passed** in
 disposable real storage and no skips. Static/whitespace checks passed. No live
 Telegram/provider or production calls, deployment or PR merge. Appearance stays
 removed; unrelated working-tree changes remain unstaged.
+
+### Personal job controls and resilient progress display
+
+`/cancel` now rejects missing/malformed, boolean, out-of-range and bot identities,
+and channel/anonymous sender context, before queue access. `/jobs` applies the
+same personal-account boundary in addition to its existing matching private chat
+and ownership filters. No new Owner bypass or cross-user history access.
+
+Job-list progress now accepts only finite built-in integer/float telemetry,
+clamping valid ratios to 0–100%. Unknown/non-finite/boolean/object values display
+`unavailable` without conversion, repr, secret echo or fabricated measured zero.
+This hardens the private display, not every producer or serialized job endpoint.
+
+Two initial regressions failed on identity admission and NaN display conversion.
+Final three tests cover personal-account rejection before queue/history access,
+unknown/private/non-finite progress and valid bounded values. Focused Core/job
+suites before final private-list identity case: **35 passed**. Exact selective
+patch: **2,702 passed** in 29.82 seconds; full working tree: **2,784 passed** in
+28.01 seconds, both with disposable real storage and no skips. Static/whitespace
+checks passed. No live provider/production calls, deployment or PR merge.
+Appearance stays removed; unrelated working-tree changes remain unstaged.

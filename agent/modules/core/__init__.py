@@ -13,6 +13,7 @@ rather than guessing.
 from __future__ import annotations
 
 import logging
+import math
 import re
 
 from ... import __version__
@@ -198,7 +199,13 @@ def build(ctx):
 
     async def cancel(_client, message):
         user = getattr(message, "from_user", None)
-        if user is None or ctx.jobs is None:
+        uid = getattr(user, 'id', None)
+        if (type(uid) is not int or not 0 < uid < 2**63
+                or getattr(user, 'is_bot', False)
+                or getattr(message, 'sender_chat', None) is not None):
+            await reply(message, "Use your personal Telegram account to cancel your own jobs.")
+            return
+        if ctx.jobs is None:
             await reply(message, "Nothing to cancel.")
             return
         parts = (getattr(message, "text", None) or "").split()
@@ -272,10 +279,22 @@ def build(ctx):
             reply_markup=nav_keyboard(),
         )
 
+    def progress_label(value):
+        # Job runners are separate producers. Unknown/malformed telemetry must
+        # not break the whole list or be rendered as a fabricated measured zero.
+        if type(value) not in (int, float):
+            return 'unavailable'
+        if type(value) is float and not math.isfinite(value):
+            return 'unavailable'
+        return f'{int(max(0, min(1, value)) * 100)}%'
+
     async def jobs(_client, message):
         user = getattr(message, "from_user", None)
         uid = getattr(user, "id", None)
-        if type(uid) is not int or uid <= 0 or getattr(message.chat, "id", None) != uid:
+        if (type(uid) is not int or not 0 < uid < 2**63
+                or getattr(user, 'is_bot', False)
+                or getattr(message, 'sender_chat', None) is not None
+                or getattr(message.chat, "id", None) != uid):
             await reply(message, "Open /jobs privately with your personal Telegram account.")
             return
         if ctx.jobs is None:
@@ -291,7 +310,7 @@ def build(ctx):
                         key=lambda job: job.created_at, reverse=True)[:20]
         await reply(message, panel("Your recent jobs" + (f" · {module}" if module else ""), icon=ctx.theme.emoji("gear"),
             table=Table(headers=("Job", "Module", "State", "Progress"), rows=tuple(
-                (job.id, job.module, "cancelling" if cancelling(job) else job.state.value, f"{max(0, min(100, int(job.progress * 100)))}%") for job in recent)),
+                (job.id, job.module, "cancelling" if cancelling(job) else job.state.value, progress_label(job.progress)) for job in recent)),
             lines=[] if recent else ["No matching jobs are recorded for you in this process session."],
             note="Latest 20 jobs in this bot only. Source links, local paths and raw error details are hidden. /cancel &lt;job-id&gt; requests cancellation of one job; /cancel requests cancellation of all your active jobs. Cleanup may still be running.",
             footer="Process memory only; history does not survive restart."))

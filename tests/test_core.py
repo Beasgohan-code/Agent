@@ -413,3 +413,59 @@ def test_cancel_and_jobs_distinguish_requested_from_finished_cleanup(tmp_path):
             release.set()
             await ctx.jobs.shutdown()
     asyncio.run(scenario())
+
+
+def test_cancel_rejects_invalid_or_nonpersonal_identity_before_queue_access(tmp_path):
+    from unittest.mock import Mock
+    ctx = make_ctx(tmp_path)
+    ctx.jobs = SimpleNamespace(get=Mock(), active=Mock(), for_owner=Mock(), cancel=Mock())
+    command = handlers(ctx)['cancel']
+    for uid, bot, sender in ((None, False, None), (True, False, None), ('11', False, None),
+                             (-1, False, None), (2**63, False, None),
+                             (11, True, None), (11, False, SimpleNamespace(id=-100))):
+        for text in ('/cancel', '/cancel encoder-1'):
+            message = FakeMessage(text)
+            message.from_user = SimpleNamespace(id=uid, is_bot=bot)
+            message.sender_chat = sender
+            run(command, ctx, message)
+            assert 'personal Telegram account' in message.replies[-1]
+    for method in (ctx.jobs.get, ctx.jobs.active, ctx.jobs.for_owner, ctx.jobs.cancel):
+        method.assert_not_called()
+
+
+def test_jobs_progress_handles_unknown_values_without_fake_zero_or_crash(tmp_path):
+    from agent.platform.jobs import Job
+    class PrivateValue:
+        def __float__(self):
+            raise AssertionError('private value must not be converted')
+        def __repr__(self):
+            raise AssertionError('private value must not be rendered')
+    ctx = make_ctx(tmp_path)
+    command = handlers(ctx)['jobs']
+    cases = [(float('nan'), 'unavailable'), (float('inf'), 'unavailable'),
+             (None, 'unavailable'), ('private-token', 'unavailable'),
+             (True, 'unavailable'), (PrivateValue(), 'unavailable'),
+             (-1.0, '0%'), (0.5, '50%'), (2.0, '100%')]
+    for value, expected in cases:
+        job = Job('encoder-1', 'encoder', 11, progress=value)
+        ctx.jobs._jobs = {job.id: job}
+        message = FakeMessage('/jobs'); message.chat.id = 11
+        run(command, ctx, message)
+        assert expected in str(message.replies[-1])
+        assert 'private-token' not in str(message.replies[-1])
+
+
+def test_jobs_rejects_nonpersonal_identity_before_history_access(tmp_path):
+    from unittest.mock import Mock
+    ctx = make_ctx(tmp_path)
+    ctx.jobs = SimpleNamespace(for_owner=Mock())
+    command = handlers(ctx)['jobs']
+    for uid, bot, sender in ((True, False, None), (2**63, False, None),
+                             (11, True, None), (11, False, SimpleNamespace(id=-100))):
+        message = FakeMessage('/jobs', uid=uid)
+        message.from_user.is_bot = bot
+        message.sender_chat = sender
+        message.chat.id = uid
+        run(command, ctx, message)
+        assert 'personal Telegram account' in message.replies[-1]
+    ctx.jobs.for_owner.assert_not_called()
