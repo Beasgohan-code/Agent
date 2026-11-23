@@ -135,3 +135,96 @@ def build(ctx):
             return
         await reply(message, 'Required-channel policy saved for this bot. Membership is checked before consuming Linkshare uses; archive-range links are unchanged.')
     return configure
+
+
+def build_channels(ctx):
+    """Owner-private channel migration surface; legacy file redemption is separate."""
+    from datetime import datetime, timedelta, timezone
+    from ...platform.channel_shares import ChannelShares, channel_id
+    store = ChannelShares(getattr(ctx, 'db', None))
+
+    async def command(client, message):
+        actor = getattr(message, 'from_user', None)
+        uid = getattr(actor, 'id', None)
+        if (type(uid) is not int or not 0 < uid < 2**63 or uid != ctx.settings.owner_id
+                or getattr(actor, 'is_bot', False) or getattr(message, 'sender_chat', None) is not None
+                or getattr(message.chat, 'type', None) != ChatType.PRIVATE or message.chat.id != uid):
+            await reply(message, 'Channel Linkshare management is currently available only to this bot’s Owner in private chat.')
+            return
+        async def authority(channel):
+            if ctx.settings.owner_id != uid:
+                raise ValueError('Owner changed')
+            chat = await asyncio.wait_for(client.get_chat(channel), API_TIMEOUT)
+            if chat.id != channel or chat.type != ChatType.CHANNEL:
+                raise ValueError('Channel required')
+            for who in (uid, ctx.settings.bot_id):
+                member = await asyncio.wait_for(client.get_chat_member(channel, who), API_TIMEOUT)
+                if member.status != ChatMemberStatus.OWNER and not (
+                        member.status == ChatMemberStatus.ADMINISTRATOR
+                        and getattr(getattr(member, 'privileges', None), 'can_invite_users', None) is True):
+                    raise ValueError('Invite administrator required')
+            if ctx.settings.owner_id != uid:
+                raise ValueError('Owner changed')
+        args = (getattr(message, 'text', '') or '').split()[1:]
+        try:
+            if args == ['channels']:
+                rows = await store.list()
+                if ctx.settings.owner_id != uid:
+                    raise ValueError('Owner changed')
+                body = '<b>Managed Linkshare channels</b>\n' + '\n'.join(
+                    f'<code>{row["channel_id"]}</code> · {"enabled" if row["enabled"] else "disabled"} · {"auto preference" if row["auto_approve"] else "manual"}' for row in rows)
+                await reply(message, body + '\nUse /genlink add ID, /genlink mode ID manual|auto, /genlink disable ID, or /genlink ID. Auto mode is a saved preference only until the approval worker is wired.')
+                return
+            operation = args[0] if args and args[0] in ('add', 'mode', 'disable') else 'invite'
+            valid = (operation == 'invite' and len(args) == 1 or operation in ('add', 'disable') and len(args) == 2
+                     or operation == 'mode' and len(args) == 3 and args[2] in ('manual', 'auto'))
+            raw = args[0] if operation == 'invite' and args else args[1] if len(args) > 1 else ''
+            if not valid or not re.fullmatch(r'-[1-9][0-9]{0,18}', raw):
+                await reply(message, 'Use /genlink channels, /genlink add -100ID, /genlink mode -100ID manual|auto, /genlink disable -100ID, or /genlink -100ID.')
+                return
+            channel = int(raw)
+            channel_id(channel)
+            await authority(channel)
+            row = await store.get(channel)
+            if operation == 'add':
+                await authority(channel)
+                await store.configure(channel, actor=uid, enabled=True)
+                await reply(message, 'Channel saved. New channels default to manual approval. Use /genlink ID to create temporary invites.')
+                return
+            if row is None:
+                await reply(message, 'Add this channel first with /genlink add ID. No invite was requested.')
+                return
+            if operation in ('mode', 'disable'):
+                await authority(channel)
+                await store.configure(channel, actor=uid, **({'auto_approve': args[2] == 'auto'} if operation == 'mode' else {'enabled': False}))
+                await reply(message, 'Channel preference saved. The automatic approval worker is not wired yet; request links still need manual approval. Disabling stops new generation but does not revoke existing Telegram invites.')
+                return
+            if not row['enabled']:
+                await reply(message, 'This channel is disabled. No invite was requested.')
+                return
+            links = []
+            for request_mode in (False, True):
+                try:
+                    await authority(channel)
+                    current = await store.get(channel)
+                    if ctx.settings.owner_id != uid or not current or not current['enabled']:
+                        raise ValueError('Channel disabled')
+                    options = {'creates_join_request': True} if request_mode else {'member_limit': 1}
+                    result = await asyncio.wait_for(client.create_chat_invite_link(
+                        chat_id=channel, expire_date=datetime.now(timezone.utc) + timedelta(minutes=15), **options), 10)
+                    url = getattr(result, 'invite_link', None)
+                    if not isinstance(url, str) or not re.fullmatch(r'https://t\.me/(?:\+|joinchat/)[A-Za-z0-9_-]+', url):
+                        raise ValueError('Invite acknowledgement unavailable')
+                    links.append(('Request invite' if request_mode else 'Normal invite', url))
+                except Exception:
+                    # An ambiguous creation might already have taken effect. Do
+                    # not retry it, or proceed to another request after failure.
+                    break
+            text = '<b>Temporary channel invites</b>\n' + '\n'.join(f'{label}: <code>{html.escape(url)}</code>' for label, url in links)
+            text += '\n15-minute expiry. Normal invite: one use. Request invite: manual approval. These are direct Telegram invites, not bot redemption links.'
+            if len(links) != 2:
+                text += '\nOne or more invite creations were not confirmed. No automatic retry. Inspect channel invites before retrying.'
+            await reply(message, text)
+        except Exception:
+            await reply(message, 'Channel operation was not confirmed. Check storage and current invite permissions for you and this bot; no automatic retry was attempted.')
+    return command

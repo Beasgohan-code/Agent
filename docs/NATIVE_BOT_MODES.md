@@ -1150,3 +1150,23 @@ validation/storage-unavailable refusals are also covered. Exact selective patch:
 seconds, no skips. Static/whitespace checks passed. No production schema/network
 calls, deployment or PR merge; unrelated work preserved and appearance stays
 removed. Telegram authority/invite/approval behavior remains the next phase.
+
+### Native channel-invite Linkshare: first usable handler slice
+
+Added verified Owner-private channel management through existing `/genlink` route,
+using scoped durable settings. Owner identity and actor/bot channel invite rights
+are checked; configuration writes and each invite creation recheck authority.
+List/add/mode/disable and single-channel normal/request invite creation are usable
+in code. See REFERENCE_ADOPTION for transition syntax and incomplete migration
+boundaries. Both invites expire in 15 minutes, normal uses capped at one.
+
+Two initial handler tests failed before implementation. Nine new cases cover
+partial invite success, live rights, denied identities, disabled/unmanaged channels,
+rights loss, false acknowledgements, provider failures, rejected URL hosts and
+routing through the existing command owner. Exact selective patch: **2,747 passed**
+in 31.40 seconds; full working tree: **2,829 passed** in 35.11 seconds, with
+disposable real storage and no skips. Static/whitespace checks passed. Telegram
+invite operations are mocked; no live invite creation/approval or production calls,
+deployment or PR merge. Automatic approval worker, reference-style bot deep links,
+shared settings/batch command routing and legacy command removal remain unfinished.
+Appearance stays removed; unrelated work remains unstaged.

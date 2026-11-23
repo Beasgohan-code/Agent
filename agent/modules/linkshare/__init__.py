@@ -222,7 +222,13 @@ def build(ctx):
             return
         await _grant(client, message, stored, ttl, uses, source=f"/share {parts[0]}")
 
+    from .subscription import build_channels
+    channel_command = build_channels(ctx)
+
     async def genlink(client, message):
+        channel_args = _args(message)[1:]
+        if channel_args and (channel_args[0].startswith('-') or channel_args[0] in ('channels', 'add', 'mode', 'disable')):
+            return await channel_command(client, message)
         found = media_of(message)
         if found is None:
             await reply(

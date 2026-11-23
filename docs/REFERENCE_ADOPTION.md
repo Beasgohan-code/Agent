@@ -84,3 +84,27 @@ registrations, adapt /genlink to verified managed channels, and replace old
 Linkshare creation controls after the new workflow is usable. Preserve existing
 file-link redemption/storage and FileStore archive flows. No commands are removed
 or rerouted by this storage phase; no full parity/working invites claim.
+
+### Channel invite handler increment
+
+Existing `/genlink` now routes explicit negative-channel IDs and channels/add/mode/
+disable arguments to native channel management, without duplicate registrations.
+Temporary transition syntax: `/genlink channels`, `/genlink add ID`, `/genlink mode
+ID manual|auto`, `/genlink disable ID`, `/genlink ID`. Bot Owner only in matching
+private chat; personal identity, actual channel identity and live invite authority
+of both actor and bot are checked. This is narrower than upstream delegated bot
+admins. It is not the final requested command surface: private `/settings` and
+channel `/batch`, delegated management and legacy-command removal remain pending.
+
+Creates direct Telegram normal/request invites, each expiring in 15 minutes;
+normal invite has member limit one. Only valid acknowledged Telegram invite URLs
+are rendered. Partial success preserves the confirmed invite and explicitly marks
+unconfirmed creation; no blind retries. Disabled channels refuse new generation;
+disabling does not revoke previously created invites. Authorization and Telegram
+creation cannot be made one atomic transaction. Failed/ambiguous invite creation
+may already have had an effect; inspect channel invites before explicit retries.
+
+Auto/manual mode is a saved preference only: no join-request approval worker is
+wired yet, and the interface says so. No blanket auto-approval, base64-only bot
+redemption, incoming-content import or upstream source copy is introduced. Legacy
+file sharing/redemption is retained during this explicitly incomplete migration.
