@@ -162,3 +162,21 @@ is an unrelated archive workflow and remains untouched. Full reference parity is
 still incomplete: channel /batch routing, bot-mediated channel deep links,
 settings-button/admin/subscription flows remain. Normal/request channel generation
 is currently direct bounded Telegram invites, not upstream's encoded bot links.
+
+### Channel /batch through existing command ownership
+
+Private `/batch ID [ID ...]` with negative channel IDs and no replied message now
+delegates from FileStore's existing batch owner through Linkshare's runtime gate
+to the channel handler. One to five unique managed enabled channels; all targets
+and current Owner/bot invite rights are validated before the first invite request.
+Each channel then uses the existing verified generation path, rechecking authority
+and policy. Replies identify their channel. Stops on refused/unconfirmed generation,
+retains confirmed invites and warns to inspect channel invites before retrying.
+No automatic retries or rollback/revocation claims. Exact enabled booleans required.
+
+Replied-file batches and positive archive-range syntax remain unchanged. No extra
+command registration. Limitation: the existing FileStore owner must be deployed and
+runtime-active as well as Linkshare; disabling FileStore removes the owning handler.
+Independent Linkshare-only `/batch` ownership is not yet implemented. Thus this is
+not full reference deployment parity. Bot-mediated channel links and expanded
+settings/admin/subscription UI remain unfinished; direct invites still used.

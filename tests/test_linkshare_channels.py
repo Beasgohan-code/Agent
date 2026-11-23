@@ -323,3 +323,76 @@ async def test_old_file_creation_surface_is_removed(tmp_path):
         msg.reply_to_message.download.assert_not_awaited()
     ctx.links.acreate.assert_not_awaited()
     ctx.storage.save_path.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('invalid', ['missing', 'disabled', 'duplicate', 'too_many', 'rights'])
+async def test_channel_batch_preflight_has_no_remote_effect_on_invalid_input(monkeypatch, invalid):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType, ChatMemberStatus as S
+    from agent.modules.linkshare.subscription import build_channels
+    row = {'enabled': True, 'auto_approve': False}
+    store = NS(get=AsyncMock(side_effect=[row, None if invalid == 'missing' else {**row, 'enabled': invalid != 'disabled'}]))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    text = '/batch -100123 -100456'
+    if invalid == 'duplicate':
+        text = '/batch -100123 -100123'
+    if invalid == 'too_many':
+        text = '/batch ' + ' '.join(str(-100-i) for i in range(6))
+    msg = NS(text=text, chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=11), reply=AsyncMock())
+    client = NS(get_chat=AsyncMock(side_effect=lambda cid: NS(id=cid, type=ChatType.CHANNEL)),
+                get_chat_member=AsyncMock(return_value=NS(status=S.MEMBER if invalid == 'rights' else S.OWNER)),
+                create_chat_invite_link=AsyncMock())
+    await build_channels(NS(db=None, settings=NS(owner_id=11, bot_id=99)))(client, msg)
+    client.create_chat_invite_link.assert_not_awaited()
+    assert msg.reply.await_count > 0
+    if invalid in ('missing', 'disabled'):
+        assert store.get.await_count == 2
+    if invalid in ('duplicate', 'too_many'):
+        client.get_chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_channel_batch_generates_both_modes_and_stops_after_unknown_effect(monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType, ChatMemberStatus as S
+    from agent.modules.linkshare.subscription import build_channels
+    store = NS(get=AsyncMock(return_value={'enabled': True, 'auto_approve': False}))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    msg = NS(text='/batch -100123 -100456', chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=11), reply=AsyncMock())
+    client = NS(get_chat=AsyncMock(side_effect=lambda cid: NS(id=cid, type=ChatType.CHANNEL)),
+                get_chat_member=AsyncMock(return_value=NS(status=S.OWNER)),
+                create_chat_invite_link=AsyncMock(return_value=NS(invite_link='https://t.me/+confirmed')))
+    command = build_channels(NS(db=None, settings=NS(owner_id=11, bot_id=99)))
+    await command(client, msg)
+    assert client.create_chat_invite_link.await_count == 4
+    assert [call.kwargs['chat_id'] for call in client.create_chat_invite_link.await_args_list] == [-100123, -100123, -100456, -100456]
+    client.create_chat_invite_link.reset_mock()
+    client.create_chat_invite_link.side_effect = [NS(invite_link='https://t.me/+confirmed'), RuntimeError('private-secret')]
+    await command(client, msg)
+    assert client.create_chat_invite_link.await_count == 2
+    assert any('stopped' in str(call.args[0]) for call in msg.reply.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_existing_batch_command_delegates_negative_ids_but_respects_runtime(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    from agent.modules import filestore
+    from test_plugins import make_ctx
+    from test_archive_links import request
+    from test_execution_gate import gate
+    ctx = make_ctx(tmp_path)
+    execution = gate()[0]
+    ctx.plugin_gate = execution
+    channel_command = AsyncMock(return_value=True)
+    monkeypatch.setattr('agent.modules.linkshare.subscription.build_channels', lambda ctx: channel_command)
+    _, handlers = filestore.build(ctx)
+    msg = request('/batch -100123 -100456')
+    await handlers['batch'](None, msg)
+    channel_command.assert_awaited_once_with(None, msg)
+    execution.runtime.wants_disabled = lambda slug: slug == 'linkshare'
+    await handlers['batch'](None, request('/batch -100123'))
+    assert channel_command.await_count == 1
+    assert set(handlers) == set(filestore.MANIFEST.commands)

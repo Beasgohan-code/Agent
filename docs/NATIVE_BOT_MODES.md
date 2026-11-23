@@ -1260,3 +1260,25 @@ files and no virtual environment. Backed up index/diff under /tmp/retire-backup,
 fetched current branch and restored its ref/index without resetting working files;
 rebuilt disposable test environment. Only task changes staged; unrelated work,
 including menu/screens edits, remains preserved.
+
+### Channel invite batches, preserving FileStore's existing command
+
+Added bounded channel batches to existing `/batch`: explicit negative-ID syntax
+without replied content delegates to verified Owner-private Linkshare logic and
+checks its runtime gate. All channel policies and rights preflight before effects;
+per-channel authority/policy is rechecked and unknown results stop remaining work.
+One to five unique negative channel IDs. Existing FileStore archive/replied flows
+unchanged. Confirmed invites survive partial failure; no remote rollback promised.
+FileStore still owns dispatch, so both runtimes must be active (documented in
+REFERENCE_ADOPTION); independent Linkshare-only routing remains unfinished.
+
+Seven regression cases cover invalid/missing/disabled targets, duplicates/bounds,
+rights refusal, both invite modes per channel, uncertain-result stopping and reuse
+of existing batch owner with Linkshare runtime-off refusal. Generation regression
+failed before implementation; strengthened preflight assertions ensure refusals
+are not merely generic usage responses. Exact patch **2,779 passed** in 30.35
+seconds; working tree **2,861 passed** in 30.34 seconds, disposable real storage,
+no skips. Changed handler/test static checks and whitespace checks passed. Telegram
+effects mocked, no live production calls/deploy/merge. Workspace HEAD/index was
+again at base; backed up under /tmp/batch-backup and reconciled fetched current
+branch ref/index without discarding persistent work, rebuilt test environment.

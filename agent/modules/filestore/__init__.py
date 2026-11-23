@@ -115,6 +115,15 @@ def build(ctx):
         """Save a run of consecutive files, starting at the replied one."""
         parts = _args(message)
         from .channel_links import private
+        # Negative-ID syntax belongs to channel Linkshare, not archive ranges.
+        # Reuse this command owner and recheck the delegated plugin's runtime.
+        if len(parts) > 1 and parts[1].startswith('-') and not getattr(message, "reply_to_message", None):
+            gate = getattr(ctx, "plugin_gate", None)
+            if gate is None:
+                await reply(message, "Channel batch is unavailable until the plugin runtime is ready.")
+                return
+            from ..linkshare.subscription import build_channels
+            return await gate.wrap("linkshare", build_channels(ctx))(client, message)
         if len(parts) == 1 and private(message) and not getattr(message, "reply_to_message", None):
             await conversation.start(client, message, "batch")
             return

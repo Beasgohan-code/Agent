@@ -112,6 +112,28 @@ def build_channels(ctx):
         if parts and parts[0].split('@', 1)[0].lstrip('/') == 'settings' and not args:
             args = ['channels']
         try:
+            if parts and parts[0].split('@', 1)[0].lstrip('/') == 'batch':
+                if (not 1 <= len(args) <= 5 or len(set(args)) != len(args)
+                        or any(not re.fullmatch(r'-[1-9][0-9]{0,18}', arg) for arg in args)):
+                    await reply(message, 'Use /batch with 1–5 unique managed negative channel IDs. No invites were requested.')
+                    return
+                channels = list(map(int, args))
+                # Validate every target before the first remote side effect.
+                for target in channels:
+                    channel_id(target)
+                    await authority(target)
+                    policy = await store.get(target)
+                    if not policy or policy.get('enabled') is not True:
+                        await reply(message, 'Every batch channel must be registered and enabled. No invites were requested.')
+                        return
+                from copy import copy
+                for target in channels:
+                    item = copy(message)
+                    item.text = f'/genlink {target}'
+                    if await command(client, item) is not True:
+                        await reply(message, 'Channel batch stopped after an unconfirmed or refused operation. Confirmed invites above remain valid; inspect channel invites before retrying.')
+                        return
+                return True
             if args == ['channels']:
                 rows = await store.list()
                 if ctx.settings.owner_id != uid:
@@ -144,7 +166,7 @@ def build_channels(ctx):
                 await store.configure(channel, actor=uid, **({'auto_approve': args[2] == 'auto'} if operation == 'mode' else {'enabled': False}))
                 await reply(message, 'Channel preference saved. Auto mode approves join requests only while this channel is enabled and both the Owner and bot retain invite authority. Manual mode leaves requests for administrators. Disabling stops generation and automatic approval but does not revoke existing Telegram invites.')
                 return
-            if not row['enabled']:
+            if row.get('enabled') is not True:
                 await reply(message, 'This channel is disabled. No invite was requested.')
                 return
             links = []
@@ -152,7 +174,7 @@ def build_channels(ctx):
                 try:
                     await authority(channel)
                     current = await store.get(channel)
-                    if ctx.settings.owner_id != uid or not current or not current['enabled']:
+                    if ctx.settings.owner_id != uid or not current or current.get('enabled') is not True:
                         raise ValueError('Channel disabled')
                     options = {'creates_join_request': True} if request_mode else {'member_limit': 1}
                     result = await asyncio.wait_for(client.create_chat_invite_link(
@@ -165,11 +187,12 @@ def build_channels(ctx):
                     # An ambiguous creation might already have taken effect. Do
                     # not retry it, or proceed to another request after failure.
                     break
-            text = '<b>Temporary channel invites</b>\n' + '\n'.join(f'{label}: <code>{html.escape(url)}</code>' for label, url in links)
+            text = f'<b>Temporary channel invites · {channel}</b>\n' + '\n'.join(f'{label}: <code>{html.escape(url)}</code>' for label, url in links)
             text += '\n15-minute expiry. Normal invite: one use. Request approval follows this channel’s current manual/auto policy while Linkshare is active. These are direct Telegram invites, not bot redemption links.'
             if len(links) != 2:
                 text += '\nOne or more invite creations were not confirmed. No automatic retry. Inspect channel invites before retrying.'
             await reply(message, text)
+            return len(links) == 2
         except Exception:
             await reply(message, 'Channel operation was not confirmed. Check storage and current invite permissions for you and this bot; no automatic retry was attempted.')
     return command
