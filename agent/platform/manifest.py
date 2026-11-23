@@ -34,6 +34,13 @@ class PluginManifest:
     resource_requirements: dict[str, int] = field(default_factory=dict)
     default_enabled: bool = True
 
+    # Shared command owners may expose one command in both contexts without
+    # widening every other handler in the module.
+    command_scopes: dict[str, str] = field(default_factory=dict)
+
+    def scope_for(self, command: str) -> str:
+        return self.command_scopes.get(command, self.scope)
+
 
 @dataclass
 class RegisteredPlugin:
@@ -52,6 +59,10 @@ class PluginRegistry:
     # -- installation ------------------------------------------------------
 
     def register(self, manifest: PluginManifest, handlers: dict[str, Callable] | None = None) -> None:
+        if (manifest.scope not in ('private', 'group', 'all')
+                or any(command not in manifest.commands or scope not in ('private', 'group', 'all')
+                       for command, scope in manifest.command_scopes.items())):
+            raise ValueError('Invalid command scope declaration')
         if manifest.slug in self._plugins:
             raise ValueError(f"plugin {manifest.slug!r} is already registered")
 

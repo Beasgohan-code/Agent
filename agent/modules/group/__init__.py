@@ -64,6 +64,7 @@ MANIFEST = PluginManifest(
         "chats.read", "chats.restrict", "chats.pin", "messages.read", "messages.send",
     ),
     scope="group",
+    command_scopes={"settings": "all"},
 )
 
 MAX_RULES = 3000
@@ -114,6 +115,14 @@ def build(ctx):
     # -- /settings ---------------------------------------------------------
 
     async def settings(client, message):
+        from pyrogram.enums import ChatType
+        if getattr(message.chat, "type", None) == ChatType.PRIVATE:
+            gate = getattr(ctx, "plugin_gate", None)
+            if gate is None:
+                await reply(message, "Linkshare settings are unavailable until the plugin runtime is ready.")
+                return
+            from ..linkshare.subscription import build_channels
+            return await gate.wrap("linkshare", build_channels(ctx))(client, message)
         if not await _guard(client, message, need="can_change_info"):
             return
         chat_id = message.chat.id

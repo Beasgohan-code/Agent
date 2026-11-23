@@ -240,3 +240,66 @@ async def test_linkshare_never_approves_native_security_guard_queries():
     await approve_request(NS(), client, NS(query_id=123))
     client.get_chat.assert_not_awaited()
     client.approve_chat_join_request.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_private_settings_reuses_group_route_but_checks_linkshare_runtime(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from agent.modules import group
+    from test_plugins import make_ctx
+    from test_archive_links import request
+    from test_execution_gate import gate
+    ctx = make_ctx(tmp_path)
+    execution, _, _ = gate()
+    ctx.plugin_gate = execution
+    store = NS(list=AsyncMock(return_value=[]))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    handler = group.build(ctx)[1]['settings']
+    msg = request('/settings')
+    await handler(None, msg)
+    store.list.assert_awaited_once()
+    assert 'Managed Linkshare channels' in str(msg.reply.await_args.args[0])
+    execution.runtime.wants_disabled = lambda slug: True
+    await handler(None, request('/settings'))
+    assert store.list.await_count == 1
+    assert group.MANIFEST.scope_for('settings') == 'all'
+    assert group.MANIFEST.scope_for('pin') == 'group'
+
+
+def test_manifest_command_scope_override_validation():
+    from agent.platform.manifest import PluginManifest, PluginRegistry
+    from dataclasses import replace
+    from unittest.mock import AsyncMock
+    base = PluginManifest(slug='shared', name='Shared', version='1', description='test',
+                          commands=('settings', 'pin'), scope='group', command_scopes={'settings': 'all'})
+    registry = PluginRegistry()
+    registry.register(base, {'settings': AsyncMock(), 'pin': AsyncMock()})
+    assert base.scope_for('settings') == 'all'
+    assert base.scope_for('pin') == 'group'
+    for invalid in ({'missing': 'private'}, {'settings': 'unknown'}):
+        with pytest.raises(ValueError):
+            PluginRegistry().register(replace(base, command_scopes=invalid), {'settings': AsyncMock(), 'pin': AsyncMock()})
+
+
+@pytest.mark.asyncio
+async def test_private_settings_add_uses_channel_checks_and_awaited_save(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType, ChatMemberStatus as S
+    from agent.modules import group
+    from test_plugins import make_ctx
+    from test_archive_links import request
+    from test_execution_gate import gate
+    ctx = make_ctx(tmp_path)
+    ctx.plugin_gate = gate()[0]
+    store = NS(get=AsyncMock(return_value=None), configure=AsyncMock())
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    client = NS(get_chat=AsyncMock(return_value=NS(id=-100123, type=ChatType.CHANNEL)),
+                get_chat_member=AsyncMock(return_value=NS(status=S.OWNER)))
+    handler = group.build(ctx)[1]['settings']
+    await handler(client, request('/settings add -100123'))
+    store.configure.assert_awaited_once_with(-100123, actor=11, enabled=True)
+    denied = request('/settings add -100123', uid=22)
+    await handler(client, denied)
+    assert store.configure.await_count == 1

@@ -1214,3 +1214,23 @@ Telegram approvals, production calls, deployment or merge. Existing unrelated
 bot.py edits preserved; only the watcher-wiring hunk is published. This is a
 bounded review, not an exhaustive full-repository security certification. Remaining
 Linkshare command migration and reference-style deep links are still pending.
+
+### Private Linkshare /settings without duplicate command ownership
+
+Added validated per-command manifest scope overrides, consumed consistently by bot
+handler filters and menu publication. Group's existing settings owner now accepts
+private settings through Linkshare's runtime gate and Owner/channel-authority
+checks. Group settings remains unchanged; no other group commands are exposed
+privately. Private settings supports list/add/mode/disable through existing native
+channel storage. UI guidance now uses settings for configuration. Missing runtime
+context refuses safely. This is not full settings-button/upstream command parity.
+
+Private-routing regression failed before implementation. Three new tests cover
+shared private settings, runtime-off refusal, actual Owner-only channel-add writes,
+default group scopes and invalid scope declarations. Exact selective patch:
+**2,771 passed** in 39.53 seconds; working tree: **2,853 passed** in 37.78 seconds,
+disposable real storage and no skips. Initial exact snapshot inadvertently included
+unrelated registry validation work and failed fixture contracts; rebuilt with only
+the intended scope metadata changes and reran successfully. Unrelated registry
+and bot.py work preserved unstaged. Changed-file static/whitespace checks passed.
+No live Telegram/provider calls, deployment, PR merge or appearance features.

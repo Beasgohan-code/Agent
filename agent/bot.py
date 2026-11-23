@@ -286,7 +286,7 @@ class AgentBot:
 
         # Build and track dormant handlers too, so persisted-off plugins can
         # be enabled without restarting. Attach only enabled handlers below.
-        scopes = {c: m.scope for m in self.registry.manifests() for c in m.commands}
+        scopes = {c: m.scope_for(c) for m in self.registry.manifests() for c in m.commands}
         owners = {c: m.slug for m in self.registry.manifests() for c in m.commands}
         for command in self.registry.active_commands():
             callback = self.registry.handler_for(command)
@@ -678,7 +678,7 @@ class AgentBot:
             if not self.settings.sync_commands:
                 return
             try:
-                scopes = {command: manifest.scope for manifest in self.registry.manifests()
+                scopes = {command: manifest.scope_for(command) for manifest in self.registry.manifests()
                           for command in manifest.commands}
                 scopes.update({command: "all" for command in ("start", "help")})
                 scopes["ping"]="private"

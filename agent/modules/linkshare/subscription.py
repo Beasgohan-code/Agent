@@ -165,7 +165,10 @@ def build_channels(ctx):
                     raise ValueError('Invite administrator required')
             if ctx.settings.owner_id != uid:
                 raise ValueError('Owner changed')
-        args = (getattr(message, 'text', '') or '').split()[1:]
+        parts = (getattr(message, 'text', '') or '').split()
+        args = parts[1:]
+        if parts and parts[0].split('@', 1)[0].lstrip('/') == 'settings' and not args:
+            args = ['channels']
         try:
             if args == ['channels']:
                 rows = await store.list()
@@ -173,14 +176,14 @@ def build_channels(ctx):
                     raise ValueError('Owner changed')
                 body = '<b>Managed Linkshare channels</b>\n' + '\n'.join(
                     f'<code>{row["channel_id"]}</code> · {"enabled" if row["enabled"] else "disabled"} · {"auto preference" if row["auto_approve"] else "manual"}' for row in rows)
-                await reply(message, body + '\nUse /genlink add ID, /genlink mode ID manual|auto, /genlink disable ID, or /genlink ID. Auto mode approves requests only for enabled, managed channels while Linkshare is active; manual mode leaves approval to administrators.')
+                await reply(message, body + '\nUse /settings add ID, /settings mode ID manual|auto, /settings disable ID, or /genlink ID. Auto mode approves requests only for enabled, managed channels while Linkshare is active; manual mode leaves approval to administrators.')
                 return
             operation = args[0] if args and args[0] in ('add', 'mode', 'disable') else 'invite'
             valid = (operation == 'invite' and len(args) == 1 or operation in ('add', 'disable') and len(args) == 2
                      or operation == 'mode' and len(args) == 3 and args[2] in ('manual', 'auto'))
             raw = args[0] if operation == 'invite' and args else args[1] if len(args) > 1 else ''
             if not valid or not re.fullmatch(r'-[1-9][0-9]{0,18}', raw):
-                await reply(message, 'Use /genlink channels, /genlink add -100ID, /genlink mode -100ID manual|auto, /genlink disable -100ID, or /genlink -100ID.')
+                await reply(message, 'Use /settings, /settings add -100ID, /settings mode -100ID manual|auto, /settings disable -100ID, or /genlink -100ID.')
                 return
             channel = int(raw)
             channel_id(channel)
@@ -192,7 +195,7 @@ def build_channels(ctx):
                 await reply(message, 'Channel saved. New channels default to manual approval. Use /genlink ID to create temporary invites.')
                 return
             if row is None:
-                await reply(message, 'Add this channel first with /genlink add ID. No invite was requested.')
+                await reply(message, 'Add this channel first with /settings add ID. No invite was requested.')
                 return
             if operation in ('mode', 'disable'):
                 await authority(channel)

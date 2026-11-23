@@ -125,3 +125,19 @@ one atomic transaction. Simultaneous Telegram update redelivery is not claimed t
 be exactly-once. Existing outstanding Telegram invites are not revoked by mode
 changes. Command parity, bot-mediated deep links and legacy command retirement
 remain unfinished.
+
+### Shared /settings routing
+
+Existing Group command owner now serves `/settings` in both contexts, without a
+second registration. Private chat delegates through Linkshare's runtime gate to
+Owner-only channel configuration; groups retain existing administration checks
+and panel. `/settings` lists managed channels; `/settings add ID`, `/settings mode
+ID manual|auto`, `/settings disable ID` use awaited configuration with live channel
+invite-right checks. Existing `/genlink` management aliases remain temporarily.
+
+Manifest per-command scopes are used by both handler filters and Telegram command
+publication. Only settings is widened; other Group commands stay group-only.
+This is textual command configuration, not full upstream settings button parity.
+Delegated bot admins, subscription/admin menus, channel batches, bot-mediated
+links and legacy creation-command retirement remain unfinished. No stored files,
+issued file tokens or unrelated command owners are removed.
