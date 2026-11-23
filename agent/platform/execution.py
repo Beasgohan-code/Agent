@@ -29,15 +29,23 @@ class PluginGate:
         """callback(group_id) must release only this module's group resources."""
         self._cleanups[slug] = callback
 
+    def runtime_enabled(self, slug):
+        """Only the known runtime on/not-disabled pair authorizes optional work."""
+        try:
+            return (self.runtime.wants_disabled(slug) is False
+                    and self.runtime.registry.is_enabled(slug) is True)
+        except Exception:
+            return False
+
     async def allowed(self, group_id, slug):
         if slug in PROTECTED_PLUGINS:
             return True
         if slug not in OPTIONAL:
             return False
         try:
-            if self.runtime.wants_disabled(slug) or not self.runtime.registry.is_enabled(slug):
+            if not self.runtime_enabled(slug):
                 return False
-            return await self.access.eligible(group_id, slug)
+            return (await self.access.eligible(group_id, slug)) is True
         except Exception:
             logger.warning('Optional plugin eligibility unavailable: %s', slug)
             return False
@@ -75,11 +83,7 @@ class PluginGate:
                     await update.answer('This control has no verifiable chat context.', show_alert=True)
                 return
             is_group = group_id < 0
-            try:
-                runtime_enabled = (not self.runtime.wants_disabled(slug)
-                                   and self.runtime.registry.is_enabled(slug))
-            except Exception:
-                runtime_enabled = False
+            runtime_enabled = self.runtime_enabled(slug)
             if not runtime_enabled or (is_group and not await self.allowed(group_id, slug)):
                 if is_group:
                     await self.cleanup(group_id, slug)

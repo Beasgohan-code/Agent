@@ -1088,3 +1088,24 @@ full working tree: **2,793 passed** in 29.66 seconds. Both full runs used dispos
 real storage, no skips. Static/whitespace checks passed. No live provider calls,
 production changes, deployment or PR merge; unrelated work stays unstaged and
 appearance remains removed.
+
+### Explicit optional-plugin execution approval
+
+Optional plugin command/callback/silent-listener entry points now normalize group
+eligibility to an exact boolean approval. Runtime authorization likewise requires
+explicit not-disabled=False and enabled=True flag values; malformed/unknown flags
+fail closed for private and group optional invocations. The same normalization
+feeds queued-job eligibility and reconciliation, so a truthy string is not cached
+as approval and malformed approval triggers existing scoped cleanup. Protected
+moderation/core paths remain exempt from optional-slot/approval checks. Private
+optional tools still do not query group slots. No new permission, global Owner
+bypass or cross-group cleanup behavior is introduced.
+
+Eighteen of 21 new cases failed before implementation. Cases cover all three
+entry surfaces, malformed reconciliation approval, private/group runtime flags,
+protected-plugin continuity and execution-context cleanup. Focused suites:
+**62 passed, two storage skips** without a storage URL. Full exact selective
+patch: **2,732 passed** in 31.69 seconds; full working tree: **2,814 passed** in
+28.27 seconds, disposable real storage enabled, no skips. Static/whitespace checks
+passed. No live provider/production calls, deployment or PR merge. Appearance
+remains removed; unrelated working-tree changes remain unstaged.

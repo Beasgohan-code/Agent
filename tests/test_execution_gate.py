@@ -3,6 +3,8 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 from agent.platform.actions import ActionRouter
 from agent.platform.execution import PluginGate, REGISTERING, GROUP_EXECUTION
 from agent.platform.jobs import JobQueue, JobState
@@ -170,3 +172,57 @@ def test_optional_build_failure_does_not_remove_moderation(tmp_path, monkeypatch
     assert 'ban' in bot.registry.active_commands()
     assert 'leech' not in bot.registry.active_commands()
     assert not bot.actions.handles('broken-plugin-route:anything')
+
+
+@pytest.mark.parametrize('approval', [1, 'true', object(), None])
+@pytest.mark.parametrize('surface', ['command', 'callback', 'listener'])
+def test_optional_surfaces_deny_nonboolean_group_approval(approval, surface):
+    async def scenario():
+        execution, access, jobs = gate()
+        access.eligible.return_value = approval
+        handler = AsyncMock()
+        update = message()
+        callback = surface == 'callback'
+        if callback:
+            update = SimpleNamespace(message=update, answer=AsyncMock())
+        await execution.wrap('encoder', handler, callback=callback, silent=surface == 'listener')(None, update)
+        handler.assert_not_awaited()
+        assert not execution._seen and not execution._running
+        assert GROUP_EXECUTION.get() is None
+        if callback:
+            update.answer.assert_awaited_once()
+        await jobs.shutdown()
+    asyncio.run(scenario())
+
+
+def test_reconciliation_treats_malformed_approval_as_revoked():
+    async def scenario():
+        execution, access, jobs = gate()
+        execution._seen.add((-100, 'encoder'))
+        access.eligible.return_value = 'false'
+        cleanup = AsyncMock()
+        execution.cleanup_hook('encoder', cleanup)
+        await execution.reconcile()
+        cleanup.assert_awaited_once_with(-100)
+        assert not execution._seen
+        await jobs.shutdown()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('field,value', [('enabled', 1), ('enabled', 'true'), ('disabled', None), ('disabled', 0)])
+@pytest.mark.parametrize('chat', [-100, 22])
+def test_optional_runtime_flags_require_known_boolean_values(field, value, chat):
+    async def scenario():
+        execution, access, jobs = gate()
+        if field == 'enabled':
+            execution.runtime.registry.is_enabled = lambda slug: value
+        else:
+            execution.runtime.wants_disabled = lambda slug: value
+        handler = AsyncMock()
+        await execution.wrap('encoder', handler)(None, message(chat))
+        handler.assert_not_awaited()
+        access.eligible.assert_not_awaited()
+        await execution.wrap('moderation', handler)(None, message(chat))
+        handler.assert_awaited_once()
+        await jobs.shutdown()
+    asyncio.run(scenario())
