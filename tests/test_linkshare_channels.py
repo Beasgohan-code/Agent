@@ -303,3 +303,23 @@ async def test_private_settings_add_uses_channel_checks_and_awaited_save(tmp_pat
     denied = request('/settings add -100123', uid=22)
     await handler(client, denied)
     assert store.configure.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_old_file_creation_surface_is_removed(tmp_path):
+    from unittest.mock import AsyncMock
+    from agent.modules import linkshare
+    from test_plugins import make_ctx
+    from test_archive_links import request
+    ctx = make_ctx(tmp_path)
+    ctx.storage = AsyncMock()
+    ctx.links.acreate = AsyncMock()
+    manifest, handlers = linkshare.build(ctx)
+    assert 'share' not in manifest.commands and 'linkchannel' not in handlers
+    for text in ('/genlink', '/genlink 6 3', '/genlink soon'):
+        msg = request(text)
+        msg.reply_to_message = AsyncMock()
+        await handlers['genlink'](None, msg)
+        msg.reply_to_message.download.assert_not_awaited()
+    ctx.links.acreate.assert_not_awaited()
+    ctx.storage.save_path.assert_not_awaited()

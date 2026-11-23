@@ -79,64 +79,6 @@ async def allowed(ctx, client, message):
     return not missing
 
 
-def build(ctx):
-    async def configure(client, message):
-        uid = getattr(getattr(message, 'from_user', None), 'id', None)
-        if type(uid) is not int or uid != ctx.settings.owner_id or getattr(message.chat, 'id', None) != uid:
-            await reply(message, 'Only this bot’s Owner may configure /linkchannel in private chat.')
-            return
-        db = getattr(ctx, 'db', None)
-        if db is None or not db.connected:
-            await reply(message, 'Database is unavailable. No subscription change confirmed.')
-            return
-        args = (getattr(message, 'text', None) or '').split()[1:]
-        if not args:
-            try:
-                channels = channels_for(db.get(DOCUMENT, {}))
-                display = ', '.join(map(str, channels)) or 'disabled'
-            except ValueError:
-                display = 'invalid configuration'
-            await reply(message, f'Required channels: <code>{html.escape(display)}</code>. Use /linkchannel id1 [id2 … id5] or /linkchannel off. Every channel must be joined. Applies only to this bot’s Linkshare links.')
-            return
-        if args == ['off']:
-            channels = []
-        elif (not 1 <= len(args) <= 5 or len(set(args)) != len(args)
-              or any(not re.fullmatch(r'-[1-9][0-9]{0,18}', arg) for arg in args)):
-            await reply(message, 'Use /linkchannel with 1–5 unique negative channel IDs, or /linkchannel off.')
-            return
-        else:
-            channels = list(map(int, args))
-        for channel in channels:
-            if channel <= -(2**63):
-                await reply(message, 'That channel ID is out of range.')
-                return
-            try:
-                chat = await asyncio.wait_for(client.get_chat(channel), timeout=API_TIMEOUT)
-                if chat.type != ChatType.CHANNEL:
-                    raise ValueError('channel required')
-                for who in (uid, ctx.settings.bot_id):
-                    member = await asyncio.wait_for(client.get_chat_member(channel, who), timeout=API_TIMEOUT)
-                    if member.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR):
-                        raise ValueError('administrator required')
-            except Exception:
-                await reply(message, 'Both you and this bot must administer every selected Telegram channel. Configuration was not changed.')
-                return
-        previous = db.get(DOCUMENT, {})
-        try:
-            db.save(DOCUMENT, {'channel': channels[0]} if len(channels) == 1 else {'channels': channels})
-            if await db.flush() <= 0:
-                raise RuntimeError('unconfirmed persistence')
-        except Exception:
-            try:
-                db.save(DOCUMENT, previous)
-            except Exception:
-                pass  # Storage remains unconfirmed; never report success.
-            await reply(message, 'Subscription persistence was not confirmed. Check policy after storage recovers before retrying.')
-            return
-        await reply(message, 'Required-channel policy saved for this bot. Membership is checked before consuming Linkshare uses; archive-range links are unchanged.')
-    return configure
-
-
 def build_channels(ctx):
     """Owner-private channel migration surface; legacy file redemption is separate."""
     from datetime import datetime, timedelta, timezone

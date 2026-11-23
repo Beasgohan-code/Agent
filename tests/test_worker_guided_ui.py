@@ -93,7 +93,8 @@ def test_archive_genlink_usage_is_not_confused_with_linkshare_media_reply():
     file = callback('worker:cmd:genlink', None, Theme(worker_plugins=('filestore',)), active={'genlink'})
     share = callback('worker:cmd:genlink', None, Theme(worker_plugins=('linkshare',)), active={'genlink'})
     assert 'Send the command without arguments' in file.rich_text
-    assert 'Reply to a file you own' in share.rich_text
+    assert 'register the channel using /settings add ID' in share.rich_text
+    assert 'Reply to a file you own' not in share.rich_text
     assert 'Owner, private chat' in file.rich_text
 
 

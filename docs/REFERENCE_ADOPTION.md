@@ -141,3 +141,24 @@ This is textual command configuration, not full upstream settings button parity.
 Delegated bot admins, subscription/admin menus, channel batches, bot-mediated
 links and legacy creation-command retirement remain unfinished. No stored files,
 issued file tokens or unrelated command owners are removed.
+
+### Legacy file-creation command retirement
+
+User explicitly confirmed deletion/replacement of related old command logic after
+clarification. Rechecked reference master: still pinned revision above. Retired
+Linkshare file creation code (media downloads, vault sharing, TTL/use argument
+parsing) rather than leaving it reachable behind /genlink. /genlink is now solely
+the managed-channel handler; /share and /linkchannel are no longer declared or
+registered. Removed the old subscription configuration handler but retained its
+policy reader for previously issued file links. Updated menus and worker guidance.
+No upstream source copied or executed.
+
+/links and /revoke remain deliberate legacy maintenance exceptions to the target
+five-command reference surface: deleting those would remove existing grant owners'
+controls. Legacy deep-link redemption and old revoke buttons remain. Underlying
+storage, caps, expiry, subscription checks and revocation still enforce old grants.
+No file data or issued token records are deleted. FileStore-only worker /genlink
+is an unrelated archive workflow and remains untouched. Full reference parity is
+still incomplete: channel /batch routing, bot-mediated channel deep links,
+settings-button/admin/subscription flows remain. Normal/request channel generation
+is currently direct bounded Telegram invites, not upstream's encoded bot links.

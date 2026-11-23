@@ -154,57 +154,37 @@ def test_linkshare_manifest_matches_its_handlers(ctx):
     assert set(manifest.commands) == set(handlers)
 
 
-def test_genlink_without_a_file_explains_itself(ctx):
+def test_genlink_requires_owner_private_channel_context(ctx):
     _, handlers = linkshare.build(ctx)
-    message = FakeMessage("/genlink")
+    from types import SimpleNamespace
+    from pyrogram.enums import ChatType
+    message = FakeMessage('/genlink')
+    message.chat = SimpleNamespace(id=11, type=ChatType.PRIVATE)
+    run(handlers['genlink'], ctx, message)
+    assert 'Owner' in message.replies[0] or '/settings' in message.replies[0]
 
-    run(handlers["genlink"], ctx, message)
 
-    assert "Reply to a file" in message.replies[0]
-
-
-def test_genlink_creates_a_resolvable_link(ctx, media_file):
+def test_file_share_creation_commands_are_retired(ctx):
     _, handlers = linkshare.build(ctx)
-    reply = FakeReply(FakeMedia(media_file))
-    message = FakeMessage("/genlink 6", reply_to=reply)
-
-    run(handlers["genlink"], ctx, message)
-
-    assert "Share link" in message.replies[0]
-    assert "t.me/" in message.replies[0] or "link_" in message.replies[0]
-    token = token_from(message.replies[0])
-    record = ctx.links.resolve(token)
-    assert record.file_id
-    assert record.max_uses == 0          # no cap unless one is asked for
+    assert 'share' not in handlers and 'linkchannel' not in handlers
 
 
-def test_genlink_takes_a_use_cap_and_the_cap_is_real(ctx, media_file):
-    _, handlers = linkshare.build(ctx)
-    message = FakeMessage("/genlink 6 2", reply_to=FakeReply(FakeMedia(media_file)))
-
-    run(handlers["genlink"], ctx, message)
-
-    token = token_from(message.replies[0])
-    record = ctx.links.resolve(token)
-    assert record.max_uses == 2
-    assert record.remaining == 2
-    assert "2 of 2 left" in message.replies[0]
-
-    ctx.links.consume(token)
-    ctx.links.consume(token)
-    assert ctx.links.get(token).remaining == 0
+def test_legacy_use_caps_remain_enforced(ctx):
+    record = ctx.links.create('old-file', 11, ttl_hours=6, max_uses=2)
+    ctx.links.consume(record.token)
+    ctx.links.consume(record.token)
     with pytest.raises(LinkError):
-        ctx.links.resolve(token)
+        ctx.links.resolve(record.token)
 
 
-def test_genlink_rejects_a_bad_ttl(ctx, media_file):
+def test_channel_genlink_never_downloads_replied_media(ctx, media_file):
+    from types import SimpleNamespace
+    from pyrogram.enums import ChatType
     _, handlers = linkshare.build(ctx)
-    reply = FakeReply(FakeMedia(media_file))
-    message = FakeMessage("/genlink soon", reply_to=reply)
-
-    run(handlers["genlink"], ctx, message)
-
-    assert "whole number" in message.replies[0]
+    message = FakeMessage('/genlink soon', reply_to=FakeReply(FakeMedia(media_file)))
+    message.chat = SimpleNamespace(id=11, type=ChatType.PRIVATE)
+    run(handlers['genlink'], ctx, message)
+    assert ctx.links.owned(11) == []
 
 
 def test_links_is_empty_for_a_new_user(ctx):
@@ -213,19 +193,16 @@ def test_links_is_empty_for_a_new_user(ctx):
 
     run(handlers["links"], ctx, message)
 
-    assert "no links yet" in message.replies[0]
+    assert "no legacy file links" in message.replies[0]
 
 
-def test_links_lists_a_created_link(ctx, media_file):
+def test_links_lists_an_existing_legacy_link(ctx, media_file):
     _, handlers = linkshare.build(ctx)
-    reply = FakeReply(FakeMedia(media_file))
-    run(handlers["genlink"], ctx, FakeMessage("/genlink", reply_to=reply))
-
-    listing = FakeMessage("/links")
-    run(handlers["links"], ctx, listing)
-
-    assert "live" in listing.replies[0]
-    assert "clip.mp4" in listing.replies[0]
+    stored = ctx.storage.save_path(11, media_file, name='clip.mp4')
+    ctx.links.create(stored.id, 11)
+    listing = FakeMessage('/links')
+    run(handlers['links'], ctx, listing)
+    assert 'live' in listing.replies[0] and 'clip.mp4' in listing.replies[0]
 
 
 def test_revoke_requires_a_token(ctx):
@@ -246,14 +223,10 @@ def test_revoke_rejects_an_unknown_token(ctx):
     assert "Invalid link" in message.replies[0]
 
 
-def test_revoke_works_for_the_owner(ctx, media_file):
+def test_revoke_works_for_existing_legacy_link(ctx, media_file):
     _, handlers = linkshare.build(ctx)
-    reply = FakeReply(FakeMedia(media_file))
-    created = FakeMessage("/genlink", reply_to=reply)
-    run(handlers["genlink"], ctx, created)
-    token = token_from(created.replies[0])
-
-    revoked = FakeMessage(f"/revoke {token}")
-    run(handlers["revoke"], ctx, revoked)
-
-    assert "Link revoked." in revoked.replies[0]
+    stored = ctx.storage.save_path(11, media_file, name='clip.mp4')
+    token = ctx.links.create(stored.id, 11).token
+    revoked = FakeMessage(f'/revoke {token}')
+    run(handlers['revoke'], ctx, revoked)
+    assert 'Link revoked.' in revoked.replies[0]

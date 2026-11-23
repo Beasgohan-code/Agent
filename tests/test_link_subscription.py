@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pyrogram.enums import ChatMemberStatus as Status, ChatType
 from agent.modules import linkshare
-from agent.modules.linkshare.subscription import DOCUMENT, build, member_allowed
+from agent.modules.linkshare.subscription import DOCUMENT, member_allowed
 from agent.platform.deeplinks import DeepLinkRouter
 from test_plugins import make_ctx
 from test_archive_links import request
@@ -32,28 +32,8 @@ def test_subscription_requires_actual_membership(status, ismember, expected):
     assert member_allowed(NS(status=status, is_member=ismember)) is expected
 
 
-def test_subscription_configuration_checks_owner_channel_and_persistence(tmp_path):
-    async def scenario():
-        ctx = make_ctx(tmp_path); ctx.db = PolicyDB()
-        command = build(ctx)
-        client = NS(get_chat=AsyncMock(return_value=NS(type=ChatType.CHANNEL)),
-                    get_chat_member=AsyncMock(return_value=NS(status=Status.ADMINISTRATOR)))
-        denied = request('/linkchannel -100123'); denied.from_user.id = 99; denied.chat.id = 99
-        await command(client, denied)
-        client.get_chat.assert_not_awaited()
-        await command(client, request('/linkchannel -100123'))
-        assert ctx.db.policy == {'channel': -100123}
-        ctx.db.flush.return_value = 0
-        failed = request('/linkchannel off')
-        await command(client, failed)
-        assert ctx.db.policy == {'channel': -100123}
-        assert 'not confirmed' in failed.reply.await_args.args[0]
-        client.get_chat_member.side_effect = RuntimeError('private API secret')
-        bad = request('/linkchannel -100456')
-        await command(client, bad)
-        assert ctx.db.policy == {'channel': -100123}
-        assert 'private API secret' not in bad.reply.await_args.args[0]
-    asyncio.run(scenario())
+def test_legacy_subscription_configuration_command_retired(tmp_path):
+    assert 'linkchannel' not in linkshare.build(make_ctx(tmp_path))[1]
 
 
 def test_redemption_checks_subscription_before_consuming_or_delivering(tmp_path, monkeypatch):
@@ -96,32 +76,19 @@ def test_membership_api_errors_and_malformed_policy_fail_closed(tmp_path):
     asyncio.run(scenario())
 
 
-def test_multiple_required_channels_validate_atomically_and_require_all_memberships(tmp_path):
+def test_existing_multi_channel_policy_still_requires_all_memberships(tmp_path):
     from agent.modules.linkshare.subscription import allowed
     async def scenario():
         ctx = make_ctx(tmp_path); ctx.db = PolicyDB()
-        client = NS(get_chat=AsyncMock(return_value=NS(type=ChatType.CHANNEL)),
-                    get_chat_member=AsyncMock(return_value=NS(status=Status.ADMINISTRATOR)))
-        command = build(ctx)
-        await command(client, request('/linkchannel -100123 -100456'))
-        assert ctx.db.policy == {'channels': [-100123, -100456]}
+        ctx.db.policy = {'channels': [-100123, -100456]}
         async def membership(channel, uid):
             return NS(status=Status.MEMBER if channel == -100123 else Status.LEFT)
-        client.get_chat_member.side_effect = membership
+        client = NS(get_chat_member=AsyncMock(side_effect=membership))
         msg = request('/start link_token')
         assert not await allowed(ctx, client, msg)
         assert '-100456' in msg.reply.await_args.args[0]
-        assert '-100123' not in msg.reply.await_args.args[0]
-        old = ctx.db.policy
-        await command(client, request('/linkchannel -100789 -100999'))
-        assert ctx.db.policy == old
-        await command(client, request('/linkchannel -100123 -100123'))
-        assert ctx.db.policy == old
         client.get_chat_member.side_effect = None
         client.get_chat_member.return_value = NS(status=Status.MEMBER)
-        assert await allowed(ctx, client, msg)
-        await command(client, request('/linkchannel off'))
-        assert ctx.db.policy == {'channels': []}
         assert await allowed(ctx, client, msg)
     asyncio.run(scenario())
 

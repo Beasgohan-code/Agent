@@ -1234,3 +1234,29 @@ unrelated registry validation work and failed fixture contracts; rebuilt with on
 the intended scope metadata changes and reran successfully. Unrelated registry
 and bot.py work preserved unstaged. Changed-file static/whitespace checks passed.
 No live Telegram/provider calls, deployment, PR merge or appearance features.
+
+### Retire obsolete Linkshare file-creation code and command surfaces
+
+Removed legacy /genlink media-ingest and /share vault-link grant creation plus
+TTL/use parsing; /genlink now exclusively invokes verified channel sharing.
+Removed /share and /linkchannel registrations and obsolete configuration writer.
+Preserved existing file-link redemption, subscription reads, listing, revocation
+and old-card callbacks. Updated help/menu/worker instructions; archive FileStore
+worker behavior unchanged. This is a migration milestone, not full reference
+command parity (see REFERENCE_ADOPTION).
+
+Regression tests assert removed registrations and that old /genlink invocations
+never download/save/create grants. Converted obsolete creation tests to retired-
+surface refusals or seeded already-issued grants, preserving redemption/expiry/
+cap/revocation/ownership and legacy-card coverage. Full runs first identified 13
+obsolete media/card/help expectations, updated to the explicitly changed contract.
+Exact patch **2,772 passed** in 32.13 seconds; full working tree **2,854 passed**
+in 31.34 seconds, disposable real storage, no skips. Changed-file static and
+whitespace checks passed. No live Telegram/provider calls, production migration,
+deployment, merge or appearance additions.
+
+Session workspace initially had HEAD/index back at base with persistent working
+files and no virtual environment. Backed up index/diff under /tmp/retire-backup,
+fetched current branch and restored its ref/index without resetting working files;
+rebuilt disposable test environment. Only task changes staged; unrelated work,
+including menu/screens edits, remains preserved.

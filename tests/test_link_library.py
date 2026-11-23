@@ -16,16 +16,11 @@ def stored(ctx, tmp_path):
 
 
 @pytest.mark.parametrize('numbers', ['0', '721', '1 1001', '1 2 3', '-1', '١', '9'*5000])
-def test_limits_rejected_without_creating_link(tmp_path, numbers):
-    async def scenario():
-        ctx = make_ctx(tmp_path)
-        file = stored(ctx, tmp_path)
-        _, commands = linkshare.build(ctx)
-        request = FakeMessage(f'/share {file.id} {numbers}')
-        await commands['share'](None, request)
-        assert ctx.links.owned(OWNER) == []
-        assert request.replies
-    asyncio.run(scenario())
+def test_legacy_creation_not_registered(tmp_path, numbers):
+    ctx = make_ctx(tmp_path)
+    _, commands = linkshare.build(ctx)
+    assert 'share' not in commands
+    assert ctx.links.owned(OWNER) == []
 
 
 def test_all_link_pages_hide_tokens_and_other_owners(tmp_path):
@@ -66,17 +61,8 @@ def test_anonymous_and_extra_revoke_args_refused(tmp_path):
     asyncio.run(scenario())
 
 
-def test_share_boundary_values_and_unescaped_table_name(tmp_path):
-    async def scenario():
-        ctx = make_ctx(tmp_path)
-        file = stored(ctx, tmp_path)
-        file.name = 'A & B.txt'
-        _, commands = linkshare.build(ctx)
-        request = FakeMessage(f'/share {file.id} 720 1000')
-        request._client = SimpleNamespace(send_rich_message=AsyncMock())
-        await commands['share'](SimpleNamespace(me=SimpleNamespace(username='agentbot')), request)
-        record = ctx.links.owned(OWNER)[0]
-        assert record.max_uses == 1000
-        body = request._client.send_rich_message.await_args.kwargs['rich_text'].html
-        assert 'A &amp; B.txt' in body and 'A &amp;amp;' not in body
-    asyncio.run(scenario())
+def test_legacy_limit_boundary_remains_stored(tmp_path):
+    ctx = make_ctx(tmp_path)
+    file = stored(ctx, tmp_path)
+    record = ctx.links.create(file.id, OWNER, ttl_hours=720, max_uses=1000)
+    assert record.max_uses == 1000 and ctx.links.resolve(record.token).file_id == file.id

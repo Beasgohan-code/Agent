@@ -61,17 +61,21 @@ def test_feature_rich_reply_retries_rejected_button_only():
     assert calls[-1]['reply_markup'].inline_keyboard[0][0].callback_data == 'leech:help'
 
 
-def test_linkshare_card_keeps_copy_revoke_and_home_actions(tmp_path, monkeypatch):
+def test_legacy_revoke_card_keeps_copy_revoke_and_home_actions(tmp_path, monkeypatch):
     from test_plugins import make_ctx
     from agent.modules import linkshare
+    from agent.platform.actions import ActionRouter
     async def scenario():
         ctx = make_ctx(tmp_path)
+        ctx.actions = ActionRouter()
         stored = ctx.storage.save_bytes(8, 'example.txt', b'test')
+        record = ctx.links.create(stored.id, 8)
         capture = AsyncMock()
-        monkeypatch.setattr(linkshare, 'reply', capture)
-        message = SimpleNamespace(text=f'/share {stored.id}', from_user=SimpleNamespace(id=8))
+        monkeypatch.setattr(linkshare.rich_ui, 'edit', capture)
+        linkshare.build(ctx)
+        query = SimpleNamespace(data=f'link:revoke:{record.token}', from_user=SimpleNamespace(id=8), answer=AsyncMock())
         client = SimpleNamespace(me=SimpleNamespace(username='example_bot'))
-        await linkshare.build(ctx)[1]['share'](client, message)
+        await ctx.actions.dispatch(client, query)
         keyboard = capture.await_args.kwargs['reply_markup']
         buttons = [b for row in keyboard.inline_keyboard for b in row]
         assert all(b.icon_custom_emoji_id for b in buttons)
@@ -79,6 +83,7 @@ def test_linkshare_card_keeps_copy_revoke_and_home_actions(tmp_path, monkeypatch
         assert buttons[1].style == ButtonStyle.DANGER
         assert ':revoke:' in buttons[1].callback_data
         assert buttons[2].callback_data == 'menu:home'
+        assert ctx.links.get(record.token).revoked
     asyncio.run(scenario())
 
 

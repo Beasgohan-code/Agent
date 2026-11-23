@@ -239,9 +239,7 @@ DESCRIPTIONS: dict[str, str] = {
     "mediainfo": "Probe a replied video",
 
     # linkshare
-    "linkchannel": "Required channel for share links (Owner, private)",
-    "genlink": "Create a signed link for a file",
-    "share": "Link a file already in your vault",
+    "genlink": "Create managed channel invites (Owner, private)",
     "links": "Browse your links: /links [page]",
     "revoke": "Revoke one of your links",
     # renamer

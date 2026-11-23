@@ -1,21 +1,8 @@
-"""Linkshare module — share links that actually hand over a file.
+"""Managed channel-invite Linkshare with legacy file redemption and revocation.
 
-A link has three parts and one job:
-
-* **creation** — ``/genlink [hours] [uses]`` stores the replied file in the
-  sender's vault and answers with a ``t.me/<bot>?start=link_<token>`` deep link,
-  a copy button and a revoke button; ``/share <id> [hours] [uses]`` does the
-  same for a file that is *already* in the vault, so sharing never copies it
-  twice;
-* **redemption** — opening that link lands on ``/start link_<token>``; the
-  ``link`` prefix of the deep-link router resolves the token, checks it is not
-  revoked, expired or used up, marks the use and sends the file;
-* **control** — ``/links`` lists what is still alive with its remaining uses,
-  ``/revoke`` kills one, and the panel's own button does the same without typing
-  the token.
-
-The module reuses the platform's storage and signer rather than keeping a private
-store, and it never shows a storage identifier: the token is the handle.
+/genlink now exclusively uses verified channel-invite logic. File-link creation
+and its old /share and /linkchannel command surfaces have been retired. Existing
+file tokens, subscription policies, listing and revocation remain compatible.
 """
 
 from __future__ import annotations
@@ -34,7 +21,6 @@ from ...ui.tables import Table, kv_table, panel
 from ...utils import rich as rich_ui
 from ...utils.delivery import send_stored
 from ...utils.rich import reply
-from ..filestore.vault import MAX_BOT_DOWNLOAD, media_of, media_name, media_size
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +30,8 @@ MANIFEST = PluginManifest(
     slug="linkshare",
     name="Linkshare",
     version="1.1.0",
-    description="Share a stored file as a link that delivers it, with a use cap.",
-    commands=("genlink", "share", "links", "revoke", "linkchannel"),
+    description="Managed channel invites; existing file-link access and revocation retained.",
+    commands=("genlink", "links", "revoke"),
     permissions=("messages.read", "storage.read", "storage.write"),
 )
 
@@ -57,11 +43,6 @@ DEEP_PREFIX = "link"
 
 #: Extensions Telegram should show as a playable video rather than a document.
 VIDEO_SUFFIXES = (".mp4", ".mov", ".mkv", ".webm", ".m4v")
-
-#: Explicit bounds; invalid values are rejected before any creation or download.
-MAX_TTL_HOURS = 24 * 30
-MAX_USES = 1000
-
 
 def _args(message) -> list[str]:
     return (getattr(message, "text", "") or "").split()
@@ -150,126 +131,8 @@ def build(ctx):
         )
         return body, Keyboard(buttons)
 
-    def _limits(parts, command: str) -> tuple[int | None, int, str]:
-        """``(ttl_hours, max_uses, problem)`` from the numbers after a command."""
-        if len(parts) > 2 or any(not part.isascii() or not part.isdecimal() or len(part) > 4 for part in parts):
-            return None, 0, f"Use <code>/{command}</code> with at most two whole numbers: hours (1–{MAX_TTL_HOURS}), then uses (0–{MAX_USES}; 0 means unlimited)."
-        ttl = int(parts[0]) if parts else None
-        uses = int(parts[1]) if len(parts) > 1 else 0
-        if (ttl is not None and not 1 <= ttl <= MAX_TTL_HOURS) or not 0 <= uses <= MAX_USES:
-            return None, 0, f"Choose hours from 1 to {MAX_TTL_HOURS} and uses from 0 to {MAX_USES}; 0 uses means unlimited. No link was created."
-        return ttl, uses, ""
-
-    async def _grant(client, message, stored, ttl, uses, *, source: str) -> None:
-        """Create the link for *stored* and answer with the share card."""
-        owner = message.from_user.id
-        record = await ctx.links.acreate(stored.id, owner, ttl_hours=ttl, max_uses=uses)
-        if getattr(ctx, "events", None) is not None:
-            ctx.events.emit("link", owner=owner, uses=uses)
-        logger.info(
-            "share link created by %s for %s from %s (ttl=%sh, uses=%s)",
-            owner, stored.name, source, f"{_hours_left(record):.0f}",
-            uses or "unlimited",
-        )
-        username = await _username(client)
-        text, keyboard = _panel(record, stored, username)
-        await reply(message, text, reply_markup=keyboard)
-
-    async def share(client, message):
-        """``/share <vault id> [hours] [uses]`` — link a file already stored."""
-        parts = _args(message)[1:]
-        if not parts:
-            owned = ctx.storage.list_owned(message.from_user.id)
-            await reply(
-                message,
-                panel(
-                    "Share a stored file",
-                    icon=ctx.theme.emoji("link"),
-                    subtitle=(
-                        f"Send <code>/share &lt;id&gt;</code> — you have "
-                        f"<b>{len(owned)}</b> file(s) in the vault."
-                        if owned
-                        else "Your vault is empty: use <code>/batch</code> on replied files to save them."
-                    ),
-                    table=Table(
-                        headers=("Id", "Name", "Size"),
-                        rows=tuple(
-                            (item.id, item.name, f"{item.size:,}")
-                            for item in owned[:8]
-                        ),
-                        aligns=("left", "left", "right"),
-                        max_column=26,
-                        total_width=48,
-                    )
-                    if owned
-                    else None,
-                    note="Optional numbers after the id: hours, then uses.",
-                    footer="Use the ID returned by a successful save; /links lists your existing share links.",
-                ),
-                reply_markup=nav_keyboard(),
-            )
-            return
-        stored = ctx.storage.get(parts[0])
-        if stored is None or ctx.storage.owner_of(parts[0]) != message.from_user.id:
-            await reply(
-                message,
-                "No file with that id belongs to you. Use an ID returned by a successful save.",
-            )
-            return
-        ttl, uses, problem = _limits(parts[1:], "share")
-        if problem:
-            await reply(message, problem)
-            return
-        await _grant(client, message, stored, ttl, uses, source=f"/share {parts[0]}")
-
     from .subscription import build_channels
-    channel_command = build_channels(ctx)
-
-    async def genlink(client, message):
-        channel_args = _args(message)[1:]
-        if channel_args and (channel_args[0].startswith('-') or channel_args[0] in ('channels', 'add', 'mode', 'disable')):
-            return await channel_command(client, message)
-        found = media_of(message)
-        if found is None:
-            await reply(
-                message,
-                "Reply to a file (document, video, audio, voice note, animation or photo) with <code>/genlink</code>. Two numbers are "
-                "optional: hours until it expires, and how many times it may be "
-                "opened — <code>/genlink 48 5</code>. A file already in the vault "
-                "is shared with <code>/share &lt;id&gt;</code>.",
-            )
-            return
-
-        ttl_hours, max_uses, problem = _limits(_args(message)[1:], "genlink")
-        if problem:
-            await reply(message, problem)
-            return
-
-        replied, media = found
-        owner = message.from_user.id
-        size = media_size(media)
-        if size > MAX_BOT_DOWNLOAD:
-            await reply(message, "That file exceeds this workflow's 20 MB download limit. No link was created.")
-            return
-        book = getattr(ctx, "premium", None)
-        allowance = book.tier(owner).quota_bytes if book is not None else None
-        try:
-            # Admission only; save_path checks the actual downloaded size again.
-            ctx.storage.check_quota(owner, size, quota_bytes=allowance)
-            source = await replied.download()
-            if not source:
-                await reply(message, "Telegram returned no file. No link was created.")
-                return
-            stored = ctx.storage.save_path(owner, source, name=media_name(media), quota_bytes=allowance)
-        except Exception as exc:  # noqa: BLE001 - quota and IO errors reach the user
-            logger.warning("genlink save unconfirmed (%s)", type(exc).__name__)
-            await reply(
-                message,
-                f"Could not confirm that save ({type(exc).__name__}). Check the replied file and current /links before retrying.",
-            )
-            return
-
-        await _grant(client, message, stored, ttl_hours, max_uses, source="/genlink")
+    genlink = build_channels(ctx)
 
     async def links(_client, message):
         parts = _args(message)[1:]
@@ -286,7 +149,7 @@ def build(ctx):
         if not records:
             await reply(
                 message,
-                "You have no links yet. Reply to a file with <code>/genlink</code>.",
+                "You have no legacy file links. Use /settings for channel management and /genlink ID for channel invites.",
             )
             return
 
@@ -485,11 +348,8 @@ def build(ctx):
             return await handler(client, message)
         return wrapped
 
-    from .subscription import build as build_subscription
     handlers = {
-        "linkchannel": build_subscription(ctx),
         "genlink": genlink,
-        "share": share,
         "links": links,
         "revoke": revoke,
     }

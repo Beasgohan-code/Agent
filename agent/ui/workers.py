@@ -43,7 +43,7 @@ WORKFLOWS = {
     'encoder': ('Send a supported video or document.', 'Reply to that media with an encoding command; open /help encode for options.', 'Watch the job result. Use /cancel to stop your own active job.'),
     'moderation': ('Add this bot to your group with only the administrator rights you need.', 'Open /settings in the group to choose rules, greetings and protection.', 'Review your settings before using moderation actions on members.'),
     'postmaker': ('Prepare the text or media you want to publish.', 'Open /help post for the supported composition format.', 'Check the content and destination before publishing. Permissions still apply.'),
-    'linkshare': ('Choose a file you own, or reply to supported media.', 'Open /help genlink to choose expiry and use limits.', 'Share the issued link privately. Revocation cannot erase copies already delivered.'),
+    'linkshare': ('Open /settings privately as this bot’s Owner to add channels you and the bot administer.', 'Use /genlink with a managed channel ID for temporary normal and request invites.', 'Choose manual or auto approval per channel in /settings. Existing file links still redeem; /links and /revoke manage legacy grants.'),
     'leech': ('Choose a supported public file URL; do not include secrets.', 'Send /leech followed by the URL, or reply to one URL with /leech.', 'Receive the file here. Use /cancel to stop your own active transfer.'),
     'music': ('Ask the Owner to configure this bot’s own assistant.', 'An admin must activate the approved Music plugin for the group.', 'Use only supported downloaded local media. Remote URL, YouTube and search playback remain disabled.'),
     'ai_agent': ('Write a question without credentials or private secrets.', 'Send /ask followed by your question. Only that message goes to the configured provider.', 'Verify important answers. Auto-chat is opt-in; the assistant cannot perform Telegram actions.'),
@@ -322,7 +322,7 @@ def command_screen(user, theme, name, *, active=None):
     if name == 'genlink' and owner == 'filestore':
         guide = ('/genlink', 'Send the command without arguments in private chat as this bot’s Owner, then send or forward one message. Follow any access/configuration checks shown.')
     elif name == 'genlink' and owner == 'linkshare':
-        guide = ('/genlink', 'Reply to a file you own. Optional expiry and use limits are checked by the handler before a link is issued.')
+        guide = ('/genlink -1001234567890', 'Owner, private: register the channel using /settings add ID first. Both you and the bot need channel invite authority. Creates temporary normal and request invites, not file links.')
     if guide:
         rows.extend([('How to use', guide[0]), ('Before sending', guide[1])])
     rows.append(('Registered here', 'Yes · registration does not prove activation or permission'))
