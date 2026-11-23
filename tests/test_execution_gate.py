@@ -226,3 +226,74 @@ def test_optional_runtime_flags_require_known_boolean_values(field, value, chat)
         handler.assert_awaited_once()
         await jobs.shutdown()
     asyncio.run(scenario())
+
+
+def test_repeated_plugin_cleanup_does_not_interrupt_child_cleanup():
+    async def scenario():
+        execution, _, jobs = gate()
+        started, cleaning, release, cleaned, interrupted = (asyncio.Event() for _ in range(5))
+        async def handler(*args):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaning.set()
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    interrupted.set()
+                    raise
+                cleaned.set()
+        dispatcher = asyncio.create_task(execution.wrap('music', handler)(None, message()))
+        await started.wait()
+        first = asyncio.create_task(execution.cleanup(-100, 'music'))
+        await cleaning.wait()
+        second = asyncio.create_task(execution.cleanup(-100, 'music'))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        release.set()
+        await asyncio.gather(first, second, dispatcher)
+        assert cleaned.is_set() and not interrupted.is_set()
+        assert not dispatcher.cancelled() and not execution._running
+        await jobs.shutdown()
+    asyncio.run(scenario())
+
+
+def test_failed_plugin_cleanup_retains_scope_without_private_diagnostics(caplog):
+    async def scenario():
+        execution, _, jobs = gate()
+        execution._seen.add((-100, 'encoder'))
+        hook = AsyncMock(side_effect=RuntimeError('private-cleanup-token'))
+        execution.cleanup_hook('encoder', hook)
+        await execution.cleanup(-100, 'encoder')
+        assert (-100, 'encoder') in execution._seen
+        hook.side_effect = None
+        await execution.cleanup(-100, 'encoder')
+        assert (-100, 'encoder') not in execution._seen
+        assert hook.await_count == 2
+        await jobs.shutdown()
+    asyncio.run(scenario())
+    assert 'private-cleanup-token' not in caplog.text
+    assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
+    assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.platform.execution')
+
+
+def test_reconcile_watch_failure_retries_without_private_diagnostics(caplog):
+    async def scenario():
+        execution, _, jobs = gate()
+        stop = asyncio.Event()
+        calls = 0
+        async def reconcile():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError('private-reconcile-token')
+            stop.set()
+        execution.reconcile = reconcile
+        await execution.watch(stop, interval=0.001)
+        assert calls == 2
+        await jobs.shutdown()
+    asyncio.run(scenario())
+    assert 'private-reconcile-token' not in caplog.text
+    assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
+    assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.platform.execution')

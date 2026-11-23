@@ -1109,3 +1109,26 @@ patch: **2,732 passed** in 31.69 seconds; full working tree: **2,814 passed** in
 28.27 seconds, disposable real storage enabled, no skips. Static/whitespace checks
 passed. No live provider/production calls, deployment or PR merge. Appearance
 remains removed; unrelated working-tree changes remain unstaged.
+
+### Plugin child-cleanup and reconciliation diagnostics
+
+Overlapping plugin cleanup requests now await an already-cancelling owned child
+without cancelling it a second time. The shared dispatcher task stays intact.
+Cleanup-hook failure retains the seen group/plugin scope for reconciliation retry,
+while cleanup and watcher failures now emit #Errors operation/type diagnostics
+without raw exception bodies or tracebacks. Watch retry behavior and optional
+plugin approval/slot checks are unchanged.
+
+This is not a single-flight protocol for resource hooks: concurrent hook calls,
+durable retry/dead-letter recovery and cleanup time budgets still need separate
+work. Hooks must remain idempotent. Forced cancellation/host termination can still
+interrupt cleanup; no guaranteed remote-resource deletion claim is made.
+
+Three regressions failed before implementation, then cover child-cleanup
+completion, failure/success retry retention and watcher recovery with injected
+private provider values. Focused suites: **65 passed, two storage skips** without
+a storage URL. Full exact selective patch: **2,735 passed** in 40.07 seconds;
+full working tree: **2,817 passed** in 40.91 seconds, both with disposable real
+storage and no skips. Static/whitespace checks passed. No live provider calls,
+production changes, deployment or PR merge. Appearance remains removed and
+unrelated working-tree changes remain unstaged.

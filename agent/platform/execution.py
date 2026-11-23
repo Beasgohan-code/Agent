@@ -54,7 +54,10 @@ class PluginGate:
         children = [task for task in self._running.get((group_id, slug), ())
                     if task is not asyncio.current_task()]
         for task in children:
-            task.cancel()
+            # Reconciliation and command refusal may overlap. Do not interrupt
+            # a child's already-running cancellation cleanup a second time.
+            if not task.done() and not task.cancelling():
+                task.cancel()
         if children:
             await asyncio.gather(*children, return_exceptions=True)
         await self.jobs.cancel_group(group_id, slug)
@@ -62,8 +65,9 @@ class PluginGate:
         if callback:
             try:
                 await callback(group_id)
-            except Exception:
-                logger.exception('Plugin cleanup failed: %s group=%s', slug, group_id)
+            except Exception as error:
+                logger.warning('#Errors Plugin cleanup unconfirmed: %s group=%s (%s)',
+                               slug, group_id, type(error).__name__)
                 return  # retain scope so the next reconciliation retries
         self._seen.discard((group_id, slug))
 
@@ -141,8 +145,9 @@ class PluginGate:
         while not stop_event.is_set():
             try:
                 await self.reconcile()
-            except Exception:
-                logger.exception('Plugin reconciliation failed; retrying without affecting core.')
+            except Exception as error:
+                logger.warning('#Errors Plugin reconciliation unconfirmed (%s); retrying without affecting core.',
+                               type(error).__name__)
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=interval)
             except asyncio.TimeoutError:
