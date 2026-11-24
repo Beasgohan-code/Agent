@@ -1305,3 +1305,24 @@ production calls, PR merge or appearance features. Workspace ref/index was again
 at base; backed up under /tmp/botlink-backup and reconciled to current branch
 without discarding persistent work. Broader pending reference-parity items remain
 listed in REFERENCE_ADOPTION; this does not complete all tasks.
+
+### Clickable channel settings and confirmed link controls
+
+Added paginated channel settings keyboard, plugin-owned callback routing and
+runtime/identity validation, reuse of the same verified command mutation paths,
+and durable per-channel bot-token invalidation. Revoke controls use single-use
+random bounded two-minute confirmations; current permissions are checked when
+confirmation executes. Other users cannot consume confirmations; restart refuses
+stale confirmations. Five channels per page keeps button count/payloads bounded.
+No unsolicited approvals, global settings mutations or remote revocation claims.
+
+Two regressions failed before implementation. Five new tests cover clicker versus
+origin-sender identity, runtime-off refusal, explicit confirmation/current rights,
+single-use Owner-bound confirmation, real-storage channel invalidation/isolation
+and bounded keyboard payloads. Exact patch **2,789 passed** in 25.94 seconds; full
+working tree **2,871 passed** in 25.52 seconds, disposable real storage and no skips.
+Changed-file static and whitespace checks passed. Telegram effects mocked; no
+production app calls/deployment/PR merge. Workspace ref/index was back at base;
+backed up under /tmp/settings-ui-backup and restored fetched current-branch index
+without discarding files; rebuilt test environment. Remaining parity limitations
+are explicit in REFERENCE_ADOPTION. Appearance remains removed.

@@ -204,3 +204,27 @@ controls. Telegram effects and policy checks cannot be one atomic transaction.
 No exactly-once delivery/redelivery protection or per-recipient rate limiter is
 claimed; unconfirmed creation may have taken effect. Full reference parity still
 needs independent Linkshare-only /batch routing and settings/admin/subscription UI.
+
+### Clickable channel settings and explicit bot-link invalidation
+
+Private /settings lists five channels per page with navigation and verified
+controls: generate bot links, manual/auto approval, enable/disable, revoke bot
+links. Buttons are plugin-owned actions, gated by current runtime and personal
+Owner identity in matching private chat. Callback-origin message sender is never
+used as actor; a copied request uses the clicker's checked identity and re-enters
+the same command authorization/storage path. Channel mutation still verifies live
+channel identity and current Owner/bot invite rights. Callback fields are strictly
+parsed; chat-less, stale, foreign-user and missing-runtime requests refuse.
+
+Revoke bot links prompts for confirmation. Nonces are random, Owner-bound through
+the private context, limited to twenty outstanding, expire after two minutes and
+are consumed once. Restart drops confirmations safely (not durable approvals).
+The explicit command equivalent is `/settings invalidate ID confirm`. Invalidation
+is an awaited scoped delete under the channel row lock also used for issuance;
+new links issued after it can be valid. It cannot revoke already-created Telegram
+invites, delivered copies or an invite request already in flight. No atomic remote
+revocation claim. Existing disable/re-enable semantics are unchanged.
+
+This is native reference-inspired channel UI, not complete upstream admin/fsub
+parity. Standalone Linkshare-only batch dispatch, delegated admins and editable
+required-subscription UI remain unfinished. No live Telegram validation performed.

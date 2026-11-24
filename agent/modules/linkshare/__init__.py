@@ -334,6 +334,10 @@ def build(ctx):
     if router is not None and not router.handles(f"{PREFIX}:x"):
         router.register(PREFIX, on_link_press)
 
+    if router is not None and not router.handles("chset:page:0"):
+        from .subscription import build_controls
+        router.register("chset", build_controls(ctx))
+
     deep = getattr(ctx, "deeplinks", None)
     if deep is not None and not deep.handles(f"{DEEP_PREFIX}_x"):
         deep.register(DEEP_PREFIX, redeem)

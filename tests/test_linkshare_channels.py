@@ -513,3 +513,108 @@ async def test_channel_start_prefix_is_plugin_owned_and_runtime_gated(tmp_path, 
     execution.runtime.wants_disabled = lambda slug: True
     await ctx.deeplinks.dispatch(NS(), msg, 'channel_' + 'a'*24)
     assert delivery.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_channel_settings_buttons_use_clicker_identity_and_runtime(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType
+    from agent.modules.linkshare.subscription import build_controls
+    from test_plugins import make_ctx
+    from test_execution_gate import gate
+    ctx = make_ctx(tmp_path)
+    ctx.plugin_gate = gate()[0]
+    command = AsyncMock()
+    monkeypatch.setattr('agent.modules.linkshare.subscription.build_channels', lambda ctx: command)
+    origin = NS(chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=99), text='settings', reply=AsyncMock())
+    query = NS(message=origin, from_user=NS(id=22), answer=AsyncMock())
+    controls = build_controls(ctx)
+    await controls(None, query, 'mode:-100123:auto')
+    command.assert_not_awaited()
+    query.from_user.id = 11
+    await controls(None, query, 'mode:-100123:auto')
+    assert command.await_args.args[1].text == '/settings mode -100123 auto'
+    assert command.await_args.args[1].from_user.id == 11
+    ctx.plugin_gate.runtime.wants_disabled = lambda slug: True
+    await controls(None, query, 'disable:-100123')
+    assert command.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_channel_revoke_all_requires_explicit_confirmation_and_current_rights(monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType, ChatMemberStatus as S
+    from agent.modules.linkshare.subscription import build_channels
+    store = NS(get=AsyncMock(return_value={'enabled': True}), invalidate=AsyncMock(return_value=2))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    ctx = NS(db=None, settings=NS(owner_id=11, bot_id=99))
+    msg = NS(text='/settings invalidate -100123', chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=11), reply=AsyncMock())
+    client = NS(get_chat=AsyncMock(return_value=NS(id=-100123, type=ChatType.CHANNEL)), get_chat_member=AsyncMock(return_value=NS(status=S.OWNER)))
+    command = build_channels(ctx)
+    await command(client, msg)
+    store.invalidate.assert_not_awaited()
+    msg.text += ' confirm'
+    await command(client, msg)
+    store.invalidate.assert_awaited_once_with(-100123)
+    assert 'Telegram invites' in msg.reply.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_channel_settings_revoke_confirmation_is_single_use_and_owner_bound(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType
+    from agent.modules.linkshare.subscription import build_controls
+    from test_plugins import make_ctx
+    from test_execution_gate import gate
+    ctx = make_ctx(tmp_path)
+    ctx.plugin_gate = gate()[0]
+    command = AsyncMock()
+    monkeypatch.setattr('agent.modules.linkshare.subscription.build_channels', lambda ctx: command)
+    origin = NS(chat=NS(id=11, type=ChatType.PRIVATE), reply=AsyncMock())
+    query = NS(message=origin, from_user=NS(id=11), answer=AsyncMock())
+    controls = build_controls(ctx)
+    await controls(None, query, 'revokeask:-100123')
+    command.assert_not_awaited()
+    data = origin.reply.await_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data
+    query.from_user.id = 22
+    await controls(None, query, data.split(':', 1)[1])
+    command.assert_not_awaited()
+    query.from_user.id = 11
+    await controls(None, query, data.split(':', 1)[1])
+    assert command.await_args.args[1].text == '/settings invalidate -100123 confirm'
+    await controls(None, query, data.split(':', 1)[1])
+    assert command.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_channel_token_invalidation_is_tenant_and_channel_scoped():
+    from agent.platform.channel_shares import ChannelShares
+    url = os.environ.get('AGENT_TEST_DATABASE_URL')
+    if not url:
+        pytest.skip('Disposable storage required')
+    db = Database(url, scope='invalidate:' + uuid.uuid4().hex)
+    assert await db.connect()
+    try:
+        store = ChannelShares(db)
+        await store.configure(-100123, actor=11)
+        await store.configure(-100456, actor=11)
+        first, second = await store.issue(-100123), await store.issue(-100456)
+        assert await store.invalidate(-100123) == 2
+        assert await store.resolve(first['normal']) is None
+        assert await store.resolve(second['normal']) is not None
+        assert await store.invalidate(-100123) == 0
+    finally:
+        await db.close()
+
+
+def test_channel_settings_pagination_bounds_callback_layout():
+    from agent.modules.linkshare.subscription import settings_keyboard
+    rows = [dict(channel_id=-100-i, enabled=True, auto_approve=False) for i in range(5)]
+    keyboard = settings_keyboard(rows, 0, 20)
+    buttons = [b for row in keyboard.inline_keyboard for b in row]
+    assert len(buttons) == 27
+    assert all(len(b.callback_data.encode()) <= 64 for b in buttons)
+    assert any(b.callback_data == 'chset:page:1' for b in buttons)

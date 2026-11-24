@@ -133,17 +133,24 @@ def build_channels(ctx):
                         await reply(message, 'Channel batch stopped after an unconfirmed or refused operation. Confirmed invites above remain valid; inspect channel invites before retrying.')
                         return
                 return True
+            page = 0
+            if len(args) == 2 and args[0] == 'page' and re.fullmatch(r'[0-3]', args[1]):
+                page = int(args[1])
+                args = ['channels']
             if args == ['channels']:
                 rows = await store.list()
+                page = min(page, max(0, (len(rows)-1)//5))
+                visible = rows[page*5:page*5+5]
                 if ctx.settings.owner_id != uid:
                     raise ValueError('Owner changed')
                 body = '<b>Managed Linkshare channels</b>\n' + '\n'.join(
-                    f'<code>{row["channel_id"]}</code> · {"enabled" if row["enabled"] else "disabled"} · {"auto preference" if row["auto_approve"] else "manual"}' for row in rows)
-                await reply(message, body + '\nUse /settings add ID, /settings mode ID manual|auto, /settings disable ID, or /genlink ID. Auto mode approves requests only for enabled, managed channels while Linkshare is active; manual mode leaves approval to administrators.')
+                    f'<code>{row["channel_id"]}</code> · {"enabled" if row["enabled"] else "disabled"} · {"auto preference" if row["auto_approve"] else "manual"}' for row in visible)
+                await reply(message, body + '\nUse /settings add ID, /settings mode ID manual|auto, /settings disable ID, or /genlink ID. Auto mode approves requests only for enabled, managed channels while Linkshare is active; manual mode leaves approval to administrators.', reply_markup=settings_keyboard(visible, page, len(rows)))
                 return
-            operation = args[0] if args and args[0] in ('add', 'mode', 'disable') else 'invite'
+            operation = args[0] if args and args[0] in ('add', 'mode', 'disable', 'invalidate') else 'invite'
             valid = (operation == 'invite' and len(args) == 1 or operation in ('add', 'disable') and len(args) == 2
-                     or operation == 'mode' and len(args) == 3 and args[2] in ('manual', 'auto'))
+                     or operation == 'mode' and len(args) == 3 and args[2] in ('manual', 'auto')
+                     or operation == 'invalidate' and len(args) == 3 and args[2] == 'confirm')
             raw = args[0] if operation == 'invite' and args else args[1] if len(args) > 1 else ''
             if not valid or not re.fullmatch(r'-[1-9][0-9]{0,18}', raw):
                 await reply(message, 'Use /settings, /settings add -100ID, /settings mode -100ID manual|auto, /settings disable -100ID, or /genlink -100ID.')
@@ -159,6 +166,11 @@ def build_channels(ctx):
                 return
             if row is None:
                 await reply(message, 'Add this channel first with /settings add ID. No invite was requested.')
+                return
+            if operation == 'invalidate':
+                await authority(channel)
+                count = await store.invalidate(channel)
+                await reply(message, f'{count} bot links revoked for this channel. Previously issued Telegram invites and delivered copies are not revoked. New links may be generated separately.')
                 return
             if operation in ('mode', 'disable'):
                 await authority(channel)
@@ -278,3 +290,88 @@ async def redeem_channel(ctx, client, message, token):
         import logging
         logging.getLogger(__name__).warning('#Errors Channel bot-link delivery unconfirmed (%s); no retry', type(error).__name__)
         await reply(message, 'Channel invite creation was not confirmed. No automatic retry. Contact the bot Owner to inspect channel invites before retrying.')
+
+
+def settings_keyboard(rows, page, total):
+    from pyrogram.types import InlineKeyboardButton as Button
+    buttons = []
+    for row in rows:
+        cid = row['channel_id']
+        buttons.append([Button(f'{cid} · Generate links', callback_data=f'chset:genlink:{cid}')])
+        buttons.append([Button('Manual ✓' if row['auto_approve'] is False else 'Manual', callback_data=f'chset:mode:{cid}:manual'),
+                        Button('Auto ✓' if row['auto_approve'] is True else 'Auto', callback_data=f'chset:mode:{cid}:auto'),
+                        Button('Disable' if row['enabled'] else 'Enable', callback_data=f'chset:{"disable" if row["enabled"] else "enable"}:{cid}')])
+        buttons.append([Button('Revoke bot links…', callback_data=f'chset:revokeask:{cid}')])
+    nav = []
+    if page > 0:
+        nav.append(Button('Previous', callback_data=f'chset:page:{page-1}'))
+    nav.append(Button('Refresh', callback_data=f'chset:page:{page}'))
+    if (page+1)*5 < total:
+        nav.append(Button('Next', callback_data=f'chset:page:{page+1}'))
+    buttons.append(nav)
+    return Keyboard(buttons)
+
+
+def build_controls(ctx):
+    """Do not trust callback-origin sender or stale displayed policy."""
+    from copy import copy
+    import secrets
+    import time
+    from pyrogram.types import InlineKeyboardButton as Button
+    pending = {}
+
+    async def press(client, query, rest):
+        uid = getattr(getattr(query, 'from_user', None), 'id', None)
+        message = getattr(query, 'message', None)
+        if (type(uid) is not int or uid != ctx.settings.owner_id
+                or getattr(getattr(message, 'chat', None), 'type', None) != ChatType.PRIVATE
+                or message.chat.id != uid or getattr(query.from_user, 'is_bot', False)):
+            await query.answer('Only this bot’s Owner may use private channel settings.', show_alert=True)
+            return
+        parts = rest.split(':') if isinstance(rest, str) else []
+        action = parts[0] if parts else ''
+        if action == 'page' and len(parts) == 2 and re.fullmatch(r'[0-3]', parts[1]):
+            text = '/settings page ' + parts[1]
+        elif action == 'confirm' and len(parts) == 2:
+            entry = pending.pop(parts[1], None)
+            if entry is None or entry[1] <= time.monotonic():
+                await query.answer('This confirmation expired or was already used. Reopen /settings.', show_alert=True)
+                return
+            text = f'/settings invalidate {entry[0]} confirm'
+        elif (action in ('genlink', 'enable', 'disable', 'mode', 'revokeask')
+              and len(parts) == (3 if action == 'mode' else 2)
+              and re.fullmatch(r'-[1-9][0-9]{0,18}', parts[1])
+              and (action != 'mode' or parts[2] in ('manual', 'auto'))):
+            cid = parts[1]
+            if action == 'revokeask':
+                now = time.monotonic()
+                for key in list(pending):
+                    if pending[key][1] <= now:
+                        pending.pop(key, None)
+                if len(pending) >= 20:
+                    pending.pop(next(iter(pending)))
+                nonce = secrets.token_urlsafe(9)
+                pending[nonce] = (cid, now + 120)
+                await query.answer()
+                await reply(message, 'Revoke all existing bot links for this channel? This cannot revoke already issued Telegram invites. Concurrently generated new links may remain valid.',
+                            reply_markup=Keyboard([[Button('Confirm revoke bot links', callback_data=f'chset:confirm:{nonce}'),
+                                                    Button('Cancel', callback_data='chset:page:0')]]))
+                return
+            text = (f'/genlink {cid}' if action == 'genlink' else
+                    f'/settings {"add" if action == "enable" else action} {cid}' + (f' {parts[2]}' if action == 'mode' else ''))
+        else:
+            await query.answer('This settings button is invalid. Reopen /settings.', show_alert=True)
+            return
+        await query.answer()
+        request = copy(message)
+        request.text = text
+        request.from_user = query.from_user
+        return await build_channels(ctx)(client, request)
+
+    async def guarded(client, query, rest):
+        gate = getattr(ctx, 'plugin_gate', None)
+        if gate is None:
+            await query.answer('Channel settings runtime is unavailable.', show_alert=True)
+            return
+        return await gate.wrap('linkshare', press, callback=True)(client, query, rest)
+    return guarded

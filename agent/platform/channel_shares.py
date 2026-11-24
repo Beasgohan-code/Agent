@@ -118,3 +118,14 @@ class ChannelShares:
                 WHERE t.tenant=$1 AND t.token_hash=$2 AND t.expires_at>now() AND c.enabled=TRUE""",
                 self.db.scope, hashlib.sha256(token.encode()).hexdigest(), timeout=5)
         return dict(row) if row is not None else None
+
+    async def invalidate(self, channel):
+        """Revoke bot links under the same channel lock used by issuance."""
+        channel_id(channel)
+        async with self.pool().acquire(timeout=5) as conn:
+            async with conn.transaction():
+                await conn.fetchrow('SELECT channel_id FROM agent_channel_shares WHERE tenant=$1 AND channel_id=$2 FOR UPDATE',
+                                    self.db.scope, channel, timeout=5)
+                rows = await conn.fetch('DELETE FROM agent_channel_share_tokens WHERE tenant=$1 AND channel_id=$2 RETURNING token_hash',
+                                        self.db.scope, channel, timeout=5)
+        return len(rows)
