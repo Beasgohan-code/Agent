@@ -11,7 +11,15 @@ SCHEMA = ('''CREATE TABLE IF NOT EXISTS agent_channel_shares (
     auto_approve BOOLEAN NOT NULL DEFAULT FALSE,
     updated_by BIGINT NOT NULL CHECK (updated_by > 0),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (tenant, channel_id))''',)
+    PRIMARY KEY (tenant, channel_id))''',
+    '''CREATE TABLE IF NOT EXISTS agent_channel_share_tokens (
+    tenant TEXT NOT NULL, token_hash TEXT NOT NULL,
+    channel_id BIGINT NOT NULL, request_mode BOOLEAN NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (tenant,token_hash),
+    FOREIGN KEY (tenant,channel_id) REFERENCES agent_channel_shares(tenant,channel_id)
+    ON DELETE CASCADE)''',)
+
 MAX_CHANNELS = 20
 
 
@@ -73,3 +81,40 @@ class ChannelShares:
                     RETURNING channel_id,enabled,auto_approve,updated_by''',
                     self.db.scope, channel, active, automatic, actor, timeout=5)
         return dict(row)
+
+
+    async def issue(self, channel):
+        """Create two opaque 30-day bot links atomically; raw tokens never stored."""
+        import hashlib
+        import secrets
+        channel_id(channel)
+        tokens = {mode: secrets.token_urlsafe(18) for mode in ('normal', 'request')}
+        async with self.pool().acquire(timeout=5) as conn:
+            async with conn.transaction():
+                policy = await conn.fetchrow('SELECT enabled FROM agent_channel_shares WHERE tenant=$1 AND channel_id=$2 FOR UPDATE',
+                                             self.db.scope, channel, timeout=5)
+                if policy is None or policy['enabled'] is not True:
+                    raise ValueError('Managed channel unavailable')
+                await conn.execute('DELETE FROM agent_channel_share_tokens WHERE tenant=$1 AND expires_at<=now()', self.db.scope, timeout=5)
+                count = await conn.fetchval('SELECT count(*) FROM agent_channel_share_tokens WHERE tenant=$1 AND channel_id=$2', self.db.scope, channel, timeout=5)
+                if count >= 200:
+                    raise ValueError('Channel bot-link quota reached')
+                for mode, token in tokens.items():
+                    await conn.execute("""INSERT INTO agent_channel_share_tokens
+                        (tenant,token_hash,channel_id,request_mode,expires_at)
+                        VALUES($1,$2,$3,$4,now()+interval '30 days')""",
+                        self.db.scope, hashlib.sha256(token.encode()).hexdigest(), channel, mode == 'request', timeout=5)
+        return tokens
+
+    async def resolve(self, token):
+        import hashlib
+        import re
+        if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_-]{24}', token):
+            return None
+        async with self.pool().acquire(timeout=5) as conn:
+            row = await conn.fetchrow("""SELECT t.channel_id,t.request_mode
+                FROM agent_channel_share_tokens t JOIN agent_channel_shares c
+                ON c.tenant=t.tenant AND c.channel_id=t.channel_id
+                WHERE t.tenant=$1 AND t.token_hash=$2 AND t.expires_at>now() AND c.enabled=TRUE""",
+                self.db.scope, hashlib.sha256(token.encode()).hexdigest(), timeout=5)
+        return dict(row) if row is not None else None

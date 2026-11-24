@@ -75,21 +75,18 @@ async def test_channel_genlink_checks_authority_and_reports_partial_invites(monk
     from pyrogram.enums import ChatType, ChatMemberStatus as S
     from agent.modules.linkshare.subscription import build_channels
     row = {'channel_id': -100123, 'enabled': True, 'auto_approve': False}
-    store = NS(get=AsyncMock(return_value=row), list=AsyncMock(return_value=[row]), configure=AsyncMock(return_value=row))
+    store = NS(get=AsyncMock(return_value=row), list=AsyncMock(return_value=[row]), configure=AsyncMock(return_value=row), issue=AsyncMock(return_value={'normal': 'a'*24, 'request': 'b'*24}))
     monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
     ctx = NS(settings=NS(owner_id=11, bot_id=99), db=None)
     msg = NS(text='/genlink -100123', chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=11), reply=AsyncMock())
-    client = NS(get_chat=AsyncMock(return_value=NS(id=-100123, type=ChatType.CHANNEL)),
+    client = NS(me=NS(username='agentbot'), get_chat=AsyncMock(return_value=NS(id=-100123, type=ChatType.CHANNEL)),
                 get_chat_member=AsyncMock(return_value=NS(status=S.ADMINISTRATOR, privileges=NS(can_invite_users=True))),
                 create_chat_invite_link=AsyncMock(side_effect=[NS(invite_link='https://t.me/+normal'), RuntimeError('private-token')]))
     await build_channels(ctx)(client, msg)
-    assert client.create_chat_invite_link.await_count == 2
-    assert client.create_chat_invite_link.await_args_list[0].kwargs['member_limit'] == 1
-    assert client.create_chat_invite_link.await_args_list[1].kwargs['creates_join_request'] is True
+    client.create_chat_invite_link.assert_not_awaited()
+    store.issue.assert_awaited_once_with(-100123)
     body = str(msg.reply.await_args.args[0])
-    assert 'https://t.me/+normal' in body and 'not confirmed' in body
-    assert 'private-token' not in body
-    client.create_chat_invite_link.reset_mock()
+    assert 'https://t.me/agentbot?start=channel_' in body and '30 days' in body
     msg.from_user.id = 22
     await build_channels(ctx)(client, msg)
     client.create_chat_invite_link.assert_not_awaited()
@@ -123,9 +120,9 @@ async def test_channel_invites_refuse_uncertain_effects_without_retry(monkeypatc
     from types import SimpleNamespace as NS
     from unittest.mock import AsyncMock
     from pyrogram.enums import ChatType, ChatMemberStatus as S
-    from agent.modules.linkshare.subscription import build_channels
-    row = {'channel_id': -100123, 'enabled': failure != 'disabled', 'auto_approve': False}
-    store = NS(get=AsyncMock(return_value=None if failure == 'unmanaged' else row))
+    from agent.modules.linkshare.subscription import redeem_channel
+    grant = {'channel_id': -100123, 'request_mode': False}
+    store = NS(resolve=AsyncMock(return_value=None if failure in ('disabled', 'unmanaged') else grant))
     monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
     ctx = NS(settings=NS(owner_id=11, bot_id=99), db=None)
     msg = NS(text='/genlink -100123', chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=11), reply=AsyncMock())
@@ -133,12 +130,12 @@ async def test_channel_invites_refuse_uncertain_effects_without_retry(monkeypatc
     client = NS(get_chat=AsyncMock(return_value=NS(id=-100123, type=ChatType.CHANNEL)),
                 get_chat_member=AsyncMock(return_value=admin), create_chat_invite_link=AsyncMock(return_value=None))
     if failure == 'rights_lost':
-        client.get_chat_member.side_effect = [admin, admin, NS(status=S.MEMBER)]
+        client.get_chat_member.side_effect = [admin, NS(status=S.MEMBER)]
     if failure == 'provider':
         client.create_chat_invite_link.side_effect = RuntimeError('private-invite-secret')
     if failure == 'bad_url':
         client.create_chat_invite_link.return_value = NS(invite_link='https://evil.test/private-invite-secret')
-    await build_channels(ctx)(client, msg)
+    await redeem_channel(ctx, client, msg, 'a'*24)
     assert client.create_chat_invite_link.await_count == (1 if failure in ('no_ack', 'provider', 'bad_url') else 0)
     body = str(msg.reply.await_args.args[0])
     assert 'private-invite-secret' not in body and 'private-invite-secret' not in caplog.text
@@ -359,20 +356,20 @@ async def test_channel_batch_generates_both_modes_and_stops_after_unknown_effect
     from unittest.mock import AsyncMock
     from pyrogram.enums import ChatType, ChatMemberStatus as S
     from agent.modules.linkshare.subscription import build_channels
-    store = NS(get=AsyncMock(return_value={'enabled': True, 'auto_approve': False}))
+    store = NS(get=AsyncMock(return_value={'enabled': True, 'auto_approve': False}), issue=AsyncMock(return_value={'normal': 'a'*24, 'request': 'b'*24}))
     monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
     msg = NS(text='/batch -100123 -100456', chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=11), reply=AsyncMock())
-    client = NS(get_chat=AsyncMock(side_effect=lambda cid: NS(id=cid, type=ChatType.CHANNEL)),
+    client = NS(me=NS(username='agentbot'), get_chat=AsyncMock(side_effect=lambda cid: NS(id=cid, type=ChatType.CHANNEL)),
                 get_chat_member=AsyncMock(return_value=NS(status=S.OWNER)),
                 create_chat_invite_link=AsyncMock(return_value=NS(invite_link='https://t.me/+confirmed')))
     command = build_channels(NS(db=None, settings=NS(owner_id=11, bot_id=99)))
     await command(client, msg)
-    assert client.create_chat_invite_link.await_count == 4
-    assert [call.kwargs['chat_id'] for call in client.create_chat_invite_link.await_args_list] == [-100123, -100123, -100456, -100456]
-    client.create_chat_invite_link.reset_mock()
-    client.create_chat_invite_link.side_effect = [NS(invite_link='https://t.me/+confirmed'), RuntimeError('private-secret')]
+    client.create_chat_invite_link.assert_not_awaited()
+    assert [call.args[0] for call in store.issue.await_args_list] == [-100123, -100456]
+    store.issue.reset_mock()
+    store.issue.side_effect = [dict(normal='a'*24, request='b'*24), RuntimeError('private-secret')]
     await command(client, msg)
-    assert client.create_chat_invite_link.await_count == 2
+    assert store.issue.await_count == 2
     assert any('stopped' in str(call.args[0]) for call in msg.reply.await_args_list)
 
 
@@ -396,3 +393,123 @@ async def test_existing_batch_command_delegates_negative_ids_but_respects_runtim
     await handlers['batch'](None, request('/batch -100123'))
     assert channel_command.await_count == 1
     assert set(handlers) == set(filestore.MANIFEST.commands)
+
+
+@pytest.mark.asyncio
+async def test_channel_bot_tokens_are_durable_scoped_and_disabled_with_policy():
+    from agent.platform.channel_shares import ChannelShares
+    url = os.environ.get('AGENT_TEST_DATABASE_URL')
+    if not url:
+        pytest.skip('Disposable storage required')
+    scope = 'channel-tokens:' + uuid.uuid4().hex
+    db = Database(url, scope=scope)
+    other = Database(url, scope=scope + ':other')
+    try:
+        assert await db.connect() and await other.connect()
+        store = ChannelShares(db)
+        await store.configure(-100123, actor=11)
+        tokens = await store.issue(-100123)
+        assert set(tokens) == {'normal', 'request'}
+        assert tokens['normal'] != tokens['request']
+        assert (await ChannelShares(db).resolve(tokens['normal'])) == {'channel_id': -100123, 'request_mode': False}
+        assert (await store.resolve(tokens['request']))['request_mode'] is True
+        assert await ChannelShares(other).resolve(tokens['normal']) is None
+        assert await store.resolve('forged') is None
+        await store.configure(-100123, actor=11, enabled=False)
+        assert await store.resolve(tokens['normal']) is None
+        with pytest.raises(ValueError):
+            await store.issue(-100123)
+        async with db._pool.acquire() as conn:
+            rows = await conn.fetch('SELECT token_hash FROM agent_channel_share_tokens WHERE tenant=$1', scope)
+            assert all(row['token_hash'] not in tokens.values() for row in rows)
+    finally:
+        await db.close()
+        await other.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('request_mode', [False, True])
+async def test_channel_bot_link_redeems_for_nonowner_only_after_fresh_checks(monkeypatch, request_mode):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType, ChatMemberStatus as S
+    from agent.modules.linkshare.subscription import redeem_channel
+    grant = {'channel_id': -100123, 'request_mode': request_mode}
+    store = NS(resolve=AsyncMock(return_value=grant))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    ctx = NS(db=None, settings=NS(owner_id=11, bot_id=99))
+    msg = NS(chat=NS(id=22, type=ChatType.PRIVATE), from_user=NS(id=22), reply=AsyncMock())
+    client = NS(get_chat=AsyncMock(return_value=NS(id=-100123, type=ChatType.CHANNEL)),
+                get_chat_member=AsyncMock(return_value=NS(status=S.OWNER)),
+                create_chat_invite_link=AsyncMock(return_value=NS(invite_link='https://t.me/+valid')))
+    await redeem_channel(ctx, client, msg, 'a'*24)
+    kwargs = client.create_chat_invite_link.await_args.kwargs
+    assert kwargs['chat_id'] == -100123
+    assert kwargs.get('creates_join_request', False) is request_mode
+    assert kwargs.get('member_limit') == (None if request_mode else 1)
+    assert store.resolve.await_count == 2
+    assert [call.args[1] for call in client.get_chat_member.await_args_list] == [11, 99]
+    client.create_chat_invite_link.reset_mock()
+    store.resolve.side_effect = [grant, None]
+    await redeem_channel(ctx, client, msg, 'a'*24)
+    client.create_chat_invite_link.assert_not_awaited()
+    store.resolve.reset_mock()
+    msg.chat.type = ChatType.SUPERGROUP
+    await redeem_channel(ctx, client, msg, 'a'*24)
+    store.resolve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_channel_bot_token_quota_concurrent_admission_and_expiry():
+    from agent.platform.channel_shares import ChannelShares
+    url = os.environ.get('AGENT_TEST_DATABASE_URL')
+    if not url:
+        pytest.skip('Disposable storage required')
+    db = Database(url, scope='channel-token-quota:' + uuid.uuid4().hex)
+    assert await db.connect()
+    try:
+        store = ChannelShares(db)
+        await store.configure(-100123, actor=11)
+        async with db._pool.acquire() as conn:
+            await conn.execute("""INSERT INTO agent_channel_share_tokens(tenant,token_hash,channel_id,request_mode,expires_at)
+                SELECT $1, n::text, -100123, FALSE, now()+interval '1 day' FROM generate_series(1,198) n""", db.scope)
+        results = await asyncio.gather(store.issue(-100123), ChannelShares(db).issue(-100123), return_exceptions=True)
+        assert sum(isinstance(r, ValueError) for r in results) == 1
+        tokens = next(r for r in results if isinstance(r, dict))
+        async with db._pool.acquire() as conn:
+            await conn.execute("UPDATE agent_channel_share_tokens SET expires_at=now()-interval '1 second' WHERE tenant=$1", db.scope)
+        assert await store.resolve(tokens['normal']) is None
+        assert len(await store.issue(-100123)) == 2
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_channel_start_prefix_is_plugin_owned_and_runtime_gated(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from agent.modules import linkshare
+    from agent.platform.deeplinks import DeepLinkRouter
+    from agent.platform.execution import REGISTERING
+    from test_plugins import make_ctx
+    from test_archive_links import request
+    from test_execution_gate import gate
+    ctx = make_ctx(tmp_path)
+    ctx.deeplinks = DeepLinkRouter()
+    execution = gate()[0]
+    ctx.deeplinks.gate = execution
+    delivery = AsyncMock()
+    monkeypatch.setattr('agent.modules.linkshare.subscription.redeem_channel', delivery)
+    token = REGISTERING.set('linkshare')
+    try:
+        linkshare.build(ctx)
+    finally:
+        REGISTERING.reset(token)
+    assert ctx.deeplinks.handles('channel_' + 'a'*24)
+    assert ctx.deeplinks.handles('link_old-token')
+    msg = request('/start channel_' + 'a'*24, uid=22)
+    await ctx.deeplinks.dispatch(NS(), msg, 'channel_' + 'a'*24)
+    delivery.assert_awaited_once()
+    execution.runtime.wants_disabled = lambda slug: True
+    await ctx.deeplinks.dispatch(NS(), msg, 'channel_' + 'a'*24)
+    assert delivery.await_count == 1

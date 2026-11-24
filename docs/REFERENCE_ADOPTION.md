@@ -180,3 +180,27 @@ runtime-active as well as Linkshare; disabling FileStore removes the owning hand
 Independent Linkshare-only `/batch` ownership is not yet implemented. Thus this is
 not full reference deployment parity. Bot-mediated channel links and expanded
 settings/admin/subscription UI remain unfinished; direct invites still used.
+
+### Bot-mediated normal/request channel links
+
+Supersedes direct-invite generation: /genlink and channel /batch now return normal
+and request links under the plugin-owned `channel_` start prefix. Generation
+validates management authority but does not create a Telegram invite. Tokens are
+random opaque 144-bit values, stored only as digests in tenant-scoped durable rows;
+normal/request modes are immutable per row. Issuance uses a channel row lock and
+an awaited transaction for pair creation, with 200 live tokens per channel (100
+pairs), 30-day expiry and opportunistic expired-row cleanup. Bot identity must be
+available before issuance. No base64-only channel authority and no copied source.
+
+Personal private-chat /start redemption resolves current enabled policy, preserves
+the existing subscription gate, verifies channel identity and current Owner/bot
+invite rights, then re-resolves the grant before requesting ONE 15-minute invite
+of its mode. Normal invites allow one join; request invites use current manual/
+auto approval. Invalid/expired/disabled/foreign-tenant tokens fail closed. No raw
+provider errors or blind retries. Re-enabling a channel restores unexpired links;
+disabling blocks bot redemption but cannot revoke previously issued Telegram
+invites. Tokens are reusable bearer links for their lifetime, not per-user access
+controls. Telegram effects and policy checks cannot be one atomic transaction.
+No exactly-once delivery/redelivery protection or per-recipient rate limiter is
+claimed; unconfirmed creation may have taken effect. Full reference parity still
+needs independent Linkshare-only /batch routing and settings/admin/subscription UI.

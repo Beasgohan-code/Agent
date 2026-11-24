@@ -338,6 +338,14 @@ def build(ctx):
     if deep is not None and not deep.handles(f"{DEEP_PREFIX}_x"):
         deep.register(DEEP_PREFIX, redeem)
 
+    if deep is not None and not deep.handles("channel_x"):
+        from .subscription import redeem_channel
+
+        async def open_channel(client, message, token):
+            return await redeem_channel(ctx, client, message, token)
+
+        deep.register("channel", open_channel)
+
     logger.info("Linkshare wired (share links redeem through /start %s_…)", DEEP_PREFIX)
     def identified(handler):
         async def wrapped(client, message):

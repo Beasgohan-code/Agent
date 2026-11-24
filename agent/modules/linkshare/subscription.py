@@ -81,7 +81,6 @@ async def allowed(ctx, client, message):
 
 def build_channels(ctx):
     """Owner-private channel migration surface; legacy file redemption is separate."""
-    from datetime import datetime, timedelta, timezone
     from ...platform.channel_shares import ChannelShares, channel_id
     store = ChannelShares(getattr(ctx, 'db', None))
 
@@ -156,7 +155,7 @@ def build_channels(ctx):
             if operation == 'add':
                 await authority(channel)
                 await store.configure(channel, actor=uid, enabled=True)
-                await reply(message, 'Channel saved. New channels default to manual approval. Use /genlink ID to create temporary invites.')
+                await reply(message, 'Channel saved. New channels default to manual approval. Use /genlink ID to create normal and request bot links.')
                 return
             if row is None:
                 await reply(message, 'Add this channel first with /settings add ID. No invite was requested.')
@@ -169,30 +168,17 @@ def build_channels(ctx):
             if row.get('enabled') is not True:
                 await reply(message, 'This channel is disabled. No invite was requested.')
                 return
-            links = []
-            for request_mode in (False, True):
-                try:
-                    await authority(channel)
-                    current = await store.get(channel)
-                    if ctx.settings.owner_id != uid or not current or current.get('enabled') is not True:
-                        raise ValueError('Channel disabled')
-                    options = {'creates_join_request': True} if request_mode else {'member_limit': 1}
-                    result = await asyncio.wait_for(client.create_chat_invite_link(
-                        chat_id=channel, expire_date=datetime.now(timezone.utc) + timedelta(minutes=15), **options), 10)
-                    url = getattr(result, 'invite_link', None)
-                    if not isinstance(url, str) or not re.fullmatch(r'https://t\.me/(?:\+|joinchat/)[A-Za-z0-9_-]+', url):
-                        raise ValueError('Invite acknowledgement unavailable')
-                    links.append(('Request invite' if request_mode else 'Normal invite', url))
-                except Exception:
-                    # An ambiguous creation might already have taken effect. Do
-                    # not retry it, or proceed to another request after failure.
-                    break
-            text = f'<b>Temporary channel invites · {channel}</b>\n' + '\n'.join(f'{label}: <code>{html.escape(url)}</code>' for label, url in links)
-            text += '\n15-minute expiry. Normal invite: one use. Request approval follows this channel’s current manual/auto policy while Linkshare is active. These are direct Telegram invites, not bot redemption links.'
-            if len(links) != 2:
-                text += '\nOne or more invite creations were not confirmed. No automatic retry. Inspect channel invites before retrying.'
+            from ...ui.bot_identity import bot_username
+            username = await bot_username(client)
+            if not username:
+                await reply(message, 'Bot username is unavailable. No bot link was created.')
+                return
+            tokens = await store.issue(channel)
+            text = f'<b>Channel bot links · {channel}</b>\n'
+            text += '\n'.join(f'{mode.title()}: <code>https://t.me/{username}?start=channel_{token}</code>' for mode, token in tokens.items())
+            text += '\nValid for 30 days while this channel is enabled. Opening a link checks current policy before requesting a temporary Telegram invite. No Telegram invite was created yet.'
             await reply(message, text)
-            return len(links) == 2
+            return True
         except Exception:
             await reply(message, 'Channel operation was not confirmed. Check storage and current invite permissions for you and this bot; no automatic retry was attempted.')
     return command
@@ -243,3 +229,52 @@ async def approve_request(ctx, client, update):
             logging.getLogger(__name__).warning('#Errors Channel join approval acknowledgement unavailable; no retry')
     except Exception as error:
         logging.getLogger(__name__).warning('#Errors Channel join approval unconfirmed (%s); no retry', type(error).__name__)
+
+
+async def redeem_channel(ctx, client, message, token):
+    """Resolve an opaque stored bot link, then request one temporary invite."""
+    from datetime import datetime, timedelta, timezone
+    from ...platform.channel_shares import ChannelShares, personal_id
+    user = getattr(message, 'from_user', None)
+    uid = getattr(user, 'id', None)
+    if (not personal_id(uid) or getattr(user, 'is_bot', False)
+            or getattr(message, 'sender_chat', None) is not None
+            or getattr(getattr(message, 'chat', None), 'type', None) != ChatType.PRIVATE
+            or message.chat.id != uid):
+        await reply(message, 'Open this channel link in a private chat using your personal Telegram account.')
+        return
+    try:
+        store = ChannelShares(getattr(ctx, 'db', None))
+        grant = await store.resolve(token)
+        if not grant:
+            await reply(message, 'This channel link is invalid, expired or disabled.')
+            return
+        if not await allowed(ctx, client, message):
+            return
+        channel = grant['channel_id']
+        owner, bot = ctx.settings.owner_id, ctx.settings.bot_id
+        if not personal_id(owner) or not personal_id(bot):
+            raise ValueError('Identity unavailable')
+        chat = await asyncio.wait_for(client.get_chat(channel), API_TIMEOUT)
+        if chat.id != channel or chat.type != ChatType.CHANNEL:
+            raise ValueError('Channel unavailable')
+        for who in (owner, bot):
+            member = await asyncio.wait_for(client.get_chat_member(channel, who), API_TIMEOUT)
+            if member.status != ChatMemberStatus.OWNER and not (
+                    member.status == ChatMemberStatus.ADMINISTRATOR
+                    and getattr(getattr(member, 'privileges', None), 'can_invite_users', None) is True):
+                raise ValueError('Invite authority unavailable')
+        if await store.resolve(token) != grant or (ctx.settings.owner_id, ctx.settings.bot_id) != (owner, bot):
+            raise ValueError('Policy changed')
+        options = {'creates_join_request': True} if grant['request_mode'] else {'member_limit': 1}
+        result = await asyncio.wait_for(client.create_chat_invite_link(
+            chat_id=channel, expire_date=datetime.now(timezone.utc) + timedelta(minutes=15), **options), 10)
+        url = getattr(result, 'invite_link', None)
+        if not isinstance(url, str) or not re.fullmatch(r'https://t\.me/(?:\+|joinchat/)[A-Za-z0-9_-]+', url):
+            raise ValueError('Invite acknowledgement unavailable')
+        await reply(message, f'<b>Channel invite</b>\n<code>{html.escape(url)}</code>\nExpires in 15 minutes. '
+                    + ('Request approval follows the channel’s current manual/auto policy.' if grant['request_mode'] else 'This normal invite permits one join.'))
+    except Exception as error:
+        import logging
+        logging.getLogger(__name__).warning('#Errors Channel bot-link delivery unconfirmed (%s); no retry', type(error).__name__)
+        await reply(message, 'Channel invite creation was not confirmed. No automatic retry. Contact the bot Owner to inspect channel invites before retrying.')

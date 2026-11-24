@@ -1282,3 +1282,26 @@ no skips. Changed handler/test static checks and whitespace checks passed. Teleg
 effects mocked, no live production calls/deploy/merge. Workspace HEAD/index was
 again at base; backed up under /tmp/batch-backup and reconciled fetched current
 branch ref/index without discarding persistent work, rebuilt test environment.
+
+### Channel bot links and verified /start delivery
+
+Implemented durable normal/request bot-link pairs and plugin-owned `channel_`
+deep-link redemption. Generation no longer eagerly creates Telegram invites.
+Opaque digest-stored tokens expire after 30 days, are tenant scoped and issued in
+one awaited transaction under channel locking, bounded to 100 live pairs/channel.
+Redemption is personal/private, verifies current grant/enabled policy/subscription
+and Owner/bot authority, then requests one temporary invite without retries.
+Legacy `link_` redemption remains registered. UI guidance reflects bot links.
+
+Updated prior direct-generation/batch tests to assert bot-link issuance with no
+Telegram effect until redemption; uncertain-effect refusal cases now exercise the
+public delivery boundary. Five new cases cover durable scoped tokens, disabled
+and expired grants, concurrent quota admission, both modes for non-Owner users,
+policy changes during delivery and plugin-owned runtime-gated /start wiring.
+Exact patch **2,784 passed** in 30.24 seconds; full working tree **2,866 passed**
+in 32.32 seconds, disposable real storage, no skips. Changed-file static and
+whitespace checks passed. Telegram calls mocked, not live proof. No deployment,
+production calls, PR merge or appearance features. Workspace ref/index was again
+at base; backed up under /tmp/botlink-backup and reconciled to current branch
+without discarding persistent work. Broader pending reference-parity items remain
+listed in REFERENCE_ADOPTION; this does not complete all tasks.
