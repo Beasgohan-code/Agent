@@ -106,12 +106,15 @@ def build_channels(ctx):
                     raise ValueError('Invite administrator required')
             if ctx.settings.owner_id != uid:
                 raise ValueError('Owner changed')
-        parts = (getattr(message, 'text', '') or '').split()
+        from ...platform.commands import command_name
+        text = getattr(message, 'text', '') or ''
+        name = command_name(text)
+        parts = text.split()
         args = parts[1:]
-        if parts and parts[0].split('@', 1)[0].lstrip('/') == 'settings' and not args:
+        if name == 'settings' and not args:
             args = ['channels']
         try:
-            if parts and parts[0].split('@', 1)[0].lstrip('/') == 'batch':
+            if name == 'batch':
                 if (not 1 <= len(args) <= 5 or len(set(args)) != len(args)
                         or any(not re.fullmatch(r'-[1-9][0-9]{0,18}', arg) for arg in args)):
                     await reply(message, 'Use /batch with 1–5 unique managed negative channel IDs. No invites were requested.')
@@ -153,7 +156,17 @@ def build_channels(ctx):
                      or operation == 'invalidate' and len(args) == 3 and args[2] == 'confirm')
             raw = args[0] if operation == 'invite' and args else args[1] if len(args) > 1 else ''
             if not valid or not re.fullmatch(r'-[1-9][0-9]{0,18}', raw):
-                await reply(message, 'Use /settings, /settings add -100ID, /settings mode -100ID manual|auto, /settings disable -100ID, or /genlink -100ID.')
+                if name == 'genlink':
+                    from ...ui.tables import panel, kv_table
+                    await reply(message, panel('Create channel links',
+                        lines=['Send <code>/genlink -1001234567890</code> in this private chat.',
+                               'Use your managed channel’s actual ID. Add it first with <code>/settings add -1001234567890</code>.'],
+                        table=kv_table([('Normal', 'Opens this bot, then offers a one-use channel invite.'),
+                                        ('Request', 'Opens this bot, then offers a join-request invite.')]),
+                        note='Bot Owner only. You and the bot need channel invite authority. No replied file or expiry/use arguments are accepted.',
+                        footer='No bot links or Telegram invites were created.'))
+                else:
+                    await reply(message, 'Use /settings, /settings add -100ID, /settings mode -100ID manual|auto, /settings disable -100ID, or /genlink -100ID.')
                 return
             channel = int(raw)
             channel_id(channel)
@@ -186,10 +199,16 @@ def build_channels(ctx):
                 await reply(message, 'Bot username is unavailable. No bot link was created.')
                 return
             tokens = await store.issue(channel)
-            text = f'<b>Channel bot links · {channel}</b>\n'
-            text += '\n'.join(f'{mode.title()}: <code>https://t.me/{username}?start=channel_{token}</code>' for mode, token in tokens.items())
-            text += '\nValid for 30 days while this channel is enabled. Opening a link checks current policy before requesting a temporary Telegram invite. No Telegram invite was created yet.'
-            await reply(message, text)
+            from ...ui.tables import panel, kv_table
+            from ...ui.tables import markup
+            rows = [('Channel', str(channel))]
+            for mode, token in tokens.items():
+                url = f'https://t.me/{username}?start=channel_{token}'
+                rows.append((mode.title(), markup(f'<a href="{url}">{html.escape(url)}</a>')))
+            await reply(message, panel('Channel bot links', table=kv_table(rows),
+                lines=['<b>Normal</b> offers a one-use invite. <b>Request</b> offers a join-request invite; current manual/auto policy decides approval.'],
+                note='Valid for 30 days while the channel is enabled. Opening a link rechecks current access before requesting a 15-minute invite. These bot links can be shared and reused; keep them private.',
+                footer='No Telegram invite was created yet. Manage or revoke bot links in /settings.'))
             return True
         except Exception:
             await reply(message, 'Channel operation was not confirmed. Check storage and current invite permissions for you and this bot; no automatic retry was attempted.')

@@ -1367,3 +1367,26 @@ patch **2,796 passed** in 27.73 seconds; working tree **2,878 passed** in 28.29
 seconds, disposable real storage and no skips. Static/whitespace checks passed.
 No live Telegram screenshot or provider calls, production changes, deploy or merge.
 Unrelated screens and runtime work preserved unstaged.
+
+### Command-by-command polish: /genlink first
+
+User requested polishing commands individually without slash-command buttons.
+Started with /genlink: focused native usage panel with an actual-shaped channel-ID
+example, prerequisite registration and clear normal/request meanings. Invalid file/
+TTL-style usage never probes Telegram. Successful generation now uses a readable
+native card/table with clickable bot URLs, normal/request behavior, 30-day reusable
+bearer-link lifetime, temporary-invite distinction and /settings revocation guidance.
+No command keyboard/copy shortcut added; authority/storage behavior unchanged.
+
+Also corrected the shared settings/batch lexical checks to use the existing command
+parser: all eight supported punctuation prefixes and bot-name targeting forms now
+behave consistently instead of only slash recognizing list/batch intent. Existing
+runtime filters remain responsible for dispatch/target matching, not this lexical
+helper. No new command aliases or authorization bypasses introduced.
+
+Eleven new cases cover focused usage and prefix equivalence (ten failed before
+implementation; slash settings already passed). Exact patch **2,807 passed** in
+30.22 seconds; working tree **2,889 passed** in 28.77 seconds, disposable real
+storage and no skips. Changed-file static and whitespace checks passed. No live
+Telegram visual validation/provider calls, production changes, merge or deployment.
+This is the first command polish pass, not a claim that all commands are polished.

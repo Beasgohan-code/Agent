@@ -702,3 +702,37 @@ def test_linkshare_batch_falls_back_to_actual_registry_if_filestore_failed(tmp_p
     assert 'batch' in handlers
     ctx.registry.register(manifest, handlers)
     assert ctx.registry._command_owner['batch'] == 'linkshare'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('text', ['/genlink', '/genlink soon', '/genlink 6 3'])
+async def test_genlink_usage_is_focused_and_does_not_probe_telegram(text, monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType
+    from agent.modules.linkshare.subscription import build_channels
+    ctx = NS(db=None, settings=NS(owner_id=11, bot_id=99))
+    message = NS(text=text, from_user=NS(id=11), chat=NS(id=11, type=ChatType.PRIVATE), reply=AsyncMock())
+    client = NS(get_chat=AsyncMock())
+    await build_channels(ctx)(client, message)
+    body = message.reply.await_args.args[0]
+    assert 'Create channel links' in body
+    assert '/genlink -1001234567890' in body
+    assert 'Normal' in body and 'Request' in body
+    assert not message.reply.await_args.kwargs.get('reply_markup')
+    client.get_chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('prefix', ['/', '!', '.', '#', '$', '%', '&', '?'])
+async def test_settings_command_prefixes_have_identical_safe_list_behavior(monkeypatch, prefix):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType
+    from agent.modules.linkshare.subscription import build_channels
+    store = NS(list=AsyncMock(return_value=[]))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    ctx = NS(db=None, settings=NS(owner_id=11, bot_id=99))
+    message = NS(text=prefix+'settings@agentbot', from_user=NS(id=11), chat=NS(id=11, type=ChatType.PRIVATE), reply=AsyncMock())
+    await build_channels(ctx)(None, message)
+    store.list.assert_awaited_once()
