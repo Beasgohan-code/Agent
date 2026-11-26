@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
+from .log_safety import safe_fields, scrub_text
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -22,6 +24,27 @@ from .db import read_json, write_json
 
 logger = logging.getLogger(__name__)
 MAX_PENDING = 200
+
+
+def delivery_hint(error_type):
+    if error_type in ('ChatWriteForbidden','ChatAdminRequired','ChatSendPlainForbidden'):
+        return 'Check bot channel membership and posting permissions.'
+    if error_type in ('ChannelPrivate','ChannelInvalid','PeerIdInvalid','ChatIdInvalid'):
+        return 'Destination unreachable: verify saved ID and bot membership; rerun /setlog verification.'
+    if error_type in ('UserIsBlocked','InputUserDeactivated'):
+        return 'Owner DM unavailable: unblock/start this bot or configure a reachable log channel.'
+    if error_type in ('FloodWait','SlowmodeWait'):
+        return 'Telegram rate limit; no automatic retry. Avoid repeated diagnostic sends.'
+    if error_type in ('TimeoutError','ConnectionError','OSError'):
+        return 'Network delivery unconfirmed; inspect the destination before retrying.'
+    if error_type=='LogAcknowledgementError':
+        return 'No valid Telegram message acknowledgement; inspect destination before retrying.'
+    return 'Inspect sanitized hosting error type and saved destination; no automatic retry.'
+
+
+class LogAcknowledgementError(RuntimeError):
+    """A message ID was not returned; delivery cannot be claimed."""
+
 
 #: Event kind → hashtag. Unknown kinds get a CamelCase tag of their own.
 TAGS = {
@@ -41,17 +64,23 @@ TAGS = {
 def tag_for(kind: str) -> str:
     if kind in TAGS:
         return TAGS[kind]
-    return "".join(part.capitalize() for part in kind.replace("-", "_").split("_")) or "Event"
+    clean=re.sub(r"[^A-Za-z0-9_-]", "_", scrub_text(str(kind)[:256]))
+    return ("".join(part.capitalize() for part in clean.replace("-", "_").split("_")) or "Event")[:48]
 
 
 def format_event(kind: str, fields: dict[str, Any], *, when: float | None = None) -> str:
     """Render one event as HTML for the log channel."""
-    stamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(when or time.time()))
-    lines = [f"<b>#{tag_for(kind)}</b>", f"<i>{stamp}</i>"]
-    for key, value in fields.items():
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(time.time() if when is None else when))
+    severity='ERROR' if kind=='error' else 'WARNING' if kind in ('watchdog','stop') else 'INFO'
+    lines = [f"<b>#{tag_for(kind)}</b>", f"<i>{stamp}</i>",f'Severity: <b>{severity}</b>']
+    for key, value in safe_fields(fields).items():
         if value is None or value == "":
             continue
-        lines.append(f"{html.escape(str(key))}: <code>{html.escape(str(value))}</code>")
+        line=f"{html.escape(str(key))}: <code>{html.escape(str(value))}</code>"
+        if sum(len(item)+1 for item in lines)+len(line)>3800:
+            lines.append('<i>Additional fields omitted (size limit).</i>')
+            break
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -81,6 +110,8 @@ class LogBook:
         self._pending: set[asyncio.Task] = set()
         self._closing = False
         self.dropped = 0
+        self._delivery = dict(sent=0,failed=0,last_result="not attempted",error_type=None,at=None,hint="")
+        self._startup_delivery = dict(last_result="not attempted",error_type=None,at=None,hint="No startup event observed in this process yet.")
         if db is None:
             self._apply(read_json(self._path, {}))
 
@@ -111,13 +142,13 @@ class LogBook:
             self._config_loaded = False
             db = self._db
             if not db.connected or db._pool is None:
-                raise LogSettingsError("PostgreSQL log settings are unavailable.")
+                raise LogSettingsError("Database log settings are unavailable.")
             try:
                 async with db._pool.acquire(timeout=10) as connection:
                     row = await connection.fetchrow(
                         'SELECT channel_id FROM agent_log_settings WHERE tenant=$1', db.scope, timeout=10)
             except Exception:
-                raise LogSettingsError("Could not read PostgreSQL log settings.") from None
+                raise LogSettingsError("Could not read Database log settings.") from None
             self._apply({"channel_id": row['channel_id']} if row is not None else {})
             self._config_loaded = True
 
@@ -139,7 +170,7 @@ class LogBook:
             else:
                 db = self._db
                 if not db.connected or db._pool is None:
-                    raise LogSettingsError("PostgreSQL is unavailable; the log setting was not changed.")
+                    raise LogSettingsError("Database is unavailable; the log setting was not changed.")
                 try:
                     async with db._pool.acquire(timeout=10) as connection:
                         await connection.execute('''INSERT INTO agent_log_settings (tenant,channel_id)
@@ -149,7 +180,7 @@ class LogBook:
                     self._config_loaded = False  # commit outcome may be ambiguous; do not route to stale state
                     if isinstance(exc, asyncio.CancelledError):
                         raise
-                    raise LogSettingsError("PostgreSQL did not confirm the log setting. Check /log before retrying.") from None
+                    raise LogSettingsError("Database did not confirm the log setting. Check /log before retrying.") from None
             self._channel_id = channel_id
             self._config_loaded = True
 
@@ -163,31 +194,50 @@ class LogBook:
 
     def set_channel(self, channel_id: int | None) -> None:
         if self._db is not None:
-            raise LogSettingsError("Use awaited configure() for PostgreSQL settings.")
+            raise LogSettingsError("Use awaited configure() for Database settings.")
         self._validate(channel_id)
         write_json(self._path, {"channel_id": channel_id})
         self._channel_id = channel_id
 
     # -- delivery ----------------------------------------------------------
 
+    def delivery_status(self):
+        """Process-local diagnostics, not durable delivery receipts or event counts."""
+        return {**self._delivery,'pending':len(self._pending),'dropped':self.dropped,'startup':dict(self._startup_delivery)}
+
+    def _delivery_result(self,result,error_type=None,*,kind=None):
+        detail=dict(last_result=result,error_type=error_type,at=time.time(),hint=delivery_hint(error_type) if error_type else '')
+        self._delivery.update(detail)
+        if kind=='start':
+            self._startup_delivery=detail
+        if result in ('sent','failed'):
+            self._delivery[result]+=1
+
     async def post(self, kind: str, **fields: Any) -> bool:
         """Send one event. False when there is nowhere (or no client) to send it."""
+        fields = safe_fields(fields)
         target = self.destination()
         if not self._config_loaded:
-            logger.warning("Log destination has not been loaded; event delivery is suppressed.")
+            self._delivery_result("settings not loaded",kind=kind)
+            logger.warning("#Errors Log destination has not been loaded; event delivery is suppressed.")
             return False
         if self.client is None or target is None:
-            logger.info("#%s %s (no log destination)", tag_for(kind), fields)
+            self._delivery_result("no destination" if target is None else "client unavailable",kind=kind)
+            logger.info("#%s %s (no log destination)", tag_for(kind), safe_fields(fields))
             return False
         text = format_event(kind, fields)
         try:
-            await asyncio.wait_for(
+            sent=await asyncio.wait_for(
                 self.client.send_message(target, text, disable_web_page_preview=True),
                 timeout=10.0,
             )
+            if type(getattr(sent,'id',None)) is not int or sent.id<=0:
+                raise LogAcknowledgementError()
+            self._delivery_result('sent',kind=kind)
             return True
-        except Exception:  # noqa: BLE001 - logging must never break the bot
-            logger.exception("Could not post #%s to the log channel", tag_for(kind))
+        except Exception as error:  # logging must never break or leak provider text
+            self._delivery_result("failed",type(error).__name__,kind=kind)
+            logger.warning("#Errors Log delivery failed event=#%s error_type=%s; no automatic retry", tag_for(kind), type(error).__name__)
             return False
 
     def publish(self, kind: str, fields: dict[str, Any]) -> None:
@@ -203,7 +253,7 @@ class LogBook:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # pragma: no cover - no loop outside a running bot
             return
-        task = loop.create_task(self.post(kind, **fields))
+        task = loop.create_task(self.post(kind, **safe_fields(fields)))
         # Keep a reference so the task is not garbage-collected mid-flight.
         self._pending.add(task)
         task.add_done_callback(self._pending.discard)

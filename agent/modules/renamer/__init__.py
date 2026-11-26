@@ -15,11 +15,17 @@ import html
 import re
 
 from ...platform.manifest import PluginManifest
+from ...platform.media_rules import transform
+from ...platform.attachments import attachment_kwargs
+from .rules import COMMANDS as RULE_COMMANDS, build_rules
+from ..moderation import is_moderator
 from ...ui.tables import kv_table, panel
 from ...utils.rich import reply
-from ...platform.attachments import CAPTION_KEY, MAX_CAPTION, THUMB_KEY, render_caption
+from ...platform.attachments import CAPTION_KEY, MAX_CAPTION, THUMB_KEY, caption_for
 
 MANIFEST = PluginManifest(
+    group_compatible=True,
+    clone_compatible=False,
     slug="renamer",
     name="Renamer",
     version="1.0.0",
@@ -33,8 +39,8 @@ MANIFEST = PluginManifest(
         "delthumb",
         "viewthumb",
         "setcaption",
-        "delcaption",
         "viewcaption",
+        *RULE_COMMANDS,
     ),
     permissions=("messages.read", "messages.send"),
     scope="all",
@@ -225,6 +231,7 @@ def build(ctx):
             return
         template = ctx.chats.get(message.chat.id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
         planned, warnings = plan_name(filename, template)
+        planned = UNSAFE_RE.sub("_", transform(ctx.chats, message.chat.id, planned)).strip(" .")[:MAX_NAME] or "file.bin"
         body = (
             "<b>Rename preview</b>\n"
             f"From: <code>{html.escape(filename)}</code>\n"
@@ -242,6 +249,7 @@ def build(ctx):
         original = getattr(media, "file_name", None) or "file"
         template = ctx.chats.get(message.chat.id, TEMPLATE_KEY, DEFAULT_TEMPLATE)
         planned, warnings = plan_name(original, template)
+        planned = UNSAFE_RE.sub("_", transform(ctx.chats, message.chat.id, planned)).strip(" .")[:MAX_NAME] or "file.bin"
         file_id = getattr(media, "file_id", None)
         if not file_id:
             await reply(message, "Telegram did not send a file id for that file.")
@@ -251,7 +259,9 @@ def build(ctx):
                 message.chat.id,
                 file_id,
                 file_name=planned,
-                caption=getattr(media, "caption", None) or "",
+                **({"caption": getattr(media, "caption", None) or ""} |
+                   attachment_kwargs(ctx.chats, message.chat.id, name=planned,
+                                     size=str(getattr(media, "file_size", 0) or 0) + " bytes", apply_rules=False)),
             )
         except Exception as exc:  # noqa: BLE001 - reported to the user
             await reply(message, f"Rename failed: {type(exc).__name__}")
@@ -303,6 +313,20 @@ def build(ctx):
             return getattr(document, "file_id", None), ""
         return None, "Reply to a photo or an image file."
 
+    async def persist_attachment(message, key, value):
+        db = getattr(ctx, "db", None)
+        if db is not None and not db.connected:
+            await reply(message, "Attachment storage is unavailable. No change confirmed.")
+            return False
+        try:
+            chats.put(message.chat.id, key, value)
+            if db is not None and await db.flush() <= 0:
+                raise RuntimeError("Attachment persistence unconfirmed")
+        except Exception:
+            await reply(message, "Attachment persistence was not confirmed. The current view may be cached; retry when storage is available.")
+            return False
+        return True
+
     async def setthumb(_client, message):
         if chats is None:
             await reply(message, _unavailable())
@@ -311,7 +335,8 @@ def build(ctx):
         if file_id is None:
             await reply(message, reason)
             return
-        chats.put(message.chat.id, THUMB_KEY, file_id)
+        if not await persist_attachment(message, THUMB_KEY, file_id):
+            return
         await reply(
             message,
             panel(
@@ -327,7 +352,8 @@ def build(ctx):
             await reply(message, _unavailable())
             return
         had = chats.get(message.chat.id, THUMB_KEY)
-        chats.put(message.chat.id, THUMB_KEY, None)
+        if not await persist_attachment(message, THUMB_KEY, None):
+            return
         await reply(message, "Thumbnail cleared." if had else "There was no thumbnail to clear.")
 
     async def viewthumb(client, message):
@@ -341,7 +367,7 @@ def build(ctx):
         try:
             await client.send_photo(message.chat.id, file_id, caption="This is the thumbnail this chat uses.")
         except Exception as exc:  # noqa: BLE001 - a stale file id is a real answer
-            await reply(message, f"Telegram would not re-send that thumbnail: {type(exc).__name__}: {exc}")
+            await reply(message, f"Telegram could not confirm that thumbnail ({type(exc).__name__}). No raw file references are displayed.")
 
     async def setcaption(_client, message):
         if chats is None:
@@ -352,15 +378,19 @@ def build(ctx):
             await reply(
                 message,
                 "Usage: <code>/setcaption 📁 {name} — {size}</code>. "
-                "Fields: <code>{name}</code>, <code>{stem}</code>, <code>{size}</code>.",
+                "Fields: <code>{name}</code> / <code>{filename}</code> / <code>{file_name}</code>, "
+                "<code>{stem}</code>, <code>{size}</code>, <code>{quality}</code>, "
+                "<code>{season}</code>, <code>{episode}</code>, <code>{format}</code>. "
+                "Metadata comes from the filename; unavailable values show unknown.",
             )
             return
         template = parts[1].strip()
-        if len(template) > MAX_CAPTION:
-            await reply(message, f"That caption is longer than Telegram's {MAX_CAPTION}-character cap.")
+        if len(template.encode("utf-16-le")) // 2 > MAX_CAPTION:
+            await reply(message, f"That caption is longer than Telegram's {MAX_CAPTION} UTF-16 unit cap.")
             return
-        chats.put(message.chat.id, CAPTION_KEY, template)
-        example = render_caption(template, name="Show.S01E01.1080p.mkv", size="1.2 GB")
+        if not await persist_attachment(message, CAPTION_KEY, template):
+            return
+        example = caption_for(chats, message.chat.id, name="Show.S01E01.1080p.x265.mkv", size="1.2 GB")
         await reply(
             message,
             panel(
@@ -371,13 +401,6 @@ def build(ctx):
             ),
         )
 
-    async def delcaption(_client, message):
-        if chats is None:
-            await reply(message, _unavailable())
-            return
-        had = chats.get(message.chat.id, CAPTION_KEY)
-        chats.put(message.chat.id, CAPTION_KEY, None)
-        await reply(message, "Caption cleared." if had else "There was no caption to clear.")
 
     async def viewcaption(_client, message):
         if chats is None:
@@ -387,26 +410,46 @@ def build(ctx):
         if not template:
             await reply(message, "No caption is set here. Set one with <code>/setcaption</code>.")
             return
-        example = render_caption(template, name="Show.S01E01.1080p.mkv", size="1.2 GB")
+        example = caption_for(chats, message.chat.id, name="Show.S01E01.1080p.x265.mkv", size="1.2 GB")
         await reply(
             message,
             panel(
                 "Caption for this chat",
                 icon=ctx.theme.emoji("info"),
                 table=kv_table([("Template", html.escape(template)), ("Example", html.escape(example or ""))]),
-                footer="<code>/delcaption</code> removes it.",
+                footer="Use <code>/setcaption</code> to change this layout.",
             ),
         )
 
-    return MANIFEST, {
+    def guarded(name, handler):
+        async def wrapped(client, message):
+            user_id = getattr(getattr(message, "from_user", None), "id", None)
+            if type(user_id) is not int or user_id <= 0:
+                await reply(message, "Use your personal Telegram user identity for media commands.")
+                return
+            chat_id = message.chat.id
+            mutates = name in ("setcaption", "setthumb", "delthumb") or (
+                name == "autorename" and len((getattr(message, "text", "") or "").split(maxsplit=1)) > 1)
+            if chat_id < 0 and mutates and not await is_moderator(client, message, owner_id=ctx.settings.owner_id):
+                await reply(message, "Only group administrators can change shared media settings.")
+                return
+            if chats is None and name in ("autorename", "rename", "testrename"):
+                await reply(message, _unavailable())
+                return
+            return await handler(client, message)
+        return wrapped
+
+    handlers = {
+        **build_rules(ctx),
         "setthumb": setthumb,
         "delthumb": delthumb,
         "viewthumb": viewthumb,
         "setcaption": setcaption,
-        "delcaption": delcaption,
+
         "viewcaption": viewcaption,
         "autorename": autorename,
         "rename": rename,
         "testrename": testrename,
         "clean": clean,
     }
+    return MANIFEST, {name: guarded(name, handler) for name, handler in handlers.items()}

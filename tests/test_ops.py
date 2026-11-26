@@ -294,7 +294,8 @@ def test_plugins_lists_state(ctx):
     run(handlers(ctx)["plugins"], message)
 
     body = message.replies[0]
-    assert "ops" in body and "demo" in body
+    assert "demo" in body
+    assert "plugin:ops" not in str(message.replies)
 
 
 def test_plugin_off_and_on(ctx):
@@ -325,3 +326,106 @@ def test_events_lists_recent_activity(ctx):
 
     assert "command" in message.replies[0]
     assert "recorded" in message.replies[0]
+
+
+def test_runtime_on_off_is_idempotent_and_does_not_duplicate_handlers(tmp_path):
+    registry, runtime, client, handler = make_runtime(tmp_path)
+    initial = len(client.added)
+    assert runtime.enable('demo') is False
+    assert len(client.added) == initial
+    assert runtime.disable('demo') is True
+    removed = len(client.removed)
+    assert runtime.disable('demo') is False
+    assert len(client.removed) == removed
+    assert runtime.enable('demo') is True
+    added = len(client.added)
+    assert runtime.enable('demo') is False
+    assert len(client.added) == added
+
+
+@pytest.mark.parametrize('action', ['enable', 'disable'])
+def test_runtime_save_failure_keeps_registry_and_handlers_unchanged(tmp_path, monkeypatch, action):
+    registry, runtime, client, _ = make_runtime(tmp_path)
+    if action == 'enable':
+        runtime.disable('demo')
+    previous = set(runtime._disabled)
+    enabled = registry.is_enabled('demo')
+    added, removed = list(client.added), list(client.removed)
+    def fail():
+        raise RuntimeError('storage unavailable')
+    monkeypatch.setattr(runtime, '_save', fail)
+    with pytest.raises(RuntimeError, match='storage unavailable'):
+        getattr(runtime, action)('demo')
+    assert registry.is_enabled('demo') == enabled
+    assert runtime._disabled == previous
+    assert client.added == added and client.removed == removed
+
+
+@pytest.mark.parametrize('action', ['enable', 'disable'])
+def test_partial_handler_failure_compensates_completed_work_and_settings(tmp_path, action):
+    registry, runtime, _, first = make_runtime(tmp_path)
+    second = object()
+    runtime.track('demo', second, 2)
+    if action == 'enable':
+        runtime.disable('demo')
+    prior_enabled = registry.is_enabled('demo')
+    prior_disabled = set(runtime._disabled)
+    calls = []
+    class PartialClient:
+        def add_handler(self, handler, group):
+            calls.append(('add', handler, group))
+            if action == 'enable' and handler is second:
+                raise RuntimeError('injected failure')
+        def remove_handler(self, handler, group):
+            calls.append(('remove', handler, group))
+            if action == 'disable' and handler is second:
+                raise RuntimeError('injected failure')
+    runtime.attach(PartialClient())
+    notices = []
+    runtime.change_hook = lambda: notices.append('changed')
+    with pytest.raises(RuntimeError, match='no success confirmed'):
+        getattr(runtime, action)('demo')
+    assert registry.is_enabled('demo') == prior_enabled
+    assert runtime._disabled == prior_disabled
+    assert notices == []
+    assert calls[-1] == ('remove' if action == 'enable' else 'add', first, 0)
+    reloaded = PluginRuntime(registry, state_path=runtime.state_path)
+    assert reloaded._disabled == prior_disabled
+
+
+def test_failed_handler_compensation_is_logged_without_claiming_success(tmp_path, caplog):
+    registry, runtime, _, _ = make_runtime(tmp_path)
+    runtime.disable('demo')
+    runtime.track('demo', object(), 2)
+    class BrokenClient:
+        calls = 0
+        def add_handler(self, *args):
+            self.calls += 1
+            if self.calls == 2:
+                raise RuntimeError('add failed')
+        def remove_handler(self, *args):
+            raise RuntimeError('rollback failed')
+    runtime.attach(BrokenClient())
+    with pytest.raises(RuntimeError, match='no success confirmed'):
+        runtime.enable('demo')
+    assert not registry.is_enabled('demo')
+    assert '#Errors' in caplog.text and 'reconciliation needed' in caplog.text
+
+
+def test_new_group_watcher_redacts_event_sink_failure(ctx, caplog):
+    from unittest.mock import Mock
+    from pyrogram.enums import ChatMemberStatus
+    secret = 'private-provider-token-and-url'
+    ctx.events = SimpleNamespace(emit=Mock(side_effect=RuntimeError(secret)))
+    client = SimpleNamespace(me=SimpleNamespace(id=123))
+    update = SimpleNamespace(
+        chat=SimpleNamespace(id=-123, title='Private group'),
+        new_chat_member=SimpleNamespace(user=SimpleNamespace(id=123), status=ChatMemberStatus.MEMBER),
+        old_chat_member=SimpleNamespace(status=ChatMemberStatus.LEFT),
+    )
+    handler = ops.extra_handlers(ctx)[0].callback
+    asyncio.run(handler(client, update))
+    ctx.events.emit.assert_called_once()
+    assert secret not in caplog.text
+    assert '#Errors' in caplog.text and 'RuntimeError' in caplog.text
+    assert all(r.exc_info is None for r in caplog.records if r.name == 'agent.modules.ops')

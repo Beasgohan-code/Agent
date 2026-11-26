@@ -15,11 +15,11 @@ from weakref import WeakValueDictionary
 
 from pyrogram.enums import ButtonStyle, ChatMemberStatus, ChatType
 from pyrogram.types import ChatPermissions
-from pyrogram.types import InlineKeyboardButton as Button
 from pyrogram.types import InlineKeyboardMarkup as Keyboard
 
 from ...ui.tables import kv_table, panel
-from ...utils.rich import reply
+from ...ui.theme import Theme
+from ...utils.rich import reply, send
 from ..moderation import is_moderator, kick_member, PartialKickError
 
 logger = logging.getLogger(__name__)
@@ -54,12 +54,13 @@ def timeout_minutes(chats, chat_id: int) -> int:
     return max(1, min(MAX_TIMEOUT_MINUTES, value))
 
 
-def button_for(chat_id: int, user_id: int) -> Keyboard:
+def button_for(chat_id: int, user_id: int, *, theme=None) -> Keyboard:
+    theme = theme or Theme()
     return Keyboard(
         [
             [
-                Button(
-                    "\u2705 I am human",
+                theme.button(
+                    "I am human", icon="check",
                     callback_data=f"{PREFIX}:{int(chat_id)}:{int(user_id)}",
                     style=ButtonStyle.SUCCESS,
                 )
@@ -141,8 +142,8 @@ class Verifier:
             await query.answer("Verified — welcome!")
             try:
                 await client.edit_message_text(chat_id, location[1], "Verified. Welcome to the group.")
-            except Exception:
-                logger.debug("could not edit the verification prompt", exc_info=True)
+            except Exception as error:
+                logger.warning("#Errors Verification prompt edit unconfirmed (%s)", type(error).__name__)
 
     # -- timer -------------------------------------------------------------
 
@@ -293,11 +294,11 @@ class Verifier:
             await client.restrict_chat_member(chat.id, user.id, SILENCED)
             minutes = timeout_minutes(self._chats, chat.id)
             try:
-                prompt = await client.send_message(
-                    chat.id,
+                prompt = await send(
+                    client, chat.id,
                     f"{html.escape(getattr(user, 'first_name', None) or 'Welcome')}, please confirm you are human "
                     f"within {minutes} minutes.",
-                    reply_markup=button_for(chat.id, user.id),
+                    reply_markup=button_for(chat.id, user.id, theme=self._ctx.theme),
                 )
             except Exception as exc:
                 try:
@@ -321,5 +322,5 @@ class Verifier:
                 user.id,
                 minutes,
             )
-        except Exception:  # noqa: BLE001 - a watcher must never break the client
-            logger.exception("verification watcher failed")
+        except Exception as error:  # noqa: BLE001 - a watcher must never break the client
+            logger.error("#Errors Verification watcher failed (%s)", type(error).__name__)

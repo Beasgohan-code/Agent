@@ -24,10 +24,10 @@ not a claim of implemented coverage. See [the architecture audit](docs/GROUP_MAN
 | `PLUGINS` | no | Which optional modules register; mandatory group core is always included. `*` includes all modules. |
 | `SESSION_STRING` | for music | A user session is the only thing that can join a group call. |
 | `LOG_CHANNEL` | no | Where the bot posts its event log; without it, the owner's DM. |
-| `DATA_DIR` | no | Temporary media/vault working directory. Metadata is PostgreSQL-backed. Default `data`. |
-| `DATABASE_URL` | **yes** | PostgreSQL DSN. Set it and every store is kept in the database, scoped per bot. |
-| `TOKEN_KEY` | no | Encrypts clone tokens at rest (Fernet). Unset ⇒ plaintext, announced. |
-| `DB_REQUIRED` | no | Legacy flag; PostgreSQL is now always required. `0` does not enable local state. |
+| `DATA_DIR` | no | Temporary media/vault working directory. Metadata is database-backed. Default `data`. |
+| `DATABASE_URL` | **yes** | Connection URL. Set it and every store is kept in the database, scoped per bot. |
+| `TOKEN_KEY` | for credential writes | Encrypts clone tokens/provider keys/sessions at rest (Fernet). Missing key refuses new secret writes; no plaintext fallback. Keep the existing key across redeploys. |
+| `DB_REQUIRED` | no | Legacy flag; database is now always required. `0` does not enable local state. |
 | `STORAGE_CHANNEL` | no | A private channel id vault files are archived into (durable bytes). |
 | `CLONE_LIMIT` | no | How many clones this deployment will run at once. Default `5`. |
 | `START_IMAGE` | no | Picture above `/start`; `0` keeps the text only. |
@@ -42,7 +42,8 @@ the instance lease; `.env.example` lists them all with their defaults.
 ```sh
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env      # fill BOT_TOKEN, API_ID, API_HASH
+pip install --no-deps richgram==0.2.0  # keep wzgram as the pyrogram provider
+cp .env.example .env      # fill BOT_TOKEN, API_ID, API_HASH, DATABASE_URL
 python -m agent
 ```
 
@@ -60,8 +61,8 @@ Every panel is a **rich message**: a real heading over a real table (Bot API
 10.3), not a table drawn out of box characters. Tapping a button edits that same
 message in place — `edit_message_text(rich_text=…)` keeps the native table, so
 navigation does not downgrade the screen — and when Telegram or the client
-cannot take a rich message, `utils/rich.py` redraws the table as an aligned
-`<pre>` grid instead of flattening it into one run-on line. `/help` is a table of
+cannot take a rich message, `utils/rich.py` uses the classic escaped text
+fallback. Native tables are primary; the fallback does not draw ASCII grids. `/help` is a table of
 sections with a count for each, each section is a table of commands with the
 sentence behind each one, and `/help <command>` opens that command's own page
 (the description, the section it belongs to, and whether this deployment has it).
@@ -102,7 +103,7 @@ Local staging and review APIs remain for inspection only. Symbolic links and
 unsafe manifest paths are refused; activation rechecks staged source bytes.
 A future external runtime needs an actual capability-scoped process boundary.
 
-`platform/plugin_access.py` implements PostgreSQL Owner approval, three optional
+`platform/plugin_access.py` implements database Owner approval, three optional
 slots per group, configuration and activation history. Approval is rechecked
 under a catalog row lock; reservation uses a group-specific transaction lock.
 There is no file fallback. In groups, optional command, callback, deep-link and
@@ -118,7 +119,7 @@ group slots; global approval is currently a group-use permission.
   features. Music also needs a configured voice session.
 - Group-owned invocation tasks and queued jobs are cancelled on local revocation
   or disable. Music releases its queue/call. Other processes reconcile active
-  scopes every two seconds; new requests always check PostgreSQL directly.
+  scopes every two seconds; new requests always check the database directly.
 
 This is the plugin slice of the Control Center, not its complete implementation.
 Generic durable job/subscription cleanup, plugin-specific configuration forms,
@@ -126,29 +127,32 @@ full per-group feature-data migration and external process isolation remain open
 
 ## Clones
 
-Send **`/clone` in private** to open Clone studio. This requires bot premium,
-sudo access or the bot Owner. `TOKEN_KEY` must be configured before credentials
+Send **`/clone` in private** to open Clone studio. Creation and ordinary starts require **Meiko Premium**,
+including for Owner and sudo users; Telegram Premium is unrelated. `TOKEN_KEY` must be configured before credentials
 are requested. Guided setup supports **Encoder, Moderation, Post maker,
-Linkshare, FileStore, Leech, Music and AI Agent**, one plugin at a
-time:
+Linkshare, FileStore, Leech, Music and AI Agent** in compatible combinations:
 
 1. Send a token from @BotFather. Agent checks `getMe` and the bot id; format alone
    is not accepted as identity. Secret messages are deleted best-effort.
-2. Choose a reviewed template with a button. Mandatory group core stays available.
+2. Choose a reviewed template or suite preset. On the review screen, **Edit plugins**
+   lets you add or remove individual optional plugins before confirmation. Mandatory
+   Group Management stays included. Selections are normalized and revalidated;
+   unknown/incompatible plugins are rejected, never silently dropped.
 3. For AI Agent, privately supply your own OpenAI key and model id first.
    No paid validation request is made; compatibility is checked on first use.
    Then send a log channel id, or `skip`.
 4. For FileStore, send the archive channel id. Both the operator and clone must be
    channel administrators; the clone needs posting permission. Rights are checked
    again before creation.
-5. Confirm creation. The signed-in setup user becomes the clone's Owner, in its
+5. Confirm creation. Identity, channel permissions, selection, credential syntax,
+   Premium and capacity are checked again. The signed-in setup user becomes the clone's Owner, in its
    own bot tenant—not an Owner of this deployment. Telegram does not reveal a
    bot's human owner from its token, so Agent does not pretend to fetch one.
 
 Drafts expire after ten minutes; `/cancel` discards one. Draft tokens are held in
 memory, not persisted. Completed tokens are encrypted. Telegram chat history is
 not a credential vault; message deletion cannot guarantee erasure from clients.
-Music setup is offered only with connected PostgreSQL and installed voice
+Music setup is offered only with a connected database and installed voice
 libraries. It requires explicit consent before accepting a dedicated account's
 pre-generated Telethon session. Phone numbers, passwords and OTPs are never
 requested. Session structure is checked offline; Telegram user authorization
@@ -187,7 +191,7 @@ Owner/sudo users remain subject to `CLONE_LIMIT`. Eligibility is rechecked on
 startup and supervisor passes; an ineligible running clone is stopped and parked.
 
 Each clone has its own bot id, link signer, session name, data directory and
-PostgreSQL scope. It does not inherit the parent assistant session, log/archive
+database scope. It does not inherit the parent assistant session, log/archive
 channels or HTTP port. Clone database loading and exclusive lease acquisition
 happen before Telegram startup; shutdown releases its lease and database.
 Clones are still clients in the parent process, not OS-process isolation.
@@ -196,9 +200,9 @@ Clones are still clients in the parent process, not OS-process isolation.
 
 | Command | What it does |
 | --- | --- |
-| `/fsave` | Keep a replied file in your vault (20 MB cap — the Bot API's, not ours). |
 | `/batch [n]` | Save a run of consecutive files, starting at the replied one. |
-| `/files`, `/check <id>`, `/get <id>`, `/del <id>` | List, inspect, re-send and delete vault entries. |
+| `/check <id>`, `/get <id>` | Inspect or retrieve your own existing stored file. |
+| `/custom_batch first last` | Create a bounded archive-channel message-range link; use `ids` for selected messages. |
 | `/genlink [hours] [uses]` | Store the replied file and answer with a share link (deep link + copy button). |
 | `/share <id> [hours] [uses]` | The same, for a file already in your vault — no second copy. |
 | `/links`, `/revoke` | Every live link with the uses and hours it has left; revoke by token or button. |
@@ -244,16 +248,16 @@ stop-and-clear, for staff or whoever queued the track.
 
 ## Where state lives
 
-The bot runtime requires PostgreSQL. Missing credentials, a failed connection
+The bot runtime requires a database. Missing credentials, a failed connection
 or failed initial state load refuse startup; there is no local JSON fallback.
 The old `DB_REQUIRED=0` option no longer enables disk-backed operation.
 
-Legacy document stores use bot-scoped PostgreSQL JSONB rows; plugin approval,
+Legacy document stores use bot-scoped database JSONB rows; plugin approval,
 Music playlists, log destinations and incident aggregation use dedicated tables.
 Some older stores still batch writes in memory before flushing: this change
 removes disk fallback, not every outstanding confirmed-write limitation. `/setlog`
 uses awaited SQL and confirms only after persistence. Temporary media files can
-still use disk; media bytes are not PostgreSQL metadata.
+still use disk; media bytes are not database metadata.
 
 Low-level standalone file helpers remain for legacy/test compatibility, but the
 normal bot/clone service lifecycle does not start in that mode. Do not deploy
@@ -270,9 +274,9 @@ only in SQL. `clone:…` is applied by `CloneManager.settings_for`, so a clone's
 vault, premium ledger and plugin state are its own *and* survive a redeploy on
 any instance.
 
-`DB_REQUIRED=1` turns "the URL is set but unreachable" into a startup failure
-instead of a silent fall back to files — two competing sources of truth are worse
-than a bot that refuses to start.
+Normal startup requires `DATABASE_URL` and a successful database connection.
+`DB_REQUIRED=0` does not enable a file fallback. Some legacy/test helpers still
+support local files, but they are not the normal bot runtime.
 
 **Clone tokens are encrypted at rest.** With `TOKEN_KEY` set, records are written
 as Fernet ciphertext (`v1:` prefix, AES-CBC + HMAC) and decrypted only in memory;
@@ -280,14 +284,16 @@ masking a token in a panel was never protection for the database. A key that
 cannot be used is an error rather than a quiet downgrade, a record written before
 encryption existed is rewritten as ciphertext on the next save, and a record this
 key cannot read is skipped with a logged reason instead of taking the bot down.
-Without a key the store still works in plaintext and says so once at startup.
+Without a key, new secret writes are refused. Legacy plaintext reads remain for
+compatibility; this is not permission to write new plaintext credentials. Never
+remove or rotate the existing key to bypass a decryption error.
 
 ### The vault survives a redeploy
 
 Two halves, two lifetimes:
 
 * **the index** — which file belongs to whom, its size and its hash — is a
-  scoped `files` document in PostgreSQL, read back by `Storage.hydrate()` once the
+  scoped `files` document in database, read back by `Storage.hydrate()` once the
   database is loaded;
 * **the bytes** — on disk under `DATA_DIR` by default, or in a private Telegram
   storage channel when `STORAGE_CHANNEL` is set. A stored file is archived in the
@@ -358,8 +364,8 @@ pytest -q                      # 541 tests
 python -m pyflakes agent tests # no unused names
 ```
 
-Runtime state is PostgreSQL-backed. Local JSON helpers are legacy/test-only;
-the normal service refuses to start without PostgreSQL.
+Runtime state is database-backed. Local JSON helpers are legacy/test-only;
+the normal service refuses to start without database.
 
 ## Primary feature catalog and AI Agent
 
@@ -368,13 +374,24 @@ FileStore, Leech and AI Agent. Moderation is mandatory and slot-free; optional
 features still require global Owner approval and group-admin activation, with
 at most three active per group. Dependency availability is shown honestly.
 
-AI Agent provides explicit `/ask <question>` text completions when both
-`AI_API_KEY` and `AI_MODEL` are configured. It sends that question to OpenAI,
-not group history. It has no tools, moderation authority or autonomous actions.
+AI Agent provides `/ask <question>` and default-off auto-chat when both
+`AI_API_KEY` and `AI_MODEL` are configured. Use `/autochat on|off|status` in
+your private chat to enable or stop ordinary text replies. In groups, an admin
+can enable auto-chat after Owner approval and group activation; only mentions
+of the bot or replies to its messages trigger an answer. It sends only the
+triggering text to OpenAI, not replied-to text or group history. Enabling it
+permits automatic provider requests for qualifying messages; charges may apply. It has no tools, moderation authority or autonomous actions.
 Obvious token/key patterns are rejected, but this is not a comprehensive secret
 scanner: never include private information. Responses are untrusted AI output.
 Requests have bounded size, concurrency, timeout and a per-user cooldown.
-No key means no `/ask` handler. Parent AI credentials never pass into clones.
+On draft-capable clients, AI replies show a Richgram thinking indicator and
+stream answer text into a throttled rich message draft, then send one final
+RichMessage through the existing rich/classic fallback. Older clients can use
+plain `send_message_draft`; rejected drafts fall back to a final-only response
+without retrying the provider. Drafts are ephemeral and may expire on cancellation.
+The thinking indicator is status only, never model reasoning. No stop button is
+advertised because generation-stop handling is not implemented.
+No key/model means no `/ask`, `/autochat`, or auto-chat watcher. Parent AI credentials never pass into clones.
 AI Agent clones instead require their own private guided key/model setup; keys
 are encrypted at rest and cleared from cancelled or expired drafts. Changing a
 clone to a legacy profile removes its stored AI credentials.
@@ -385,7 +402,7 @@ validation confirms a bot identity, not the human BotFather account owner.
 
 ### Music assistant isolation
 
-When PostgreSQL is configured, voice engines reserve their verified Telegram
+When database is configured, voice engines reserve their verified Telegram
 assistant account across bot tenants before starting calls. The same account
 cannot be acquired twice in that database, even with different session strings.
 Connection loss triggers shutdown and blocks new voice operations. Each active
@@ -393,7 +410,7 @@ assistant uses one database pool connection. This does not fence external
 Telegram clients or deployments using another database, and failure detection
 is not instantaneous. Use a dedicated account. Database-free legacy deployments
 do not have distributed assistant exclusivity. Music clone onboarding therefore
-requires PostgreSQL. Only production Telethon IPv4 sessions using port 443 and
+requires a database. Only production Telethon IPv4 sessions using port 443 and
 allowlisted Telegram DC networks are accepted; arbitrary session endpoints are
 rejected before any connection. Parent assistant credentials are never reused.
 Changing to a legacy profile clears the stored assistant session. Revoke it in
@@ -410,7 +427,7 @@ screen. Web services with `RENDER_EXTERNAL_URL` and `PORT` now self-ping
 free-tier sleep or guarantee uninterrupted hosting. See `docs/ALWAYS_ON.md`.
 
 Music has 24 base group commands when its dependencies and assistant are
-configured, plus four saved-playlist commands when PostgreSQL is connected, including queue editing, repeat modes, shuffle, replay, volume,
+configured, plus four saved-playlist commands when database is connected, including queue editing, repeat modes, shuffle, replay, volume,
 play-next and recent session titles. Song-name search, YouTube watch-page
 extraction, effects, seeking and linked-channel playback are **not** claimed as
 supported yet. See [Music behavior migration](docs/MUSIC_PARITY.md) for exact
@@ -436,7 +453,7 @@ this code silently purchases or changes on your live service.
 ### Saved Music playlists
 
 Admins can use `/saveplaylist name`, `/playlists`, `/playlist name` and
-`/deleteplaylist name`. Lists are PostgreSQL-backed and isolated by bot, group
+`/deleteplaylist name`. Lists are database-backed and isolated by bot, group
 and user, with atomic quotas (10 lists, 20 tracks each). Saving replaces your
 same-named list. Only stable public HTTP(S) media URLs are accepted—not local
 files, credentials or signed query URLs. Start fresh playback before loading;
@@ -447,14 +464,14 @@ for URL-validation limitations and the remaining feature backlog.
 ### Persistent log destination
 
 With `DATABASE_URL` configured, `/setlog <negative channel id>` tests posting
-permission and saves the destination directly to PostgreSQL **before** confirming
+permission and saves the destination directly to database **before** confirming
 success. `/log` rereads the database, and `/unsetlog` saves an explicit clear that
 continues overriding `LOG_CHANNEL` after restart. Main bot and clone settings
 are separate. A configured but unavailable database never silently redirects
 these settings to an ephemeral JSON file.
 
 **After deploying this correction, run `/setlog` once again** to save your old
-file-only selection in PostgreSQL. Data already lost from an old Render disk
+file-only selection in database. Data already lost from an old Render disk
 cannot be recovered. Without a database, standalone file compatibility remains
 clearly labelled; it is not redeploy-safe hosting storage.
 
@@ -467,7 +484,7 @@ not mean every older batched settings store already has confirmed-write semantic
 Unhandled handler failures generate **#Errors** log notifications with a stable
 incident ID, error category, handler, safe frame locations and occurrence count.
 Raw exception arguments, update/message text, usernames, tokens and local
-variables are not intentionally collected. Repeats are aggregated in PostgreSQL
+variables are not intentionally collected. Repeats are aggregated in database
 and alerts are throttled to once per fingerprint per minute per process.
 Owner-only `/errors` in private shows the latest 10 incident groups in this bot.
 At most 100 distinct groups are retained per tenant, pruned on incident writes.

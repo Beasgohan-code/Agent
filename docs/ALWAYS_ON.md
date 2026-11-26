@@ -30,7 +30,7 @@ voice playback, polling or assistant connections on a sleeping service.
 ## Recommended Agent deployment
 
 Agent's existing `render.yaml` uses `type: worker`, `plan: starter`, one long-lived
-polling process, and PostgreSQL with `DB_REQUIRED=1`. Apply that Blueprint or
+polling process, and database with `DB_REQUIRED=1`. Apply that Blueprint or
 configure an equivalent **always-on paid service** in Render. Merely pushing
 these files does not change an existing service's type, plan or billing.
 
@@ -47,7 +47,7 @@ For an existing paid web service instead:
    as proof that Telegram is connected.
 5. Keep one deployment instance per bot token. Never delete another process's
    lease to force a handover. Check Render restart/redeploy events when uptime
-   resets; PostgreSQL state survives, but process-local queues do not.
+   resets; database state survives, but process-local queues do not.
 
 These changes do not purchase a plan, configure an external monitor, deploy to
 Render, or guarantee that a hosting provider never has an outage.

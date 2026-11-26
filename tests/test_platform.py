@@ -104,7 +104,8 @@ def test_job_failure_is_recorded_not_raised():
     job = asyncio.run(scenario())
 
     assert job.state is JobState.FAILED
-    assert "boom" in job.error
+    assert job.error == "runner_failed"
+    assert "boom" not in job.error
 
 
 def test_job_cancel_only_for_owner():
@@ -206,9 +207,7 @@ def test_only_owner_can_revoke(tmp_path):
 def test_tampered_signature_is_rejected(tmp_path):
     links = LinkStore(tmp_path / "l", "secret")
     record = links.create("f", 1)
-    payload, _, _sig = record.token.rsplit(".", 1)[0], None, record.token.rsplit(".", 1)[1]
-
-    forged = f"{payload}.{'A' * len(_sig)}"
+    forged = record.token[:-1] + ("A" if record.token[-1] != "A" else "B")
 
     with pytest.raises(LinkError, match="bad signature"):
         links.resolve(forged)

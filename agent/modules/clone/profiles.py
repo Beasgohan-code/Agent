@@ -89,5 +89,6 @@ def summary(profile: str | None, settings) -> str:
     plugins = plugins_for(profile, settings)
     if plugins == ("*",):
         return "every plugin"
-    count = len({name for name in plugins} | {"core", "ops"})
-    return f"{count} plugins"
+    from ...platform.policy import PROTECTED_PLUGINS
+    count = len(set(plugins) - set(PROTECTED_PLUGINS) - {"clone"})
+    return f"Group Management + {count} tools" if count else "Group Management"

@@ -1,0 +1,272 @@
+--- a/worker_bot/engine.py
++++ b/worker_bot/engine.py
+@@ -163,7 +163,7 @@
+             for ch_id in channel_ids:
+                 try:
+                     mode = await worker_db.get_channel_mode(ch_id)
+-                    name = f"📢 Join Channel"
++                    name = f"📢 Join channel"
+                     link = None
+ 
+                     try:
+@@ -193,7 +193,7 @@
+                 me = await client.get_me()
+                 buttons.append([
+                     InlineKeyboardButton(
+-                        "♻️ Reload",
++                        "↻ Check membership",
+                         url=f"https://t.me/{me.username}?start={start_param}",
+                     )
+                 ])
+@@ -229,10 +229,10 @@
+             banned = await worker_db.get_ban_users()
+             if user_id in banned:
+                 await message.reply(
+-                    "<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-                    "⛔ 𝗔𝗖𝗖𝗘𝗦𝗦 𝗗𝗘𝗡𝗜𝗘𝗗\n"
+-                    "━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-                    "<blockquote>ʏᴏᴜ ᴀʀᴇ ʙᴀɴɴᴇᴅ ꜰʀᴏᴍ ᴜsɪɴɢ ᴛʜɪs ʙᴏᴛ.</blockquote>"
++                    "<b>"
++                    "⛔ Meiko · Access denied\n"
++                    "</b>\n\n"
++                    "<blockquote>You are banned from using this bot.</blockquote>"
+                 )
+                 return
+ 
+@@ -244,12 +244,12 @@
+                 force_pic = settings.get("force_pic", "")
+ 
+                 text = (
+-                    "<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-                    "🔒 𝗔𝗖𝗖𝗘𝗦𝗦 𝗥𝗘𝗦𝗧𝗥𝗜𝗖𝗧𝗘𝗗\n"
+-                    "━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-                    f"<blockquote>ʜᴇʏ {message.from_user.mention},\n\n"
+-                    f"ᴛᴏ ᴜsᴇ ᴛʜɪs ʙᴏᴛ ʏᴏᴜ ᴍᴜsᴛ ᴊᴏɪɴ ᴛʜᴇ\n"
+-                    f"ᴄʜᴀɴɴᴇʟs ʙᴇʟᴏᴡ ᴀɴᴅ ᴛᴀᴘ <b>♻️ ʀᴇʟᴏᴀᴅ</b>.</blockquote>"
++                    "<b>"
++                    "🔒 Meiko · Join to continue\n"
++                    "</b>\n\n"
++                    f"<blockquote>Hello {message.from_user.mention},\n\n"
++                    f"To access your files, join the\n"
++                    f"channels below, then tap <b>↻ Check membership</b>.</blockquote>"
+                 )
+ 
+                 if force_pic and force_pic.lower() not in ["none", "ɴᴏɴᴇ", "0"]:
+@@ -263,12 +263,12 @@
+             if len(message.command) > 1 and message.command[1] == "verify":
+                 await worker_db.set_verified(user_id)
+                 await message.reply(
+-                    "<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-                    "✅ 𝗩𝗘𝗥𝗜𝗙𝗜𝗘𝗗\n"
+-                    "━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-                    "<blockquote>ʏᴏᴜ ᴀʀᴇ ɴᴏᴡ ᴠᴇʀɪꜰɪᴇᴅ!\n"
+-                    "ʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴀᴄᴄᴇss ꜰɪʟᴇs.\n\n"
+-                    "ᴛᴀᴘ ʏᴏᴜʀ ᴏʀɪɢɪɴᴀʟ ʟɪɴᴋ ᴀɢᴀɪɴ.</blockquote>"
++                    "<b>"
++                    "✅ Meiko · Verified\n"
++                    "</b>\n\n"
++                    "<blockquote>Verification complete!\n"
++                    "You can now access files.\n\n"
++                    "Open your original file link again.</blockquote>"
+                 )
+                 return
+ 
+@@ -321,7 +321,7 @@
+                         expire_hrs = expire_secs // 3600
+                         buttons = [
+                             [InlineKeyboardButton(
+-                                "🔗 ᴠᴇʀɪꜰʏ", url=shortened
++                                "🔗 Verify", url=shortened
+                             )],
+                         ]
+ 
+@@ -330,27 +330,27 @@
+                         tut_enabled = shortener_cfg.get("tutorial_enabled", False)
+                         if tut_enabled and tut_link:
+                             buttons.append([
+-                                InlineKeyboardButton("📹 ᴛᴜᴛᴏʀɪᴀʟ", url=tut_link)
++                                InlineKeyboardButton("📹 How to verify", url=tut_link)
+                             ])
+ 
+                         # Try Again button to re-check after visiting
+                         buttons.append([
+                             InlineKeyboardButton(
+-                                "✅ ɪ ʜᴀᴠᴇ ᴠᴇʀɪꜰɪᴇᴅ",
++                                "✅ Check verification",
+                                 url=f"https://t.me/{me.username}?start={base64_string}",
+                             )
+                         ])
+ 
+                         await message.reply(
+-                            "<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-                            "🔗 𝗩𝗘𝗥𝗜𝗙𝗜𝗖𝗔𝗧𝗜𝗢𝗡 𝗥𝗘𝗤𝗨𝗜𝗥𝗘𝗗\n"
+-                            "━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-                            f"<blockquote>ʜᴇʏ {message.from_user.mention},\n\n"
+-                            f"ᴛᴀᴘ <b>🔗 ᴠᴇʀɪꜰʏ</b> ᴀɴᴅ ᴄᴏᴍᴘʟᴇᴛᴇ ᴛʜᴇ\n"
+-                            f"sʜᴏʀᴛ ʟɪɴᴋ ᴛᴏ ᴜɴʟᴏᴄᴋ ꜰɪʟᴇs.\n\n"
+-                            f"ᴀꜰᴛᴇʀ ᴠᴇʀɪꜰʏɪɴɢ, ᴛᴀᴘ\n"
+-                            f"<b>✅ ɪ ʜᴀᴠᴇ ᴠᴇʀɪꜰɪᴇᴅ</b>.\n\n"
+-                            f"◈ ᴠᴀʟɪᴅ ꜰᴏʀ: <b>{expire_hrs}h</b></blockquote>",
++                            "<b>"
++                            "🔗 Meiko · Verification required\n"
++                            "</b>\n\n"
++                            f"<blockquote>Hello {message.from_user.mention},\n\n"
++                            f"Tap <b>🔗 Verify</b> and complete the\n"
++                            f"short link to unlock your files.\n\n"
++                            f"After verifying, tap\n"
++                            f"<b>✅ Check verification</b>.\n\n"
++                            f"Valid for: <b>{expire_hrs}h</b></blockquote>",
+                             reply_markup=InlineKeyboardMarkup(buttons),
+                         )
+                         return
+@@ -359,16 +359,16 @@
+                 temp_msg = None
+                 if len(ids) > 5:
+                     temp_msg = await message.reply(
+-                        "<b>⏳ ʟᴏᴀᴅɪɴɢ ʏᴏᴜʀ ꜰɪʟᴇs...</b>"
++                        "<b>⏳ Meiko · Loading your files…</b>"
+                     )
+                 try:
+                     messages = await get_messages(client, log_channel_id, ids)
+                 except Exception as e:
+                     await message.reply(
+-                        "<b>━━━━━━━━━━━━━━━━━━━━━\n"
+-                        "❌ 𝗘𝗥𝗥𝗢𝗥\n"
+-                        "━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+-                        "<blockquote>sᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ ᴡʜɪʟᴇ ꜰᴇᴛᴄʜɪɴɢ ʏᴏᴜʀ ꜰɪʟᴇs.</blockquote>"
++                        "<b>"
++                        "⚠️ Meiko · Files unavailable\n"
++                        "</b>\n\n"
++                        "<blockquote>Something went wrong while fetching your files.</blockquote>"
+                     )
+                     log.error(f"Error getting messages: {e}")
+                     return
+@@ -419,7 +419,7 @@
+                 del_timer = await worker_db.get_del_timer()
+                 if del_timer > 0 and sent_msgs:
+                     notification = await message.reply(
+-                        f"<b>⏱ These files will be auto-deleted in {get_exp_time(del_timer)}.\n"
++                        f"<b>⏱ Meiko · These files will be auto-deleted in {get_exp_time(del_timer)}.\n"
+                         f"Save or forward them before deletion!</b>"
+                     )
+ 
+@@ -437,10 +437,10 @@
+ 
+                 if not start_message:
+                     start_message = (
+-                        f"<blockquote>ᴡᴇʟᴄᴏᴍᴇ {message.from_user.mention}!\n\n"
+-                        f"ɪ ᴄᴀɴ sᴛᴏʀᴇ ꜰɪʟᴇs ᴀɴᴅ sʜᴀʀᴇ ᴛʜᴇᴍ\n"
+-                        f"ᴠɪᴀ sᴘᴇᴄɪᴀʟ ʟɪɴᴋs.\n\n"
+-                        f"ᴘᴏᴡᴇʀᴇᴅ ʙʏ @cantarellabots</blockquote>"
++                        f"<blockquote>✨ Welcome to Meiko, {message.from_user.mention}!\n\n"
++                        f"Store files and share them\n"
++                        f"through dedicated delivery links.\n\n"
++                        f"Meiko · File sharing</blockquote>"
+                     )
+                 else:
+                     try:
+@@ -489,28 +489,28 @@
+             if not await is_admin(message.from_user.id):
+                 return
+             if len(message.command) < 2:
+-                await message.reply("<b>Usage:</b> <code>/ban [user_id]</code>")
++                await message.reply("<b>Meiko · Usage:</b> <code>/ban [user_id]</code>")
+                 return
+             try:
+                 target_id = int(message.command[1])
+                 await worker_db.add_ban_user(target_id)
+-                await message.reply(f"<b>✅ User {target_id} has been banned from this bot!</b>")
++                await message.reply(f"<b>✅ Meiko · User {target_id} has been banned from this bot!</b>")
+             except ValueError:
+-                await message.reply("<b>❌ Invalid User ID.</b>")
++                await message.reply("<b>⚠️ Meiko · Invalid user ID.</b>")
+ 
+         @app.on_message(filters.command("unban") & filters.private)
+         async def handle_unban(client: Client, message: Message):
+             if not await is_admin(message.from_user.id):
+                 return
+             if len(message.command) < 2:
+-                await message.reply("<b>Usage:</b> <code>/unban [user_id]</code>")
++                await message.reply("<b>Meiko · Usage:</b> <code>/unban [user_id]</code>")
+                 return
+             try:
+                 target_id = int(message.command[1])
+                 await worker_db.del_ban_user(target_id)
+-                await message.reply(f"<b>✅ User {target_id} has been unbanned from this bot!</b>")
++                await message.reply(f"<b>✅ Meiko · User {target_id} has been unbanned from this bot!</b>")
+             except ValueError:
+-                await message.reply("<b>❌ Invalid User ID.</b>")
++                await message.reply("<b>⚠️ Meiko · Invalid user ID.</b>")
+ 
+         # =====================================================================
+         # HANDLER: /broadcast (admin only)
+@@ -521,17 +521,17 @@
+             if not await is_admin(message.from_user.id):
+                 return
+             if not message.reply_to_message:
+-                await message.reply("<b>❌ Please reply to a message to broadcast.</b>")
+-                return
+-
+-            b_msg = await message.reply("<b>⏳ Preparing broadcast...</b>")
++                await message.reply("<b>⚠️ Meiko · Reply to the message you want to broadcast.</b>")
++                return
++
++            b_msg = await message.reply("<b>⏳ Meiko · Preparing broadcast…</b>")
+             users = await worker_db.full_userbase()
+             
+             if not users:
+-                await b_msg.edit("<b>❌ No users found in database.</b>")
+-                return
+-
+-            await b_msg.edit(f"<b>⏳ Broadcasting to {len(users)} users...</b>")
++                await b_msg.edit("<b>⚠️ Meiko · No users found in the database.</b>")
++                return
++
++            await b_msg.edit(f"<b>⏳ Meiko · Broadcasting to {len(users)} users...</b>")
+             
+             success = 0
+             failed = 0
+@@ -546,7 +546,7 @@
+                     log.error(f"Worker broadcast failed for user {uid}: {e}")
+                     
+             await b_msg.edit(
+-                f"<b>✅ Broadcast Completed</b>\n\n"
++                f"<b>✅ Meiko · Broadcast complete</b>\n\n"
+                 f"<b>Total Users:</b> {len(users)}\n"
+                 f"<b>Success:</b> {success}\n"
+                 f"<b>Failed:</b> {failed}"
+@@ -563,12 +563,12 @@
+             # Set bot commands in the Telegram menu
+             from pyrogram.types import BotCommand
+             await app.set_bot_commands([
+-                BotCommand("start", "Start the bot / Retrieve files"),
+-                BotCommand("genlink", "Generate link for a single post"),
+-                BotCommand("batch", "Generate link for multiple posts"),
+-                BotCommand("custom_batch", "Generate link for custom posts"),
+-                BotCommand("flink", "Formatted links generator"),
+-                BotCommand("broadcast", "Broadcast a message (Admin)"),
++                BotCommand("start", "Welcome to Meiko · Retrieve files"),
++                BotCommand("genlink", "Create a single-message link"),
++                BotCommand("batch", "Create a batch link"),
++                BotCommand("custom_batch", "Build a custom batch link"),
++                BotCommand("flink", "Create formatted links"),
++                BotCommand("broadcast", "Send a broadcast (admin)"),
+             ])
+ 
+             me = await app.get_me()
+@@ -638,12 +638,12 @@
+         keyboard = None
+         if reload_url:
+             keyboard = InlineKeyboardMarkup([
+-                [InlineKeyboardButton("📥 Get File Again", url=reload_url)]
++                [InlineKeyboardButton("📥 Get files again", url=reload_url)]
+             ])
+ 
+         await notification.edit(
+-            "<b>🗑 Your files have been auto-deleted.</b>\n\n"
+-            "<blockquote>Click below to retrieve them again.</blockquote>",
++            "<b>🗑 Meiko · Your files have been auto-deleted.</b>\n\n"
++            "<blockquote>Use the button below to retrieve them again.</blockquote>",
+             reply_markup=keyboard,
+         )
+     except Exception as e:

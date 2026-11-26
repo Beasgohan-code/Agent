@@ -47,6 +47,6 @@ def usage_rows(book, user_id: int, *, now: float | None = None) -> list[tuple[st
 def pitch() -> str:
     """One sentence for the bottom of a limit panel."""
     return (
-        "Premium raises those three numbers and nothing else — no feature is "
-        "hidden behind it. Owners grant it with <code>/addpremium</code>."
+        "Premium raises file and daily allowances and is required to create or start clones, "
+        "including for Owner and sudo. Owners grant it with <code>/addpremium</code>."
     )

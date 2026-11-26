@@ -29,15 +29,23 @@ class PluginGate:
         """callback(group_id) must release only this module's group resources."""
         self._cleanups[slug] = callback
 
+    def runtime_enabled(self, slug):
+        """Only the known runtime on/not-disabled pair authorizes optional work."""
+        try:
+            return (self.runtime.wants_disabled(slug) is False
+                    and self.runtime.registry.is_enabled(slug) is True)
+        except Exception:
+            return False
+
     async def allowed(self, group_id, slug):
         if slug in PROTECTED_PLUGINS:
             return True
         if slug not in OPTIONAL:
             return False
         try:
-            if self.runtime.wants_disabled(slug) or not self.runtime.registry.is_enabled(slug):
+            if not self.runtime_enabled(slug):
                 return False
-            return await self.access.eligible(group_id, slug)
+            return (await self.access.eligible(group_id, slug)) is True
         except Exception:
             logger.warning('Optional plugin eligibility unavailable: %s', slug)
             return False
@@ -46,7 +54,10 @@ class PluginGate:
         children = [task for task in self._running.get((group_id, slug), ())
                     if task is not asyncio.current_task()]
         for task in children:
-            task.cancel()
+            # Reconciliation and command refusal may overlap. Do not interrupt
+            # a child's already-running cancellation cleanup a second time.
+            if not task.done() and not task.cancelling():
+                task.cancel()
         if children:
             await asyncio.gather(*children, return_exceptions=True)
         await self.jobs.cancel_group(group_id, slug)
@@ -54,12 +65,13 @@ class PluginGate:
         if callback:
             try:
                 await callback(group_id)
-            except Exception:
-                logger.exception('Plugin cleanup failed: %s group=%s', slug, group_id)
+            except Exception as error:
+                logger.warning('#Errors Plugin cleanup unconfirmed: %s group=%s (%s)',
+                               slug, group_id, type(error).__name__)
                 return  # retain scope so the next reconciliation retries
         self._seen.discard((group_id, slug))
 
-    def wrap(self, slug, handler, *, callback=False, silent=False):
+    def wrap(self, slug, handler, *, callback=False, silent=False, channel_requests=False):
         if slug in PROTECTED_PLUGINS:
             return handler
 
@@ -74,12 +86,15 @@ class PluginGate:
                 if callback:
                     await update.answer('This control has no verifiable chat context.', show_alert=True)
                 return
-            is_group = group_id < 0
-            try:
-                runtime_enabled = (not self.runtime.wants_disabled(slug)
-                                   and self.runtime.registry.is_enabled(slug))
-            except Exception:
-                runtime_enabled = False
+            # Only the explicitly wired Linkshare request watcher supports
+            # channels at deployment scope. Commands/callbacks/other plugins keep
+            # their existing group approval and slot requirements.
+            from pyrogram.enums import ChatType
+            managed_channel = (channel_requests is True and silent is True
+                               and callback is False and slug == 'linkshare'
+                               and getattr(chat, 'type', None) == ChatType.CHANNEL)
+            is_group = group_id < 0 and not managed_channel
+            runtime_enabled = self.runtime_enabled(slug)
             if not runtime_enabled or (is_group and not await self.allowed(group_id, slug)):
                 if is_group:
                     await self.cleanup(group_id, slug)
@@ -87,7 +102,14 @@ class PluginGate:
                     await update.answer('Plugin not active or approved for this group.', show_alert=True)
                 elif not silent:
                     from ..utils.rich import reply
-                    await reply(message, 'This optional plugin is not active or Owner-approved for this group. Ask an administrator to check the plugin settings.')
+                    from ..ui.tables import panel
+                    from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup as Keyboard
+                    await reply(message, panel('Plugin setup required', lines=[
+                        'This optional plugin is not active or Owner-approved for this group.',
+                        f'Bot Owner: enable and approve <code>{slug}</code> with <code>/plugin {slug} on</code> then <code>/plugin {slug} approve</code>.',
+                        'Group admin: open /plugins and tap Activate for this tool. Runtime switches alone do not activate group use.',
+                    ], note='No plugin action was run. Approval and the three-slot limit are still required.'),
+                        reply_markup=Keyboard([[Button('Group plugin settings', callback_data='gplug:page:0')]]))
                 return
             token = GROUP_EXECUTION.set((group_id, slug) if is_group else None)
             if is_group:
@@ -104,8 +126,8 @@ class PluginGate:
                 if asyncio.current_task().cancelling():
                     raise
                 return None  # group cleanup cancelled the owned child only
-            except Exception:
-                logger.exception('Optional plugin execution failed: %s', slug)
+            except Exception as exc:
+                logger.error('Optional plugin execution failed: %s (%s)', slug, type(exc).__name__)
                 if callback:
                     await update.answer('Plugin action failed; moderation remains available.', show_alert=True)
                 elif not silent:
@@ -130,8 +152,9 @@ class PluginGate:
         while not stop_event.is_set():
             try:
                 await self.reconcile()
-            except Exception:
-                logger.exception('Plugin reconciliation failed; retrying without affecting core.')
+            except Exception as error:
+                logger.warning('#Errors Plugin reconciliation unconfirmed (%s); retrying without affecting core.',
+                               type(error).__name__)
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=interval)
             except asyncio.TimeoutError:

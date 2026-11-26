@@ -35,16 +35,25 @@ async def send_stored(message, storage, stored, *, caption: str | None = None, *
     upload, which is exactly what a redeploy looks like.
     """
     file_id = getattr(stored, "telegram_file_id", "")
-    if file_id:
+    if file_id and callable(getattr(message, "reply_cached_media", None)):
         try:
             await message.reply_cached_media(file_id, caption=caption, **kwargs)
             return True
-        except Exception:  # noqa: BLE001 - a stale file_id falls back to the disk
-            logger.warning("cached file_id for %s was refused; trying the disk", stored.name)
+        except Exception as error:
+            reason = f"{type(error).__name__} {error}".upper()
+            if not any(code in reason for code in (
+                "FILE_ID_INVALID", "FILEIDINVALID", "FILE_REFERENCE_EXPIRED",
+                "FILEREFERENCEEXPIRED", "FILE_REFERENCE_INVALID", "FILEREFERENCEINVALID",
+                "MEDIA_EMPTY", "MEDIAEMPTY", "WRONG_FILE_IDENTIFIER",
+            )):
+                # Ambiguous timeout, rate limit or permission error: a disk
+                # retry could duplicate a successfully accepted cached send.
+                raise
+            logger.warning("Cached media reference refused; trying local delivery")
 
     path = storage.path_for(stored)
     try:
-        exists = path.exists()
+        exists = path.is_file()
     except OSError:
         exists = False
     if not exists:
@@ -60,7 +69,10 @@ async def send_stored(message, storage, stored, *, caption: str | None = None, *
                 document=str(path), file_name=stored.name, caption=caption, **kwargs
             )
         return True
+    except (TimeoutError, ConnectionError):
+        # Delivery may already have happened. Do not call it a refusal.
+        raise
     except Exception as exc:  # noqa: BLE001 - the user gets the reason
-        logger.exception("could not deliver %s", stored.name)
+        logger.warning("Stored media delivery refused (%s)", type(exc).__name__)
         await message.reply(f"Telegram refused that file: {type(exc).__name__}")
         return False

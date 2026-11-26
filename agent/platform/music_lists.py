@@ -65,7 +65,7 @@ class MusicPlaylists:
 
     def _scope(self, group_id, owner_id, name=None):
         if (self.db is None or not self.db.connected or self.db._pool is None):
-            raise PlaylistError('PostgreSQL is unavailable; no playlist operation was performed.')
+            raise PlaylistError('Database is unavailable; no playlist operation was performed.')
         if (not isinstance(group_id, int) or isinstance(group_id, bool) or group_id >= 0
                 or not isinstance(owner_id, int) or isinstance(owner_id, bool) or owner_id <= 0):
             raise PlaylistError('A group and authenticated user are required.')
@@ -95,6 +95,27 @@ class MusicPlaylists:
         async with self.db._pool.acquire() as conn:
             return await conn.fetch('''SELECT name,jsonb_array_length(tracks) AS count FROM agent_music_playlists
                 WHERE tenant=$1 AND group_id=$2 AND owner_id=$3 ORDER BY name LIMIT 10''', *scope)
+
+    async def inspect(self, group_id, owner_id, name):
+        """Read bounded titles only; no URL resolution or playback side effects."""
+        scope = self._scope(group_id, owner_id, name)
+        async with self.db._pool.acquire(timeout=5) as conn:
+            row = await conn.fetchrow('''SELECT updated_at,
+                (SELECT jsonb_agg(left(item->>'title',160) ORDER BY position)
+                 FROM jsonb_array_elements(tracks) WITH ORDINALITY AS t(item,position)
+                 WHERE position <= 20) AS titles
+                FROM agent_music_playlists
+                WHERE tenant=$1 AND group_id=$2 AND owner_id=$3 AND name=$4''', *scope, name, timeout=5)
+        if row is None:
+            raise PlaylistError('No playlist with that name belongs to you in this group.')
+        try:
+            titles = row['titles']
+            titles = json.loads(titles) if isinstance(titles, str) else titles
+            if not isinstance(titles, list) or not 1 <= len(titles) <= 20 or any(not isinstance(title, str) or not title.strip() for title in titles):
+                raise ValueError('invalid titles')
+        except (TypeError, ValueError):
+            raise PlaylistError('Saved playlist metadata could not be read.') from None
+        return {'titles': titles, 'updated_at': row['updated_at']}
 
     async def load(self, group_id, owner_id, name):
         scope = self._scope(group_id, owner_id, name)

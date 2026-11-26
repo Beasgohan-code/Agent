@@ -61,7 +61,9 @@ class Watchdog:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._monitor.record_failure(f"{type(exc).__name__}: {exc}")
+            # Provider exceptions may embed credentials or private URLs. This
+            # category reaches both logs and the unauthenticated health payload.
+            self._monitor.record_failure(type(exc).__name__)
             self._log_transition()
             return False
 

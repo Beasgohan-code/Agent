@@ -23,6 +23,23 @@ class PluginManifest:
     #: "builtin" for the plugins shipped with the bot, "installed" for one that
     #: arrived through :mod:`agent.platform.installer` and was approved.
     origin: str = "builtin"
+    dependencies: tuple[str, ...] = ()
+    conflicts: tuple[str, ...] = ()
+    required_credentials: tuple[str, ...] = ()
+    required_capabilities: tuple[str, ...] = ()
+    # Unknown third-party metadata never opts into cloning implicitly.
+    clone_compatible: bool = False
+    group_compatible: bool = False
+    premium_required: bool = False
+    resource_requirements: dict[str, int] = field(default_factory=dict)
+    default_enabled: bool = True
+
+    # Shared command owners may expose one command in both contexts without
+    # widening every other handler in the module.
+    command_scopes: dict[str, str] = field(default_factory=dict)
+
+    def scope_for(self, command: str) -> str:
+        return self.command_scopes.get(command, self.scope)
 
 
 @dataclass
@@ -42,6 +59,10 @@ class PluginRegistry:
     # -- installation ------------------------------------------------------
 
     def register(self, manifest: PluginManifest, handlers: dict[str, Callable] | None = None) -> None:
+        if (manifest.scope not in ('private', 'group', 'all')
+                or any(command not in manifest.commands or scope not in ('private', 'group', 'all')
+                       for command, scope in manifest.command_scopes.items())):
+            raise ValueError('Invalid command scope declaration')
         if manifest.slug in self._plugins:
             raise ValueError(f"plugin {manifest.slug!r} is already registered")
 
@@ -57,7 +78,8 @@ class PluginRegistry:
 
         for command in manifest.commands:
             self._command_owner[command] = manifest.slug
-        self._plugins[manifest.slug] = RegisteredPlugin(manifest=manifest, handlers=dict(handlers))
+        self._plugins[manifest.slug] = RegisteredPlugin(manifest=manifest, handlers=dict(handlers),
+                                                         enabled=manifest.default_enabled)
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -106,3 +128,9 @@ class PluginRegistry:
             for command, slug in self._command_owner.items()
             if self._plugins[slug].enabled
         )
+
+
+def resolve_selection(selected, *, manifests, **kwargs):
+    """Compatibility facade; the pure implementation lives in selection."""
+    from .selection import resolve_selection as resolve
+    return resolve(selected, manifests=manifests, **kwargs)

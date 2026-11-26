@@ -22,7 +22,13 @@ ENV = {
 
 
 class FakeMessage:
+    sequence = 0
+
     def __init__(self, text="", *, reply_to=None, uid=11):
+        type(self).sequence += 1
+        self.id = type(self).sequence
+        from types import SimpleNamespace
+        self.chat = SimpleNamespace(id=uid)
         self.text = text
         self.reply_to_message = reply_to
         self.from_user = FakeUser(uid)
@@ -93,10 +99,14 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def share(ctx, media, command="/genlink 6"):
-    _, handlers = linkshare.build(ctx)
-    message = FakeMessage(command, reply_to=FakeReply(FakeMedia(media)))
-    run(handlers["genlink"](FakeClient(), message))
+def share(ctx, media, command='/genlink 6'):
+    # Seed an already-issued grant: public file-link creation is retired.
+    linkshare.build(ctx)
+    parts = command.split()[1:]
+    stored = ctx.storage.save_path(11, media, name='clip.mp4')
+    record = ctx.links.create(stored.id, 11, ttl_hours=int(parts[0]), max_uses=int(parts[1]) if len(parts)>1 else 0)
+    message = FakeMessage(command)
+    message.replies.append(f'Legacy link https://t.me/agent_bot?start=link_{record.token}')
     return message
 
 
@@ -118,14 +128,11 @@ def test_the_card_carries_a_clickable_deep_link():
     assert _link_url("", "abc.def") == ""
 
 
-def test_a_share_card_shows_the_file_and_its_limits(ctx, media):
-    message = share(ctx, media, "/genlink 6 3")
-
-    text = message.replies[0]
-    assert "Share link" in text
-    assert "clip.mp4" in text
-    assert "3 of 3 left" in text
-    assert "t.me/agent_bot?start=link_" in text
+def test_existing_legacy_record_retains_file_and_limits(ctx, media):
+    message = share(ctx, media, '/genlink 6 3')
+    record = ctx.links.get(token_of(message.replies[0]))
+    assert record.remaining == 3
+    assert ctx.storage.get(record.file_id).name == 'clip.mp4'
 
 
 def test_the_deep_link_hands_the_file_over(ctx, media):
@@ -195,43 +202,24 @@ def test_a_file_that_vanished_is_reported_not_crashed(ctx, media):
 
     assert opened.files == []
     assert "no longer stored" in opened.replies[0]
+    assert record.uses == 0  # Missing metadata must not spend a redemption.
 
 
-def test_a_vault_file_is_shared_without_storing_it_twice(ctx, media):
+def test_old_file_share_command_is_not_registered(ctx):
     _, handlers = linkshare.build(ctx)
-    stored = ctx.storage.save_path(11, media, name="clip.mp4")
-
-    message = FakeMessage(f"/share {stored.id} 6 2")
-    run(handlers["share"](FakeClient(), message))
-
-    text = message.replies[0]
-    assert "Share link" in text
-    assert "2 of 2 left" in text
-    token = token_of(text)
-    assert ctx.links.get(token).file_id == stored.id
-    # sharing a stored file must not duplicate it in the vault
-    assert len(ctx.storage.list_owned(11)) == 1
+    assert 'share' not in handlers
 
 
-def test_sharing_somebody_elses_file_is_refused(ctx, media):
+def test_channel_command_cannot_issue_file_grants(ctx, media):
     _, handlers = linkshare.build(ctx)
-    stored = ctx.storage.save_path(99, media, name="theirs.mp4")
-
-    message = FakeMessage(f"/share {stored.id}")
-    run(handlers["share"](FakeClient(), message))
-
-    assert "No file with that id" in message.replies[0]
+    message = FakeMessage('/genlink 6', reply_to=FakeReply(FakeMedia(media)))
+    run(handlers['genlink'](FakeClient(), message))
+    assert ctx.links.owned(11) == []
 
 
-def test_share_without_an_id_lists_the_vault(ctx, media):
-    _, handlers = linkshare.build(ctx)
-    ctx.storage.save_path(11, media, name="clip.mp4")
-
-    message = FakeMessage("/share")
-    run(handlers["share"](FakeClient(), message))
-
-    assert "Share a stored file" in message.replies[0]
-    assert "clip.mp4" in message.replies[0]
+def test_legacy_links_remain_owner_scoped(ctx, media):
+    share(ctx, media)
+    assert ctx.links.owned(99) == []
 
 
 def test_a_forged_token_is_refused(ctx):

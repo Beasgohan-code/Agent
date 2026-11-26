@@ -4,6 +4,39 @@ This is the project requirement record, not a claim that all work is finished.
 Keep it current as commands are upgraded one by one. New explicit user decisions
 can supersede items here; do not silently discard earlier constraints.
 
+## Current status and document map
+
+- Latest explicit user decisions supersede older phase notes. Keep languages
+  paused until command improvements are finished; English only is released.
+- [COMMAND_INVENTORY.md](COMMAND_INVENTORY.md): generated source declarations,
+  aliases and targeted-review flags, **not** proof all behavior is complete.
+- [USER_ADMIN_FEATURES.md](USER_ADMIN_FEATURES.md): chronological command behavior,
+  limits and safety decisions. Later entries supersede earlier “missing” lists.
+- [CODEBASE_AUDIT.md](CODEBASE_AUDIT.md): phase-specific source/test evidence;
+  old baseline findings/test totals are not current release certification.
+- [GROUP_MANAGEMENT.md](GROUP_MANAGEMENT.md), [MODERATION_PARITY.md](MODERATION_PARITY.md),
+  [GENERAL_FEATURES.md](GENERAL_FEATURES.md), [MUSIC_PARITY.md](MUSIC_PARITY.md):
+  architecture and feature ledgers; respect recorded scope and unresolved limits.
+- [CLONE_CONTROL_CENTRE.md](CLONE_CONTROL_CENTRE.md) and
+  [FILESTORE_CLONE_PARITY.md](FILESTORE_CLONE_PARITY.md): clone/FileStore workflows,
+  authority boundaries and incremental delivery, not universal upstream parity.
+- [ALWAYS_ON.md](ALWAYS_ON.md), [LOG_SAFETY.md](LOG_SAFETY.md),
+  [EMOJI_THEME.md](EMOJI_THEME.md), [UI_PREVIEW.md](UI_PREVIEW.md): hosting/logging
+  limits, presentation and offline visuals. No uptime or live-render guarantee.
+- [REFERENCE_ADOPTION.md](REFERENCE_ADOPTION.md),
+  [references/README.md](references/README.md), [REFERENCE_INVENTORY.md](REFERENCE_INVENTORY.md)
+  and per-reference indexes are pinned static discovery, not execution or a full
+  behavioral/security audit. Preserve licenses; do not run reference installers.
+- [../README.md](../README.md) and
+  [../tools/typetube/README.md](../tools/typetube/README.md): setup and adapter limits.
+
+Current mention contract: @all uses clickable first names; @eall uses random
+emoji labels; no joining/on-off prerequisite.20/message,5s pause, up to2000 returned
+records; Telegram may return only part of a group. Optional command text only,
+no automatic headings or success cards; /tagabort stops future batches.
+Stop/error controls cannot recall an in-flight send. FloodWait/uncertain delivery
+requires review; no automatic retry. No production deployment or startup-fix claim.
+
 ## Non-negotiable workflow
 
 - **Never merge the PR.** Work on the Arena session's fixed current branch only.
@@ -25,13 +58,13 @@ can supersede items here; do not silently discard earlier constraints.
 ## Database and isolation
 
 - **No more local JSON runtime state.** Use the existing Render `DATABASE_URL`;
-  PostgreSQL is mandatory for normal bot startup. Do not ask the user to reconnect/recreate their existing database.
+  database is mandatory for normal bot startup. Do not ask the user to reconnect/recreate their existing database.
 - `/setlog` must survive restart/redeploy; `/unsetlog` must not resurrect an env
   default. Success means confirmed persistence, not an in-memory change or a
   background write merely being queued. Upgrade other mutable settings against
   that durability standard in later increments.
 - Per-bot tenant and per-group feature data must remain isolated. Optional
-  reservations must be atomic in PostgreSQL, not a process-local counter.
+  reservations must be atomic in database, not a process-local counter.
 - Do not claim every document-backed setting has confirmed-write semantics:
   several older stores still use batched document writes and need further audit.
 
@@ -88,7 +121,7 @@ cases, richer settings and generic durable cleanup remain part of the backlog.
 Use the requested reference behavior as the feature target, including **all
 Music-related commands**, not just play/pause. Track actual support and remaining
 families in [MUSIC_PARITY.md](MUSIC_PARITY.md). Current additions include bounded
-queues, serialized controls and scoped PostgreSQL saved playlists. Search/media
+queues, serialized controls and scoped database saved playlists. Search/media
 extraction, channel/video playback, effects, seek, lyrics, autoplay/voting,
 request approvals, DJ delegation and recovery still need implementation and
 verification. Do not register placeholders or silently alias unsupported video
@@ -97,7 +130,7 @@ or extractor behavior to basic direct-URL audio playback.
 ## Latest urgent correction
 
 Log settings were still local-file-only. The current increment replaces that
-production path with a dedicated bot-scoped PostgreSQL row, awaited writes,
+production path with a dedicated bot-scoped database row, awaited writes,
 pre-start hydration, persistent explicit clearing and database-refreshing `/log`.
 A posting probe is sent before committing a new target. In database mode there
 is no ephemeral-file fallback; old file-only selections must be saved once with
@@ -109,9 +142,9 @@ atomic local-file compatibility, clearly labelled as such.
 
 Unhandled handler errors must also notify the configured log destination as
 `#Errors`. The incident center stores safe category/frame metadata and aggregated
-counts in PostgreSQL, without copying raw exception arguments or incoming
+counts in database, without copying raw exception arguments or incoming
 messages. `/errors` is private and Owner-only. Repeated alerts are bounded.
-The normal service now requires PostgreSQL regardless of the legacy DB_REQUIRED
+The normal service now requires database regardless of the legacy DB_REQUIRED
 flag. Remaining standalone JSON helper branches are legacy/test compatibility,
 not a supported bot runtime mode. Temporary downloaded/encoded media is distinct
 from JSON metadata. Continue upgrading mutable commands one by one; reference
@@ -125,3 +158,59 @@ coverage. Implemented public-origin web-service heartbeat plus uptime telemetry
 and themed Home/Help/profile/Ping headings; remaining commands are incremental
 work, not a completed universal redesign. Preserve fallback and never claim
 self-pinging guarantees uninterrupted hosting.
+
+
+## Neutral implementation wording
+
+Keep database-engine branding out of bot-facing text, setup prose and progress
+updates. Describe availability, persistence and failure honestly using generic
+storage wording; never imply a storage migration or remove failure warnings.
+Internal connection protocols, capability identifiers, driver imports, SQL,
+reference source paths and licenses must remain technically correct.
+
+
+## Continuation order (recalled scope, not a completion claim)
+
+1. Continue command-by-command behavior, authorization, rich UI and regression
+   review from COMMAND_INVENTORY; declarations alone do not finish a command.
+2. Preserve and finish the existing eight-tool feature work, FileStore clone
+   parity and main/clone UI separation, clone control/reconciliation, Music
+   source/session/recovery work and remaining moderation/general behavior. Use
+   the linked ledgers; validate pending dirty slices separately, never bulk-stage.
+3. Preserve premium/Owner limits, encrypted sender-owned credentials, isolation,
+   mandatory safety and three-slot optional approval. No duplicate implementations
+   or fake commands/providers; retain native rich tables and Plugin runtime.
+4. Keep the requested mention output/pacing and neutral implementation wording.
+   Test reliability/startup/logging without claiming an unresolved live failure
+   fixed; sanitized hosting evidence is still needed for the reported startup issue.
+5. Only after command work: inspect actual Videl1 language approach; release only
+   fully translated/optimized locales with no English fallback. English only now.
+6. Preserve licenses and unrelated work; verify isolated patches and working tree,
+   publish only on this branch. No merge/deploy/production changes.
+
+
+## Group navigation, responsiveness and ephemeral messages
+
+User reports slow responses and group start/help not working; asks for broader
+polish and ephemeral messages. Keep group navigation available, improve measured
+work/round trips without bypassing rights or server flood limits, and preserve
+moderation receipts/files. Current slice uses recipient-only native temporary
+group menus, not bulk timed deletion. Never silently turn a temporary/private
+response into a public copy. No unsupported fastest-ever or live latency claim.
+
+- Latest direction: skip and remove appearance customization entirely. Removed the
+  uncommitted font renderer, appearance panel, tagline preferences and associated
+  tests/docs/preview additions. Keep the completed module-first Help navigation;
+  continue other pending functional and safety work. Do not merge the PR.
+
+- New Linkshare direction: replace file-link creation command surface with the
+  channel-invite workflow of abhinai2244/LINK-SHAREBOT. Reuse/edit existing command
+  owners where names overlap; no duplicate registrations or deletion of unrelated
+  modules. User confirmed channel workflow and both manual and automatic approval:
+  manual default, automatic opt-in per managed channel. Preserve already-issued
+  file-link redemption and stored files. Command migration is not yet complete.
+
+- UI correction: do not add `/encode`-style slash-command buttons or Copy /command
+  shortcuts. Worker menus should be navigation-first, with commands/examples in
+  readable help text rather than keyboard grids. Keep useful semantic navigation;
+  this does not reinstate the cancelled appearance/theme subsystem.

@@ -27,6 +27,7 @@ class ConfigError(RuntimeError):
 #: Primary optional features plus the platform controls. Mandatory group core
 #: is added by module selection and does not consume optional slots.
 DEFAULT_PLUGINS: tuple[str, ...] = (
+    "premium",
     "ops",
     "core",
     "clone",
@@ -204,7 +205,7 @@ def _bot_id(token: str) -> int:
 #: The picture the owner asked for. Kept in code so a fresh deploy looks right
 #: without another environment variable; START_IMAGE overrides it and
 #: START_IMAGE=0 turns the picture off.
-DEFAULT_START_IMAGE = "https://files.catbox.moe/dhajpx.jpg"
+DEFAULT_START_IMAGE = "https://files.catbox.moe/ddqcyu.jpg"
 
 
 def _optional_image(raw: str | None) -> str | None:

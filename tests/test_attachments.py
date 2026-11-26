@@ -119,7 +119,7 @@ def test_the_kwargs_are_empty_when_nothing_is_configured(tmp_path):
 # --- the renamer commands -------------------------------------------------
 
 
-def test_setcaption_then_viewcaption_then_delcaption(tmp_path):
+def test_setcaption_then_viewcaption(tmp_path):
     ctx = make_ctx(tmp_path)
     _manifest, handlers = renamer.build(ctx)
 
@@ -129,9 +129,6 @@ def test_setcaption_then_viewcaption_then_delcaption(tmp_path):
     view = FakeMessage("/viewcaption")
     run(handlers["viewcaption"], view)
     assert "Caption for this chat" in view.replies[0]
-
-    run(handlers["delcaption"], FakeMessage("/delcaption"))
-    assert ctx.chats.get(CHAT, CAPTION_KEY) is None
 
 
 def test_a_caption_longer_than_telegrams_cap_is_refused(tmp_path):
@@ -245,17 +242,12 @@ def test_a_batch_of_messages_without_files_says_so(tmp_path):
     assert "Nothing saved" in message.replies[0]
 
 
-def test_check_reports_an_entry_and_a_missing_one(tmp_path):
+def test_retired_check_does_not_remove_archive_data(tmp_path):
     ctx = make_ctx(tmp_path)
     source = tmp_path / "a.bin"
     source.write_bytes(b"x" * 8)
     stored = ctx.storage.save_path(USER, source, name="a.bin", quota_bytes=10_000)
-    _manifest, handlers = filestore.build(ctx)
-
-    found = FakeMessage(f"/check {stored.id}")
-    run(handlers["check"], found)
-    assert "Vault entry" in found.replies[0]
-
-    missing = FakeMessage("/check nope")
-    run(handlers["check"], missing)
-    assert "not in your vault" in missing.replies[0]
+    manifest, handlers = filestore.build(ctx)
+    assert "check" not in handlers and "check" not in manifest.commands
+    assert ctx.storage.get(stored.id) is not None
+    assert ctx.storage.path_for(stored).read_bytes() == b"x" * 8

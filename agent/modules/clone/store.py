@@ -2,8 +2,8 @@
 
 A clone is one bot token plus the person who added it. Tokens and optional AI
 provider keys are secrets, so the file is written ``0600``, the panel never shows
-more than its first digits, and the record is **encrypted at rest** when
-``TOKEN_KEY`` is configured (:mod:`agent.platform.secrets`). Masking is a screen
+more than its first digits, and credential writes require encryption with
+``TOKEN_KEY`` (:mod:`agent.platform.secrets`). Masking is a screen
 concern; encryption is a database concern, and this store needs both.
 
 Records written before encryption existed still load: a plaintext token is read
@@ -17,9 +17,11 @@ two clients answering the same updates.
 from __future__ import annotations
 
 import logging
+import copy
+import json
 import re
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from ...platform.db import load_document, save_document
@@ -72,6 +74,8 @@ class Clone:
     managed_owner: bool = False
     log_channel: int | None = None
     storage_channel: int | None = None
+    configuration_revision: int = 0
+    lifecycle_generation: int = 0
 
     @property
     def handle(self) -> str:
@@ -94,25 +98,32 @@ class Clone:
 class CloneStore:
     """A JSON list of clones, rewritten atomically on every change."""
 
-    def __init__(self, root: str | Path, *, db=None, box: SecretBox | None = None) -> None:
+    def __init__(
+        self, root: str | Path, *, db=None, box: SecretBox | None = None
+    ) -> None:
         self.path = Path(root) / "clones.json"
         #: With a database, clone records survive a redeploy on any instance.
         self._db = db
-        #: Token encryption at rest; a box without a key stores plaintext.
+        #: Token encryption at rest; no key permits legacy reads only.
         self._box = box if box is not None else SecretBox(None)
         #: Set when a plaintext record was read and should be rewritten.
         self._needs_rewrite = False
         self._items: dict[int, Clone] = self._load()
-        if self._needs_rewrite and self._items:
+        if self._db is None and self._box.enabled and self._needs_rewrite and self._items:
             # A record read in the old plaintext shape is rewritten encrypted,
             # so a deployment that adds TOKEN_KEY does not keep old rows naked.
             self._needs_rewrite = False
             self._save()
-            logger.info("Encrypted %d clone record(s) that predate TOKEN_KEY", len(self._items))
+            logger.info(
+                "Encrypted %d clone record(s) that predate TOKEN_KEY", len(self._items)
+            )
 
     # -- persistence ------------------------------------------------------
     def _load(self) -> dict[int, Clone]:
         raw = load_document(self._db, "clones", self.path, [])
+        return self._decode(raw)
+
+    def _decode(self, raw):
         if raw == []:
             return {}
         items: dict[int, Clone] = {}
@@ -136,14 +147,20 @@ class CloneStore:
                     try:
                         ai_key = self._box.decrypt(str(entry["ai_api_key_enc"]))
                     except SecretError:
-                        logger.error("clone AI credential cannot be decrypted; skipping record")
+                        logger.error(
+                            "clone AI credential cannot be decrypted; skipping record"
+                        )
                         continue
                 assistant_session = None
                 if entry.get("assistant_session_enc"):
                     try:
-                        assistant_session = self._box.decrypt(str(entry["assistant_session_enc"]))
+                        assistant_session = self._box.decrypt(
+                            str(entry["assistant_session_enc"])
+                        )
                     except SecretError:
-                        logger.error("clone assistant credential cannot be decrypted; skipping record")
+                        logger.error(
+                            "clone assistant credential cannot be decrypted; skipping record"
+                        )
                         continue
                 clone = Clone(
                     bot_id=int(entry["bot_id"]),
@@ -161,6 +178,8 @@ class CloneStore:
                     managed_owner=bool(entry.get("managed_owner")),
                     log_channel=entry.get("log_channel"),
                     storage_channel=entry.get("storage_channel"),
+                    configuration_revision=int(entry.get("configuration_revision", 0)),
+                    lifecycle_generation=int(entry.get("lifecycle_generation", 0)),
                 )
             except (KeyError, TypeError, ValueError):
                 logger.warning("skipping a malformed clone record")
@@ -183,13 +202,14 @@ class CloneStore:
             if not box.enabled:
                 raise SecretError("AI clone credentials require TOKEN_KEY.")
             data["ai_api_key_enc"] = box.encrypt(str(ai_key))
-        if box.enabled:
-            data["token_enc"] = box.encrypt(str(token))
-        else:
-            data["token"] = str(token)
+        if not box.enabled:
+            raise SecretError('Clone token writes require TOKEN_KEY.')
+        data["token_enc"] = box.encrypt(str(token))
         return data
 
     def _save(self) -> None:
+        if self._db is not None:
+            raise RuntimeError("Awaited Database clone operation required")
         save_document(
             self._db,
             "clones",
@@ -197,13 +217,180 @@ class CloneStore:
             [self._payload(clone, self._box) for clone in self._items.values()],
         )
 
+    async def _atomic(
+        self, operation, *args, owner_limit=None, total_limit=None, expected_generation=None, **fields
+    ):
+        """Await canonical document mutations under a tenant transaction lock.
+
+        All writers must use this API. Corrupt/undecryptable records abort the
+        entire mutation rather than freeing capacity or deleting hidden rows.
+        This compatibility bridge preserves the existing encrypted wire format.
+        """
+        if self._db is None:
+            if operation == "fence":
+                return self.update(*args, **fields)
+            if operation == "add" and (
+                len(self.by_owner(args[0].owner_id)) >= owner_limit
+                or self.count() >= total_limit
+            ):
+                raise RuntimeError("Clone capacity reached")
+            return getattr(self, operation)(*args, **fields)
+        db = self._db
+        if not db.connected or getattr(db, "_pool", None) is None:
+            raise RuntimeError("Database clone state unavailable")
+        if not self.encrypted():
+            raise RuntimeError("Clone database operations require TOKEN_KEY")
+        if "clones" in getattr(db, "_pending", {}):
+            raise RuntimeError("Legacy clone write pending; flush before retrying")
+        try:
+            async with db._pool.acquire(timeout=5) as conn:
+                async with conn.transaction():
+                    key = db.name_for("clones")
+                    await conn.execute(
+                        "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+                        key,
+                        timeout=5,
+                    )
+                    raw = await conn.fetchval(
+                        "SELECT value FROM agent_documents WHERE name=$1 FOR UPDATE",
+                        key,
+                        timeout=5,
+                    )
+                    raw = json.loads(raw) if isinstance(raw, str) else raw
+                    raw = [] if raw is None else raw
+                    if not isinstance(raw, list):
+                        raise RuntimeError("Persisted clone state invalid")
+                    work = copy.copy(self)
+                    work._db = None
+                    work._items = work._decode(raw)
+                    if len(work._items) != len(raw):
+                        raise RuntimeError(
+                            "Clone records invalid or undecryptable; operation refused"
+                        )
+                    work._save = lambda: None
+                    if operation == "add":
+                        if (
+                            len(work.by_owner(args[0].owner_id)) >= owner_limit
+                            or work.count() >= total_limit
+                        ):
+                            raise RuntimeError("Clone capacity reached")
+                    if operation == "update" and set(fields) - {
+                        "username",
+                        "disabled",
+                        "profile",
+                        "selected_plugins",
+                        "ai_api_key",
+                        "ai_model",
+                        "assistant_session",
+                    }:
+                        raise RuntimeError("Clone identity fields cannot be updated")
+                    previous = work.get(args[0].bot_id if operation == "add" else args[0]) if operation != "all" else None
+                    if expected_generation is not None and (previous is None or previous.lifecycle_generation != expected_generation):
+                        raise RuntimeError('Clone lifecycle changed; refresh before retrying')
+                    was_disabled = previous.disabled if previous is not None else None
+                    result = getattr(work, "update" if operation == "fence" else operation)(*args, **fields)
+                    changed = (operation == "add" or (previous is not None and (
+                        operation in ("remove", "fence") or
+                        (operation == "update" and "disabled" in fields and was_disabled != fields["disabled"]))))
+                    if changed:
+                        bot_id = args[0].bot_id if operation == "add" else int(args[0])
+                        generation = await self._next_generation(conn, bot_id,
+                            previous.lifecycle_generation if previous is not None else 0)
+                        if operation != "remove":
+                            result = replace(result, lifecycle_generation=generation)
+                            work._items[bot_id] = result
+                    if operation == "add":
+                        if getattr(self, 'configuration', None) is None:
+                            raise RuntimeError("Canonical configuration validator unavailable")
+                        repo = self.configuration.repository
+                        revision_key = repo.key(result.bot_id)
+                        await conn.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', revision_key, timeout=5)
+                        state = repo._decode(await conn.fetchval(
+                            'SELECT value FROM agent_documents WHERE name=$1 FOR UPDATE', revision_key, timeout=5))
+                        result, _ = await self.configuration._persist(conn, result,
+                            expected_revision=state['desired_revision'],
+                            request_id=f'creation_{result.lifecycle_generation}',
+                            identity=f'creation_{result.lifecycle_generation}')
+                        work._items[args[0].bot_id] = result
+                    if operation != "all":
+                        await conn.execute(
+                            """INSERT INTO agent_documents(name,value) VALUES($1,$2::jsonb)
+                            ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value,updated_at=now()""",
+                            key,
+                            json.dumps(
+                                [
+                                    self._payload(c, self._box)
+                                    for c in work._items.values()
+                                ]
+                            ),
+                            timeout=5,
+                        )
+            self._items = work._items
+            return result
+        except RuntimeError:
+            raise
+        except Exception:
+            raise RuntimeError(
+                "Clone result not confirmed; check before retrying"
+            ) from None
+
+    async def _next_generation(self, conn, bot_id, previous):
+        """Registry lock held; retain a non-secret tombstone across deletion."""
+        key = self._db.name_for(f'clone_lifecycle:{bot_id}')
+        raw = await conn.fetchval('SELECT value FROM agent_documents WHERE name=$1 FOR UPDATE', key, timeout=5)
+        raw = json.loads(raw) if isinstance(raw, str) else raw
+        generation = 0 if raw is None else raw.get('generation')
+        if type(generation) is not int or generation < 0 or type(previous) is not int or previous < 0:
+            raise RuntimeError('Clone lifecycle state invalid')
+        generation = max(generation, previous) + 1
+        await conn.execute('''INSERT INTO agent_documents(name,value) VALUES($1,$2::jsonb)
+            ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value,updated_at=now()''',
+            key, json.dumps({'generation': generation}), timeout=5)
+        return generation
+
+    async def afence(self, bot_id, *, disabled, expected_generation=None):
+        """Persist explicit stop/restart intent, even if no local worker exists."""
+        if type(disabled) is not bool:
+            raise RuntimeError('Invalid lifecycle state')
+        if expected_generation is not None and (type(expected_generation) is not int or expected_generation < 0):
+            raise RuntimeError('Invalid lifecycle generation')
+        return await self._atomic('fence', bot_id, disabled=disabled, expected_generation=expected_generation)
+
+    async def aadd(self, clone, *, owner_limit, total_limit):
+        if (
+            type(owner_limit) is not int
+            or type(total_limit) is not int
+            or min(owner_limit, total_limit) < 1
+        ):
+            raise RuntimeError("Clone capacity unavailable")
+        return await self._atomic(
+            "add", clone, owner_limit=owner_limit, total_limit=total_limit
+        )
+
+    async def aupdate(self, bot_id, **fields):
+        if 'disabled' in fields and type(fields['disabled']) is not bool:
+            raise RuntimeError('Invalid lifecycle state')
+        if self._db is not None:
+            from .configuration import CONFIG_FIELDS
+            if set(fields) & CONFIG_FIELDS:
+                raise RuntimeError("Configuration changes require expected revision and request identity")
+        return await self._atomic("update", bot_id, **fields)
+
+    async def aremove(self, bot_id):
+        return await self._atomic("remove", bot_id)
+
+    async def aall(self):
+        return await self._atomic("all")
+
     # -- reads ------------------------------------------------------------
     def get(self, bot_id: int) -> Clone | None:
         return self._items.get(int(bot_id))
 
     def all(self) -> tuple[Clone, ...]:
         return tuple(
-            sorted(self._items.values(), key=lambda clone: clone.created_at, reverse=True)
+            sorted(
+                self._items.values(), key=lambda clone: clone.created_at, reverse=True
+            )
         )
 
     def by_owner(self, owner_id: int) -> tuple[Clone, ...]:
@@ -214,8 +401,12 @@ class CloneStore:
 
     # -- writes -----------------------------------------------------------
     def add(self, clone: Clone) -> Clone:
+        if self._db is not None:
+            raise RuntimeError("Awaited Database clone operation required")
         if clone.bot_id in self._items:
-            raise ValueError("This bot is already recorded; ownership cannot be overwritten")
+            raise ValueError(
+                "This bot is already recorded; ownership cannot be overwritten"
+            )
         self._items[clone.bot_id] = clone
         try:
             self._save()
@@ -234,17 +425,31 @@ class CloneStore:
         return self._box.enabled
 
     def update(self, bot_id: int, **fields) -> Clone | None:
+        if self._db is not None:
+            raise RuntimeError("Awaited Database clone operation required")
         clone = self._items.get(int(bot_id))
         if clone is None:
             return None
+        previous = copy.deepcopy(clone)
         for key, value in fields.items():
             if hasattr(clone, key):
                 setattr(clone, key, value)
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            self._items[int(bot_id)] = previous
+            raise
         return clone
 
     def remove(self, bot_id: int) -> bool:
-        if self._items.pop(int(bot_id), None) is None:
+        if self._db is not None:
+            raise RuntimeError("Awaited Database clone operation required")
+        previous = self._items.pop(int(bot_id), None)
+        if previous is None:
             return False
-        self._save()
+        try:
+            self._save()
+        except Exception:
+            self._items[int(bot_id)] = previous
+            raise
         return True

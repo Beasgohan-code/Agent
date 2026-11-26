@@ -212,3 +212,35 @@ def test_a_press_with_nothing_playing_says_so_instead_of_crashing(tmp_path, monk
     # No playback means the requester rule cannot apply, so it is a refusal.
     assert query.answers[-1][1] is True
     assert ctx.voice.calls == []
+
+
+def test_player_diagnostics_do_not_leak_provider_errors(tmp_path, monkeypatch, caplog):
+    import logging
+    from unittest.mock import AsyncMock
+    secret = 'private-music-token-and-signed-url'
+    async def scenario(action):
+        ctx, _, handlers = build(tmp_path / action, monkeypatch, playback=playing())
+        if action == 'redraw':
+            monkeypatch.setattr(music.rich_ui, 'edit', AsyncMock(side_effect=RuntimeError(secret)))
+            query = FakeQuery('music:pause', user_id=REQUESTER)
+            await ctx.actions.dispatch(FakeClient(), query)
+            assert ctx.voice.playback(CHAT).paused
+            assert query.answers[-1][0] == 'Paused.'
+        else:
+            ctx.voice.leave = AsyncMock(side_effect=VoiceUnavailable(secret))
+            if action == 'button':
+                query = FakeQuery('music:skip', user_id=OWNER)
+                await ctx.actions.dispatch(FakeClient(), query)
+                assert 'not confirmed' in query.answers[-1][0]
+            else:
+                request = FakeMessage()
+                request.from_user.id = OWNER
+                request.reply = AsyncMock()
+                await handlers['skip'](FakeClient(), request)
+                assert 'not confirmed' in str(request.reply.await_args.args[0])
+    with caplog.at_level(logging.DEBUG, logger='agent.modules.music'):
+        for action in ('redraw', 'button', 'command'):
+            asyncio.run(scenario(action))
+    assert secret not in caplog.text
+    records = [r for r in caplog.records if r.name == 'agent.modules.music' and '#Errors' in r.getMessage()]
+    assert len(records) == 3 and all(r.exc_info is None for r in records)

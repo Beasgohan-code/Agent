@@ -1,5 +1,7 @@
 # Music behavior migration
 
+**Phase-specific ledger:** early command counts and pending rows are historical, not the current registration list. Use [COMMAND_INVENTORY.md](COMMAND_INVENTORY.md) for source declarations; Music remains conditional. Unpublished working-tree source/session changes are not verified published functionality. Live playback/provider support remains unverified.
+
 Target reference: the pinned `Videl0` checkout in
 [the source inventory](references/Videl0.md). Original Agent implementations are
 used; reference source is not copied or imported. This is an implementation
@@ -7,16 +9,20 @@ ledger, **not** a claim that the entire reference Music system has been ported.
 
 ## Available when voice capability is configured
 
-Agent registers 24 base group-only Music commands plus four saved-playlist commands when PostgreSQL is connected:
+The published source declares 29 base group-only Music commands plus four saved-playlist commands when storage is connected (33 total). Runtime capability and policy still determine actual registration:
 
 `play`, `playnext`, `pause`, `resume`, `skip`, `stop`, `end`, `resetplayer`,
 `queue`, `q`, `nowplaying`, `leave`, `loop`, `shuffle`, `clear`, `clearqueue`,
-`remove`, `move`, `jump`, `replay`, `volume`, `volumeup`, `volumedown`, `history`.
+`remove`, `move`, `jump`, `replay`, `seek`, `fw`, `bw`, `seekback`,
+`voicehealth`, `volume`, `volumeup`, `volumedown`, `history`.
 
-PostgreSQL adds `saveplaylist`, `playlist`, `playlists`, `deleteplaylist`.
+Storage adds `saveplaylist`, `playlist`, `playlists`, `deleteplaylist`.
 
-- `/play` accepts a direct media URL or replied Telegram media, not a song-name
-  search or a YouTube watch page. `/playnext` uses those same sources and is admin-only.
+- `/play` resolves public media URLs, YouTube video links through the shared
+  resolver when available, or replied Telegram media. Resolution is not playback
+  admission: native streaming currently refuses remote sources and requires
+  validated local media. Song-name search and additional session/source work in
+  the dirty workspace are not published support. `/playnext` is admin-only.
 - `/loop off|one|all` repeats nothing, the current track or the queue. Explicit
   `/skip` overrides repeat-one. Automatic stream completion respects it.
 - `/remove <upcoming position>`, `/move <from> <to>` and `/jump <position>` use
@@ -52,14 +58,14 @@ extraction alone does not discover every dynamic registration or web feature.
 | --- | --- |
 | `vplay`, `cplay`, `cvplay`, `channelplay` | Pending: explicit audio/video mode, linked-channel authorization and destination isolation |
 | `autoplay`, `voteskip` | Pending: bounded recommendations; verified membership, quorum and expiry |
-| `saveplaylist`, `playlist`, `playlists`, `deleteplaylist` | Implemented with PostgreSQL and the saved-metadata limits below; expired/local/signed sources and automatic idle playback are not supported |
-| `seek`, `seekback` | Pending: acknowledged source changes, duration/live-stream checks and engine progress reconciliation |
+| `saveplaylist`, `playlist`, `playlists`, `deleteplaylist` | Implemented with database and the saved-metadata limits below; expired/local/signed sources and automatic idle playback are not supported |
+| `seek`, `seekback`, `fw`, `bw` | Implemented acknowledged seek controls with permission checks and local-media restrictions; live provider playback remains unverified |
 | `speed`, `speedreset`, `bass`, `bassoff`, `effecton`, `effectoff`, `effects` | Pending: validated FFmpeg filter pipelines, resource bounds and acknowledged live transitions |
 | `lyrics` | Pending: configured provider, attribution/licensing and bounded escaped output |
 | `song`, `vsong`, `download` | Pending: extractor, SSRF/redirect validation, media rights, bounded downloads and cancellation |
 | `restorequeue` | Pending: durable safe upcoming metadata; never automatically replay an interrupted current track |
 | `requests`, `dj` | Pending: durable approvals and membership-checked expiring DJ delegation |
-| `voicequality`, `voicehealth` | Pending: validated quality profiles and credential-safe detailed voice diagnostics |
+| `voicequality`, `voicehealth` | `/voicehealth` implemented as credential-safe session diagnostics; quality profiles remain pending |
 
 The reference's `restart` is a general owner operation; Agent already has its
 own owner-only restart command and does not create another Music-owned copy.
@@ -78,12 +84,13 @@ a healthy Telegram probe state (503 for starting, degraded or down).
 
 Telegram `/alive` is an alias for the measured `/status` screen, not a worker
 command. The existing watchdog remains in charge of Telegram probes and fatal
-restart policy. HTTP runs on `0.0.0.0` and `PORT`/`HEALTH_PORT` as before. Nothing
-pings itself; this does not defeat Render free-service sleep or replace a paid
-always-on worker. The async server can time out under an event-loop stall,
+restart policy. HTTP runs on `0.0.0.0` and `PORT`/`HEALTH_PORT` as before.
+An optional public-origin heartbeat is now implemented; see
+[ALWAYS_ON.md](ALWAYS_ON.md#public-keep-alive-heartbeat). It does not defeat
+free-service sleep or replace a paid always-on worker. The async server can time out under an event-loop stall,
 allowing the platform's own liveness check to detect it.
 
-Validation for this increment: **793 tests passed** with disposable PostgreSQL;
+Validation for this increment: **793 tests passed** with disposable database;
 compilation, pyflakes and whitespace checks passed. Voice-engine interactions
 are mocked in command tests. Actual streaming, linked-channel behavior and
 external media providers have not been validated. Stream-end notifications are
@@ -99,7 +106,7 @@ relational `agent_music_playlists` table, not an unscoped in-memory cache.
 
 `/saveplaylist name` snapshots current plus upcoming tracks and **replaces your
 same-named list** here. Maximum: 10 lists per user/group/bot and 20 tracks per
-list, with bounded titles and URLs. PostgreSQL serializes quota checks and the
+list, with bounded titles and URLs. database serializes quota checks and the
 write in one transaction. Lists remain until explicitly deleted; disabling Music
 stops execution but does not erase intentionally saved metadata. Automated
 retention/group-deletion integration remains open; this is not a hard-expiry store.
@@ -120,6 +127,7 @@ check `/queue` before retrying. Saved metadata survives process restarts; curren
 playback and runtime queues still do not.
 
 URL validation is admission checking, **not** a pinned outbound proxy. Native
-streaming retains redirect/DNS-rebinding limitations; DNS revalidation does not
-prove that a URL remains safe forever or that its content is playable/licensed.
-No extractor or media download is performed while saving/loading metadata.
+streaming refuses remote sources pending enforceable mediated fetching; saved
+URL metadata is not evidence a source can be played. DNS revalidation alone does
+not prove long-term safety or media rights. No extractor or media download is
+performed while saving/loading metadata.

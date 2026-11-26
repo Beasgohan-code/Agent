@@ -142,6 +142,8 @@ def test_required_database_load_failure_refuses_before_build_or_telegram():
                              load_error='ConnectionError')
         bot = SimpleNamespace(settings=SimpleNamespace(db_required=True), database=db,
                               fatal_reason=None, build=AsyncMock())
+        bot._startup_phase = AgentBot._startup_phase.__get__(bot)
+        bot._startup_step = AgentBot._startup_step.__get__(bot)
         await AgentBot._run(bot)
         assert 'could not be loaded' in bot.fatal_reason
         bot.build.assert_not_called()

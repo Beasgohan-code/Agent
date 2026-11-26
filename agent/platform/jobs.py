@@ -16,6 +16,10 @@ from typing import Any, Awaitable, Callable
 logger = logging.getLogger(__name__)
 
 
+class JobAdmissionError(RuntimeError):
+    """No work admitted because the local queue is closed or at capacity."""
+
+
 class JobState(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -33,6 +37,7 @@ class Job:
     state: JobState = JobState.QUEUED
     progress: float = 0.0
     detail: str = ""
+    #: Stable failure code only; provider exception bodies are not job history.
     error: str | None = None
     #: Whatever the runner returned — a produced file's path, usually.
     result: Any = None
@@ -62,13 +67,27 @@ class Job:
 class JobQueue:
     """Bounded-concurrency runner with cancellation."""
 
-    def __init__(self, *, concurrency: int = 2, max_history: int = 200) -> None:
+    def __init__(self, *, concurrency: int = 2, max_history: int = 200, max_active: int = 100) -> None:
+        if type(max_active) is not int or max_active < 1:
+            raise ValueError("max_active must be a positive integer")
+        self._max_active = max_active
+        self._closed = False
         self.eligibility_check = None
         self._limit = asyncio.Semaphore(max(1, concurrency))
         self._jobs: dict[str, Job] = {}
         self._counter = 0
         self._max_history = max_history
         self._tasks: set[asyncio.Task] = set()
+
+    def ensure_capacity(self) -> None:
+        """Synchronous preflight; submit rechecks. Do not await before admission."""
+        if self._closed:
+            raise JobAdmissionError("Job queue is shut down")
+        # Count live tasks, not logical job states: cancellation may still be
+        # cleaning up. No await between admission and task creation, so this
+        # budget includes running, queued and cancelling work on this loop.
+        if sum(not task.done() for task in self._tasks) >= self._max_active:
+            raise JobAdmissionError("Job queue capacity reached; wait for active work to finish")
 
     def submit(
         self,
@@ -78,6 +97,7 @@ class JobQueue:
         *,
         label: str = "",
     ) -> Job:
+        self.ensure_capacity()
         self._counter += 1
         job = Job(id=f"{module}-{self._counter}", module=module, owner_id=owner_id, label=label)
         from .execution import GROUP_EXECUTION
@@ -91,8 +111,21 @@ class JobQueue:
         job.task = asyncio.create_task(self._run(job, runner), name=job.id)
         self._tasks.add(job.task)
         job.task.add_done_callback(self._tasks.discard)
+        job.task.add_done_callback(lambda task: self._task_finished(job, task))
         self._trim()
         return job
+
+    def _task_finished(self, job, task):
+        self._finalize_cancel(job, task)
+        self._trim()
+
+    @staticmethod
+    def _finalize_cancel(job, task):
+        # Also runs when cancellation happens before _run starts or while
+        # waiting for concurrency/admission checks outside the runner body.
+        if task.cancelled():
+            job.state = JobState.CANCELLED
+            job.finished_at = job.finished_at or time.time()
 
     async def _run(self, job: Job, runner: Callable[[Job], Awaitable[Any]]) -> None:
         async with self._limit:
@@ -103,24 +136,45 @@ class JobQueue:
                     eligible = await self.eligibility_check(job.group_id, job.module)
                 except Exception:
                     eligible = False
-                if not eligible:
+                # The authority contract is an explicit boolean, not truthiness:
+                # malformed provider values must never authorize queued work.
+                if eligible is not True:
                     job.state = JobState.CANCELLED
                     job.finished_at = time.time()
                     return
+            # Eligibility is awaited: cancellation/shutdown may have happened
+            # while the provider was reading, even if it swallowed CancelledError.
+            # No await between this final fence and invoking the runner.
+            if job.state is JobState.CANCELLED or self._closed:
+                job.state = JobState.CANCELLED
+                job.finished_at = job.finished_at or time.time()
+                return
             job.state = JobState.RUNNING
             job.started_at = time.time()
             try:
                 job.result = await runner(job)
             except asyncio.CancelledError:
                 job.state = JobState.CANCELLED
-                job.finished_at = time.time()
+                job.finished_at = job.finished_at or time.time()
                 raise
             except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
+                if job.state is JobState.CANCELLED:
+                    # A runner can replace CancelledError with a cleanup error.
+                    # Preserve requested cancellation, but disclose uncertainty.
+                    job.result = None
+                    job.finished_at = job.finished_at or time.time()
+                    job.detail = (job.detail + "; " if job.detail else "") + "Cancelled runner ended with error"
+                    logger.warning("#Errors Cancelled job runner ended with error (%s).", type(exc).__name__)
+                    return
                 job.state = JobState.FAILED
-                job.error = f"{type(exc).__name__}: {exc}"
+                job.error = "runner_failed"
                 job.finished_at = time.time()
-                logger.exception("Job %s (%s) failed", job.id, job.module)
+                logger.warning("#Errors Job runner failed (%s).", type(exc).__name__)
             else:
+                if job.state is JobState.CANCELLED:
+                    job.result = None
+                    job.finished_at = job.finished_at or time.time()
+                    return
                 job.state = JobState.DONE
                 job.progress = 1.0
                 job.finished_at = time.time()
@@ -141,10 +195,14 @@ class JobQueue:
 
     async def cancel_group(self, group_id: int, module: str) -> None:
         tasks = []
-        for job in self.active():
+        # Logical cancellation can precede actual task completion. Include
+        # already-cancelled work, without cancelling its cleanup a second time.
+        for job in list(self._jobs.values()):
             if job.group_id == group_id and job.module == module:
-                self.cancel(job.id)
-                if job.task is not None and job.task is not asyncio.current_task():
+                if not job.finished:
+                    self.cancel(job.id)
+                if (job.task is not None and not job.task.done()
+                        and job.task is not asyncio.current_task()):
                     tasks.append(job.task)
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -160,10 +218,14 @@ class JobQueue:
 
     async def shutdown(self) -> None:
         """Cancel everything still running; used on graceful stop."""
+        self._closed = True
         for job in self.active():
-            job.state = JobState.CANCELLED
+            self.cancel(job.id)
         for task in list(self._tasks):
-            task.cancel()
+            # cancel() above (or an earlier caller) may already have started
+            # cleanup. A second cancellation would interrupt that cleanup.
+            if not task.done() and not task.cancelling():
+                task.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
 
@@ -171,7 +233,8 @@ class JobQueue:
         if len(self._jobs) <= self._max_history:
             return
         finished = sorted(
-            (j for j in self._jobs.values() if j.finished), key=lambda j: j.created_at
+            (j for j in self._jobs.values()
+             if j.finished and (j.task is None or j.task.done())), key=lambda j: j.created_at
         )
         for job in finished[: len(self._jobs) - self._max_history]:
             self._jobs.pop(job.id, None)

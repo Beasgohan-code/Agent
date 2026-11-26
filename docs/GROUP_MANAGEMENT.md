@@ -1,5 +1,7 @@
 # Agent — group-management architecture audit
 
+**Chronological architecture ledger:** early “next” steps and implementation gaps describe their phase; later sections and [the current review evidence](CODEBASE_AUDIT.md) supersede them. See [USER_REQUIREMENTS.md](USER_REQUIREMENTS.md#current-status-and-document-map) for document precedence. This is not a claim that every architecture gap has been closed.
+
 ## Product contract
 
 Agent is primarily a professional group-management bot. Moderation, group
@@ -30,7 +32,7 @@ separate decisions. The trusted-code installer is not a sandbox.
 | Optional runtime | Deployment selection, global handler attachment/removal, disabled-state persistence | Per-group dispatch, task/listener ownership and teardown |
 | Analytics | Existing bounded activity records | Explicit metric definitions, retention, group aggregation and dashboard |
 
-The group store is PostgreSQL-backed JSONB when configured, partitioned by group
+The group store is database-backed JSONB when configured, partitioned by group
 inside a bot-scoped document. It is **not** safe for concurrent read/count/write
 slot reservations. Optional modules still use the existing deployment-wide
 runtime; this change does not silently impose three slots on existing groups.
@@ -40,7 +42,7 @@ runtime; this change does not silently impose three slots on existing groups.
 1. Audit command and callback permissions; separate mandatory event handling
    from optional execution. Today watchers use separate dispatcher groups, but
    startup/build still shares a process and is not a fault-isolated pipeline.
-2. Introduce PostgreSQL catalog and activation tables keyed by tenant and group.
+2. Introduce database catalog and activation tables keyed by tenant and group.
    Serialize all group activation mutations with a transaction-scoped group lock,
    recheck Owner approval inside the transaction, enforce a unique plugin row and
    count active/reserved slots while holding that lock. Global blocking must
@@ -74,14 +76,14 @@ that risks duplicate bot sessions. A genuinely separate service using the same
 token must be stopped. Background workers retain the bounded lease wait.
 
 The shutdown wrapper closes HTTP, stops the heartbeat, releases only its own
-lease and closes PostgreSQL even after startup failure. The heartbeat starts
+lease and closes database even after startup failure. The heartbeat starts
 immediately after acquisition, before Telegram, voice or clone initialization.
 
 ### Lease safety during database outages
 
 An unavailable database is not evidence of lease ownership. Acquisition now
 refuses unprotected startup, and failed renewals signal shutdown. Once a process
-selects a PostgreSQL lease, it cannot silently downgrade to a container-local
+selects a database lease, it cannot silently downgrade to a container-local
 file lock after disconnection. Web standby retries include a delay to avoid
 hammering the database. Operators should expect reduced availability during a
 database outage rather than duplicate bot responders.
@@ -171,7 +173,7 @@ Do not treat the new service alone as end-to-end enforcement. Existing optional
 commands still use the deployment-wide runtime until routing and teardown are
 integrated. Mandatory core availability is retained.
 
-Validation: full suite with a disposable PostgreSQL server: **626 passed**, no
+Validation: full suite with a disposable database server: **626 passed**, no
 skips. The integration test exercises concurrent activation, fourth-slot refusal,
 group isolation, configuration isolation, deactivation, resource cleanup markers
 and a revocation/activation race. It is opt-in via `AGENT_TEST_DATABASE_URL` when
@@ -189,7 +191,7 @@ Keep Render's liveness path `/health/live`.
 ## Execution-routing phase (supersedes earlier routing/UI pending notes)
 
 `platform/execution.py` now gates group optional-module commands, registered
-callbacks/deep links and watcher callbacks using live PostgreSQL eligibility.
+callbacks/deep links and watcher callbacks using live database eligibility.
 Callback/deep-link ownership is captured while the module builds. Mandatory
 modules are not wrapped. Missing chat origins are refused rather than assumed
 private. Private optional tools retain deployment-scoped use; their group-use
@@ -222,11 +224,11 @@ durable resource-row lifecycle processing are still incomplete.
 
 No additional migration or application environment variable is needed beyond the
 five tables introduced previously. Group optional execution now fails closed if
-PostgreSQL or approval is absent. Deployments relying on group music must set up
+database or approval is absent. Deployments relying on group music must set up
 DATABASE_URL, SESSION_STRING and Owner approval, then activate it in the group.
 No live Telegram/Render rollout was exercised in this environment.
 
-Validation: **641 passed**, with real disposable PostgreSQL enabled; compileall,
+Validation: **641 passed**, with real disposable database enabled; compileall,
 pyflakes and whitespace checks passed. Added regression tests for execution gates,
 callback rechecks, queued-job rechecks, cross-group cancellation isolation,
 owned-child cancellation, optional failure containment, presser authorization,
@@ -256,7 +258,7 @@ included here. Existing members affected by a restart may need administrator
 recovery. Turning verification off controls new onboarding; it does not undo
 existing pending restrictions automatically.
 
-Validation: **666 passed** with disposable PostgreSQL, plus compileall, pyflakes
+Validation: **666 passed** with disposable database, plus compileall, pyflakes
 and whitespace checks. Added safety tests for stale/cross-group/wrong-prompt
 callbacks, membership changes, failed unrestriction, baseline restoration,
 timeout protection, malformed ids, failed prompt rollback, duplicate join events
@@ -312,11 +314,11 @@ requested until a dedicated isolated assistant lifecycle is implemented.
 Deployment: configure TOKEN_KEY before accepting new clone credentials. Existing
 clone records remain readable; new channel, selected-plugin and managed-owner
 fields are additive in the existing encrypted clone store. Sudo uses a scoped
-PostgreSQL document (or standalone file), not environment-wide implicit powers.
+database document (or standalone file), not environment-wide implicit powers.
 No new application dependency or schema migration. Existing clones no longer
 inherit the parent session or channels; supply their own configuration as needed.
 No live Telegram calls were made during validation: API identity/channel checks
-are tested with controlled responses, while PostgreSQL integration uses a real
+are tested with controlled responses, while database integration uses a real
 disposable server.
 
 Validation: full suite **681 passed**, compileall, pyflakes and whitespace checks
@@ -334,8 +336,8 @@ operator. Parent AI keys/models are cleared in clone settings. The recorded
 token sender is now the Owner for all clone records, including legacy ones,
 scoped to the clone's database namespace.
 
-Validation for this increment: **700 tests passed with disposable PostgreSQL**
-(699 passed and one database test skipped without PostgreSQL); compileall,
+Validation for this increment: **700 tests passed with disposable database**
+(699 passed and one database test skipped without database); compileall,
 pyflakes and diff whitespace checks passed. Provider tests use mocked HTTP;
 no live Telegram or paid AI request was made.
 
@@ -372,7 +374,7 @@ is complete; manual feature-by-feature parity and security review remain open.
 Guided selections are displayed by feature name in `/mybots` and the profile
 picker, not mislabelled as the fallback `tiny` profile. The picker warns that a
 legacy profile replaces a guided selection. Validation: **722 passed** against
-disposable PostgreSQL; compileall, pyflakes and whitespace checks passed.
+disposable database; compileall, pyflakes and whitespace checks passed.
 No live Telegram/media/provider validation was performed.
 
 ### Isolated AI clone credentials
@@ -393,7 +395,7 @@ with secret-message deletion cannot restore a discarded key. Failed store adds
 roll back the in-memory record. This is stateless text completion, not a tool
 agent. Music remains the only primary feature without a guided clone template.
 
-Validation for AI clone setup: **726 tests passed** with disposable PostgreSQL;
+Validation for AI clone setup: **726 tests passed** with disposable database;
 compileall, pyflakes and whitespace checks passed. Paid provider calls and live
 Telegram credential/session behavior have not been tested in this environment.
 
@@ -416,18 +418,18 @@ secrets. Music assistant credential verification, account-level exclusivity and
 a safe private session workflow still need implementation before exposing the
 Music template; no assistant credentials are being accepted prematurely.
 
-Validation: **741 tests passed** with disposable PostgreSQL; compileall, pyflakes
+Validation: **741 tests passed** with disposable database; compileall, pyflakes
 and whitespace checks passed. Voice-library lifecycle tests use mock clients,
 not live Telegram calls. No real assistant account was connected.
 
 ### Assistant account ownership
 
-Database-backed voice engines now use a session-level PostgreSQL advisory lock
+Database-backed voice engines now use a session-level database advisory lock
 keyed by the **verified Telegram user ID**, not the session string or bot tenant.
 The main bot and future Music clones therefore contend for the same account
 across scopes. Different accounts remain independent. Lock acquisition occurs
 after user authorization/identity checks and before the call engine starts.
-PostgreSQL being configured but unavailable fails closed for this guard; no
+database being configured but unavailable fails closed for this guard; no
 file fallback is used. A database-free legacy deployment retains its existing
 single-process behavior and does not gain distributed account exclusivity.
 
@@ -435,12 +437,12 @@ Each active guarded engine retains one pool connection until shutdown. A
 five-second health check with a five-second query timeout triggers shutdown on
 connection loss; new voice operations also check ownership. This is a bounded
 best-effort stop, not instantaneous fencing of third-party Telegram software.
-Locks coordinate bots sharing this PostgreSQL database, not different databases
+Locks coordinate bots sharing this database, not different databases
 or external Telegram clients. A database disconnect can release a lock before
 the old assistant finishes shutdown; no perfect split-brain guarantee is made.
 Use a dedicated assistant account. Logs and lock keys contain no session string.
 
-Validation: **747 passed** with disposable PostgreSQL, including a real three-way
+Validation: **747 passed** with disposable database, including a real three-way
 cross-tenant account-lock race, independent-account concurrency and release/reuse.
 Voice tests cover refusal before call startup, lost ownership and shutdown
 without monitor self-cancellation. No live assistant account was connected.
@@ -450,7 +452,7 @@ verified consent/identity workflow before it can be enabled.
 ### Private Music onboarding
 
 The previous Music-template gate is superseded by a consent-first guided flow.
-Music requires connected PostgreSQL and installed voice dependencies before any
+Music requires a connected database and installed voice dependencies before any
 session prompt is shown. The operator must confirm control of a dedicated user
 account; the bot explains that a session grants broad account access, that the
 service decrypts it at runtime, and that Telegram history cannot guarantee
@@ -480,7 +482,7 @@ is not a feature-parity or production-validation claim. Music requires dedicated
 account provisioning, admin permissions and an active group voice chat for real
 playback. No real assistant was connected and no live call was joined here.
 
-Validation: **766 tests passed** with disposable PostgreSQL; compileall, pyflakes
+Validation: **766 tests passed** with disposable database; compileall, pyflakes
 and whitespace checks passed. Includes real offline Telethon session serialization
 and parsing, untrusted-endpoint rejection, consent/readiness gates, encrypted
 round-trip, draft cleanup and startup-failure rollback. Lifecycle calls remain
@@ -509,7 +511,7 @@ are excluded from Docker build context, not merely omitted by COPY statements.
 
 The current branch already includes consent-first encrypted Music onboarding
 from the preceding commit; it is retained rather than rebuilt. Validation for
-this increment: **772 passed** against disposable PostgreSQL with the optional
+this increment: **772 passed** against disposable database with the optional
 Telethon parser installed; compileall, pyflakes and whitespace checks passed.
 No live Telegram deployment, voice call, Render configuration or production
 lease was changed or tested.
@@ -536,7 +538,7 @@ handlers and no claim of full reference parity. Lifecycle, external extraction,
 recording/privacy and licensing boundaries remain in effect. Static extraction
 across all repositories is not a complete manual audit or blanket reuse grant.
 
-Validation: **793 tests passed** with disposable PostgreSQL; compileall,
+Validation: **793 tests passed** with disposable database; compileall,
 pyflakes and whitespace checks passed. This includes alive/readiness HTTP
 responses, queue/volume permissions, repeat modes, queue rollback, per-group
 concurrency and isolation, bounded queues and escaping. No live Telegram voice
@@ -564,14 +566,14 @@ The 100-command-per-scope limit is logged, with the full active list in help.
 [Always-on deployment](ALWAYS_ON.md) distinguishes the inspected references'
 heartbeat/self-ping code from actual hosting guarantees. The existing Blueprint
 uses a paid worker; no live hosting plan or monitor was changed. Validation:
-**802 tests passed** with disposable PostgreSQL; compileall, pyflakes and
+**802 tests passed** with disposable database; compileall, pyflakes and
 whitespace checks passed. Tests cover plugin-change sync, in-flight changes,
 manifest scopes, clone startup sync, API timeouts and measured uptime. No live
 Telegram command registration, deployment or billing action was performed.
 
 ### Durable saved Music metadata
 
-Music exposes 24 base commands plus four playlist commands when PostgreSQL is
+Music exposes 24 base commands plus four playlist commands when database is
 connected: `/saveplaylist`, `/playlist`, `/playlists`, `/deleteplaylist`.
 The additive `agent_music_playlists` table keys every row by bot tenant, group,
 authenticated user and validated name. Saving snapshots current/upcoming URL
@@ -590,7 +592,7 @@ documented, and path-embedded access tokens cannot be automatically recognized.
 Saved lists remain until deleted; turning off Music does not silently destroy
 them. Automatic retention and whole-group erasure integration remain open.
 
-Validation: **822 tests passed** with disposable PostgreSQL, including a real
+Validation: **822 tests passed** with disposable database, including a real
 12-way quota race, same-name replacement, reconnect persistence, bot/group/user
 isolation, delete ownership, DNS revalidation, malformed metadata, permission
 checks and all-or-nothing queue admission. Compileall, pyflakes and whitespace
@@ -598,11 +600,11 @@ checks passed. DNS and voice interactions were mocked; no live streaming or
 media-provider claim is made. Existing command sync picks up the four handlers
 when this database-capable build is deployed.
 
-### Confirmed PostgreSQL log settings — restart regression fix
+### Confirmed database log settings — restart regression fix
 
 The log destination was an exception to the existing database-backed services:
 `LogBook` still wrote `logbook.json` only. It now receives the bot's database and
-uses a dedicated `agent_log_settings` row keyed by exact tenant scope. PostgreSQL
+uses a dedicated `agent_log_settings` row keyed by exact tenant scope. database
 schema creation is additive. Writes are awaited directly, not queued through
 the legacy JSONB document flusher; command success follows the database response.
 The runtime destination changes only after a confirmed write. Ambiguous database
@@ -619,7 +621,7 @@ Standalone mode retains atomic local-file compatibility, including explicit clea
 `/setlog` validates a negative channel/group id, checks reachability, sends a
 bounded posting probe, then persists and acknowledges. The probe may appear even
 if the later database write fails; Telegram posting and SQL cannot be atomic.
-`/unsetlog` persists its clear before reporting success. `/log` rereads PostgreSQL
+`/unsetlog` persists its clear before reporting success. `/log` rereads database
 and shows the settings backend. Titles are HTML escaped; storage errors expose no
 raw database credentials. Use `/setlog` once after deploying this correction to
 replace any old file-only selection; already-lost ephemeral data is unrecoverable.
@@ -629,8 +631,8 @@ command-by-command durability review. [Standing requirements](USER_REQUIREMENTS.
 preserves the user's scope, safety, clone, UI, source-review and no-merge rules.
 
 Validation for this correction: **832 tests passed** against disposable
-PostgreSQL; compileall, pyflakes and whitespace checks passed. Tests include
-actual `/setlog`/`/unsetlog` handlers against PostgreSQL, fresh-filesystem restart,
+database; compileall, pyflakes and whitespace checks passed. Tests include
+actual `/setlog`/`/unsetlog` handlers against database, fresh-filesystem restart,
 environment override/explicit clear, main/clone isolation, startup hydration,
 write failure and posting denial. No live Telegram/Render service or production
 database was modified.
@@ -639,7 +641,7 @@ database was modified.
 
 Unhandled handler failures now emit privacy-minimized `#Errors` notifications to
 that bot's log destination. Owner-only `/errors` works in private chat and lists
-10 recent aggregated incident groups, isolated by bot tenant. PostgreSQL retains
+10 recent aggregated incident groups, isolated by bot tenant. database retains
 100 groups per bot; repeat notifications are throttled for 60 seconds per
 fingerprint in each process. Exception messages, incoming updates and locals are
 not stored by this incident collector. Database outages yield unsaved metadata

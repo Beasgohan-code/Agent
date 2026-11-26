@@ -14,6 +14,8 @@ one payload, one owner.
 from __future__ import annotations
 
 import logging
+import asyncio
+import re
 from typing import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
@@ -48,11 +50,17 @@ class DeepLinkRouter:
         self._routes: dict[str, DeepLinkHandler] = {}
 
     def register(self, prefix: str, handler: DeepLinkHandler) -> None:
-        key = (prefix or "").strip().lower()
+        if not isinstance(prefix, str):
+            raise ValueError("a deep-link prefix must be a string")
+        key = prefix.strip().lower()
         if not key:
             raise ValueError("a deep-link prefix cannot be empty")
         if SEPARATOR in key:
             raise ValueError(f"deep-link prefix {key!r} cannot contain {SEPARATOR!r}")
+        if not re.fullmatch(r"[a-z0-9-]+", key):
+            raise ValueError("a deep-link prefix must contain letters, numbers or hyphens")
+        if not callable(handler):
+            raise ValueError("a deep-link handler must be callable")
         if key in self._routes:
             raise ValueError(f"deep-link prefix {key!r} is already registered")
         from .execution import REGISTERING
@@ -81,6 +89,13 @@ class DeepLinkRouter:
             return False
         try:
             await handler(client, message, rest)
-        except Exception:  # noqa: BLE001 - one bad link must not stop /start
-            logger.exception("Deep link %r failed in its module", payload)
+        except Exception as exc:
+            # Tokens and raw provider error messages can contain private data.
+            logger.error("Deep-link handler failed prefix=%s (%s)", prefix, type(exc).__name__)
+            try:
+                await asyncio.wait_for(message.reply(
+                    "This link action was not confirmed. Check its result before retrying; contact the bot administrator if it keeps failing."
+                ), timeout=5)
+            except Exception as reply_error:
+                logger.warning("Deep-link failure notice unavailable (%s)", type(reply_error).__name__)
         return True

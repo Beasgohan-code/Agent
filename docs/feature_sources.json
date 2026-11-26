@@ -1,0 +1,9 @@
+[
+  {"feature":"Music", "path":"music/Videl0", "url":"https://github.com/Beasgohan-code/Videl0", "revision":"6430b1e5e60e0776a7ab519e05cb98c2ca1a2ebf", "license_review":"No root license found; nested terms need review before code reuse."},
+  {"feature":"Music", "path":"music/Playeon", "url":"https://github.com/playeon/Playeon", "revision":"6ec6097bc7f5db19583618c226a5e4c410b90cee", "license_review":"Custom attribution/personal-use/non-commercial license. Do not copy into a monetized or rebranded service without permission and required notices."},
+  {"feature":"Saver", "path":"saver", "url":"https://github.com/abhinai2244/save-restricted-content-bot", "revision":"bf2e45a1ef187060e053e59c0336cb0e6a4a022b", "license_review":"Root MIT; preserve required notices if copying; nested dependencies still require review."},
+  {"feature":"Encoder", "path":"Encoder", "url":"https://github.com/abhinai2244/ENCODING-BOT", "revision":"84d4e256e2f2047c653691b5b59bfdea2a262fae", "license_review":"Root AGPL-3.0; review source-distribution/network obligations and nested terms before reuse."},
+  {"feature":"FileStore", "path":"Filestore", "url":"https://github.com/abhinai2244/Multi-FileStoreBot", "revision":"010172404c2121862deea99f0fe25766d130e392", "license_review":"No root license found; public availability is not blanket reuse permission."},
+  {"feature":"Linkshare", "path":"Linkshare", "url":"https://github.com/abhinai2244/LINK-SHAREBOT", "revision":"265f2acbe720571e7c514cd32eea600292656fe2", "license_review":"No root license found; public availability is not blanket reuse permission."},
+  {"feature":"Leech", "path":"leech", "url":"https://github.com/abhinai2244/CBML", "revision":"4d13aa14a9d44af426f740db5905c3a22001ad38", "license_review":"Root AGPL-3.0; review source-distribution/network obligations and nested terms before reuse."}
+]

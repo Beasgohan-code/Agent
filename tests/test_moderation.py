@@ -46,17 +46,23 @@ class FakeClient:
         self._rights = rights or {}
 
     async def get_chat_member(self, chat_id, user_id):
-        status = self._caller if int(user_id) == 11 else self._target
+        status = ADMIN if int(user_id)==99 else self._caller if int(user_id) == 11 else self._target
         return member(status, **self._rights)
+
+    async def get_me(self):
+        return SimpleNamespace(id=99)
 
     async def ban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("ban", int(user_id)))
+        return True
 
     async def unban_chat_member(self, chat_id, user_id, **kwargs):
         self.calls.append(("unban", int(user_id)))
+        return True
 
     async def restrict_chat_member(self, chat_id, user_id, permissions, **kwargs):
         self.calls.append(("restrict", int(user_id), permissions, kwargs.get("until_date")))
+        return True
 
     async def delete_messages(self, chat_id, message_ids, **kwargs):
         self.calls.append(("delete", message_ids))
@@ -133,7 +139,7 @@ def test_a_plain_member_cannot_warn(ctx):
 
     run(handlers(ctx)["warn"], client, message)
 
-    assert message.replies == [moderation.DENIED]
+    assert "permission required" in str(message.replies[-1])
     assert ctx.chats.active_warning_count(-100500, 22) == 0
 
 
@@ -158,11 +164,11 @@ def test_an_admin_without_the_privilege_is_refused(ctx):
 
     run(handlers(ctx)["ban"], client, message)
 
-    assert message.replies == [moderation.DENIED]
+    assert "permission required" in str(message.replies[-1])
     assert client.calls == []
 
 
-def test_the_bot_owner_acts_without_being_an_admin(tmp_path):
+def test_configured_owner_cannot_warn_without_current_group_admin_rights(tmp_path):
     settings = Settings.from_env({**ENV, "OWNER_ID": "11"})
     owner_ctx = ModuleContext(
         settings=settings,
@@ -178,7 +184,8 @@ def test_the_bot_owner_acts_without_being_an_admin(tmp_path):
 
     run(handlers(owner_ctx)["warn"], client, message)
 
-    assert owner_ctx.chats.active_warning_count(-100500, 22) == 1
+    assert owner_ctx.chats.active_warning_count(-100500, 22) == 0
+    assert "permission required" in str(message.replies[-1])
 
 
 # --- target safety ---------------------------------------------------------
@@ -250,13 +257,13 @@ def test_note_is_stored_and_surfaced_by_warnings(ctx):
     assert "watch this one" in listing.replies[0]
 
 
-def test_trust_toggles(ctx):
+def test_approve_and_unapprove(ctx):
     client = FakeClient(caller=ADMIN)
 
-    run(handlers(ctx)["trust"], client, FakeMessage("/trust", reply=True))
+    run(handlers(ctx)["approve"], client, FakeMessage("/approve", reply=True))
     assert ctx.chats.is_trusted(-100500, 22) is True
 
-    run(handlers(ctx)["trust"], client, FakeMessage("/trust", reply=True))
+    run(handlers(ctx)["unapprove"], client, FakeMessage("/unapprove", reply=True))
     assert ctx.chats.is_trusted(-100500, 22) is False
 
 
@@ -265,13 +272,17 @@ def test_trust_toggles(ctx):
 
 def test_purge_deletes_the_requested_range(ctx):
     client = FakeClient(caller=ADMIN)
+    async def delete(chat_id, ids):
+        client.calls.append(('delete', ids))
+        return 1
+    client.delete_messages = delete
     message = FakeMessage("/purge 3", message_id=100)
 
     run(handlers(ctx)["purge"], client, message)
 
     deleted = [c[1] for c in client.calls if c[0] == "delete"]
-    assert deleted == [99, 98, 97]
-    assert "Messages removed: 3" in message.replies[0]
+    assert deleted == [[99, 98, 97]]
+    assert "Exact count unknown" in str(message.replies[0])
 
 
 def test_purge_is_capped(ctx):
@@ -279,7 +290,7 @@ def test_purge_is_capped(ctx):
 
     run(handlers(ctx)["purge"], client, FakeMessage("/purge 9999", message_id=1000))
 
-    assert len([c for c in client.calls if c[0] == "delete"]) == moderation.MAX_PURGE
+    assert len([c for c in client.calls if c[0] == "delete"][0][1]) == moderation.MAX_PURGE
 
 
 # --- anti-spam -------------------------------------------------------------
@@ -420,7 +431,7 @@ def test_restriction_commands_report_api_permission_failures(ctx, command):
     message = FakeMessage('/' + command, reply=True)
     run(handlers(ctx)[command], Refusing(), message)
     assert 'ChatAdminRequired' in message.replies[-1]
-    assert 'not confirmed' in message.replies[-1]
+    assert 'not confirmed' in message.replies[-1] or 'unconfirmed' in message.replies[-1]
     assert not ctx.chats.history(-100500)
 
 
@@ -524,3 +535,72 @@ def test_automatic_protection_does_not_punish_when_membership_lookup_fails(ctx):
     assert not client.calls
     assert not ctx.chats.history(-100500)
     assert not message.deleted
+
+
+@pytest.mark.parametrize('arg', ['0', '-1', 'three', '3 extra', '１２', '9' * 40])
+def test_purge_invalid_count_does_not_delete(ctx, arg):
+    client = FakeClient()
+    message = FakeMessage('/purge ' + arg)
+    run(handlers(ctx)['purge'], client, message)
+    assert not client.calls
+    assert 'Usage' in str(message.replies)
+
+
+@pytest.mark.parametrize('ack', [None, False, 0])
+def test_purge_unacknowledged_request_never_claims_messages_removed(ctx, ack):
+    class Client(FakeClient):
+        async def delete_messages(self, chat_id, message_ids, **kwargs):
+            self.calls.append(('delete', message_ids))
+            return ack
+    client = Client()
+    message = FakeMessage('/purge 3')
+    run(handlers(ctx)['purge'], client, message)
+    assert len(client.calls) == 1
+    assert 'unconfirmed' in str(message.replies).lower()
+    assert 'Messages removed' not in str(message.replies)
+    assert not ctx.chats.history(message.chat.id)
+
+
+@pytest.mark.parametrize('kind', ['private', 'bot', 'anonymous', 'oversized', 'revoked'])
+def test_purge_rejects_invalid_identity_or_lost_permissions(ctx, kind):
+    class Client(FakeClient):
+        checks = 0
+        async def get_chat_member(self, chat_id, uid):
+            if uid == 11 and kind == 'revoked':
+                self.checks += 1
+                return member(ADMIN if self.checks == 1 else MEMBER)
+            return await super().get_chat_member(chat_id, uid)
+    client = Client()
+    message = FakeMessage('/purge 3')
+    if kind == 'private':
+        message.chat = SimpleNamespace(id=11, type=ChatType.PRIVATE)
+    if kind == 'bot':
+        message.from_user.is_bot = True
+    if kind == 'anonymous':
+        message.sender_chat = message.chat
+    if kind == 'oversized':
+        message.from_user.id = 2**63
+    run(handlers(ctx)['purge'], client, message)
+    assert not client.calls
+
+
+@pytest.mark.parametrize('failure', ['delivery', 'request', 'cancel'])
+def test_purge_does_not_replay_after_request_or_receipt_failure(ctx, failure, caplog):
+    from unittest.mock import AsyncMock
+    client = FakeClient()
+    client.delete_messages = AsyncMock(return_value=7)
+    message = FakeMessage('/purge 3')
+    if failure == 'request':
+        client.delete_messages.side_effect = TimeoutError('SECRET_DELETE_TEXT')
+    else:
+        message.reply = AsyncMock(side_effect=asyncio.CancelledError if failure == 'cancel' else RuntimeError('SECRET_RECEIPT_TEXT'))
+    if failure == 'cancel':
+        with pytest.raises(asyncio.CancelledError):
+            run(handlers(ctx)['purge'], client, message)
+    else:
+        run(handlers(ctx)['purge'], client, message)
+    client.delete_messages.assert_awaited_once_with(message.chat.id, [99, 98, 97])
+    if failure != 'request':
+        message.reply.assert_awaited_once()
+        assert ctx.chats.history(message.chat.id)[0]['action'] == 'purge'
+    assert 'SECRET_DELETE_TEXT' not in caplog.text and 'SECRET_RECEIPT_TEXT' not in caplog.text
