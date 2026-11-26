@@ -1390,3 +1390,34 @@ implementation; slash settings already passed). Exact patch **2,807 passed** in
 storage and no skips. Changed-file static and whitespace checks passed. No live
 Telegram visual validation/provider calls, production changes, merge or deployment.
 This is the first command polish pass, not a claim that all commands are polished.
+
+### Command/UI polish: channel batch outcomes and settings readability
+
+Continued sequential polish without slash-command buttons or a new appearance
+subsystem. Channel /batch now has a focused example/prerequisite panel, specific
+preflight not-started outcome and target, confirmed/unconfirmed/unattempted counts
+on partial failure, and a completion summary distinguishing stored bot links from
+Telegram invites. Confirmed cards are preserved; unknown issuance is not described
+as rolled back or safe to retry blindly. Preflight validates every channel before
+issuance as before; unknown results stop the remaining work. No synthetic progress
+or remote success claims introduced.
+
+Private /settings now uses a native Channel/Status/Approval table, explicit page
+and channel counts, and an empty-state next step with actual-shaped ID example.
+Functional verified settings controls retained; manual/auto and disable caveats
+stay visible. No command-copy keyboards added, no permissions relaxed.
+
+Two new regressions failed before implementation and now cover focused batch
+usage, complete counts/effect distinction, empty settings next step/page count and
+absence of command buttons. Existing partial-result/preflight/gating tests remain.
+Exact patch **2,809 passed** in 31.81 seconds; working tree **2,891 passed** in
+32.50 seconds, disposable real storage, no skips. Changed-file static/whitespace
+checks passed. No live Telegram screenshot/provider calls, production changes,
+merge or deploy. Workspace base-ref drift backed up under /tmp/batch-polish-backup
+and reconciled to fetched current branch without resetting persistent work.
+
+Polish queue remains explicit: legacy /links and /revoke, /start recipient/error
+states, broader help/navigation and other modules command by command. Delegated
+admin/subscription controls and combined-runtime batch ownership transfer remain
+functional gaps, not UI polish completed by this change. This pass does not claim
+all screens/buttons/commands have been reviewed or made perfect.

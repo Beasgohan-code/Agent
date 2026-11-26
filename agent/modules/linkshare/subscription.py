@@ -115,26 +115,50 @@ def build_channels(ctx):
             args = ['channels']
         try:
             if name == 'batch':
+                from ...ui.tables import panel, kv_table
                 if (not 1 <= len(args) <= 5 or len(set(args)) != len(args)
                         or any(not re.fullmatch(r'-[1-9][0-9]{0,18}', arg) for arg in args)):
-                    await reply(message, 'Use /batch with 1–5 unique managed negative channel IDs. No invites were requested.')
+                    await reply(message, panel('Create channel batches',
+                        lines=['Send <code>/batch -1001234567890 -1009876543210</code>.',
+                               'Choose 1–5 different managed channel IDs. No replied file is needed.'],
+                        note='Bot Owner, private chat only. Register channels in /settings first. Each channel produces one Normal and one Request bot link.',
+                        footer='No bot links or Telegram invites were created.'))
                     return
                 channels = list(map(int, args))
-                # Validate every target before the first remote side effect.
+                # Complete preflight before the first durable issuance.
                 for target in channels:
-                    channel_id(target)
-                    await authority(target)
-                    policy = await store.get(target)
-                    if not policy or policy.get('enabled') is not True:
-                        await reply(message, 'Every batch channel must be registered and enabled. No invites were requested.')
+                    try:
+                        channel_id(target)
+                        await authority(target)
+                        policy = await store.get(target)
+                        if not policy or policy.get('enabled') is not True:
+                            raise ValueError('Managed channel unavailable')
+                    except Exception:
+                        await reply(message, panel('Batch not started',
+                            table=kv_table([('Check channel', str(target))]),
+                            lines=['Check that this channel is registered and enabled in /settings, and that you and the bot can invite users.'],
+                            footer='No bot links or Telegram invites were created.'))
                         return
                 from copy import copy
+                completed = 0
                 for target in channels:
                     item = copy(message)
                     item.text = f'/genlink {target}'
                     if await command(client, item) is not True:
-                        await reply(message, 'Channel batch stopped after an unconfirmed or refused operation. Confirmed invites above remain valid; inspect channel invites before retrying.')
+                        await reply(message, panel('Batch stopped',
+                            table=kv_table([('Confirmed channels', f'{completed} / {len(channels)}'),
+                                            ('Unconfirmed channel', str(target)),
+                                            ('Not attempted', str(len(channels)-completed-1))]),
+                            lines=['Previously confirmed bot links above remain valid. The unconfirmed channel may already have stored links; check /settings before retrying.'],
+                            note='No automatic retry or rollback. Revoking a channel’s bot links does not revoke previously issued Telegram invites.'))
                         return
+                    completed += 1
+                await reply(message, panel('Batch complete',
+                    table=kv_table([('Channels', f'{completed} / {len(channels)}'),
+                                    ('Created', f'{completed*2} bot links')]),
+                    lines=['Each channel has a Normal and a Request link in its card above.'],
+                    note='No Telegram invites were created. Opening a bot link checks current access before requesting a temporary invite.',
+                    footer='Manage channels, approval mode and bot-link revocation in /settings.'))
                 return True
             page = 0
             if len(args) == 2 and args[0] == 'page' and re.fullmatch(r'[0-3]', args[1]):
@@ -146,9 +170,17 @@ def build_channels(ctx):
                 visible = rows[page*5:page*5+5]
                 if ctx.settings.owner_id != uid:
                     raise ValueError('Owner changed')
-                body = '<b>Managed Linkshare channels</b>\n' + '\n'.join(
-                    f'<code>{row["channel_id"]}</code> · {"enabled" if row["enabled"] else "disabled"} · {"auto preference" if row["auto_approve"] else "manual"}' for row in visible)
-                await reply(message, body + '\nUse /settings add ID, /settings mode ID manual|auto, /settings disable ID, or /genlink ID. Auto mode approves requests only for enabled, managed channels while Linkshare is active; manual mode leaves approval to administrators.', reply_markup=settings_keyboard(visible, page, len(rows)))
+                from ...ui.tables import panel, Table
+                total_pages = max(1, (len(rows)+4)//5)
+                body = panel('Managed Linkshare channels',
+                    table=Table(headers=('Channel', 'Status', 'Approval'), rows=tuple(
+                        (str(row['channel_id']), 'Enabled' if row['enabled'] else 'Disabled',
+                         'Auto' if row['auto_approve'] else 'Manual') for row in visible)) if visible else None,
+                    lines=(['Choose a channel action below.'] if visible else
+                           ['<b>No channels yet</b>', 'Add your first channel with <code>/settings add -1001234567890</code>. You and the bot must have invite authority.']),
+                    note='Manual leaves requests to administrators. Auto approves ordinary requests only while the channel and Linkshare are enabled and current invite authority is verified.',
+                    footer=f'Page {page+1} / {total_pages} · {len(rows)} managed channels · Disabling does not revoke Telegram invites already issued.')
+                await reply(message, body, reply_markup=settings_keyboard(visible, page, len(rows)))
                 return
             operation = args[0] if args and args[0] in ('add', 'mode', 'disable', 'invalidate') else 'invite'
             valid = (operation == 'invite' and len(args) == 1 or operation in ('add', 'disable') and len(args) == 2

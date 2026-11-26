@@ -736,3 +736,43 @@ async def test_settings_command_prefixes_have_identical_safe_list_behavior(monke
     message = NS(text=prefix+'settings@agentbot', from_user=NS(id=11), chat=NS(id=11, type=ChatType.PRIVATE), reply=AsyncMock())
     await build_channels(ctx)(None, message)
     store.list.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_channel_batch_polish_usage_and_confirmed_summary(monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType, ChatMemberStatus as S
+    from agent.modules.linkshare.subscription import build_channels
+    store = NS(get=AsyncMock(return_value={'enabled': True}), issue=AsyncMock(return_value={'normal': 'a'*24, 'request': 'b'*24}))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    ctx = NS(db=None, settings=NS(owner_id=11, bot_id=99))
+    msg = NS(text='/batch', chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=11), reply=AsyncMock())
+    client = NS(me=NS(username='agentbot'), get_chat=AsyncMock(side_effect=lambda cid: NS(id=cid, type=ChatType.CHANNEL)), get_chat_member=AsyncMock(return_value=NS(status=S.OWNER)))
+    command = build_channels(ctx)
+    await command(client, msg)
+    assert 'Create channel batches' in msg.reply.await_args.args[0]
+    assert '/batch -1001234567890 -1009876543210' in msg.reply.await_args.args[0]
+    client.get_chat.assert_not_awaited()
+    msg.text = '/batch -100123 -100456'
+    await command(client, msg)
+    body = msg.reply.await_args.args[0]
+    assert 'Batch complete' in body
+    assert '2 / 2' in body and '4 bot links' in body
+    assert 'No Telegram invites were created' in body
+    assert not msg.reply.await_args.kwargs.get('reply_markup')
+
+
+@pytest.mark.asyncio
+async def test_channel_settings_empty_state_has_clear_next_step(monkeypatch):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from pyrogram.enums import ChatType
+    from agent.modules.linkshare.subscription import build_channels
+    store = NS(list=AsyncMock(return_value=[]))
+    monkeypatch.setattr('agent.platform.channel_shares.ChannelShares', lambda db: store)
+    msg = NS(text='/settings', chat=NS(id=11, type=ChatType.PRIVATE), from_user=NS(id=11), reply=AsyncMock())
+    await build_channels(NS(db=None, settings=NS(owner_id=11, bot_id=99)))(None, msg)
+    body = msg.reply.await_args.args[0]
+    assert 'No channels yet' in body and '/settings add -1001234567890' in body
+    assert 'Page 1 / 1' in body
