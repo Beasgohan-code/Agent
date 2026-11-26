@@ -1326,3 +1326,23 @@ production app calls/deployment/PR merge. Workspace ref/index was back at base;
 backed up under /tmp/settings-ui-backup and restored fetched current-branch index
 without discarding files; rebuilt test environment. Remaining parity limitations
 are explicit in REFERENCE_ADOPTION. Appearance remains removed.
+
+### Standalone Linkshare batch registration and help
+
+Linkshare-only builds now register their own private `/batch`, using the existing
+bounded verified channel flow and Linkshare runtime ownership. Combined builds
+retain FileStore ownership without collision. Actual registered ownership, not only
+configured plugin names, permits fallback when optional FileStore failed to build.
+Static no-registry builders retain selection-based collision avoidance. Active
+worker help now includes the channel batch variant and accurate ID examples.
+
+Two standalone regressions failed before implementation. Six new tests cover
+standalone registration/scope, combined uniqueness, actual channel handler reuse,
+whole-bot wiring/runtime registry visibility, channel help and failed-FileStore
+fallback. Exact patch **2,795 passed** in 31.25 seconds; full working tree **2,877
+passed** in 31.77 seconds, disposable real storage and no skips. Changed-file static
+and whitespace checks passed. No live Telegram/provider calls, deploy or merge.
+Combined-runtime ownership transfer remains absent; delegated administration and
+required-subscription UI remain pending. Workspace base-ref drift backed up under
+/tmp/standalone-batch-backup and reconciled without discarding persistent work;
+test environment rebuilt. Appearance stays removed.

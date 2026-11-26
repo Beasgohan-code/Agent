@@ -365,7 +365,20 @@ def build(ctx):
         "links": links,
         "revoke": revoke,
     }
-    return MANIFEST, {name: identified(handler) for name, handler in handlers.items()}
+    manifest = MANIFEST
+    registry = getattr(ctx, "registry", None)
+    if registry is not None:
+        # FileStore builds first. Use actual registered ownership, including
+        # safe fallback when that optional module failed to build.
+        has_batch_owner = any("batch" in item.commands for item in registry.manifests())
+    else:
+        selected = tuple(ctx.settings.plugins or ())
+        has_batch_owner = selected == ("*",) or "filestore" in selected
+    if not has_batch_owner:
+        from dataclasses import replace
+        handlers["batch"] = genlink
+        manifest = replace(MANIFEST, commands=(*MANIFEST.commands, "batch"))
+    return manifest, {name: identified(handler) for name, handler in handlers.items()}
 
 
 def extra_handlers(ctx):

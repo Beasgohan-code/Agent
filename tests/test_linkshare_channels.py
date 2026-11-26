@@ -618,3 +618,87 @@ def test_channel_settings_pagination_bounds_callback_layout():
     assert len(buttons) == 27
     assert all(len(b.callback_data.encode()) <= 64 for b in buttons)
     assert any(b.callback_data == 'chset:page:1' for b in buttons)
+
+
+def test_linkshare_only_batch_is_registered_without_filestore(tmp_path):
+    from dataclasses import replace
+    from agent.modules import linkshare
+    from agent.platform.manifest import PluginRegistry
+    from test_plugins import make_ctx
+    ctx = make_ctx(tmp_path)
+    ctx.settings = replace(ctx.settings, plugins=('linkshare',))
+    manifest, handlers = linkshare.build(ctx)
+    assert 'batch' in manifest.commands and 'batch' in handlers
+    registry = PluginRegistry()
+    registry.register(manifest, handlers)
+    assert registry.handler_for('batch') is not None
+    assert manifest.scope_for('batch') == 'private'
+
+
+def test_linkshare_combined_batch_has_one_command_owner(tmp_path):
+    from dataclasses import replace
+    from agent.modules import filestore, linkshare
+    from agent.platform.manifest import PluginRegistry
+    from test_plugins import make_ctx
+    ctx = make_ctx(tmp_path)
+    ctx.settings = replace(ctx.settings, plugins=('filestore', 'linkshare'))
+    ctx.registry = PluginRegistry()
+    first, callbacks = filestore.build(ctx)
+    ctx.registry.register(first, callbacks)
+    second, callbacks = linkshare.build(ctx)
+    ctx.registry.register(second, callbacks)
+    assert 'batch' not in second.commands
+    assert sum('batch' in m.commands for m in ctx.registry.manifests()) == 1
+
+
+@pytest.mark.asyncio
+async def test_linkshare_only_batch_uses_channel_flow(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from unittest.mock import AsyncMock
+    from agent.modules import linkshare
+    from test_plugins import make_ctx
+    from test_archive_links import request
+    ctx = make_ctx(tmp_path)
+    ctx.settings = replace(ctx.settings, plugins=('linkshare',))
+    generate = AsyncMock(return_value=True)
+    monkeypatch.setattr('agent.modules.linkshare.subscription.build_channels', lambda ctx: generate)
+    _, handlers = linkshare.build(ctx)
+    message = request('/batch -100123 -100456')
+    await handlers['batch'](None, message)
+    generate.assert_awaited_once_with(None, message)
+
+
+def test_linkshare_only_bot_wires_and_advertises_its_own_batch():
+    from agent.bot import AgentBot
+    from test_bot import make_settings
+    from agent.ui.workers import commands
+    bot = AgentBot(make_settings(PLUGINS='linkshare'))
+    bot.build()
+    assert bot.registry._command_owner['batch'] == 'linkshare'
+    assert 'filestore' not in [m.slug for m in bot.registry.manifests()]
+    assert 'batch' in commands('linkshare', bot.registry.active_commands())
+    bot.registry.disable('linkshare')
+    assert 'batch' not in bot.registry.active_commands()
+    bot.registry.enable('linkshare')
+    assert 'batch' in bot.registry.active_commands()
+
+
+def test_linkshare_only_batch_help_describes_channel_arguments():
+    from agent.ui.workers import callback
+    from agent.ui.theme import Theme
+    screen = callback('worker:cmd:batch', None, Theme(worker_plugins=('linkshare',)), active={'genlink', 'batch', 'links', 'revoke'})
+    assert 'unique managed enabled channel IDs' in screen.rich_text
+
+
+def test_linkshare_batch_falls_back_to_actual_registry_if_filestore_failed(tmp_path):
+    from dataclasses import replace
+    from agent.modules import linkshare
+    from agent.platform.manifest import PluginRegistry
+    from test_plugins import make_ctx
+    ctx = make_ctx(tmp_path)
+    ctx.settings = replace(ctx.settings, plugins=('filestore', 'linkshare'))
+    ctx.registry = PluginRegistry()
+    manifest, handlers = linkshare.build(ctx)
+    assert 'batch' in handlers
+    ctx.registry.register(manifest, handlers)
+    assert ctx.registry._command_owner['batch'] == 'linkshare'

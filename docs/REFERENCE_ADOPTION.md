@@ -228,3 +228,21 @@ revocation claim. Existing disable/re-enable semantics are unchanged.
 This is native reference-inspired channel UI, not complete upstream admin/fsub
 parity. Standalone Linkshare-only batch dispatch, delegated admins and editable
 required-subscription UI remain unfinished. No live Telegram validation performed.
+
+### Standalone Linkshare batch ownership
+
+Linkshare now declares/registers `/batch` itself when no earlier module owns that
+command. Actual bot builds consult the existing registry (FileStore builds first),
+so an optional FileStore build failure also permits safe fallback. Standalone
+construction without registry metadata uses deployment selection. Linkshare-only
+bots therefore no longer require FileStore for channel batches, and runtime/menu
+ownership follows Linkshare. Combined bots retain exactly one FileStore batch owner
+and the existing negative-ID delegation. Worker help includes the active batch
+variant and its bounded channel-ID syntax without exposing inactive commands.
+
+This supersedes the no-standalone-batch limitation but NOT dynamic runtime transfer:
+if both modules build successfully and FileStore is subsequently disabled, its
+batch handler remains removed; ownership does not migrate mid-runtime. No duplicate
+handlers, hidden FileStore dependency in standalone mode or relaxed approval rules.
+Delegated admin/required-subscription controls and live Telegram validation remain
+unfinished. Broader reference parity is not claimed complete.

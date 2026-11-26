@@ -30,7 +30,7 @@ QUICK_START = {
     'encoder': ('encode', 'compress', 'mediainfo'),
     'moderation': ('settings', 'setwelcome', 'warn'),
     'postmaker': ('post',),
-    'linkshare': ('genlink', 'links', 'revoke'),
+    'linkshare': ('genlink', 'batch', 'links', 'revoke'),
     'leech': ('leech', 'mirror', 'set_caption'),
     'music': ('play', 'queue', 'stop'),
     'ai_agent': ('ask', 'autochat'),
@@ -86,6 +86,8 @@ def commands(slug, active):
     # suites keep Linkshare ownership, distinguished by their active /get.
     if slug == 'filestore' and active is not None and 'genlink' in active and 'get' not in active:
         candidates = ('genlink',) + candidates
+    if slug == 'linkshare' and active is not None and 'batch' in active:
+        candidates = (*candidates, 'batch')
     # Unknown registry state is not evidence that optional commands are loaded.
     return tuple(command for command in candidates if active is not None and command in active)
 
@@ -314,7 +316,8 @@ def command_screen(user, theme, name, *, active=None):
     slugs = GROUP_CORE if owner == 'moderation' else (owner,) if owner else ()
     manifest = next((module.MANIFEST for module in MODULES
                      if module.MANIFEST.slug in slugs and (name in module.MANIFEST.commands or
-                        (owner == 'filestore' and name == 'genlink' and 'get' not in (active or ())))), None)
+                        (owner == 'filestore' and name == 'genlink' and 'get' not in (active or ())) or
+                        (owner == 'linkshare' and name == 'batch'))), None)
     description = ('Create a single-message archive delivery link (Owner, private chat).'
                    if owner == 'filestore' and name == 'genlink' else DESCRIPTIONS[name])
     rows = [(markup(f'<code>/{name}</code>'), description)]
@@ -323,6 +326,8 @@ def command_screen(user, theme, name, *, active=None):
         guide = ('/genlink', 'Send the command without arguments in private chat as this bot’s Owner, then send or forward one message. Follow any access/configuration checks shown.')
     elif name == 'genlink' and owner == 'linkshare':
         guide = ('/genlink -1001234567890', 'Owner, private: register the channel using /settings add ID first. Both you and the bot need channel invite authority. Creates normal and request bot links, not file links. Opening one requests a temporary channel invite.')
+    if name == 'batch' and owner == 'linkshare':
+        guide = ('/batch -1001234567890 -1009876543210', 'Owner, private: provide 1–5 unique managed enabled channel IDs. All targets are checked before issuing normal/request bot links. No replied file is needed.')
     if guide:
         rows.extend([('How to use', guide[0]), ('Before sending', guide[1])])
     rows.append(('Registered here', 'Yes · registration does not prove activation or permission'))
