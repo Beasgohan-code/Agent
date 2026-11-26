@@ -13,7 +13,7 @@ def test_each_worker_has_a_live_guided_start(slug):
     assert 'Get started' in screen.rich_text
     assert 'Meiko' not in screen.rich_text
     copied = [b.copy_text.text for row in screen.keyboard.inline_keyboard for b in row if b.copy_text]
-    assert copied
+    assert copied == []
     assert all(text.lstrip('/') in active for text in copied)
     assert set(copied) <= {'/'+c for c in QUICK_START[slug]}
     assert 'Step' in screen.rich_text
@@ -41,7 +41,7 @@ def test_guides_filter_copy_buttons_and_preserve_unicode_fallback():
     assert screen is not None
     assert '<tg-emoji' not in screen.rich_text
     copied = [b.copy_text.text for row in screen.keyboard.inline_keyboard for b in row if b.copy_text]
-    assert copied == ['/compress']
+    assert copied == []
     assert all(b.icon_custom_emoji_id is None for row in screen.keyboard.inline_keyboard for b in row)
     assert callback('worker:guide:encoder:extra', None, theme, active={'compress'}) is None
 

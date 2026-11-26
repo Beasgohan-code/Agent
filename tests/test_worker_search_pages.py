@@ -19,10 +19,12 @@ def test_worker_search_paginates_current_available_matches():
     next_data = next(b.callback_data for b in keys if b.text.endswith('Next'))
     second = callback(next_data, None, theme, active=active)
     assert second is not None
-    first_commands={b.text for row in first.keyboard.inline_keyboard for b in row if b.callback_data and b.callback_data.startswith('worker:cmd:')}
-    second_commands={b.text for row in second.keyboard.inline_keyboard for b in row if b.callback_data and b.callback_data.startswith('worker:cmd:')}
+    import re
+    first_commands = set(re.findall(r'<code>/([^<]+)</code>', first.rich_text))
+    second_commands = set(re.findall(r'<code>/([^<]+)</code>', second.rich_text))
     assert second_commands and first_commands.isdisjoint(second_commands)
-    assert all(b.callback_data.removeprefix('worker:cmd:') in discoverable(theme,active) for row in second.keyboard.inline_keyboard for b in row if b.callback_data and b.callback_data.startswith('worker:cmd:'))
+    assert second_commands <= set(discoverable(theme, active))
+    assert not any((b.callback_data or '').startswith('worker:cmd:') for row in second.keyboard.inline_keyboard for b in row)
     assert 'Previous' in str(second.keyboard)
     assert all(len(b.callback_data.encode()) <= 64 for b in keys if b.callback_data)
     assert all(len(row) <= 2 for row in second.keyboard.inline_keyboard)

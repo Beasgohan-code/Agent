@@ -22,7 +22,8 @@ def test_search_ranks_name_before_description_and_preserves_exact_lookup(monkeyp
     monkeypatch.setitem(DESCRIPTIONS, 'compress', 'Alternative encode workflow')
     screen = search_screen(None, theme, 'encode', active=active)
     details = [b.callback_data for row in screen.keyboard.inline_keyboard for b in row if (b.callback_data or '').startswith('worker:cmd:')]
-    assert details == ['worker:cmd:encode', 'worker:cmd:compress']
+    assert details == []
+    assert screen.rich_text.index('<code>/encode</code>') < screen.rich_text.index('<code>/compress</code>')
     assert '/encode' in screen.rich_text
     direct = lookup('encode', None, theme, active=active)
     assert 'Command details' in direct.rich_text

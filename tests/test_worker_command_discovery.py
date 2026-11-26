@@ -9,13 +9,13 @@ def test_partial_help_finds_only_live_selected_commands():
     assert '/compress' in screen.rich_text
     assert '/clone' not in screen.rich_text
     assert '/plans' not in screen.rich_text
-    assert 'worker:cmd:compress' in str(screen.keyboard)
+    assert 'worker:cmd:compress' not in str(screen.keyboard)
 
 
 def test_typo_help_offers_live_match_without_running_it():
     screen = lookup('compres', None, Theme(worker_plugins=('encoder',)), active={'compress'})
     assert '/compress' in screen.rich_text
-    assert 'worker:cmd:compress' in str(screen.keyboard)
+    assert 'worker:cmd:compress' not in str(screen.keyboard)
 
 
 def test_command_details_copy_and_callback_revalidate_scope():
@@ -23,7 +23,8 @@ def test_command_details_copy_and_callback_revalidate_scope():
     screen = callback('worker:cmd:compress', None, theme, active={'compress'})
     assert screen is not None
     buttons = [b for row in screen.keyboard.inline_keyboard for b in row]
-    assert any(b.copy_text and b.copy_text.text == '/compress' for b in buttons)
+    assert not any(b.copy_text for b in buttons)
+    assert '/compress' in screen.rich_text
     assert callback('worker:cmd:compress', None, theme, active=set()) is None
     assert callback('worker:cmd:clone', None, theme, active={'clone'}) is None
     assert callback('worker:cmd:compress', None, Theme(), active={'compress'}) is None
@@ -31,8 +32,9 @@ def test_command_details_copy_and_callback_revalidate_scope():
 
 def test_command_page_has_tappable_details():
     screen = plugin_screen(None, Theme(worker_plugins=('encoder',)), 'encoder', active={'compress', 'encode'})
-    assert 'worker:cmd:compress' in str(screen.keyboard)
-    assert 'worker:cmd:encode' in str(screen.keyboard)
+    assert 'worker:cmd:compress' not in str(screen.keyboard)
+    assert 'worker:cmd:encode' not in str(screen.keyboard)
+    assert '/encode' in screen.rich_text and '/compress' in screen.rich_text
 
 
 @pytest.mark.parametrize('query', ['plans', 'clone', '<script>', 'zzzzzzzz'])

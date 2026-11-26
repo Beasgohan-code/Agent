@@ -134,25 +134,12 @@ def overview(user, theme, *, active=None, help_mode=False):
     if not visible:
         lines.append('Command registration is unknown. Open Availability and refresh.' if active is None else
                      'No tools are currently registered. Ask this bot’s owner to check its configuration.')
-    shortcuts = []
-    if not help_mode:
-        preferred = [[cmd for cmd in QUICK_START[slug] if cmd in commands(slug, active)] for slug in primary]
-        # One first action per selected workspace before a second from one tool.
-        for position in range(3):
-            for choices in preferred:
-                if position < len(choices) and choices[position] not in shortcuts:
-                    shortcuts.append(choices[position])
-        shortcuts = shortcuts[:2]
-        if shortcuts:
-            lines.append('Copying does not run a command. Add required arguments and send it yourself; normal access checks still apply.')
     body = panel(title, icon=theme.emoji(icon), subtitle='Explore your tools' if help_mode else 'Quick start', table=Table(headers=('Tools', 'Try'), rows=tuple(rows)),
                  lines=lines, note='Choose a tool below for instructions.' if not help_mode else 'Group actions require administrator permissions. Optional tools require owner approval and group activation.',
                  footer='/help command · More detail for any available command')
     keys = [[button(theme, slug)] for slug in visible]
     if visible and not help_mode:
         keys.insert(0, [theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{visible[0]}', style=ButtonStyle.PRIMARY)])
-    if shortcuts:
-        keys.insert(1, [theme.button('Copy /' + cmd, icon='pin', copy_text='/' + cmd) for cmd in shortcuts])
     keys.append([theme.button('Availability', icon='stats', callback_data='worker:availability')])
     keys.append([theme.button('How to use', icon='question', callback_data=CB_HELP, style=ButtonStyle.PRIMARY), theme.button('About', icon='info', callback_data='worker:about')])
     return Screen(body, Keyboard(keys))
@@ -174,17 +161,14 @@ def plugin_screen(user, theme, slug, *, active=None, page=0):
                  for command in available[page * PAGE_SIZE:(page + 1) * PAGE_SIZE])
     body = panel(f'{title} · Commands', icon=theme.emoji(icon),
                  table=Table(headers=('Command', 'Usage'), rows=rows), lines=[introduction],
-                 note='Choose a command from this page. Administrator actions still require the appropriate permissions.',
+                 note='Send /help followed by a command name for details. Administrator actions still require the appropriate permissions.',
                  footer=f'Page {page + 1} of {pages} · {len(available)} commands · /help command')
     paging = []
     if page:
         paging.append(theme.button('Previous', icon='back', callback_data=f'worker:{slug}:{page - 1}'))
     if page + 1 < pages:
         paging.append(theme.button('Next', icon='arrow', callback_data=f'worker:{slug}:{page + 1}', style=ButtonStyle.PRIMARY))
-    detail_buttons = [theme.button(f'/{name}', icon='question', callback_data=f'worker:cmd:{name}')
-                      for name in available[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]]
-    details = [detail_buttons[index:index + 2] for index in range(0, len(detail_buttons), 2)]
-    keys = details + ([paging] if paging else []) + [[theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{slug}', style=ButtonStyle.PRIMARY)]] + [navigation(theme)]
+    keys = ([paging] if paging else []) + [[theme.button('Get started', icon='bolt', callback_data=f'worker:guide:{slug}', style=ButtonStyle.PRIMARY)]] + [navigation(theme)]
     return Screen(body, Keyboard(keys))
 
 
@@ -275,10 +259,9 @@ def search_screen(user, theme, query, *, active=None, page=0):
                  table=Table(headers=('Command', 'What it does'), rows=tuple(
                      (markup(f'<code>/{name}</code>'), DESCRIPTIONS[name]) for name in current)) if current else None,
                  lines=[] if current else ['No matching commands in this bot’s selected, registered tools. Try another /help query.'],
-                 note='Similar spelling suggestions; not exact matches.' if fuzzy else 'Command name matches first, then description matches. Tap for details; search does not execute actions.',
+                 note='Similar spelling suggestions; not exact matches.' if fuzzy else 'Command name matches first, then description matches. Send /help followed by a command name for details; search does not execute actions.',
                  footer=f'Page {page+1} / {pages} · {len(matches)} matches · selected, registered commands only')
-    buttons = [theme.button(f'/{name}', icon='question', callback_data=f'worker:cmd:{name}') for name in current]
-    keys = [buttons[index:index + 2] for index in range(0, len(buttons), 2)]
+    keys = []
     encoded = base64.urlsafe_b64encode(query.encode()).decode().rstrip('=')
     paging = []
     if page:
@@ -342,9 +325,9 @@ def command_screen(user, theme, name, *, active=None):
     body = panel(f'/{name}', icon=theme.emoji(PROFILES[owner][1] if owner else 'question'),
                  subtitle='Command details',
                  table=Table(headers=('Detail', 'Information'), rows=tuple(rows)),
-                 note='Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Copying does not run this command; add required arguments before sending.',
+                 note='Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Read the usage above and add required arguments before sending.',
                  footer='Send the command for its current usage. Never include passwords or secret tokens.')
-    keys = [[theme.button(f'Copy /{name}', icon='pin', copy_text=f'/{name}', style=ButtonStyle.PRIMARY)]]
+    keys = []
     if owner:
         page = commands(owner, active).index(name) // PAGE_SIZE
         keys.append([theme.button('Back to commands', icon='back', callback_data=f'worker:{owner}:{page}'),
@@ -378,13 +361,11 @@ def guide_screen(user, theme, slug, *, active=None):
     steps = WORKFLOWS[slug]
     rows = tuple((markup(f'{theme.emoji(number)} Step {index}'), text)
                  for index, (number, text) in enumerate(zip(('one', 'two', 'three'), steps), 1))
-    shortcuts = [command for command in QUICK_START[slug] if command in available]
     body = panel(f'{title} · Get started', icon=theme.emoji(icon), subtitle='A simple path from start to result',
                  table=Table(headers=('Step', 'What to do'), rows=rows),
-                 note='Copy buttons only put a command on your clipboard. Send it yourself when ready; access checks still apply.',
+                 note='Follow the steps above, then send the command when ready. Access checks still apply.',
                  footer='Need exact syntax? Send /help followed by a command name.')
-    buttons = [theme.button(f'Copy /{command}', icon='pin', copy_text=f'/{command}') for command in shortcuts]
-    keys = [buttons[index:index + 2] for index in range(0, len(buttons), 2)]
+    keys = []
     keys.append([theme.button('Browse commands', icon='search', callback_data=f'worker:{slug}:0', style=ButtonStyle.PRIMARY)])
     keys.append(navigation(theme))
     return Screen(body, Keyboard(keys))

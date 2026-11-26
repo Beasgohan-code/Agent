@@ -1346,3 +1346,24 @@ Combined-runtime ownership transfer remains absent; delegated administration and
 required-subscription UI remain pending. Workspace base-ref drift backed up under
 /tmp/standalone-batch-backup and reconciled without discarding persistent work;
 test environment rebuilt. Appearance stays removed.
+
+### UI correction: navigation-first workers, no slash-command button clutter
+
+User explicitly rejected `/encode`-style buttons and requested cleaner UI. Removed
+worker home copy shortcuts, command-page detail-button grids, search command-button
+grids, command-detail copy actions and guide copy shortcuts. Kept readable command
+names/examples and paginated help tables, exact /help lookup and validated legacy
+detail callback routing. Navigation remains semantic: workspaces, Get started,
+Browse commands, Back, Home and search/command-list pages. No theme/appearance
+subsystem, command authorization changes or runtime actions added. Existing
+Linkshare functional settings controls are not slash-command shortcuts and remain.
+
+New regression failed before implementation; obsolete shortcut tests now assert
+navigation-only keyboards while retaining command visibility, filtering, ranking,
+pagination and stale-callback checks. Ninety-four worker tests passed. Full tests
+caught the expected offline-preview drift; regenerated the existing preview using
+offline fixtures and verified it is identical in exact and working trees. Exact
+patch **2,796 passed** in 27.73 seconds; working tree **2,878 passed** in 28.29
+seconds, disposable real storage and no skips. Static/whitespace checks passed.
+No live Telegram screenshot or provider calls, production changes, deploy or merge.
+Unrelated screens and runtime work preserved unstaged.

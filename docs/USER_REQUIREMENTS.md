@@ -209,3 +209,8 @@ response into a public copy. No unsupported fastest-ever or live latency claim.
   modules. User confirmed channel workflow and both manual and automatic approval:
   manual default, automatic opt-in per managed channel. Preserve already-issued
   file-link redemption and stored files. Command migration is not yet complete.
+
+- UI correction: do not add `/encode`-style slash-command buttons or Copy /command
+  shortcuts. Worker menus should be navigation-first, with commands/examples in
+  readable help text rather than keyboard grids. Keep useful semantic navigation;
+  this does not reinstate the cancelled appearance/theme subsystem.

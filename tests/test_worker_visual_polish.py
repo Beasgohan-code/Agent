@@ -86,3 +86,21 @@ def test_edit_rejected_button_icon_falls_back_once():
     assert asyncio.run(sender.edit(SimpleNamespace(edit_message_text=edit), screen)) is True
     assert len(calls) == 2
     assert not calls[-1]['reply_markup'].inline_keyboard[0][0].icon_custom_emoji_id
+
+
+def test_worker_screens_have_navigation_not_slash_command_buttons():
+    from agent.ui.workers import overview, plugin_screen, callback
+    from agent.ui.theme import Theme
+    from types import SimpleNamespace
+    theme = Theme(worker_plugins=('encoder',))
+    active = {'encode', 'compress', 'mediainfo'}
+    screens = [overview(SimpleNamespace(first_name='Alex'), theme, active=active),
+               plugin_screen(None, theme, 'encoder', active=active),
+               callback('worker:guide:encoder', None, theme, active=active),
+               callback('worker:cmd:encode', None, theme, active=active)]
+    for screen in screens:
+        for row in screen.keyboard.inline_keyboard:
+            for button in row:
+                assert '/' not in button.text
+                assert not button.copy_text
+    assert '/encode' in screens[1].rich_text

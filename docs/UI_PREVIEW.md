@@ -379,7 +379,7 @@ Dependencies  None declared
 Required credential names  None declared
 Required capabilities  None declared
 
-Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Copying does not run this command; add required arguments before sending.
+Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Read the usage above and add required arguments before sending.
 
 ─────
 
@@ -387,7 +387,6 @@ Send the command for its current usage. Never include passwords or secret tokens
 ```
 
 Buttons (row order):
-- 📌 Copy /encode
 - ⬅️ Back to commands · ⚡ Get started
 - 🤖 Home · 🔍 All tools
 
@@ -409,7 +408,7 @@ Dependencies  None declared
 Required credential names  None declared
 Required capabilities  None declared
 
-Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Copying does not run this command; add required arguments before sending.
+Declared requirements are not a readiness check or access grant. Group tools may require Owner approval, admin activation and Telegram rights. Read the usage above and add required arguments before sending.
 
 ─────
 
@@ -417,7 +416,6 @@ Send the command for its current usage. Never include passwords or secret tokens
 ```
 
 Buttons (row order):
-- 📌 Copy /genlink
 - ⬅️ Back to commands · ⚡ Get started
 - 🤖 Home · 🔍 All tools
 
